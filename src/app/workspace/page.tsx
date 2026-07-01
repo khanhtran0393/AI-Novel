@@ -1,64 +1,35 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useNovelStore, Chuong } from '@/store/useNovelStore';
+import { useNovelStore } from '@/store/useNovelStore';
 import {
-  Sparkles,
-  BookOpen,
-  Settings,
-  Plus,
-  Minus,
-  RefreshCw,
   Download,
   ChevronLeft,
-  ChevronRight,
-  User,
-  Info,
-  CheckCircle,
-  Key,
-  Wifi,
-  WifiOff,
-  FileText,
-  AlertCircle
+  ChevronRight
 } from 'lucide-react';
 
-// Mảng ngẫu nhiên cho Zero-Legacy Template Engine
-const CO_THE_KHUYET_TAT = [
-  'rách gân tay trái khiến kiếm chiêu bị lệch 1 phân',
-  'mù mắt phải do vết cào của dị chủng cấp cao',
-  'liệt chân trái phải bước đi tập tễnh cùng nạng sắt',
-  'mất khứu giác do hít phải bụi phóng xạ mạt thế',
-  'phổi bị tổn thương nặng chỉ có thể nín thở tối đa 15 giây',
-  'cụt 2 ngón tay phải khiến việc nạp đạn súng bị chậm 2 giây'
-];
+// Import modular UI subcomponents
+import Header from './components/Header';
+import SetupPhase from './components/SetupPhase';
+import Sidebar from './components/Sidebar';
+import ContentTab from './components/ContentTab';
 
-const KHONG_GIAN_HOANG_PHE = [
-  'trạm xăng bỏ hoang ngập trong sương độc axit',
-  'tầng hầm trung tâm thương mại bị rêu đỏ ăn mòn',
-  'nhà kho đông lạnh cũ chứa đầy kén trứng của biến dị thể',
-  'nhà thờ đổ nát có bức tượng đổ sập chặn lối thoát',
-  'toa tàu điện ngầm mắc kẹt giữa đường hầm ngập nước',
-  'phòng thí nghiệm sinh học đổ nát đầy bình chứa rò rỉ'
-];
+// Import custom business logic hooks modules
+import { useSetupActions } from './hooks/useSetupActions';
+import { useWriteChapter } from './hooks/useWriteChapter';
+import { useSceneActions } from './hooks/useSceneActions';
+import { useTTSActions } from './hooks/useTTSActions';
+import { useImagePromptActions } from './hooks/useImagePromptActions';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { useFolderActions } from './hooks/useFolderActions';
+import { useProjectActions } from './hooks/useProjectActions';
 
-const TEN_HAN_VIET_MOI = [
-  'Tiêu Hàn', 'Thạch Dã', 'Diệp Dao', 'Tô Dạ', 'Khương Phàm', 'Bạch Vũ', 
-  'Lục Phong', 'Sở Doanh', 'Thần Phong', 'Nhạc Vân', 'Mộ Dung Trần'
-];
-
-const VAT_PHAM_MAC_DINH = [
-  'Con dao găm rỉ sét cán gỗ',
-  'Bình lọc nước cầm tay còn 1 lần lọc',
-  'Bản đồ khu tị nạn rách góc',
-  'Hộp quẹt đá hết gas nhưng còn tia lửa',
-  'Sợi dây xích sắt dài 2 mét'
-];
+// Import các tiện ích xử lý chuỗi
+import { parseScenes, getWordCount } from './utils/stringUtils';
 
 export default function Workspace() {
   const store = useNovelStore();
-  const [promptError, setPromptError] = useState('');
-  const [streamText, setStreamText] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
 
   // Rehydrate store để đồng bộ localStorage trên client an toàn cho Next.js SSR
   useEffect(() => {
@@ -67,228 +38,71 @@ export default function Workspace() {
       store.setHydrated(true);
     };
     hydrate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Zero-Legacy Template Engine: Sinh ý tưởng bối cảnh ngẫu nhiên chất lượng cao
-  const handleRandomTemplate = () => {
-    const tenMain = TEN_HAN_VIET_MOI[Math.floor(Math.random() * TEN_HAN_VIET_MOI.length)];
-    const khuyetTat = CO_THE_KHUYET_TAT[Math.floor(Math.random() * CO_THE_KHUYET_TAT.length)];
-    const khongGian = KHONG_GIAN_HOANG_PHE[Math.floor(Math.random() * KHONG_GIAN_HOANG_PHE.length)];
-    const vatPham = VAT_PHAM_MAC_DINH[Math.floor(Math.random() * VAT_PHAM_MAC_DINH.length)];
+  // 8 Custom React Hooks để quản lý toàn bộ các hành động mượt mà theo mô-đun
+  const {
+    promptError,
+    setPromptError,
+    isGeneratingIdea,
+    handleRandomTemplate,
+    handleGenerateOutline
+  } = useSetupActions();
 
-    const template = `Thế giới rơi vào kỷ băng hà mạt thế rực đỏ. Nhân vật chính ${tenMain} gánh chịu khuyết tật nặng nề: ${khuyetTat}. Câu chuyện bắt đầu khi ${tenMain} đang bị bao vây tại một ${khongGian}, trong tay chỉ còn lại một ${vatPham}. Phải vật lộn sinh tồn tìm cách thoát thân trước khi nhiệt độ giảm xuống âm 50 độ C vào ban đêm.`;
-    
-    store.setSetup({ mo_ta: template });
-    setPromptError('');
-  };
+  const {
+    isStreaming,
+    streamText,
+    handleWriteChapter
+  } = useWriteChapter(setPromptError);
 
-  // Nút cộng trừ chương
-  const handleAdjustChapters = (amount: number) => {
-    const nextVal = Math.max(1, Math.min(100, store.setup.so_chuong + amount));
-    store.setSetup({ so_chuong: nextVal });
-  };
+  const {
+    handleSceneChange,
+    handleCopyScene,
+    handleExpandScene
+  } = useSceneActions(streamText);
 
-  // Nút khởi tạo kịch bản AI (Phase 1 -> Phase 2)
-  const handleGenerateOutline = async () => {
-    if (!store.setup.mo_ta.trim()) {
-      setPromptError('⚠️ Vui lòng nhập mô tả cốt truyện hoặc bấm nút "AI Tự Tạo Ý Tưởng"!');
-      return;
-    }
+  const {
+    isPlayingTTS,
+    generatingTTS,
+    handlePlayTTS,
+    handleStopTTS,
+    handleGenerateTTS
+  } = useTTSActions();
 
-    setPromptError('');
-    store.setDangTai(true);
+  const {
+    generatingPrompt,
+    regeneratingSinglePrompt,
+    generatingImage,
+    generatingVideo,
+    handleGenerateImagePrompt,
+    handleRegenPrompt,
+    handleGenerateImage,
+    handleGenerateAllImages,
+    handleGenerateVideo,
+    handleGenerateAllVideos
+  } = useImagePromptActions();
 
-    if (store.useMock) {
-      // Giả lập Mock Mode offline trong 2 giây
-      setTimeout(() => {
-        const dummyChapters: Chuong[] = Array.from({ length: store.setup.so_chuong }).map((_, i) => ({
-          so_chuong: i + 1,
-          tieu_de: `Chương ${i + 1}: Quyết Định Sinh Tử`,
-          dan_y: `Diễn biến tóm tắt của Chương ${i + 1} tại khu hoang dã. Nhân vật chính phải vật lộn vượt qua cạm bẫy để mở khóa khu vực an toàn kế tiếp.`,
-          noi_dung: '',
-          trang_thai: 'empty'
-        }));
 
-        const mockOutline = `# DÀN Ý TỔNG THỂ TÁC PHẨM\n\n## 1. Khái Quát Bối Cảnh\nThế giới mạt thế suy tàn, nhiệt độ tụt dốc thê thảm. Luật lệ phàm nhân sụp đổ, chỉ có kẻ có ý chí thép và óc phán đoán mới sống sót.\n\n## 2. Tuyến Nhân Vật\nCác nhân vật trung tâm phải đối mặt với thử thách cơ thể khắc nghiệt.\n\n## 3. Lịch Trình Phát Triển Cốt Truyện\nTừ sinh tồn cô độc đến thành lập liên minh kháng cự dị chủng.`;
 
-        // Bóc tách tên nhân vật từ mô tả hoặc lấy ngẫu nhiên
-        const extractedCharacters = ['Tiêu Hàn', 'Thạch Dã', 'Dao Dao'];
+  const {
+    handleExportTxt
+  } = useProjectActions(streamText);
 
-        store.updateTenTacPham(`${store.setup.chu_de} Chi Lộ - ${store.setup.phong_cach} Mạt Thế`);
-        store.updateDanYTongThe(mockOutline);
-        store.updateNhanVat(extractedCharacters);
-        store.setDanhSachChuong(dummyChapters);
-        store.selectChuong(1);
-        store.setGiaiDoan(2);
-        store.setDangTai(false);
-      }, 1800);
-    } else {
-      // Gọi API thực tế
-      try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            requestType: 'GENERATE_OUTLINE',
-            apiKey: store.apiKey,
-            payload: store.setup
-          })
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Có lỗi xảy ra khi gọi API');
-        }
-
-        const data = await res.json();
-        
-        store.updateTenTacPham(data.tieu_de || `${store.setup.chu_de} - ${store.setup.phong_cach}`);
-        store.updateDanYTongThe(data.dan_y_tong_the || 'Dàn ý tổng thể.');
-        store.updateNhanVat(data.nhan_vat || []);
-        
-        // Convert to Chuong format
-        const convertedChapters: Chuong[] = (data.danh_sach_chuong || []).map((ch: any) => ({
-          so_chuong: ch.so_chuong,
-          tieu_de: ch.tieu_de || `Chương ${ch.so_chuong}`,
-          dan_y: ch.dan_y || 'Dàn ý chi tiết chưa có.',
-          noi_dung: '',
-          trang_thai: 'empty'
-        }));
-
-        store.setDanhSachChuong(convertedChapters);
-        store.selectChuong(1);
-        store.setGiaiDoan(2);
-      } catch (err: any) {
-        setPromptError(`❌ Lỗi API: ${err.message}`);
-      } finally {
-        store.setDangTai(false);
-      }
-    }
-  };
-
-  // Nút viết nội dung chi tiết chương truyện
-  const handleWriteChapter = async () => {
-    const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
-    if (!currentChapter) return;
-
-    store.setDangTai(true);
-    setIsStreaming(true);
-    setStreamText('');
-
-    if (store.useMock) {
-      // Giả lập Typing Effect cực kỳ mượt mà
-      const fullText = `### ${currentChapter.tieu_de}\n\nGió bấc gào rú qua khe cửa hở của toa tàu điện ngầm bỏ hoang. Tiêu Hàn khẽ ho một tiếng, lồng ngực đau nhói như kim châm. Vết thương cũ ở gân tay trái lại bắt đầu lên cơn đau buốt do nhiệt độ tụt sâu. \n\n"Bác lạnh không?" Tiêu Hàn xoay đầu, nhìn Thạch Dã đang co ro bên cạnh đống lửa sắp tàn. \n\nThạch Dã chỉ lắc đầu, bàn tay thô ráp ôm chặt lấy thanh sắt nhọn tự chế. Cả hai đều hiểu, củi khô chỉ còn đủ duy trì thêm nửa giờ nữa. Nếu ngọn lửa này tắt trước khi sương độc ngoài kia loãng bớt, cái lạnh âm 40 độ C sẽ đông cứng máu của họ ngay lập tức.\n\nTiêu Hàn mở bình lọc nước cầm tay, nước bên trong đã đóng thành một lớp băng mỏng. Cậu dùng chuôi dao găm gõ nhẹ, cẩn thận uống ngụm nước lạnh buốt cuối cùng. Đây là ngụm nước cứu mạng cuối cùng của họ. Mạt thế không có chỗ cho kẻ yếu đuối, cậu siết chặt chuôi dao rỉ sét cán gỗ, đôi mắt lạnh lùng nhìn về phía lối vào đường hầm tối om đầy rẫy hiểm họa...\n\n---\n*Kịch bản hoàn thành xuất sắc! Đầy đủ yếu tố đa giác quan và somatics của nhân vật chính.*`;
-      
-      let index = 0;
-      const interval = setInterval(() => {
-        if (index < fullText.length) {
-          setStreamText(prev => prev + fullText.charAt(index));
-          index += 5; // Tăng tốc độ hiển thị giả lập
-        } else {
-          clearInterval(interval);
-          store.updateChuong(store.chuong_dang_chon, {
-            noi_dung: fullText,
-            trang_thai: 'ready'
-          });
-          setIsStreaming(false);
-          store.setDangTai(false);
-          store.setTabHienTai('noi_dung');
-        }
-      }, 30);
-    } else {
-      try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            requestType: 'WRITE_CHAPTER',
-            apiKey: store.apiKey,
-            payload: {
-              ten_tac_pham: store.ten_tac_pham,
-              dan_y_tong_the: store.dan_y_tong_the,
-              nhan_vat: store.nhan_vat,
-              chuong_hien_tai: currentChapter,
-              so_chuong: store.setup.so_chuong
-            }
-          })
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Lỗi khi kết nối với AI.');
-        }
-
-        const data = await res.json();
-        const content = data.noi_dung || 'Không có nội dung trả về.';
-        
-        // Giả lập stream trên frontend cho mượt
-        let index = 0;
-        const interval = setInterval(() => {
-          if (index < content.length) {
-            setStreamText(prev => prev + content.charAt(index));
-            index += 10;
-          } else {
-            clearInterval(interval);
-            store.updateChuong(store.chuong_dang_chon, {
-              noi_dung: content,
-              trang_thai: 'ready'
-            });
-            setIsStreaming(false);
-            store.setDangTai(false);
-            store.setTabHienTai('noi_dung');
-          }
-        }, 20);
-
-      } catch (err: any) {
-        alert(err.message);
-        store.setDangTai(false);
-        setIsStreaming(false);
-      }
-    }
-  };
-
-  // Tải file .txt
-  const handleExportTxt = () => {
-    const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
-    let text = '';
-    
-    if (store.tab_hien_tai === 'dan_y') {
-      text = `TÁC PHẨM: ${store.ten_tac_pham}\n\n${store.dan_y_tong_the}\n\n======================\nCHI TIẾT CHƯƠNG ${store.chuong_dang_chon}:\n${currentChapter?.dan_y || ''}`;
-    } else {
-      text = currentChapter?.noi_dung || 'Chưa có nội dung.';
-    }
-
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${store.ten_tac_pham}_Chuong_${store.chuong_dang_chon}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Điều hướng Pagination
+  // Điều hướng Pagination chuyển Chương
   const handlePrevChapter = () => {
     if (store.chuong_dang_chon > 1) {
       store.selectChuong(store.chuong_dang_chon - 1);
-      setStreamText('');
     }
   };
 
   const handleNextChapter = () => {
     if (store.chuong_dang_chon < store.danh_sach_chuong.length) {
       store.selectChuong(store.chuong_dang_chon + 1);
-      setStreamText('');
     }
   };
 
-  // Lấy nội dung hiển thị trong panel phải
-  const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
-
+  // Trả về Loading Screen nếu Zustand chưa hydrate
   if (!store.isHydrated) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-black font-sans text-amber-500">
@@ -298,470 +112,263 @@ export default function Workspace() {
     );
   }
 
+  const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
+  const wordsCount = getWordCount(currentChapter?.noi_dung || '');
+  const targetWords = store.setup.so_tu_chuong || 4250;
+  const progressPercent = Math.min(100, Math.round((wordsCount / targetWords) * 100));
+
+  // Tính toán thống kê hình ảnh chương hiện tại
+  const activeChapterNum = store.chuong_dang_chon;
+  let totalPromptsCount = 0;
+  let successImagesCount = 0;
+
+  const scenesList = currentChapter ? parseScenes(currentChapter.noi_dung) : [];
+  scenesList.forEach((_, sceneIdx) => {
+    const assetKey = `${activeChapterNum}_${sceneIdx}`;
+    const prompts = store.generatedPrompts[assetKey] || [];
+    totalPromptsCount += prompts.length;
+
+    prompts.forEach((_, promptIdx) => {
+      const imageKey = `${activeChapterNum}_${sceneIdx}_${promptIdx}`;
+      if (store.generatedImages?.[imageKey]) {
+        successImagesCount++;
+      }
+    });
+  });
+
+  const failedImagesCount = totalPromptsCount - successImagesCount;
+
   return (
-    <div className="flex min-h-screen flex-col bg-black text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
-      {/* HEADER HỆ THỐNG CAO CẤP */}
-      <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-zinc-900 bg-zinc-950/80 px-6 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-black shadow-lg shadow-amber-500/20">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-md font-bold tracking-wider text-zinc-100 uppercase">
-              AI Novel & Script Generator
-            </h1>
-            <p className="text-[10px] text-amber-500 uppercase tracking-widest font-semibold">
-              Trợ Lý Biên Kịch Mạt Thế v2
-            </p>
-          </div>
-        </div>
+    <div className="flex h-screen max-h-screen overflow-hidden flex-col bg-black text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
+      {/* 1. HEADER CHUNG CAO CẤP */}
+      <Header />
 
-        <div className="flex items-center gap-4">
-          {/* Huy hiệu Mock Mode / Online Mode */}
-          <button
-            onClick={() => store.setUseMock(!store.useMock)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-all duration-300 ${
-              store.useMock
-                ? 'bg-amber-950/40 text-amber-400 border border-amber-800'
-                : 'bg-emerald-950/40 text-emerald-400 border border-emerald-800'
-            }`}
-          >
-            {store.useMock ? (
-              <>
-                <WifiOff className="h-3 w-3" />
-                📶 MOCK MODE ACTIVE
-              </>
-            ) : (
-              <>
-                <Wifi className="h-3 w-3" />
-                🌐 ONLINE MODE API
-              </>
-            )}
-          </button>
-
-          {/* Nhập API Key */}
-          {!store.useMock && (
-            <div className="relative flex items-center">
-              <Key className="absolute left-2.5 h-3.5 w-3.5 text-zinc-500" />
-              <input
-                type="password"
-                placeholder="Nhập Gemini API Key..."
-                value={store.apiKey}
-                onChange={(e) => store.setApiKey(e.target.value)}
-                className="h-8 w-48 rounded-md border border-zinc-800 bg-zinc-900 pl-8 pr-3 text-xs text-zinc-300 outline-none transition-colors focus:border-amber-500 focus:bg-zinc-950"
-              />
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* GIAI ĐOẠN 1: MÀN HÌNH SETUP BAN ĐẦU */}
+      {/* GIAI ĐOẠN 1: MÀN HÌNH SETUP THAM SỐ */}
       {store.giai_doan === 1 && (
-        <main className="flex flex-1 items-center justify-center px-4 py-12 bg-black">
-          <div className="w-full max-w-3xl rounded-xl border border-zinc-900 bg-zinc-950/50 p-8 shadow-2xl shadow-amber-500/5 glow-amber-sm">
-            <div className="mb-8 text-center">
-              <h2 className="text-2xl font-bold tracking-wide text-zinc-100">
-                THIẾT LẬP THAM SỐ AI NOVEL
-              </h2>
-              <p className="mt-2 text-xs text-zinc-400 uppercase tracking-widest">
-                Định hình kịch bản sinh tồn mạt thế của bạn
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {/* Khối CHỦ ĐỀ */}
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-amber-500">
-                  1. Khối Chủ Đề (Theme)
-                </label>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {[
-                    { name: 'Xuyên Không', desc: 'Vượt qua không gian & thời gian' },
-                    { name: 'Trùng Sinh', desc: 'Bắt đầu lại cuộc đời, báo thù...' },
-                    { name: 'Hệ Thống', desc: 'Giao diện nhiệm vụ & thăng cấp' },
-                    { name: 'Sinh Tồn', desc: 'Vật lộn sống sót khắc nghiệt' },
-                    { name: 'Võ Hiệp', desc: 'Ân oán giang hồ, kiếm hiệp' },
-                    { name: 'Trinh Thám', desc: 'Phá án & ly kỳ bí ẩn' }
-                  ].map((theme) => (
-                    <button
-                      key={theme.name}
-                      onClick={() => store.setSetup({ chu_de: theme.name })}
-                      className={`flex flex-col items-start rounded-lg border p-3.5 text-left transition-all duration-300 ${
-                        store.setup.chu_de === theme.name
-                          ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10'
-                          : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700'
-                      }`}
-                    >
-                      <span className="text-sm font-semibold text-zinc-100">{theme.name}</span>
-                      <span className="mt-1 text-[10px] text-zinc-400 leading-normal">{theme.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Khối PHONG CÁCH */}
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-sky-400">
-                  2. Khối Phong Cách (Style)
-                </label>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {[
-                    { name: 'Tu Tiên / Tiên Hiệp', desc: 'Trường sinh đạo quả, tiên môn' },
-                    { name: 'Huyền Huyễn', desc: 'Thần thú, huyết mạch bí ẩn' },
-                    { name: 'Đô Thị', desc: 'Cuộc chiến ngầm phố thị' },
-                    { name: 'Viễn Tưởng', desc: 'Khoa học viễn tưởng siêu tưởng' },
-                    { name: 'Mạt Thế', desc: 'Ngày tàn nhân loại, dị chủng' },
-                    { name: 'Cổ Đại', desc: 'Cung đấu, lịch sử quân sự cổ kính' }
-                  ].map((style) => (
-                    <button
-                      key={style.name}
-                      onClick={() => store.setSetup({ phong_cach: style.name })}
-                      className={`flex flex-col items-start rounded-lg border p-3.5 text-left transition-all duration-300 ${
-                        store.setup.phong_cach === style.name
-                          ? 'border-sky-500 bg-sky-500/10 shadow-lg shadow-sky-500/10'
-                          : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700'
-                      }`}
-                    >
-                      <span className="text-sm font-semibold text-zinc-100">{style.name}</span>
-                      <span className="mt-1 text-[10px] text-zinc-400 leading-normal">{style.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Khối MÔ TẢ CỐT TRUYỆN */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-300">
-                    3. Mô Tả Cốt Truyện (Tùy Chọn)
-                  </label>
-                  <button
-                    onClick={handleRandomTemplate}
-                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-500 transition-colors hover:text-amber-400"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    ✨ AI Tự Tạo Ý Tưởng
-                  </button>
-                </div>
-                <textarea
-                  rows={4}
-                  placeholder="Nhập bối cảnh cốt truyện của riêng bạn... Hoặc click nút 'AI Tự Tạo Ý Tưởng' ở trên để AI tạo ngẫu nhiên một bối cảnh mạt thế kịch tính."
-                  value={store.setup.mo_ta}
-                  onChange={(e) => {
-                    store.setSetup({ mo_ta: e.target.value });
-                    setPromptError('');
-                  }}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-amber-500 focus:bg-zinc-950"
-                />
-                {promptError && (
-                  <p className="mt-2 flex items-center gap-1 text-xs text-red-500">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    {promptError}
-                  </p>
-                )}
-              </div>
-
-              {/* Khối QUY MÔ TÁC PHẨM */}
-              <div className="flex flex-col items-center justify-center rounded-lg border border-zinc-900 bg-zinc-900/20 py-5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3">
-                  4. Quy Mô Tác Phẩm
-                </label>
-                <div className="flex items-center gap-6">
-                  <button
-                    onClick={() => handleAdjustChapters(-1)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
-                  >
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <div className="flex flex-col items-center">
-                    <span className="text-3xl font-extrabold tracking-wider text-zinc-100">
-                      {store.setup.so_chuong}
-                    </span>
-                    <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mt-1">
-                      CHƯƠNG
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleAdjustChapters(1)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Nút CTA khởi tạo */}
-              <button
-                disabled={store.dang_tai}
-                onClick={handleGenerateOutline}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-4 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all duration-300 hover:bg-amber-400 hover:shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {store.dang_tai ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Đang thiết lập dàn ý kịch bản...
-                  </>
-                ) : (
-                  <>
-                    🚀 TIẾN HÀNH SINH KỊCH BẢN AI
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </main>
+        <SetupPhase
+          promptError={promptError}
+          isGeneratingIdea={isGeneratingIdea}
+          handleRandomTemplate={handleRandomTemplate}
+          handleGenerateOutline={handleGenerateOutline}
+        />
       )}
 
       {/* GIAI ĐOẠN 2: WORKSPACE CHÍNH (Layout 2 cột) */}
       {store.giai_doan === 2 && (
         <main className="flex flex-1 overflow-hidden">
-          {/* CỘT TRÁI: SIDEBAR (30%) */}
-          <aside className="w-80 flex flex-col border-r border-zinc-900 bg-zinc-950 p-5 shrink-0 overflow-y-auto">
-            
-            {/* Khối Cấu Hình tag (Read-only) */}
-            <div className="mb-5 flex flex-wrap gap-2">
-              <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400 border border-amber-800/40">
-                {store.setup.chu_de}
-              </span>
-              <span className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-400 border border-sky-800/40">
-                {store.setup.phong_cach}
-              </span>
-              <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 border border-zinc-800">
-                {store.setup.so_chuong} Chương
-              </span>
-            </div>
+          {/* CỘT TRÁI: SIDEBAR ĐIỀU HƯỚNG & DÀN Ý */}
+          <Sidebar
+            handleWriteChapter={handleWriteChapter}
+            isStreaming={isStreaming}
+            onImageZoom={setZoomImageUrl}
+          />
 
-            {/* Tên Tác Phẩm */}
-            <div className="mb-5">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">
-                TÊN TÁC PHẨM
-              </label>
-              <input
-                type="text"
-                value={store.ten_tac_pham}
-                onChange={(e) => store.updateTenTacPham(e.target.value)}
-                className="w-full rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs font-semibold text-zinc-200 outline-none focus:border-amber-500 focus:bg-zinc-950"
-              />
-            </div>
-
-            {/* Danh Sách Chương */}
-            <div className="mb-5 flex-1">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">
-                DANH SÁCH CHƯƠNG
-              </label>
-              <div className="grid grid-cols-5 gap-2 max-h-[220px] overflow-y-auto pr-1">
-                {store.danh_sach_chuong.map((ch) => {
-                  const isActive = ch.so_chuong === store.chuong_dang_chon;
-                  const hasContent = ch.trang_thai === 'ready';
-                  return (
-                    <button
-                      key={ch.so_chuong}
-                      onClick={() => {
-                        store.selectChuong(ch.so_chuong);
-                        setStreamText('');
-                      }}
-                      className={`flex h-9 items-center justify-center rounded border text-xs font-bold transition-all duration-200 ${
-                        isActive
-                          ? 'border-amber-500 bg-amber-500/10 text-amber-500 glow-amber-sm'
-                          : hasContent
-                          ? 'border-emerald-800 bg-emerald-950/20 text-emerald-400'
-                          : 'border-zinc-800 bg-zinc-900/30 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                      }`}
-                    >
-                      {ch.so_chuong}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Hồ Sơ Nhân Vật */}
-            {store.nhan_vat.length > 0 && (
-              <div className="mb-6">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2.5">
-                  HỒ SƠ NHÂN VẬT ĐÃ PHÁT HIỆN
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {store.nhan_vat.map((char, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs text-zinc-300"
-                    >
-                      <User className="h-3 w-3 text-amber-500" />
-                      <span>{char}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Cụm Nút Hành Động Ở Dưới Cùng */}
-            <div className="mt-auto space-y-3 pt-4 border-t border-zinc-900">
-              <button
-                disabled={store.dang_tai}
-                onClick={handleWriteChapter}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 text-xs font-bold uppercase tracking-wider text-black shadow-lg shadow-emerald-500/5 transition-all duration-300 hover:bg-emerald-400 hover:shadow-emerald-500/15 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {store.dang_tai && isStreaming ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ĐANG VIẾT...
-                  </>
-                ) : (
-                  <>
-                    Sinh phần tiếp theo
-                  </>
-                )}
-              </button>
-
-              <button
-                disabled={store.dang_tai}
-                onClick={() => {
-                  if (confirm('⚠️ Bạn có chắc chắn muốn làm mới dự án? Toàn bộ thiết lập và kịch bản đã sinh sẽ bị XÓA SẠCH!')) {
-                    store.resetStore();
-                  }
-                }}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/40 py-2.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
-              >
-                <RefreshCw className="h-3 w-3" />
-                Làm Mới Dự Án
-              </button>
-            </div>
-          </aside>
-
-          {/* CỘT PHẢI: KHÔNG GIAN HIỂN THỊ NỘI DUNG (70%) */}
-          <section className="flex flex-1 flex-col bg-black">
+          {/* CỘT PHẢI: KHÔNG GIAN SOẠN THẢO VĂN BẢN */}
+          <section className="flex flex-1 flex-col bg-black overflow-hidden">
             
             {/* Header Content Panel */}
             <div className="flex h-12 w-full items-center justify-between border-b border-zinc-900 bg-zinc-950 px-6 shrink-0">
-              {/* Tab Navigation */}
-              <div className="flex gap-4">
-                <button
-                  onClick={() => store.setTabHienTai('dan_y')}
-                  className={`relative h-12 text-xs font-bold uppercase tracking-wider transition-colors ${
-                    store.tab_hien_tai === 'dan_y'
-                      ? 'text-amber-500 border-b-2 border-amber-500'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  DÀN Ý KỊCH BẢN
-                </button>
-                <button
-                  onClick={() => store.setTabHienTai('noi_dung')}
-                  className={`relative h-12 text-xs font-bold uppercase tracking-wider transition-colors ${
-                    store.tab_hien_tai === 'noi_dung'
-                      ? 'text-amber-500 border-b-2 border-amber-500'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  CHI TIẾT TÁC PHẨM
-                </button>
+              <div className="flex items-center gap-1 text-xs font-bold text-amber-500 uppercase tracking-widest">
+                <span>📝 Kịch Bản Làm Việc (Working Script)</span>
               </div>
 
               {/* Nút export */}
               <button
+                type="button"
                 onClick={handleExportTxt}
-                className="flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 rounded border border-zinc-900 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
                 Tải Toàn Bộ (.txt)
               </button>
             </div>
 
-            {/* Box Nội Dung Lớn */}
-            <div className="relative flex-1 p-8 overflow-y-auto bg-black flex flex-col">
-              
-              {/* Cụm Pagination góc trên bên phải của box nội dung */}
-              <div className="absolute top-6 right-8 flex items-center gap-2 bg-zinc-950 border border-zinc-900 rounded px-2 py-1 text-xs">
-                <button
-                  disabled={store.chuong_dang_chon <= 1}
-                  onClick={handlePrevChapter}
-                  className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 disabled:hover:text-zinc-500"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="font-semibold text-zinc-400 select-none">
-                  Chương {store.chuong_dang_chon}/{store.danh_sach_chuong.length}
-                </span>
-                <button
-                  disabled={store.chuong_dang_chon >= store.danh_sach_chuong.length}
-                  onClick={handleNextChapter}
-                  className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 disabled:hover:text-zinc-500"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+            {/* Chapter Header Pagination */}
+            {currentChapter && (
+              <div className="px-8 py-3 bg-zinc-950/90 border-b border-zinc-900/80 flex flex-col gap-2 shrink-0 z-20 backdrop-blur-md">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold text-zinc-100 tracking-wide font-sans m-0 flex items-center gap-2">
+                    ✍️ {store.ten_tac_pham}
+                  </h2>
+                  
+                  {/* Nút lật trang Chương trước / sau */}
+                  <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-900 rounded px-2.5 py-1 text-xs shrink-0 shadow-inner">
+                    <button
+                      type="button"
+                      disabled={store.chuong_dang_chon <= 1}
+                      onClick={handlePrevChapter}
+                      className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 cursor-pointer"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="font-bold text-zinc-400 select-none whitespace-nowrap font-sans">
+                      Chương {store.chuong_dang_chon} / {store.danh_sach_chuong.length}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={store.chuong_dang_chon >= store.danh_sach_chuong.length}
+                      onClick={handleNextChapter}
+                      className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 cursor-pointer"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
+            )}
 
-              {/* Khu Vực Hiển Thị Văn Bản */}
-              <div className="prose prose-invert max-w-4xl text-zinc-300 leading-relaxed font-sans text-sm mt-6">
-                
-                {/* 1. HIỂN THỊ DÀN Ý */}
-                {store.tab_hien_tai === 'dan_y' && (
-                  <div className="space-y-6">
-                    <h2 className="text-xl font-bold text-zinc-100 tracking-wide border-b border-zinc-900 pb-3 uppercase">
-                      📋 Dàn Ý Tổng Quan Truyện: {store.ten_tac_pham}
-                    </h2>
-                    
-                    <div className="whitespace-pre-line bg-zinc-950/40 border border-zinc-900 rounded-lg p-5 font-mono text-zinc-400 text-xs leading-normal">
-                      {store.dan_y_tong_the}
+            {/* Dãy nút Cuộn nhanh đến các Cảnh - CỐ ĐỊNH TUYỆT ĐỐI KHÔNG TRÔI */}
+            {currentChapter && scenesList.length > 0 && (
+              <div className="px-8 py-2 bg-zinc-950/95 border-b border-zinc-900/60 backdrop-blur-md shrink-0 z-10">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1 font-sans">
+                    Cuộn nhanh Cảnh:
+                  </span>
+                  {scenesList.map((sc, idx) => {
+                    let shortTitle = sc.title;
+                    if (sc.title.toUpperCase().includes('CẢNH')) {
+                      const match = sc.title.match(/CẢNH\s+(\d+)/i);
+                      if (match) {
+                        shortTitle = `Cảnh ${match[1]}`;
+                      }
+                    } else if (sc.title.toUpperCase() === 'MỞ ĐẦU') {
+                      shortTitle = 'Mở đầu';
+                    } else if (sc.title.toUpperCase() === 'KỊCH BẢN') {
+                      shortTitle = 'Kịch bản';
+                    }
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          const el = document.getElementById(`scene-card-container-${idx}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-amber-400 border border-zinc-800/80 text-xs font-bold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-[1.03] active:scale-95 animate-in fade-in slide-in-from-left-2 duration-150"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 animate-pulse"></span>
+                        {shortTitle}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Box Nội Dung Soạn Thảo */}
+            <div className="flex-1 overflow-y-auto bg-black flex flex-col">
+
+              <div className="p-8 flex flex-col">
+                <div className="prose prose-invert max-w-full text-zinc-300 leading-relaxed font-sans text-sm w-full">
+                  
+                  {/* 1. HIỆN THỊ THÔNG SỐ TỪ CẢ CHƯƠNG VÀ PROGRESS BAR */}
+                  {currentChapter && (
+                    <div className="mb-6 bg-zinc-950/60 border border-zinc-900/80 rounded-xl p-4 font-sans animate-in fade-in duration-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-2">
+                          <span className="text-zinc-400">Tiến Độ Cổng Từ (Word-Gate Progress)</span>
+                          <span className={progressPercent >= 92 ? 'text-emerald-400' : 'text-amber-500'}>
+                            {wordsCount} / {targetWords} từ ({progressPercent}%)
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/80">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              progressPercent >= 92 
+                                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
+                                : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
+                            }`}
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                        {progressPercent < 92 && (
+                          <p className="text-[10px] text-zinc-500 italic mt-1.5 leading-normal">
+                            * Gợi ý: Hãy nhấp &ldquo;Sinh phần tiếp theo&rdquo; để viết thêm các phân đoạn chi tiết nhằm vượt Cổng từ ({Math.round(targetWords * 0.92)} từ).
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="border-t md:border-t-0 md:border-l border-zinc-900/80 pt-3 md:pt-0 md:pl-4 flex flex-col justify-center">
+                        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-2">
+                          <span className="text-zinc-400">Thống Kê Sinh Ảnh Chương {activeChapterNum}</span>
+                          <span className="text-zinc-500">Tổng số: {totalPromptsCount}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-zinc-900/50 rounded-lg p-2.5 flex items-center justify-between border border-zinc-800/60">
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Thành công</span>
+                            <span className="text-xs font-bold text-emerald-400">{successImagesCount} ảnh</span>
+                          </div>
+                          <div className="flex-1 bg-zinc-900/50 rounded-lg p-2.5 flex items-center justify-between border border-zinc-800/60">
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Lỗi / Chưa gen</span>
+                            <span className="text-xs font-bold text-red-500">{failedImagesCount} ảnh</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                  )}
 
-                    {currentChapter && (
-                      <div className="mt-8 border-t border-zinc-900 pt-6">
-                        <h3 className="text-md font-bold text-amber-500 mb-2 uppercase">
-                          📍 Tóm Tắt {currentChapter.tieu_de}:
-                        </h3>
-                        <p className="bg-zinc-950/60 border border-zinc-900/60 rounded p-4 text-xs leading-relaxed text-zinc-300 italic">
-                          {currentChapter.dan_y}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 2. HIỂN THỊ NỘI DUNG VĂN BẢN */}
-                {store.tab_hien_tai === 'noi_dung' && (
+                  {/* 2. CHƯƠNG TRÌNH PHÂN CẢNH VĂN HỌC BÀN LÀM VIỆC */}
                   <div className="space-y-4">
-                    <h2 className="text-xl font-bold text-zinc-100 tracking-wide border-b border-zinc-900 pb-3">
-                      ✍️ {store.ten_tac_pham}
-                    </h2>
-
-                    {isStreaming ? (
-                      <div className="whitespace-pre-line bg-zinc-950/30 border border-zinc-900/50 rounded-lg p-6 font-serif text-md leading-loose">
-                        {streamText}
-                        <span className="inline-block h-4 w-2 bg-amber-500 animate-blink ml-1">▋</span>
-                      </div>
-                    ) : currentChapter?.noi_dung ? (
-                      <div className="whitespace-pre-line bg-zinc-950/20 border border-zinc-900/30 rounded-lg p-6 font-serif text-md leading-loose">
-                        {currentChapter.noi_dung}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-zinc-800 rounded-lg bg-zinc-950/20">
-                        <FileText className="h-12 w-12 text-zinc-700 mb-4" />
-                        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-                          Chương này chưa có nội dung văn học
-                        </h3>
-                        <p className="text-xs text-zinc-600 mt-1 mb-5 max-w-xs">
-                          Bấm vào nút "Sinh phần tiếp theo" ở cột điều khiển bên trái để kích hoạt AI viết kịch bản.
-                        </p>
-                        <button
-                          disabled={store.dang_tai}
-                          onClick={handleWriteChapter}
-                          className="flex items-center gap-1.5 rounded-md bg-amber-500 px-4 py-2 text-xs font-bold text-black shadow hover:bg-amber-400 transition-colors"
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          Sinh Chi Tiết Chương {store.chuong_dang_chon}
-                        </button>
-                      </div>
-                    )}
+                    <ContentTab
+                      isStreaming={isStreaming}
+                      streamText={streamText}
+                      handleSceneChange={handleSceneChange}
+                      handleCopyScene={handleCopyScene}
+                      handleExpandScene={handleExpandScene}
+                      handlePlayTTS={handlePlayTTS}
+                      handleStopTTS={handleStopTTS}
+                      handleGenerateTTS={handleGenerateTTS}
+                      handleGenerateImagePrompt={handleGenerateImagePrompt}
+                      handleRegenPrompt={handleRegenPrompt}
+                      handleWriteChapter={handleWriteChapter}
+                      handleGenerateImage={handleGenerateImage}
+                      handleGenerateAllImages={handleGenerateAllImages}
+                      handleGenerateVideo={handleGenerateVideo}
+                      handleGenerateAllVideos={handleGenerateAllVideos}
+                      isPlayingTTS={isPlayingTTS}
+                      generatingTTS={generatingTTS}
+                      generatingPrompt={generatingPrompt}
+                      regeneratingSinglePrompt={regeneratingSinglePrompt}
+                      generatingImage={generatingImage}
+                      generatingVideo={generatingVideo}
+                      onImageZoom={setZoomImageUrl}
+                    />
                   </div>
-                )}
 
+                </div>
               </div>
             </div>
           </section>
         </main>
       )}
+
+      {/* 3. LIGHTBOX PHÓNG TO ẢNH CAO CẤP */}
+      {zoomImageUrl && (
+        <div 
+          onClick={() => setZoomImageUrl(null)}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md cursor-zoom-out animate-in fade-in duration-200"
+        >
+          <button
+            type="button"
+            onClick={() => setZoomImageUrl(null)}
+            className="fixed top-6 right-6 z-[110] h-12 w-12 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:scale-110 active:scale-95 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer text-xl font-bold shadow-[0_0_15px_rgba(0,0,0,0.5)] border-zinc-800/80"
+            title="Đóng (Close)"
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomImageUrl}
+            alt="Zoomed art"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg border border-zinc-900 shadow-2xl animate-in zoom-in-95 duration-200 cursor-default"
+          />
+        </div>
+      )}
+
     </div>
   );
 }

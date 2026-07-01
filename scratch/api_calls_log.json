@@ -1,0 +1,54 @@
+[
+  {
+    "time": "2026-06-06T14:04:35.441Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/auth/session"
+  },
+  {
+    "time": "2026-06-06T14:04:35.444Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/flow.projectInitialData?input=%7B%22json%22%3A%7B%22projectId%22%3A%22a49860c6-fabc-4d08-b618-34c8066_backfill%22%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:35.444Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/general.fetchUserAcknowledgement?input=%7B%22json%22%3A%7B%22acknowledgementVersion%22%3A%22CREATIVE_PARTNER_PROGRAM_TOS%22%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:35.444Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/general.fetchUserAcknowledgement?input=%7B%22json%22%3A%7B%22toolName%22%3A%22PINHOLE%22%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:35.445Z",
+    "method": "POST",
+    "url": "https://labs.google/fx/api/trpc/general.submitBatchLog",
+    "postData": "{\"json\":{\"appEvents\":[{\"event\":\"PAGE_VIEW\",\"eventProperties\":[{\"key\":\"URL\",\"stringValue\":\"https://labs.google/fx/vi/tools/flow/project/a49860c6-fabc-4d08-b618-34c8066_backfill\"},{\"key\":\"USER_AGENT\",\"stringValue\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"},{\"key\":\"IS_DESKTOP\",\"booleanValue\":true}],\"activeExperiments\":[],\"eventMetadata\":{\"sessionId\":\";1780755613804\"},\"eventTime\":\"2026-06-06T14:04:35.425Z\"}]}}"
+  },
+  {
+    "time": "2026-06-06T14:04:36.426Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/general.fetchUserPreferences?input=%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:36.426Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/videoFx.getFlowAppConfig?input=%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:36.426Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/videoFx.getUserSettings?input=%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:36.426Z",
+    "method": "GET",
+    "url": "https://labs.google/fx/api/trpc/general.fetchUserAcknowledgement?input=%7B%22json%22%3A%7B%22acknowledgementVersion%22%3A%22FLOW_IMAGE_UPLOAD_TOS%22%7D%7D"
+  },
+  {
+    "time": "2026-06-06T14:04:37.025Z",
+    "method": "POST",
+    "url": "https://labs.google/fx/api/trpc/general.submitBatchLog",
+    "postData": "{\"json\":{\"appEvents\":[{\"event\":\"PAGE_VIEW\",\"eventProperties\":[{\"key\":\"URL\",\"stringValue\":\"https://labs.google/fx/vi/tools/flow/project/a49860c6-fabc-4d08-b618-34c8066_backfill\"},{\"key\":\"USER_AGENT\",\"stringValue\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"},{\"key\":\"IS_DESKTOP\",\"booleanValue\":true}],\"activeExperiments\":[],\"eventMetadata\":{\"sessionId\":\";1780755613804\"},\"eventTime\":\"2026-06-06T14:04:37.018Z\"}]}}"
+  }
+]

@@ -1,0 +1,6 @@
+2026/06/06-20:49:01.785 55dc Creating DB D:\chuyen gia mac the app\scratch\chrome-profile-scout\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb since it was missing.
+2026/06/06-20:49:01.799 55dc Reusing MANIFEST D:\chuyen gia mac the app\scratch\chrome-profile-scout\Default\IndexedDB\https_labs.google_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/06-20:49:01.922 50f0 Level-0 table #5: started
+2026/06/06-20:49:01.930 50f0 Level-0 table #5: 1344 bytes OK
+2026/06/06-20:49:01.934 50f0 Delete type=0 #3
+2026/06/06-20:49:01.934 4dfc Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

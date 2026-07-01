@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450">
+        <rect width="100%" height="100%" fill="#050508"/>
+        <defs>
+          <linearGradient id="neonGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.12"/>
+            <stop offset="50%" stop-color="#050508" stop-opacity="0.0"/>
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.05"/>
+          </linearGradient>
+          <radialGradient id="radialAmbient" cx="50%" cy="40%" r="70%">
+            <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.1"/>
+            <stop offset="100%" stop-color="#050508" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#neonGlow)"/>
+        <rect width="100%" height="100%" fill="url(#radialAmbient)"/>
+        
+        <!-- Premium Viewfinder Corner Brackets -->
+        <path d="M 40 80 L 40 40 L 80 40" fill="none" stroke="#f59e0b" stroke-width="2" stroke-opacity="0.6"/>
+        <path d="M 720 40 L 760 40 L 760 80" fill="none" stroke="#f59e0b" stroke-width="2" stroke-opacity="0.6"/>
+        <path d="M 40 370 L 40 410 L 80 410" fill="none" stroke="#f59e0b" stroke-width="2" stroke-opacity="0.6"/>
+        <path d="M 720 410 L 760 410 L 760 370" fill="none" stroke="#f59e0b" stroke-width="2" stroke-opacity="0.6"/>
+        
+        <!-- Subtle Grid Decoration -->
+        <rect x="50" y="50" width="700" height="350" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.03" stroke-dasharray="10 10"/>
+        
+        <text x="400" y="140" fill="#f59e0b" font-family="monospace" font-size="12" font-weight="bold" letter-spacing="4" text-anchor="middle">IMAGEN 3 AI STUDIO • PREVIEW</text>
+        <text x="400" y="180" fill="#ffffff" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">CHƯƠNG 1 • CẢNH 1 • PROMPT 1</text>
+        
+        <rect x="100" y="220" width="600" height="120" rx="6" fill="#09090b" fill-opacity="0.8" stroke="#27272a" stroke-width="1"/>
+        <foreignObject x="120" y="235" width="560" height="90">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="color:#a1a1aa; font-family:sans-serif; font-size:11px; line-height:1.6; text-align:center; height:100%; overflow:hidden;">
+            <strong style="color:#e4e4e7;">Prompt:</strong> Cinematic wide shot of a minimalist, dark cyberpunk apartment interior. The air is thick with an oppressive, rare stillness, almost palpable. Muted, desaturated tones dominate, with subtle dust motes dancing in weak, ambient light filtering through unseen vents. The scene evokes a profound sense of solitude and quiet desolation. Unreal Engine 5, 8k resolution, highly detailed, cinematic lighting, depth of field.
+            
+          </div>
+        </foreignObject>
+        <text x="400" y="390" fill="#71717a" font-family="sans-serif" font-size="10" text-anchor="middle">💡 Vui lòng bật Pay-as-you-go trên Google AI Studio hoặc cấu hình Cookie để sinh ảnh thật.</text>
+      </svg>

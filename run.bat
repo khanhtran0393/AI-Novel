@@ -1,9 +1,9 @@
 @echo off
-title AI Novel & Script Generator - Bootstrapper
+title "AI Novel & Script Generator - Bootstrapper"
 color 0e
 
 echo ======================================================================
-echo           AI NOVEL ^& SCRIPT GENERATOR - BOOTSTRAPPER
+echo           AI NOVEL AND SCRIPT GENERATOR - BOOTSTRAPPER
 echo ======================================================================
 echo.
 echo [+] Dang kiem tra thu vien node_modules...
