@@ -146,6 +146,8 @@ interface GenerateImageParams {
   apiKey?: string;
   apiKeys?: string[];
   model?: string;
+  imageProvider?: string;
+  imageApiKey?: string;
 }
 
 export async function generateImageAction(params: GenerateImageParams): Promise<{ imagePath: string; projectUrl?: string; usedApiKey?: string; method?: string }> {
@@ -163,7 +165,10 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
     nhan_vat_prompts,
     useMock,
     apiKey,
-    apiKeys
+    apiKeys,
+    imageProvider,
+    imageApiKey,
+    model
   } = params;
 
   // Tự động tìm prompt tạo hình tham chiếu của nhân vật nếu tên được nhắc đến
@@ -197,7 +202,9 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
       useMock,
       apiKey,
       apiKeys,
-      model: params.model,
+      model,
+      imageProvider,
+      imageApiKey
     })
   });
 

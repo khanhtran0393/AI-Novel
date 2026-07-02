@@ -58,6 +58,8 @@ export async function POST(req: Request) {
     characterPrompt = body.characterPrompt || '';
     useMock = !!body.useMock;
     const model = body.model || 'imagen3';
+    const imageProvider = body.imageProvider || 'pollinations';
+    const imageApiKey = body.imageApiKey || '';
 
     filename = `chapter_${chapterNum}_scene_${sceneIndex}_prompt_${promptIndex}.png`;
     const publicImageDir = path.join(process.cwd(), 'public', 'images');
@@ -98,17 +100,154 @@ export async function POST(req: Request) {
       console.log('[generate-image] Cannot read apikey.txt:', err);
     }
 
-    // LUỒNG ƯU TIÊN: GỌI GOOGLE GEMINI IMAGE API (generateContent + responseModalities IMAGE)
-    // Endpoint cũ generateImages đã bị Google gỡ bỏ hoàn toàn. 
-    // Phải dùng generateContent với model hỗ trợ IMAGE output.
+    // Function to save buffer to local and drive
+    const saveImage = (imageBuffer: Buffer, method: string, usedApiKey?: string) => {
+      fs.writeFileSync(localSavePath, imageBuffer);
+      console.log(`[Image API] ✅ Sinh ảnh thành công! Method: ${method}, File: ${localSavePath}`);
+
+      let driveSaved = false;
+      let driveFilePath = '';
+      if (drivePath && drivePath.trim().length > 0) {
+        try {
+          const cleanedDrivePath = drivePath.trim();
+          let driveFolder = cleanedDrivePath;
+          if (chapterNum > 0) {
+            driveFolder = path.join(cleanedDrivePath, `Chương ${chapterNum}`);
+          }
+          if (!fs.existsSync(driveFolder)) {
+            fs.mkdirSync(driveFolder, { recursive: true });
+          }
+          
+          const scriptTitle = ten_tac_pham ? ten_tac_pham.replace(/[\/\\:\*\?"<>\|]/g, '_').trim() : 'Kịch Bản';
+            
+          let driveFilename = '';
+          if (chapterNum === 0) {
+            driveFilename = `${scriptTitle}_ConceptArt_NhanVat_${Date.now()}.png`;
+          } else {
+            driveFilename = `${scriptTitle}_Chuong_${chapterNum}_Canh_${sceneIndex}_Prompt_${promptIndex}.png`;
+          }
+          driveFilePath = path.join(driveFolder, driveFilename);
+          
+          fs.writeFileSync(driveFilePath, imageBuffer);
+          driveSaved = true;
+          console.log(`[Image API] Đã sao lưu vào Thư mục PC: ${driveFilePath}`);
+        } catch (driveErr: any) {
+          console.error(`[Image API] Cảnh báo - không thể lưu vào Drive: ${driveErr.message}`);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        imagePath: `/api/serve-image?file=${encodeURIComponent(filename)}`,
+        driveSaved,
+        driveFilePath,
+        method,
+        usedApiKey
+      });
+    };
+
+    // --- MULTI-PROVIDER ROUTING ---
+    const providerPrompt = characterPrompt 
+      ? `${prompt}, subject details: ${characterPrompt}, cinematic lighting, highly detailed`
+      : `${prompt}, cinematic lighting, highly detailed`;
+
+    // 1. OPENAI (DALL-E 3)
+    if (imageProvider === 'openai' && imageApiKey) {
+      console.log(`[Image API] Route: OpenAI DALL-E 3`);
+      try {
+        const res = await fetch('https://api.openai.com/v1/images/generations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${imageApiKey}`
+          },
+          body: JSON.stringify({
+            model: "dall-e-3",
+            prompt: providerPrompt,
+            n: 1,
+            size: "1024x1024"
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const imageUrl = data.data[0].url;
+          const imageRes = await fetch(imageUrl);
+          const buffer = Buffer.from(await imageRes.arrayBuffer());
+          return saveImage(buffer, 'OpenAI DALL-E 3', imageApiKey);
+        } else {
+          const err = await res.text();
+          console.error('[Image API] OpenAI failed:', err);
+        }
+      } catch (err: any) {
+        console.error('[Image API] OpenAI error:', err.message);
+      }
+    }
+
+    // 2. FAL.AI (Grok/Flux)
+    if (imageProvider === 'falai' && imageApiKey) {
+      console.log(`[Image API] Route: Fal.ai (Flux)`);
+      try {
+        const res = await fetch('https://fal.run/fal-ai/flux/dev', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Key ${imageApiKey}`
+          },
+          body: JSON.stringify({
+            prompt: providerPrompt,
+            image_size: "landscape_16_9",
+            num_inference_steps: 28,
+            guidance_scale: 3.5,
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const imageUrl = data.images[0].url;
+          const imageRes = await fetch(imageUrl);
+          const buffer = Buffer.from(await imageRes.arrayBuffer());
+          return saveImage(buffer, 'Fal.ai Flux', imageApiKey);
+        } else {
+          const err = await res.text();
+          console.error('[Image API] Fal.ai failed:', err);
+        }
+      } catch (err: any) {
+        console.error('[Image API] Fal.ai error:', err.message);
+      }
+    }
+
+    // 3. HUGGINGFACE (Meta/Llama 3 ecosystem or SD3)
+    if (imageProvider === 'huggingface' && imageApiKey) {
+      console.log(`[Image API] Route: HuggingFace`);
+      try {
+        const res = await fetch('https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${imageApiKey}`
+          },
+          body: JSON.stringify({ inputs: providerPrompt })
+        });
+        if (res.ok) {
+          const buffer = Buffer.from(await res.arrayBuffer());
+          return saveImage(buffer, 'HuggingFace SDXL', imageApiKey);
+        } else {
+          const err = await res.text();
+          console.error('[Image API] HuggingFace failed:', err);
+        }
+      } catch (err: any) {
+        console.error('[Image API] HuggingFace error:', err.message);
+      }
+    }
+
+    // 4. GOOGLE GEMINI IMAGE API
     const imageModelIds = [
-      'gemini-2.5-flash-image',    // Nhanh, ổn định
-      'gemini-3.1-flash-image',    // Mới nhất
-      'gemini-3-pro-image',        // Chất lượng cao
+      'gemini-2.5-flash-image',
+      'gemini-3.1-flash-image',
+      'gemini-3-pro-image',
     ];
 
-    if (keysToTry.length > 0 && !useMock) {
-      console.log(`[Image API] Phát hiện ${keysToTry.length} API Keys khả dụng. Đang gọi Google Gemini Image API...`);
+    if (imageProvider === 'gemini' && keysToTry.length > 0 && !useMock) {
+      console.log(`[Image API] Route: Google Gemini API (${keysToTry.length} keys)`);
       
       let lastError = '';
       // eslint-disable-next-line prefer-const
@@ -121,11 +260,11 @@ export async function POST(req: Request) {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModelId}:generateContent?key=${currentKey}`;
           
           try {
-            const finalPrompt = characterPrompt 
+            const geminiPrompt = characterPrompt 
               ? `Generate an image: ${prompt}, reference subject: ${characterPrompt}`
               : `Generate an image: ${prompt}`;
 
-            console.log(`[Image API] [Key ${i+1}/${keysToTry.length}] [Model: ${apiModelId}] Đang gửi: "${finalPrompt.substring(0, 80)}..."`);
+            console.log(`[Image API] [Key ${i+1}/${keysToTry.length}] [Model: ${apiModelId}] Đang gửi: "${geminiPrompt.substring(0, 80)}..."`);
             
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 giây timeout
@@ -136,7 +275,7 @@ export async function POST(req: Request) {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                contents: [{ parts: [{ text: finalPrompt }] }],
+                contents: [{ parts: [{ text: geminiPrompt }] }],
                 generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
                 safetySettings: [
                   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -241,7 +380,26 @@ export async function POST(req: Request) {
       console.warn(`[Image API] Tất cả keys/models đều thất bại. Lỗi cuối: ${lastError.substring(0, 200)}. Chuyển sang luồng dự phòng...`);
     }
 
-    // CHẾ ĐỘ MOCK (Nếu không có Cookie hoặc bật Mock)
+    // 5. POLLINATIONS AI (FALLBACK VÀ DEFAULT NẾU CHỌN POLLINATIONS HOẶC LỖI TẤT CẢ)
+    if (imageProvider === 'pollinations' || useMock || !cookie || cookie.trim().length === 0) {
+      console.log(`[Pollinations AI] Đang tạo ảnh thật miễn phí cho Cảnh ${sceneIndex} Prompt ${promptIndex}...`);
+      
+      const seed = Math.floor(Math.random() * 1000000000);
+      const width = 1280;
+      const height = 720;
+      const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(providerPrompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+      
+      try {
+        const res = await fetch(pollUrl);
+        if (!res.ok) throw new Error(`Lỗi tải ảnh từ Pollinations: ${res.statusText}`);
+        const buffer = Buffer.from(await res.arrayBuffer());
+        return saveImage(buffer, 'Pollinations AI (Miễn phí)');
+      } catch (err: any) {
+        console.error('[Pollinations AI] Lỗi sinh ảnh:', err.message);
+      }
+    }
+
+    // NẾU TẤT CẢ ĐỀU LỖI, CHẠY MOCK HOẶC BÁO LỖI (Ở ĐÂY GIỮ LẠI LOGIC WHISK JS NẾU CẦN)
     if (useMock || !cookie || cookie.trim().length === 0) {
       console.log(`[Whisk AI Mock] Đang tạo ảnh giả lập chất lượng cao cho Cảnh ${sceneIndex} Prompt ${promptIndex}...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -527,13 +685,13 @@ export async function POST(req: Request) {
     } catch (projErr: any) {
       console.warn('[Whisk Automation] Bỏ qua hoặc không thể tạo dự án mới:', projErr.message);
     }
-    // Tạo prompt hoàn chỉnh
-    let finalPrompt = prompt;
+    // Tạo prompt hoàn chỉnh cho Whisk
+    let whiskPrompt = prompt;
     if (characterPrompt) {
-      finalPrompt = `${prompt}, reference subject: ${characterPrompt}`;
+      whiskPrompt = `${prompt}, reference subject: ${characterPrompt}`;
     }
 
-    console.log(`[Whisk Automation] Nạp Prompt: "${finalPrompt.substring(0, 100)}..."`);
+    console.log(`[Whisk Automation] Nạp Prompt: "${whiskPrompt.substring(0, 100)}..."`);
 
     // Chụp lại toàn bộ ảnh hiện tại trên màn hình làm snapshot để dò tìm ảnh mới sinh sau này
     const initialUrls: string[] = await page.evaluate(() => {
@@ -580,8 +738,15 @@ export async function POST(req: Request) {
           throw new Error('Không tìm thấy ô nhập liệu visible.');
         }
       }, textareaSelector);
-      
-      await page.keyboard.type(finalPrompt);
+      await page.evaluate((selector: string, text: string) => {
+        const input = document.querySelector(selector) as HTMLTextAreaElement;
+        if (input) {
+          input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }, textareaSelector, whiskPrompt);
+      await new Promise(resolve => setTimeout(resolve, 500));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (clickErr: any) {
       console.warn('[Whisk Automation] Click/gõ chuẩn thất bại, thử cưỡng bức gõ trực tiếp qua JS:', clickErr.message);
@@ -597,7 +762,7 @@ export async function POST(req: Request) {
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
         }
-      }, textareaSelector, finalPrompt);
+      }, textareaSelector, whiskPrompt);
     }
 
     // Tìm và Click nút Generate (Nút chứa icon gửi hoặc text Generate/Create)

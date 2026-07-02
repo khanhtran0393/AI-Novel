@@ -467,20 +467,20 @@ NHIỆM VỤ: Tôi có chính xác ${rawSentences.length} câu lẻ dưới đâ
 --- DANH SÁCH CÁC CÂU CẦN PHÂN TÍCH (BẮT BUỘC TẠO ĐỦ PROMPT CHO TỪNG CÂU) ---
 ${sentenceListText}
 
---- PHONG CÁCH NGHỆ THUẬT ---
+--- PHONG CÁCH NGHỆ THUẬT (VISUAL DNA STYLE) ---
 ${style || 'Cinematic Dark Post-Apocalyptic Fantasy'}
 ${characterInstructions}
 
-YÊU CẦU BẮT BUỘC:
-1. Với mỗi câu, phân tích cảm xúc chính (ví dụ: tense, melancholy, anger, fear, calm, epic...) và sinh 1 Prompt tiếng Anh chất lượng cao để vẽ ảnh minh họa cho câu đó.
-2. Prompt vẽ ảnh viết hoàn toàn bằng tiếng Anh. 
-3. Mô tả chi tiết: nhân vật (diện mạo, biểu cảm, trang phục), bối cảnh (hoang tàn, ánh sáng, thời tiết), góc máy (close-up, wide-shot, cinematic angle), chất lượng (Unreal Engine 5, 8k resolution, highly detailed, cinematic lighting, depth of field).
-4. Mỗi prompt phải phản ánh đúng cảm xúc chính của câu (VD: câu buồn -> ánh sáng lạnh, tông xanh xám; câu căng thẳng -> góc hẹp, bóng tối dày; câu hy vọng -> ánh sáng ấm xuyên qua khe hở).
+YÊU CẦU BẮT BUỘC VỀ SỰ LIÊN KẾT (CROSS-REFERENCE):
+1. Tính nhất quán phong cách (Visual DNA): Toàn bộ Prompt sinh ra phải áp dụng triệt để Phong Cách Nghệ Thuật (Visual DNA) được cấu hình ở trên để tạo ra Art Direction đồng nhất cho toàn bộ video.
+2. Tính nhất quán nhân vật: Nếu câu trong kịch bản có nhắc đến tên nhân vật đã được cung cấp ở mục THAM CHIẾU NHÂN VẬT, bạn BẮT BUỘC phải kết hợp đầy đủ các đặc tả ngoại hình, trang phục, giới tính của họ vào Prompt để AI vẽ nhân vật giống nhau ở mọi cảnh.
+3. Kịch bản & Cảm xúc: Tái hiện lại bối cảnh và hành động mô tả trong câu gốc bằng tiếng Anh. Phân tích cảm xúc chính (emotion) của câu.
+4. Chất lượng đầu ra: Tiếng Anh 100%. Bổ sung các thẻ chất lượng cao (Unreal Engine 5, 8k resolution, highly detailed, cinematic lighting, depth of field).
 
 TRẢ VỀ JSON THUẦN TÚY, KHÔNG CÓ MARKDOWN, theo cấu trúc mảng JSON sau:
 [
-  { "id": 1, "emotion": "...", "prompt": "Cinematic shot of..." },
-  { "id": 2, "emotion": "...", "prompt": "Close-up of..." }
+  { "id": 1, "emotion": "...", "prompt": "[Style DNA] style, [Character details] performing [action] in [Setting], cinematic lighting, 8k..." },
+  { "id": 2, "emotion": "...", "prompt": "..." }
 ]`;
 
       const aiResponse = await callGemini(prompt, keysToUse);
@@ -821,15 +821,16 @@ Nhiệm vụ của bạn là VIẾT LẠI (Sửa chữa/Tối ưu) một Prompt 
 --- PROMPT CŨ BỊ LỖI ---
 "${currentPrompt}"
 
---- PHONG CÁCH NGHỆ THUẬT ---
+--- PHONG CÁCH NGHỆ THUẬT (VISUAL DNA STYLE) ---
 ${style || 'Cinematic Dark Cyberpunk Sci-Fi Fantasy'}
 ${characterInstructions}
 
-YÊU CẦU BẮT BUỘC:
-1. Hãy viết lại Prompt này bằng tiếng Anh thật an toàn, không chứa bất kỳ từ nhạy cảm, bạo lực hay vi phạm chính sách của bộ lọc nội dung (safety block) nhưng vẫn mô tả cực kỳ nghệ thuật, điện ảnh và bám sát nội dung của Câu Gốc.
-2. Trích xuất đặc điểm nhân vật từ Tham chiếu ngoại hình ở trên nếu câu gốc nhắc đến nhân vật đó để giữ tính nhất quán hình ảnh.
-3. Sử dụng các thẻ chất lượng cao (Unreal Engine 5, 8k, dramatic lighting, epic cinematic view, depth of field).
-4. Chỉ trả về chuỗi văn bản Prompt tiếng Anh mới duy nhất, không giải thích gì thêm, không bọc markdown.`;
+YÊU CẦU BẮT BUỘC VỀ SỰ LIÊN KẾT:
+1. Hãy viết lại Prompt này bằng tiếng Anh thật an toàn, tránh vi phạm chính sách nội dung (safety block) nhưng vẫn bám sát nội dung Câu Gốc.
+2. Tính nhất quán phong cách (Visual DNA): Prompt mới BẮT BUỘC phải kế thừa triệt để Phong Cách Nghệ Thuật (Visual DNA) được cung cấp ở trên.
+3. Tính nhất quán nhân vật: Nếu câu gốc có nhắc đến tên nhân vật đã được cung cấp ở mục THAM CHIẾU NHÂN VẬT, bạn BẮT BUỘC phải kết hợp đầy đủ đặc tả ngoại hình của họ vào Prompt.
+4. Chất lượng đầu ra: Sử dụng các thẻ chất lượng (Unreal Engine 5, 8k, dramatic lighting, epic cinematic view).
+5. Chỉ trả về chuỗi văn bản Prompt tiếng Anh mới duy nhất, không giải thích gì thêm, không bọc markdown.`;
 
       const aiResponse = await callGemini(prompt, keysToUse);
       return NextResponse.json({ prompt: aiResponse.trim(), usedApiKey: globalLastWorkingKey });

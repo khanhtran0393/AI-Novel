@@ -26,7 +26,7 @@ export function useImagePromptActions() {
         apiKeys: store.apiKeys || [],
         sceneText,
         duration,
-        style: 'Cinematic Dark Cyberpunk Sci-Fi Fantasy',
+        style: store.visualDnaPrompt || 'Cinematic, cinematic lighting, highly detailed',
         nhan_vat_prompts: store.nhan_vat_prompts
       });
 
@@ -66,7 +66,7 @@ export function useImagePromptActions() {
         promptIndex,
         sentence,
         currentPrompt,
-        style: 'Cinematic Dark Cyberpunk Sci-Fi Fantasy',
+        style: store.visualDnaPrompt || 'Cinematic, cinematic lighting, highly detailed',
         nhan_vat_prompts: store.nhan_vat_prompts
       });
 
@@ -115,6 +115,8 @@ export function useImagePromptActions() {
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         model: store.imageModel,
+        imageProvider: store.imageProvider,
+        imageApiKey: store.imageApiKey,
       });
 
       // Nếu API vẽ ảnh thành công sử dụng API Key nào, đẩy Key đó lên đầu tiên
@@ -190,6 +192,8 @@ export function useImagePromptActions() {
         startImage,
         endImage,
         model: store.videoModel,
+        videoProvider: store.videoProvider,
+        videoApiKey: store.videoApiKey,
       });
 
       console.log(`[Video Builder] Successfully generated video: ${data.videoPath}`);

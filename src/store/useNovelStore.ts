@@ -74,6 +74,10 @@ export interface NovelState {
   aiMasterModel: string;
   aiMasterApiKey: string;
   visualDnaPrompt: string;
+  imageProvider: string;
+  imageApiKey: string;
+  videoProvider: string;
+  videoApiKey: string;
 
   // --- HỆ THỐNG THƯƠNG MẠI HÓA (VIP/PRO) ---
   is_vip: boolean;
@@ -133,6 +137,10 @@ export interface NovelActions {
   setAiMasterModel: (model: string) => void;
   setAiMasterApiKey: (key: string) => void;
   setVisualDnaPrompt: (prompt: string) => void;
+  setImageProvider: (provider: string) => void;
+  setImageApiKey: (key: string) => void;
+  setVideoProvider: (provider: string) => void;
+  setVideoApiKey: (key: string) => void;
 
   // Actions cho Thương mại hóa (VIP/PRO)
   setVipStatus: (is_vip: boolean, is_pro: boolean) => void;
@@ -242,6 +250,10 @@ Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử 
   aiMasterModel: 'aistudio',
   aiMasterApiKey: '',
   visualDnaPrompt: '',
+  imageProvider: 'pollinations',
+  imageApiKey: '',
+  videoProvider: 'ffmpeg',
+  videoApiKey: '',
 
   // Thương mại hóa
   is_vip: false,
@@ -391,6 +403,10 @@ export const useNovelStore = create<NovelStore>()(
       setAiMasterModel: (model) => set({ aiMasterModel: model }),
       setAiMasterApiKey: (key) => set({ aiMasterApiKey: key }),
       setVisualDnaPrompt: (prompt) => set({ visualDnaPrompt: prompt }),
+      setImageProvider: (provider) => set({ imageProvider: provider }),
+      setImageApiKey: (key) => set({ imageApiKey: key }),
+      setVideoProvider: (provider) => set({ videoProvider: provider }),
+      setVideoApiKey: (key) => set({ videoApiKey: key }),
 
       // Actions cho Thương mại hóa (VIP/PRO)
       setVipStatus: (is_vip, is_pro) => set({ is_vip, is_pro }),
@@ -455,6 +471,10 @@ export const useNovelStore = create<NovelStore>()(
         nhan_vat_prompts: state.nhan_vat_prompts,
         imageModel: state.imageModel,
         videoModel: state.videoModel,
+        imageProvider: state.imageProvider,
+        imageApiKey: state.imageApiKey,
+        videoProvider: state.videoProvider,
+        videoApiKey: state.videoApiKey,
 
         is_vip: state.is_vip,
         is_pro: state.is_pro,

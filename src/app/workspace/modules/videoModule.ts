@@ -81,6 +81,8 @@ export interface GenerateVideoParams {
   startImage?: string;
   endImage?: string;
   model?: string;
+  videoProvider?: string;
+  videoApiKey?: string;
 }
 
 export async function generateVideoAction(params: GenerateVideoParams): Promise<{ videoPath: string }> {
@@ -98,6 +100,8 @@ export async function generateVideoAction(params: GenerateVideoParams): Promise<
       startImage,
       endImage,
       model,
+      videoProvider: params.videoProvider,
+      videoApiKey: params.videoApiKey,
     })
   });
 
