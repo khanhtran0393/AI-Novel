@@ -33,8 +33,10 @@ export async function playTTSAction(params: PlayTTSParams): Promise<void> {
 
   try {
     // 1. Kiểm tra trong Cache Storage cục bộ của trình duyệt trước
+    const speed = ttsConfig?.speed || 1.0;
+    const pitch = ttsConfig?.pitch || 0;
     const cache = await window.caches.open('tts-prelisten-cache-v1');
-    const cacheKey = `https://tts-preview-local/play?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(sampleText)}`;
+    const cacheKey = `https://tts-preview-local/play?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(sampleText)}&s=${speed}&p=${pitch}`;
     const cachedResponse = await cache.match(cacheKey);
 
     if (cachedResponse) {
@@ -139,10 +141,12 @@ interface GenerateTTSParams {
   voice: string;
   ten_tac_pham: string;
   ttsConfig?: TTSConfig;
+  targetDuration?: number;
+  syncMode?: 'default' | 'force_sync' | 'pro';
 }
 
 export async function generateTTSAction(params: GenerateTTSParams): Promise<{ audioPath: string; duration: number }> {
-  const { useMock, apiKey, apiKeys, sceneText, chuong_dang_chon, sceneIndex, savePathTTS, googleDrivePath, voice, ten_tac_pham, ttsConfig } = params;
+  const { useMock, apiKey, apiKeys, sceneText, chuong_dang_chon, sceneIndex, savePathTTS, googleDrivePath, voice, ten_tac_pham, ttsConfig, targetDuration, syncMode } = params;
 
   let audioPathResult = '';
   let audioDuration = Math.max(5, Math.round(getWordCount(sceneText) / 2.5));
@@ -165,7 +169,9 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{ au
         voiceName: voice,
         apiKeys: keysToUse,
         ten_tac_pham,
-        ttsConfig
+        ttsConfig,
+        targetDuration,
+        syncMode
       })
     });
 

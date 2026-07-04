@@ -4,6 +4,7 @@ import puppeteerCore from 'puppeteer';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'fs';
 import path from 'path';
+import { BrowserAgent } from '@/lib/agents/BrowserAgent';
 
 export const runtime = 'nodejs';
 
@@ -23,6 +24,88 @@ function findChromePath(): string | undefined {
   }
   return undefined;
 }
+
+// ==========================================
+// THUẬT TOÁN HYBRID VISION GUI NAVIGATION
+// ==========================================
+async function askGeminiVisionForCoordinates(base64Image: string, elementDescription: string, apiKey: string): Promise<{x: number, y: number} | null> {
+  if (!apiKey) {
+    console.warn('[Hybrid Vision] Cảnh báo: Không có aiMasterApiKey để kích hoạt Mắt Thần.');
+    return null;
+  }
+  
+  console.log(`[Hybrid Vision] Đang gửi ảnh chụp màn hình lên Gemini 1.5 Pro để tìm: "${elementDescription}"...`);
+  const prompt = `You are an expert RPA Vision Agent. I have attached a screenshot of a web application.
+Your task is to find the exact coordinates of the element matching this description: "${elementDescription}".
+Return ONLY a valid JSON object with 'x' and 'y' integer coordinates representing the center of the element. Do not wrap in markdown blocks. Example: {"x": 500, "y": 300}`;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+          ]
+        }],
+        generationConfig: { temperature: 0.1 }
+      })
+    });
+
+    if (!res.ok) {
+      console.error(`[Hybrid Vision] Gemini API lỗi: ${res.statusText}`);
+      return null;
+    }
+
+    const data = await res.json();
+    let textObj = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // Clean up potential markdown formatting
+    textObj = textObj.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    try {
+      const coords = JSON.parse(textObj);
+      if (typeof coords.x === 'number' && typeof coords.y === 'number') {
+        console.log(`[Hybrid Vision] ✅ Đã tìm thấy tọa độ bằng mắt thần: X=${coords.x}, Y=${coords.y}`);
+        return coords;
+      }
+    } catch (e) {
+      console.error(`[Hybrid Vision] Không thể parse JSON từ Gemini: ${textObj}`);
+    }
+  } catch (err: unknown) {
+    console.error(`[Hybrid Vision] Lỗi gọi API: ${(err as Error).message}`);
+  }
+  return null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function hybridClick(page: any, cssSelector: string, elementDescription: string, apiKey: string, timeout = 5000) {
+  try {
+    console.log(`[Hybrid] Thử click bằng CSS Selector tĩnh: ${cssSelector}`);
+    await page.waitForSelector(cssSelector, { timeout });
+    await page.click(cssSelector);
+    console.log(`[Hybrid] ✅ Click DOM thành công: ${cssSelector}`);
+  } catch (err) {
+    console.warn(`[Hybrid] ⚠️ DOM Click thất bại (Quá ${timeout}ms). Kích hoạt Fallback Vision để tìm: ${elementDescription}...`);
+    // Chụp ảnh màn hình (chất lượng 70 để tiết kiệm băng thông)
+    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 70 });
+    const base64Image = screenshotBuffer.toString('base64');
+    
+    const coords = await askGeminiVisionForCoordinates(base64Image, elementDescription, apiKey);
+    if (coords) {
+      console.log(`[Hybrid] Fallback Vision thành công! Thực hiện click tọa độ (${coords.x}, ${coords.y})...`);
+      await page.mouse.click(coords.x, coords.y);
+      // Wait a moment for UI to respond after click
+      await new Promise(r => setTimeout(r, 1000));
+    } else {
+      console.error(`[Hybrid] ❌ Fallback Vision thất bại. Không thể tìm thấy: ${elementDescription}. Vẫn ném lỗi DOM ban đầu.`);
+      throw err;
+    }
+  }
+}
+// ==========================================
 
 export async function POST(req: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +143,8 @@ export async function POST(req: Request) {
     const model = body.model || 'imagen3';
     const imageProvider = body.imageProvider || 'pollinations';
     const imageApiKey = body.imageApiKey || '';
+    const imageAspectRatio = body.imageAspectRatio || '16:9';
+    const aiMasterApiKey = body.aiMasterApiKey || '';
 
     filename = `chapter_${chapterNum}_scene_${sceneIndex}_prompt_${promptIndex}.png`;
     const publicImageDir = path.join(process.cwd(), 'public', 'images');
@@ -131,8 +216,8 @@ export async function POST(req: Request) {
           fs.writeFileSync(driveFilePath, imageBuffer);
           driveSaved = true;
           console.log(`[Image API] Đã sao lưu vào Thư mục PC: ${driveFilePath}`);
-        } catch (driveErr: any) {
-          console.error(`[Image API] Cảnh báo - không thể lưu vào Drive: ${driveErr.message}`);
+        } catch (driveErr: unknown) {
+          console.error(`[Image API] Cảnh báo - không thể lưu vào Drive: ${(driveErr as Error).message}`);
         }
       }
 
@@ -146,96 +231,128 @@ export async function POST(req: Request) {
       });
     };
 
+    const providerKeysToTry: string[] = [];
+    if (imageApiKey) providerKeysToTry.push(imageApiKey);
+    if (Array.isArray(body.apiKeys)) {
+      body.apiKeys.forEach((k: string) => {
+        if (k && !providerKeysToTry.includes(k)) providerKeysToTry.push(k);
+      });
+    }
+
     // --- MULTI-PROVIDER ROUTING ---
     const providerPrompt = characterPrompt 
       ? `${prompt}, subject details: ${characterPrompt}, cinematic lighting, highly detailed`
       : `${prompt}, cinematic lighting, highly detailed`;
 
     // 1. OPENAI (DALL-E 3)
-    if (imageProvider === 'openai' && imageApiKey) {
-      console.log(`[Image API] Route: OpenAI DALL-E 3`);
-      try {
-        const res = await fetch('https://api.openai.com/v1/images/generations', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${imageApiKey}`
-          },
-          body: JSON.stringify({
-            model: "dall-e-3",
-            prompt: providerPrompt,
-            n: 1,
-            size: "1024x1024"
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const imageUrl = data.data[0].url;
-          const imageRes = await fetch(imageUrl);
-          const buffer = Buffer.from(await imageRes.arrayBuffer());
-          return saveImage(buffer, 'OpenAI DALL-E 3', imageApiKey);
-        } else {
-          const err = await res.text();
-          console.error('[Image API] OpenAI failed:', err);
+    if (imageProvider === 'openai' && providerKeysToTry.length > 0) {
+      console.log(`[Image API] Route: OpenAI DALL-E 3 (${providerKeysToTry.length} keys)`);
+      
+      let dallESize = "1024x1024";
+      if (imageAspectRatio === '16:9') dallESize = "1792x1024";
+      else if (imageAspectRatio === '9:16') dallESize = "1024x1792";
+      
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${currentKey}`
+            },
+            body: JSON.stringify({
+              model: "dall-e-3",
+              prompt: providerPrompt,
+              n: 1,
+              size: dallESize
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const imageUrl = data.data[0].url;
+            const imageRes = await fetch(imageUrl);
+            const buffer = Buffer.from(await imageRes.arrayBuffer());
+            return saveImage(buffer, 'OpenAI DALL-E 3', currentKey);
+          } else {
+            const err = await res.text();
+            console.error(`[Image API] OpenAI failed with key ${currentKey.substring(0, 10)}...:`, err);
+            continue;
+          }
+        } catch (err: unknown) {
+          console.error(`[Image API] OpenAI error with key ${currentKey.substring(0, 10)}...:`, (err as Error).message);
+          continue;
         }
-      } catch (err: any) {
-        console.error('[Image API] OpenAI error:', err.message);
       }
     }
 
     // 2. FAL.AI (Grok/Flux)
-    if (imageProvider === 'falai' && imageApiKey) {
-      console.log(`[Image API] Route: Fal.ai (Flux)`);
-      try {
-        const res = await fetch('https://fal.run/fal-ai/flux/dev', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Key ${imageApiKey}`
-          },
-          body: JSON.stringify({
-            prompt: providerPrompt,
-            image_size: "landscape_16_9",
-            num_inference_steps: 28,
-            guidance_scale: 3.5,
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const imageUrl = data.images[0].url;
-          const imageRes = await fetch(imageUrl);
-          const buffer = Buffer.from(await imageRes.arrayBuffer());
-          return saveImage(buffer, 'Fal.ai Flux', imageApiKey);
-        } else {
-          const err = await res.text();
-          console.error('[Image API] Fal.ai failed:', err);
+    if (imageProvider === 'falai' && providerKeysToTry.length > 0) {
+      console.log(`[Image API] Route: Fal.ai (Flux) (${providerKeysToTry.length} keys)`);
+      
+      let falSize = "landscape_16_9";
+      if (imageAspectRatio === '9:16') falSize = "portrait_16_9";
+      else if (imageAspectRatio === '1:1') falSize = "square_1_1";
+      else if (imageAspectRatio === '3:4') falSize = "portrait_4_3";
+      else if (imageAspectRatio === '4:3') falSize = "landscape_4_3";
+
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://fal.run/fal-ai/flux/dev', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Key ${currentKey}`
+            },
+            body: JSON.stringify({
+              prompt: providerPrompt,
+              image_size: falSize,
+              num_inference_steps: 28,
+              guidance_scale: 3.5,
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const imageUrl = data.images[0].url;
+            const imageRes = await fetch(imageUrl);
+            const buffer = Buffer.from(await imageRes.arrayBuffer());
+            return saveImage(buffer, 'Fal.ai Flux', currentKey);
+          } else {
+            const err = await res.text();
+            console.error(`[Image API] Fal.ai failed with key ${currentKey.substring(0, 10)}...:`, err);
+            continue;
+          }
+        } catch (err: unknown) {
+          console.error(`[Image API] Fal.ai error with key ${currentKey.substring(0, 10)}...:`, (err as Error).message);
+          continue;
         }
-      } catch (err: any) {
-        console.error('[Image API] Fal.ai error:', err.message);
       }
     }
 
     // 3. HUGGINGFACE (Meta/Llama 3 ecosystem or SD3)
-    if (imageProvider === 'huggingface' && imageApiKey) {
-      console.log(`[Image API] Route: HuggingFace`);
-      try {
-        const res = await fetch('https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${imageApiKey}`
-          },
-          body: JSON.stringify({ inputs: providerPrompt })
-        });
-        if (res.ok) {
-          const buffer = Buffer.from(await res.arrayBuffer());
-          return saveImage(buffer, 'HuggingFace SDXL', imageApiKey);
-        } else {
-          const err = await res.text();
-          console.error('[Image API] HuggingFace failed:', err);
+    if (imageProvider === 'huggingface' && providerKeysToTry.length > 0) {
+      console.log(`[Image API] Route: HuggingFace (${providerKeysToTry.length} keys)`);
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${currentKey}`
+            },
+            body: JSON.stringify({ inputs: providerPrompt })
+          });
+          if (res.ok) {
+            const buffer = Buffer.from(await res.arrayBuffer());
+            return saveImage(buffer, 'HuggingFace SDXL', currentKey);
+          } else {
+            const err = await res.text();
+            console.error(`[Image API] HuggingFace failed with key ${currentKey.substring(0, 10)}...:`, err);
+            continue;
+          }
+        } catch (err: unknown) {
+          console.error(`[Image API] HuggingFace error with key ${currentKey.substring(0, 10)}...:`, (err as Error).message);
+          continue;
         }
-      } catch (err: any) {
-        console.error('[Image API] HuggingFace error:', err.message);
       }
     }
 
@@ -261,8 +378,8 @@ export async function POST(req: Request) {
           
           try {
             const geminiPrompt = characterPrompt 
-              ? `Generate an image: ${prompt}, reference subject: ${characterPrompt}`
-              : `Generate an image: ${prompt}`;
+              ? `Generate an image (Aspect Ratio: ${imageAspectRatio}): ${prompt}, reference subject: ${characterPrompt}`
+              : `Generate an image (Aspect Ratio: ${imageAspectRatio}): ${prompt}`;
 
             console.log(`[Image API] [Key ${i+1}/${keysToTry.length}] [Model: ${apiModelId}] Đang gửi: "${geminiPrompt.substring(0, 80)}..."`);
             
@@ -276,7 +393,9 @@ export async function POST(req: Request) {
               },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: geminiPrompt }] }],
-                generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+                generationConfig: { 
+                  responseModalities: ["IMAGE", "TEXT"],
+                },
                 safetySettings: [
                   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
                   { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -385,8 +504,13 @@ export async function POST(req: Request) {
       console.log(`[Pollinations AI] Đang tạo ảnh thật miễn phí cho Cảnh ${sceneIndex} Prompt ${promptIndex}...`);
       
       const seed = Math.floor(Math.random() * 1000000000);
-      const width = 1280;
-      const height = 720;
+      let width = 1280;
+      let height = 720;
+      if (imageAspectRatio === '9:16') { width = 720; height = 1280; }
+      else if (imageAspectRatio === '1:1') { width = 1024; height = 1024; }
+      else if (imageAspectRatio === '3:4') { width = 768; height = 1024; }
+      else if (imageAspectRatio === '4:3') { width = 1024; height = 768; }
+
       const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(providerPrompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
       
       try {
@@ -394,8 +518,8 @@ export async function POST(req: Request) {
         if (!res.ok) throw new Error(`Lỗi tải ảnh từ Pollinations: ${res.statusText}`);
         const buffer = Buffer.from(await res.arrayBuffer());
         return saveImage(buffer, 'Pollinations AI (Miễn phí)');
-      } catch (err: any) {
-        console.error('[Pollinations AI] Lỗi sinh ảnh:', err.message);
+      } catch (err: unknown) {
+        console.error('[Pollinations AI] Lỗi sinh ảnh:', (err as Error).message);
       }
     }
 
@@ -569,232 +693,36 @@ export async function POST(req: Request) {
       throw new Error('Cookie Google Studio đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại Google Labs và sao chép Cookie mới.');
     }
 
-    // Tự động kiểm tra và tắt popup thông báo chuyển sang Flow (Whisk Migration Popup)
-    try {
-      console.log('[Whisk Automation] Đang kiểm tra và tắt popup chào mừng Flow...');
-      await new Promise(resolve => setTimeout(resolve, 3000)); // Chờ 3 giây để popup tải hoàn chỉnh
-      await page.evaluate(() => {
-        // 1. Tìm tất cả các phần tử chứa văn bản "Làm quen với Flow"
-        const elements = Array.from(document.querySelectorAll('button, div, span, a, p')) as HTMLElement[];
-        const flowBtn = elements.find(el => 
-          el.textContent && (
-            el.textContent.includes('Làm quen với Flow') || 
-            el.textContent.includes('Làm quen') || 
-            el.textContent.includes('Flow')
-          ) && el.getBoundingClientRect().width > 0
-        );
-
-        if (flowBtn) {
-          console.log('[Whisk JS] Tìm thấy nút tắt popup Flow. Bấm kích hoạt...');
-          flowBtn.scrollIntoView({ block: 'center' });
-          flowBtn.click();
-          return;
-        }
-
-        // 2. Tìm nút đóng "X" ở góc trên bên phải popup hộp màu vàng
-        const closeXBtn = elements.find(el => 
-          el.textContent === 'X' || 
-          el.textContent === 'x' || 
-          (el.getAttribute('aria-label') && el.getAttribute('aria-label')!.toLowerCase().includes('close'))
-        );
-
-        if (closeXBtn) {
-          console.log('[Whisk JS] Tìm thấy nút đóng X. Bấm kích hoạt...');
-          closeXBtn.click();
-        }
-      });
-      // Đợi thêm một chút để modal biến mất hoàn toàn
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (popupErr: any) {
-      console.warn('[Whisk Automation] Lỗi hoặc không có popup Flow chào mừng:', popupErr.message);
-    }
-    // Tự động tạo dự án mới với tên của kịch bản (chỉ thực hiện nếu đang ở trang chủ/dashboard và chưa ở trong dự án)
-    try {
-      const currentUrl = page.url();
-      if (!currentUrl.includes('/project/')) {
-        const scriptTitle = ten_tac_pham || 'Kịch Bản mới';
-        console.log(`[Whisk Automation] Đang ở Dashboard. Tự động tạo dự án mới với tên: "${scriptTitle}"...`);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        await page.evaluate((title: string) => {
-          const elements = Array.from(document.querySelectorAll('button, div, span, a, p')) as HTMLElement[];
-          
-          // Tìm nút tạo dự án mới (New Project, Create project, vv.)
-          const newProjBtn = elements.find(el => 
-            el.textContent && (
-              el.textContent.includes('New project') || 
-              el.textContent.includes('New Project') || 
-              el.textContent.includes('+ New') || 
-              el.textContent.includes('Create project') ||
-              el.textContent.includes('Dự án mới')
-            ) && el.getBoundingClientRect().width > 0
-          );
-
-          if (newProjBtn) {
-            console.log('[Whisk JS] Tìm thấy nút tạo dự án mới. Bấm...');
-            newProjBtn.click();
-          }
-        }, scriptTitle);
-        
-        // Chờ form đặt tên dự án xuất hiện
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        await page.evaluate((title: string) => {
-          // Tìm ô nhập tên dự án (input có placeholder liên quan hoặc giá trị Untitled)
-          const inputs = Array.from(document.querySelectorAll('input, textarea')) as HTMLInputElement[];
-          const nameInput = inputs.find(inp => 
-            inp.value === 'Untitled project' || 
-            inp.value === 'Untitled Project' || 
-            (inp.placeholder && (
-              inp.placeholder.includes('Project name') || 
-              inp.placeholder.includes('Name') || 
-              inp.placeholder.includes('Tên dự án')
-            ))
-          );
-
-          if (nameInput) {
-            console.log('[Whisk JS] Tìm thấy ô đặt tên dự án. Nhập tên...');
-            nameInput.focus();
-            nameInput.value = title;
-            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-            nameInput.dispatchEvent(new Event('change', { bubbles: true }));
-
-            // Bấm xác nhận tạo dự án mới
-            const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
-            const okBtn = buttons.find(b => 
-              b.textContent && (
-                b.textContent.includes('Create') || 
-                b.textContent.includes('Save') || 
-                b.textContent.includes('OK') || 
-                b.textContent.includes('Xác nhận')
-              )
-            );
-            if (okBtn) {
-              console.log('[Whisk JS] Bấm nút xác nhận tạo dự án.');
-              okBtn.click();
-            }
-          }
-        }, scriptTitle);
-        
-        // Đợi dự án được tạo xong và tải workspace
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } else {
-        console.log('[Whisk Automation] Đang ở trong dự án có sẵn. Tiếp tục nạp prompt...');
-      }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (projErr: any) {
-      console.warn('[Whisk Automation] Bỏ qua hoặc không thể tạo dự án mới:', projErr.message);
-    }
-    // Tạo prompt hoàn chỉnh cho Whisk
+    // TÍCH HỢP AGENTIC RPA (AI TƯ DUY) THAY THẾ CHO HARD-CODED SCRIPT
+    console.log(`[Agentic RPA] Bắt đầu trao quyền điều khiển cho BrowserAgent...`);
     let whiskPrompt = prompt;
     if (characterPrompt) {
       whiskPrompt = `${prompt}, reference subject: ${characterPrompt}`;
     }
 
-    console.log(`[Whisk Automation] Nạp Prompt: "${whiskPrompt.substring(0, 100)}..."`);
-
-    // Chụp lại toàn bộ ảnh hiện tại trên màn hình làm snapshot để dò tìm ảnh mới sinh sau này
-    const initialUrls: string[] = await page.evaluate(() => {
-      const urls: string[] = [];
-      document.querySelectorAll('img').forEach(img => {
-        if (img.src) urls.push(img.src);
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      document.querySelectorAll('div, [style*="background-image"]').forEach((div: any) => {
-        const style = div.style.backgroundImage || window.getComputedStyle(div).backgroundImage;
-        if (style && style !== 'none' && style.startsWith('url(')) {
-          const match = style.match(/url\(["']?([^"']+)["']?\)/);
-          if (match && match[1]) urls.push(match[1]);
-        }
-      });
-      return urls;
-    });
-    console.log(`[Whisk Automation] Đã lưu snapshot ảnh hiện tại: ${initialUrls.length} ảnh cũ.`);
-
-    // Tự động tìm kiếm ô nhập liệu Textarea của Whisk
-    // Whisk thường dùng ô nhập liệu có placeholder hoặc role textbox
-    const textareaSelector = 'textarea, [role="textbox"], input[type="text"]';
-    await page.waitForSelector(textareaSelector, { timeout: 30000 });
+    const browserAgent = new BrowserAgent(page, aiMasterApiKey || keysToTry[0] || '', 'gemini-1.5-pro');
     
-    // Xóa text cũ nếu có và gõ prompt mới với độ chịu lỗi (resilience) cực cao
-    try {
-      await page.evaluate((selector: string) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const els = Array.from(document.querySelectorAll(selector)) as any[];
-        // Tìm phần tử hiển thị thực tế trên giao diện
-        const el = els.find(e => {
-          const rect = e.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 && window.getComputedStyle(e).display !== 'none' && window.getComputedStyle(e).visibility !== 'hidden';
-        }) || els[0];
-        
-        if (el) {
-          el.scrollIntoView({ block: 'center' });
-          el.focus();
-          el.click();
-          el.value = '';
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        } else {
-          throw new Error('Không tìm thấy ô nhập liệu visible.');
-        }
-      }, textareaSelector);
-      await page.evaluate((selector: string, text: string) => {
-        const input = document.querySelector(selector) as HTMLTextAreaElement;
-        if (input) {
-          input.value = text;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, textareaSelector, whiskPrompt);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (clickErr: any) {
-      console.warn('[Whisk Automation] Click/gõ chuẩn thất bại, thử cưỡng bức gõ trực tiếp qua JS:', clickErr.message);
-      await page.evaluate((selector: string, text: string) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const els = Array.from(document.querySelectorAll(selector)) as any[];
-        const el = els.find(e => {
-          const rect = e.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 && window.getComputedStyle(e).display !== 'none' && window.getComputedStyle(e).visibility !== 'hidden';
-        }) || els[0];
-        if (el) {
-          el.value = text;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, textareaSelector, whiskPrompt);
-    }
+    // Yêu cầu AI tự xử lý các công việc: tắt popup, tạo project, gõ prompt, ấn nút generate.
+    const agentGoal = `
+    1. If there is a welcome popup ("Làm quen với Flow", "Welcome", etc.), close it.
+    2. If you are on a dashboard, find the "New Project" or "Create project" button, click it, name it "${ten_tac_pham || 'Kịch Bản mới'}", and create it.
+    3. Once inside the editor, find the main text area (textbox). Click it, clear it if needed, and type EXACTLY this prompt: "${whiskPrompt.substring(0, 150)}...".
+    4. Find the "Generate", "Create", or submit button and click it to start generating the image.
+    5. After clicking generate, you are DONE. Return action="done".
+    `;
 
-    // Tìm và Click nút Generate (Nút chứa icon gửi hoặc text Generate/Create)
-    // Click nút submit hoặc button nằm trong khối nhập liệu với tính năng scroll tự bảo vệ
-    const btnSelector = 'button[type="submit"], button[aria-label*="Generate"], button[aria-label*="Create"], button';
-    await page.evaluate((btnSel: string) => {
-      const buttons = Array.from(document.querySelectorAll(btnSel)) as HTMLElement[];
-      // Lọc các nút đang hiển thị thực tế trên màn hình
-      const visibleButtons = buttons.filter(b => {
-        const rect = b.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && window.getComputedStyle(b).display !== 'none' && window.getComputedStyle(b).visibility !== 'hidden';
-      });
-      
-      const targetBtn = visibleButtons.find(b => 
-        b.innerHTML.includes('Generate') || 
-        b.innerHTML.includes('Create') || 
-        (b.getAttribute('aria-label') && (b.getAttribute('aria-label')!.includes('Generate') || b.getAttribute('aria-label')!.includes('Create'))) ||
-        b.querySelector('svg')
-      ) || visibleButtons[visibleButtons.length - 1] || buttons[buttons.length - 1];
-      
-      if (targetBtn) {
-        targetBtn.scrollIntoView({ block: 'center' });
-        targetBtn.focus();
-        targetBtn.click();
-      } else {
-        throw new Error('Không tìm thấy nút Generate.');
-      }
-    }, btnSelector);
+    const cacheKey = `Google-Labs-Whisk-Image`;
+    const agentResult = await browserAgent.runAgenticWorkflow(agentGoal, cacheKey);
+    if (!agentResult.success) {
+      console.warn(`[Agentic RPA] AI báo cáo lỗi: ${agentResult.message}. Có thể UI thay đổi quá lớn, nhưng vẫn thử chờ ảnh...`);
+    } else {
+      console.log(`[Agentic RPA] AI đã thực thi xong chuỗi hành động! Đang dò tìm ảnh...`);
+    }
 
     console.log(`[Whisk Automation] Đã kích hoạt sinh ảnh. Bắt đầu quét kết quả (Đang dò tìm ảnh mới)...`);
 
     let imgSrc: string | null = null;
+    const initialUrls: string[] = [];
     const startTime = Date.now();
     const timeoutMs = 95000; // 95 giây tối đa cho những lúc mạng chậm hoặc Google Labs quá tải
 
@@ -950,9 +878,8 @@ export async function POST(req: Request) {
       method: 'Google Labs Whisk Automation'
     });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    console.error('[Whisk Automation] Lỗi tiến trình, đang chuyển đổi chế độ sinh ảnh PNG chất lượng cao dự phòng:', err);
+  } catch (err: unknown) {
+    console.error('[Whisk Automation] Lỗi tiến trình, đang chuyển đổi chế độ sinh ảnh PNG chất lượng cao dự phòng:', (err as Error).message);
     
     // Tự động chụp lại ảnh lỗi của trình duyệt ngầm để chẩn đoán
     if (browser) {
@@ -1082,7 +1009,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { error: err.message || 'Lỗi xảy ra trong quá trình kết nối Google Labs Whisk.' },
+      { error: (err as Error).message || 'Lỗi xảy ra trong quá trình kết nối Google Labs Whisk.' },
       { status: 500 }
     );
   } finally {

@@ -83,10 +83,11 @@ export interface GenerateVideoParams {
   model?: string;
   videoProvider?: string;
   videoApiKey?: string;
+  videoAspectRatio?: string;
 }
 
 export async function generateVideoAction(params: GenerateVideoParams): Promise<{ videoPath: string }> {
-  const { chapterNum, sceneIndex, promptIndex, prompt, duration, startImage, endImage, model } = params;
+  const { chapterNum, sceneIndex, promptIndex, prompt, duration, startImage, endImage, model, videoProvider, videoApiKey, videoAspectRatio } = params;
 
   const response = await fetch('/api/generate-video', {
     method: 'POST',
@@ -100,8 +101,9 @@ export async function generateVideoAction(params: GenerateVideoParams): Promise<
       startImage,
       endImage,
       model,
-      videoProvider: params.videoProvider,
-      videoApiKey: params.videoApiKey,
+      videoProvider,
+      videoApiKey,
+      videoAspectRatio
     })
   });
 

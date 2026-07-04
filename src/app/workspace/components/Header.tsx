@@ -16,8 +16,14 @@ import {
   WifiOff,
   RefreshCw,
   Copy,
-  Check
+  Check,
+  Settings,
+  Image,
+  FileText
 } from 'lucide-react';
+import TTSConfigModal from './TTSConfigModal';
+import MediaConfigModal from './MediaConfigModal';
+import ProTranslateSRTModal from './ProTranslateSRTModal';
 
 export default function Header() {
   const store = useNovelStore();
@@ -31,8 +37,10 @@ export default function Header() {
   // Trạng thái cục bộ chỉ kiểm soát hiển thị giao diện dropdowns
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showDriveManager, setShowDriveManager] = useState(false);
-  const [showCookieManager, setShowCookieManager] = useState(false);
-  const [showApiManager, setShowApiManager] = useState(false);
+  const [showSettingsManager, setShowSettingsManager] = useState(false);
+  const [isTTSModalOpen, setIsTTSModalOpen] = useState(false);
+  const [isMediaConfigModalOpen, setIsMediaConfigModalOpen] = useState(false);
+  const [isSRTModalOpen, setIsSRTModalOpen] = useState(false);
   const [newCookieInput, setNewCookieInput] = useState('');
   const [newApiInput, setNewApiInput] = useState('');
 
@@ -47,8 +55,9 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-zinc-900 bg-zinc-950/80 px-6 backdrop-blur-md">
-      <div className="flex items-center gap-3">
+    <>
+      <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-zinc-900 bg-zinc-950/80 px-6 backdrop-blur-md">
+        <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-black shadow-lg shadow-amber-500/20">
           <Sparkles className="h-5 w-5" />
         </div>
@@ -91,26 +100,107 @@ export default function Header() {
 
 
 
-        {/* Quản lý Multi-Cookie Studio */}
+        {/* 4 Nút Hành Động Nhanh */}
+        <div className="flex items-center gap-2 mr-2">
+          <button
+            type="button"
+            onClick={() => setIsSRTModalOpen(true)}
+            className="flex items-center justify-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Dịch SRT (PRO)
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setIsMediaConfigModalOpen(true)}
+            className="flex items-center justify-center gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/5 px-3 py-1 text-xs font-bold uppercase tracking-wider text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer"
+          >
+            <Image className="h-3.5 w-3.5" />
+            Đầu Ra (IMG/VID)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsTTSModalOpen(true)}
+            className="flex items-center justify-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/5 px-3 py-1 text-xs font-bold uppercase tracking-wider text-amber-500 hover:bg-amber-500/10 transition-colors cursor-pointer"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Giọng Đọc (TTS)
+          </button>
+
+          <button
+            type="button"
+            disabled={store.dang_tai || (!store.is_pro && !store.is_vip)}
+            onClick={async () => {
+              if (!store.is_pro && !store.is_vip) {
+                alert('⚠️ Tính năng này yêu cầu nâng cấp gói Pro/VIP!');
+                return;
+              }
+              if (confirm('⚠️ Bạn có chắc chắn muốn xuất kịch bản này ra CapCut (Bao gồm Audio, Video, Ảnh)?')) {
+                try {
+                  store.setDangTai(true);
+                  const res = await fetch('/api/export-capcut', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      chapterNum: store.chuong_dang_chon,
+                      ten_tac_pham: store.ten_tac_pham,
+                      generatedAudioPaths: store.generatedAudioPaths,
+                      generatedImages: store.generatedImages,
+                      generatedVideos: store.generatedVideos
+                    })
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error);
+                  alert(`🎉 Đã xuất dự án CapCut thành công!\nĐường dẫn: ${data.projectPath}`);
+                } catch (error: any) {
+                  alert(`❌ Lỗi xuất CapCut: ${error.message}`);
+                } finally {
+                  store.setDangTai(false);
+                }
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-sky-400 shadow-lg transition-all duration-300 hover:bg-sky-500 hover:text-black cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+          >
+            {store.dang_tai ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ĐANG XUẤT...
+              </>
+            ) : (
+              <>
+                ✂️ 1-Click Xuất CapCut
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Cài đặt chung (Cookie & API Keys) */}
         <div className="relative">
           <button
             onClick={() => {
-              setShowCookieManager(!showCookieManager);
+              setShowSettingsManager(!showSettingsManager);
               setShowDriveManager(false);
-              setShowApiManager(false);
             }}
             className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
           >
-            <Key className="h-3.5 w-3.5" />
-            Cookie ({store.googleStudioCookies?.length || 0})
+            <Settings className="h-3.5 w-3.5" />
+            Cài đặt chung
           </button>
 
-          {showCookieManager && (
-            <div className="absolute right-0 mt-2 w-80 rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl z-50 animate-in slide-in-from-top-2 duration-200">
-              <h3 className="mb-3 text-sm font-bold text-zinc-100 uppercase tracking-wide border-b border-zinc-800 pb-2">
-                Quản Lý Đa Cookie
+          {showSettingsManager && (
+            <div className="absolute right-0 mt-2 w-[340px] rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl z-50 animate-in slide-in-from-top-2 duration-200 overflow-y-auto max-h-[85vh]">
+              <h3 className="mb-4 text-sm font-bold text-zinc-100 uppercase tracking-wide border-b border-zinc-800 pb-2 flex items-center gap-2">
+                ⚙️ Cài đặt chung
               </h3>
 
+              {/* Phần 1: Quản lý Cookie */}
+              <div className="mb-6">
+                <h4 className="text-[10px] font-bold text-amber-500 uppercase mb-3 flex items-center gap-1.5 tracking-wider">
+                  <Key className="h-3 w-3" />
+                  Cookie AI Studio ({store.googleStudioCookies?.length || 0})
+                </h4>
               {/* Nút Trích Xuất Cookie Tự Động */}
               <button
                 type="button"
@@ -193,31 +283,15 @@ export default function Header() {
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
-            </div>
-          )}
-        </div>
+              </div>
 
-        {/* Quản lý Multi-API Key */}
-        {!store.useMock && (
-          <div className="relative">
-            <button
-              onClick={() => {
-                setShowApiManager(!showApiManager);
-                setShowCookieManager(false);
-                setShowDriveManager(false);
-              }}
-              className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-amber-500 transition-colors hover:bg-zinc-800 hover:text-amber-400"
-            >
-              <Key className="h-3.5 w-3.5" />
-              API Keys ({(store.apiKeys && store.apiKeys.length > 0) ? store.apiKeys.length : (store.apiKey ? 1 : 0)})
-            </button>
-
-            {showApiManager && (
-              <div className="absolute right-0 mt-2 w-80 rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl z-50">
-                <h3 className="mb-3 text-sm font-bold text-amber-500 uppercase tracking-wide border-b border-zinc-800 pb-2">
-                  Quản Lý Đa API Key (Rotation)
-                </h3>
-                
+              {/* Phần 2: Quản lý API Keys */}
+              {!store.useMock && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <h4 className="text-[10px] font-bold text-sky-500 uppercase mb-3 flex items-center gap-1.5 tracking-wider">
+                    <Key className="h-3 w-3" />
+                    API Keys ({(store.apiKeys && store.apiKeys.length > 0) ? store.apiKeys.length : (store.apiKey ? 1 : 0)})
+                  </h4>
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {/* Hiển thị key cũ từ store.apiKey */}
                   {store.apiKey && (!store.apiKeys || store.apiKeys.length === 0) && (
@@ -307,11 +381,17 @@ export default function Header() {
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </header>
+      </header>
+      {/* Modals from Sidebar */}
+      <TTSConfigModal isOpen={isTTSModalOpen} onClose={() => setIsTTSModalOpen(false)} />
+      <MediaConfigModal isOpen={isMediaConfigModalOpen} onClose={() => setIsMediaConfigModalOpen(false)} />
+      <ProTranslateSRTModal isOpen={isSRTModalOpen} onClose={() => setIsSRTModalOpen(false)} />
+    </>
   );
 }

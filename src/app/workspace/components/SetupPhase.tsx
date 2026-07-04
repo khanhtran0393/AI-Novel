@@ -31,8 +31,9 @@ export default function SetupPhase({
   };
 
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-12 bg-black">
-      <div className="w-full max-w-3xl rounded-xl border border-zinc-900 bg-zinc-950/50 p-8 shadow-2xl shadow-amber-500/5 glow-amber-sm">
+    <main className="flex-1 overflow-y-auto bg-black">
+      <div className="flex min-h-full items-center justify-center p-4 py-12">
+        <div className="w-full max-w-3xl shrink-0 rounded-xl border border-zinc-900 bg-zinc-950/50 p-8 shadow-2xl shadow-amber-500/5 glow-amber-sm">
         <div className="mb-8 text-center">
           <h2 className="text-2xl font-bold tracking-wide text-zinc-100">
             THIẾT LẬP THAM SỐ AI NOVEL
@@ -187,6 +188,7 @@ export default function SetupPhase({
             )}
           </button>
         </div>
+      </div>
       </div>
     </main>
   );

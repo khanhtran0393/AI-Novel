@@ -10,8 +10,9 @@ export async function selectFolderAction(): Promise<{ cancelled: boolean; path?:
     }
     const data = await res.json();
     return data;
-  } catch (err: unknown) {
-    throw new Error(`Lỗi chọn thư mục: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error: unknown) {
+    console.error('Lỗi khi đọc file/thư mục:', error);
+    throw new Error(`Lỗi chọn thư mục: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -36,7 +37,8 @@ export async function openFolderAction(folderPath: string): Promise<void> {
       throw new Error(err.error || 'Thư mục cục bộ không tồn tại.');
     }
   } catch (err: unknown) {
-    if ((err as any).isFallback) throw err;
+    const errorObj = err as { isFallback?: boolean };
+    if (errorObj.isFallback) throw err;
     throw new Error(`Không thể mở thư mục: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

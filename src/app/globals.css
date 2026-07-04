@@ -62,3 +62,21 @@ body {
 .glow-amber {
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
 }
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 12px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #000;
+  border-left: 1px solid #ff7b00;
+  background-image: radial-gradient(#ff7b00 10%, transparent 20%);
+  background-size: 4px 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #ff7b00;
+  border-radius: 6px;
+  border: 2px solid #000;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #cc6200;
+}

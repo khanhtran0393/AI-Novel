@@ -14,7 +14,7 @@ interface ContentTabProps {
   handleExpandScene: (idx: number) => Promise<void>;
   handlePlayTTS: (text: string, sceneIndex: number, voice: string) => Promise<void>;
   handleStopTTS: () => void;
-  handleGenerateTTS: (sceneText: string, sceneIndex: number, voice: string) => Promise<void>;
+  handleGenerateTTS: (sceneText: string, sceneIndex: number, voice: string, targetDuration?: number) => Promise<number | undefined>;
   handleGenerateImagePrompt: (sceneText: string, sceneIndex: number, duration: number) => Promise<void>;
   handleRegenPrompt: (sceneIndex: number, promptIndex: number, sentence: string, currentPrompt: string) => Promise<void>;
   handleWriteChapter: () => Promise<void>;
@@ -24,6 +24,7 @@ interface ContentTabProps {
   handleGenerateAllVideos: (sceneIndex: number) => Promise<void>;
   isPlayingTTS: { [sceneIndex: number]: boolean };
   generatingTTS: { [sceneIndex: number]: boolean };
+  ttsProgress: { [sceneIndex: number]: number };
   generatingPrompt: { [sceneIndex: number]: boolean };
   regeneratingSinglePrompt: Record<string, boolean>;
   generatingImage: Record<string, boolean>;
@@ -49,6 +50,7 @@ export default function ContentTab({
   handleGenerateAllVideos,
   isPlayingTTS,
   generatingTTS,
+  ttsProgress,
   generatingPrompt,
   regeneratingSinglePrompt,
   generatingImage,
@@ -94,6 +96,7 @@ export default function ContentTab({
               handleGenerateAllVideos={handleGenerateAllVideos}
               isPlayingTTS={!!isPlayingTTS[idx]}
               generatingTTS={!!generatingTTS[idx]}
+              ttsProgress={ttsProgress[idx] || 0}
               generatingPrompt={!!generatingPrompt[idx]}
               regeneratingSinglePrompt={regeneratingSinglePrompt}
               generatingImage={generatingImage}

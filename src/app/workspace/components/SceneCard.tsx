@@ -20,7 +20,7 @@ interface SceneCardProps {
   handleExpandScene: (idx: number) => Promise<void>;
   handlePlayTTS: (text: string, sceneIndex: number, voice: string) => Promise<void>;
   handleStopTTS: () => void;
-  handleGenerateTTS: (sceneText: string, sceneIndex: number, voice: string) => Promise<void>;
+  handleGenerateTTS: (sceneText: string, sceneIndex: number, voice: string, targetDuration?: number) => Promise<number | undefined>;
   handleGenerateImagePrompt: (sceneText: string, sceneIndex: number, duration: number) => Promise<void>;
   handleRegenPrompt: (sceneIndex: number, promptIndex: number, sentence: string, currentPrompt: string) => Promise<void>;
   handleGenerateImage: (sceneIndex: number, promptIndex: number, prompt: string, sentence: string) => Promise<void>;
@@ -29,6 +29,7 @@ interface SceneCardProps {
   handleGenerateAllVideos: (sceneIndex: number) => Promise<void>;
   isPlayingTTS: boolean;
   generatingTTS: boolean;
+  ttsProgress: number;
   generatingPrompt: boolean;
   regeneratingSinglePrompt: Record<string, boolean>;
   generatingImage: Record<string, boolean>;
@@ -53,6 +54,7 @@ export default function SceneCard({
   handleGenerateAllVideos,
   isPlayingTTS,
   generatingTTS,
+  ttsProgress,
   generatingPrompt,
   regeneratingSinglePrompt,
   generatingImage,
@@ -64,8 +66,31 @@ export default function SceneCard({
   const { handleOpenFolder } = useFolderActions();
   
   const [openSceneTab, setOpenSceneTab] = useState<'tts' | 'studio' | null>('studio');
-  const [selectedVoice, setSelectedVoice] = useState('');
   const [manualDuration, setManualDuration] = useState('');
+  const [upscalingImage, setUpscalingImage] = useState<Record<string, boolean>>({});
+
+  const handleUpscaleImage = async (imagePath: string, key: string) => {
+    setUpscalingImage(prev => ({ ...prev, [key]: true }));
+    try {
+      const outPath = imagePath.replace('.png', '_upscaled.png').replace('.jpg', '_upscaled.jpg');
+      const res = await fetch('/api/navtools/upscale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePath, outPath, targetHeight: 2160 })
+      });
+      const data = await res.json();
+      if (data.success) {
+        store.addGeneratedImage(key, data.outPath);
+      } else {
+        alert("Upscale failed: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUpscalingImage(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
 
   const assetKey = `${store.chuong_dang_chon}_${sceneIndex}`;
   const audioAsset = store.generatedAudioPaths[assetKey];
@@ -169,22 +194,10 @@ export default function SceneCard({
           </div>
           
           <div className="flex flex-col sm:flex-row items-end gap-3">
-            <div className="flex-1 w-full">
-              <label className="text-[10px] text-zinc-500 uppercase block mb-1 font-sans">Chọn Giọng Đọc</label>
-              <select
-                value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
-                className="w-full h-8 bg-zinc-900 border border-zinc-800 rounded text-xs text-zinc-300 outline-none px-2 focus:border-amber-500 cursor-pointer font-sans"
-              >
-                <option value="">🌍 Theo Cấu Hình Chung ({store.ttsConfig.platform.toUpperCase()})</option>
-                <optgroup label="Tùy chỉnh riêng lẻ">
-                  <option value="Aoede">Nữ 1 (Aoede) - Truyền cảm</option>
-                  <option value="Charon">Nam 1 (Charon) - Trầm ấm</option>
-                  <option value="Fenrir">Nam 2 (Fenrir) - Sáng sủa</option>
-                  <option value="Kore">Nữ 2 (Kore) - Nhẹ nhàng</option>
-                  <option value="Puck">Nam 3 (Puck) - Năng động</option>
-                </optgroup>
-              </select>
+            <div className="flex-1 w-full flex items-center bg-black/20 px-3 py-1.5 rounded border border-amber-900/20">
+              <span className="text-[10px] text-zinc-400 font-sans italic">
+                🌍 Đang dùng giọng đọc từ Cấu Hình Toàn Cục ({store.ttsConfig.platform.toUpperCase()})
+              </span>
             </div>
             
             <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
@@ -195,7 +208,7 @@ export default function SceneCard({
                   if (isPlayingTTS) {
                     handleStopTTS();
                   } else {
-                    handlePlayTTS(scene.content, sceneIndex, selectedVoice);
+                    handlePlayTTS(scene.content, sceneIndex, '');
                   }
                 }}
                 className="h-8 px-3 rounded border border-amber-900/40 bg-zinc-900 text-amber-400 text-xs font-bold hover:bg-zinc-850 hover:text-amber-300 transition-colors flex items-center gap-1 cursor-pointer font-sans"
@@ -212,13 +225,24 @@ export default function SceneCard({
               <button
                 type="button"
                 disabled={generatingTTS}
-                onClick={() => handleGenerateTTS(scene.content, sceneIndex, selectedVoice)}
+                onClick={async () => {
+                  const durationVal = manualDuration !== '' 
+                    ? parseInt(manualDuration) || 5 
+                    : (voiceDurationReference || 5);
+                    
+                  const newDuration = await handleGenerateTTS(scene.content, sceneIndex, '', durationVal);
+                  
+                  // Nếu ở Mode Pro, tự động chốt số giây thực tế vào ô Thời lượng (Auto-Alignment)
+                  if (store.ttsConfig.syncMode === 'pro' && newDuration) {
+                    setManualDuration(newDuration.toString());
+                  }
+                }}
                 className="h-8 px-4 rounded bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 font-sans"
               >
                 {generatingTTS ? (
                   <>
                     <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    Đang Gen...
+                    Đang Gen... {ttsProgress > 0 ? `${ttsProgress}%` : ''}
                   </>
                 ) : (
                   <>
@@ -259,34 +283,10 @@ export default function SceneCard({
 
           
           <div className="space-y-3">
-            {/* Tùy chọn Model Ảnh & Video */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 bg-black/20 p-2 rounded border border-emerald-900/20">
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <label className="text-[10px] text-zinc-400 uppercase font-sans whitespace-nowrap">Model Ảnh:</label>
-                <select
-                  value={store.imageModel}
-                  onChange={(e) => store.setImageModel(e.target.value)}
-                  className="h-8 bg-zinc-900 border border-zinc-800 rounded px-2 text-xs text-zinc-300 outline-none focus:border-emerald-500 cursor-pointer w-full sm:w-auto font-sans"
-                >
-                  <option value="imagen3">Google Imagen 3</option>
-                  <option value="midjourney">Midjourney</option>
-                  <option value="flux">Flux.1 Pro</option>
-                  <option value="dalle3">DALL-E 3</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <label className="text-[10px] text-zinc-400 uppercase font-sans whitespace-nowrap">Model Video:</label>
-                <select
-                  value={store.videoModel}
-                  onChange={(e) => store.setVideoModel(e.target.value)}
-                  className="h-8 bg-zinc-900 border border-zinc-800 rounded px-2 text-xs text-zinc-300 outline-none focus:border-cyan-500 cursor-pointer w-full sm:w-auto font-sans"
-                >
-                  <option value="veo">Google Veo</option>
-                  <option value="sora">OpenAI Sora</option>
-                  <option value="kling">Kling AI</option>
-                  <option value="luma">Luma Dream Machine</option>
-                </select>
-              </div>
+            <div className="bg-black/20 px-3 py-1.5 rounded border border-emerald-900/20">
+              <span className="text-[10px] text-zinc-400 font-sans italic">
+                ✨ Đang sử dụng các Model sinh Ảnh/Video từ Cấu Hình Toàn Cục.
+              </span>
             </div>
 
             {/* Tự động quét và lấy thời lượng voice bên TTS để làm tham chiếu */}
@@ -490,21 +490,44 @@ export default function SceneCard({
                       {/* Box Hình Ảnh */}
                       <div className="w-48 flex flex-col gap-1 items-center justify-start">
                         {generatedImg ? (
-                          <div 
-                            onClick={() => onImageZoom(generatedImg)}
-                            className="relative group w-full h-32 overflow-hidden rounded-lg border border-zinc-800/80 shadow-md transition-all duration-300 hover:border-zinc-700 cursor-zoom-in"
-                            title="Bấm để phóng to ảnh phân cảnh"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img 
-                              src={generatedImg} 
-                              alt={`Cảnh ${sceneIndex+1} Prompt ${pIdx+1}`} 
-                              className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-                            />
-                            <div className="absolute bottom-1 right-1 bg-black/75 backdrop-blur-sm rounded px-1.5 py-0.5 text-[7px] font-mono text-zinc-400 border border-zinc-800">
-                              {promptCode}.png
+                          <>
+                            <div 
+                              onClick={() => onImageZoom(generatedImg)}
+                              className="relative group w-full h-32 overflow-hidden rounded-lg border border-zinc-800/80 shadow-md transition-all duration-300 hover:border-zinc-700 cursor-zoom-in"
+                              title="Bấm để phóng to ảnh phân cảnh"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img 
+                                src={generatedImg} 
+                                alt={`Cảnh ${sceneIndex+1} Prompt ${pIdx+1}`} 
+                                className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                              />
+                              <div className="absolute bottom-1 right-1 bg-black/75 backdrop-blur-sm rounded px-1.5 py-0.5 text-[7px] font-mono text-zinc-400 border border-zinc-800">
+                                {promptCode}.png
+                              </div>
                             </div>
-                          </div>
+                            
+                            {/* Nút Upscale và Tách nền */}
+                            <div className="mt-1 w-full flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={upscalingImage[singlePromptKey]}
+                                onClick={() => handleUpscaleImage(generatedImg, singlePromptKey)}
+                                className="flex-1 text-[9px] font-bold uppercase tracking-wider text-black bg-emerald-500 hover:bg-emerald-400 px-1 py-1 rounded transition-all shadow-md hover:shadow-emerald-500/20 flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-sans"
+                                title="Tăng độ phân giải ảnh (Upscale) bằng NAVTools AI"
+                              >
+                                <Sparkles className={`h-2.5 w-2.5 ${upscalingImage[singlePromptKey] ? 'animate-spin' : ''}`} />
+                                {upscalingImage[singlePromptKey] ? 'Đang Upscale' : 'Upscale'}
+                              </button>
+                              <button
+                                type="button"
+                                className="flex-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 hover:bg-emerald-900/40 hover:text-emerald-300 px-1 py-1 rounded transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer font-sans"
+                                title="Tách phông nền ảnh bằng NAVTools AI"
+                              >
+                                ✂ Tách Nền
+                              </button>
+                            </div>
+                          </>
                         ) : (
                           <div className="w-full h-32 rounded-lg border border-dashed border-zinc-900 bg-zinc-950/40 flex flex-col items-center justify-center text-center p-3 transition-colors hover:bg-zinc-900/10">
                             <div className="h-7 w-7 rounded-full bg-zinc-900/80 flex items-center justify-center text-zinc-650 mb-1.5 border border-zinc-850 shadow-sm animate-pulse">

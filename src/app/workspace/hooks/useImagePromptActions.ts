@@ -19,6 +19,9 @@ export function useImagePromptActions() {
   // Gọi API backend phân tích kịch bản sinh prompt vẽ ảnh/video (theo từng câu + cảm xúc)
   const handleGenerateImagePrompt = async (sceneText: string, sceneIndex: number, duration: number) => {
     setGeneratingPrompt(prev => ({ ...prev, [sceneIndex]: true }));
+    // Xóa prompt cũ để UI không hiển thị nội dung tồn đọng
+    const assetKey = `${store.chuong_dang_chon}_${sceneIndex}`;
+    store.addGeneratedPrompts(assetKey, []);
     try {
       const prompts = await generateImagePromptAction({
         useMock: store.useMock,
@@ -86,12 +89,15 @@ export function useImagePromptActions() {
   };
 
   // Gọi API sinh ảnh tự động từ Google Labs Whisk chạy ngầm (Headless) hoặc Google Imagen 3 API
-  const handleGenerateImage = async (sceneIndex: number, promptIndex: number, prompt: string, sentence: string) => {
+  const handleGenerateImage = async (sceneIndex: number, promptIndex: number, prompt: string, sentence: string, silentError: boolean = false) => {
     if (!store.deductCredits(1)) {
-      alert('⚠️ Bạn đã hết Tín dụng. Vui lòng nạp thêm để tiếp tục sử dụng tính năng vẽ ảnh!');
-      return;
+      if (!silentError) alert('⚠️ Bạn đã hết Tín dụng. Vui lòng nạp thêm để tiếp tục sử dụng tính năng vẽ ảnh!');
+      throw new Error('HẾT_TÍN_DỤNG');
     }
     const key = `${store.chuong_dang_chon}_${sceneIndex}_${promptIndex}`;
+    
+    // Xóa ảnh cũ ngay lập tức để UI chuyển sang trạng thái Loading, đảm bảo 1 trạng thái duy nhất
+    store.addGeneratedImage(key, '');
     setGeneratingImage(prev => ({ ...prev, [key]: true }));
 
     try {
@@ -117,6 +123,8 @@ export function useImagePromptActions() {
         model: store.imageModel,
         imageProvider: store.imageProvider,
         imageApiKey: store.imageApiKey,
+        imageAspectRatio: store.imageAspectRatio || '16:9',
+        aiMasterApiKey: store.aiMasterApiKey,
       });
 
       // Nếu API vẽ ảnh thành công sử dụng API Key nào, đẩy Key đó lên đầu tiên
@@ -130,7 +138,8 @@ export function useImagePromptActions() {
       }
       console.log(`[Image Builder] Successfully generated image for c${sceneIndex+1}-${promptIndex+1} using ${data.method || 'unknown'}: ${data.imagePath}`);
     } catch (err: unknown) {
-      alert(`❌ Lỗi sinh ảnh: ${err instanceof Error ? err.message : String(err)}\n\n💡 Hãy chắc chắn rằng bạn đã cấu hình API Key Google (ở Header) để sinh ảnh bằng Google Imagen 3 siêu tốc, hoặc cấu hình Cookie Google Studio đầy đủ nếu muốn tự động hóa qua Google Labs Whisk.`);
+      if (!silentError) alert(`❌ Lỗi sinh ảnh: ${err instanceof Error ? err.message : String(err)}\n\n💡 Hãy chắc chắn rằng bạn đã cấu hình API Key Google (ở Header) để sinh ảnh bằng Google Imagen 3 siêu tốc, hoặc cấu hình Cookie Google Studio đầy đủ nếu muốn tự động hóa qua Google Labs Whisk.`);
+      throw err;
     } finally {
       setGeneratingImage(prev => ({ ...prev, [key]: false }));
     }
@@ -154,23 +163,46 @@ export function useImagePromptActions() {
 
     alert(`🚀 Đang khởi tạo chạy đa luồng song song ngầm để tự động vẽ ${promptsAsset.length} ảnh cho phân cảnh...`);
 
+    let outOfCredits = false;
+    let errorCount = 0;
+    let lastErrorMsg = '';
+
     // Chạy song song tất cả các luồng sinh ảnh!
-    const promises = promptsAsset.map((promptItem, pIdx) => 
-      handleGenerateImage(sceneIndex, pIdx, promptItem.prompt, promptItem.sentence || '')
-    );
+    const promises = promptsAsset.map(async (promptItem, pIdx) => {
+      if (outOfCredits) return; // Nếu đã hết tín dụng thì không gọi API nữa
+      try {
+        await handleGenerateImage(sceneIndex, pIdx, promptItem.prompt, promptItem.sentence || '', true);
+      } catch (err: any) {
+        if (err.message === 'HẾT_TÍN_DỤNG') {
+          outOfCredits = true;
+        } else {
+          errorCount++;
+          lastErrorMsg = err.message || String(err);
+        }
+      }
+    });
 
     await Promise.all(promises);
-    alert('🎉 Đã hoàn tất luồng sinh tất cả ảnh cho phân cảnh này!');
+    
+    if (outOfCredits) {
+      alert('⚠️ Quá trình đã dừng lại vì bạn đã hết Tín dụng. Vui lòng nạp thêm để tiếp tục!');
+    } else if (errorCount > 0) {
+      alert(`❌ Đã xảy ra lỗi với ${errorCount} ảnh. Lỗi tiêu biểu: ${lastErrorMsg}\n\n💡 Hãy chắc chắn rằng API Key Google hoặc Cookie Google Studio vẫn còn hoạt động tốt.`);
+    } else {
+      alert('🎉 Đã hoàn tất luồng sinh tất cả ảnh cho phân cảnh này!');
+    }
   };
 
   // Sinh video từ 2 ảnh prompt
-  const handleGenerateVideo = async (sceneIndex: number, startPromptIndex: number, endPromptIndex: number, prompt: string) => {
+  const handleGenerateVideo = async (sceneIndex: number, startPromptIndex: number, endPromptIndex: number, prompt: string, silentError: boolean = false) => {
     if (!store.deductCredits(2)) {
-      alert('⚠️ Bạn đã hết Tín dụng. Vui lòng nâng cấp gói Pro để tiếp tục sinh Video!');
-      return;
+      if (!silentError) alert('⚠️ Bạn đã hết Tín dụng. Vui lòng nâng cấp gói Pro để tiếp tục sinh Video!');
+      throw new Error('HẾT_TÍN_DỤNG');
     }
     const key = `${store.chuong_dang_chon}_${sceneIndex}_${endPromptIndex}_video`;
     setGeneratingVideo(prev => ({ ...prev, [key]: true }));
+    // Xóa video cũ để UI không hiển thị video của lần tạo trước
+    store.addGeneratedVideo(key, '');
 
     try {
       const assetKey = `${store.chuong_dang_chon}_${sceneIndex}`;
@@ -194,6 +226,7 @@ export function useImagePromptActions() {
         model: store.videoModel,
         videoProvider: store.videoProvider,
         videoApiKey: store.videoApiKey,
+        videoAspectRatio: store.videoAspectRatio || '16:9',
       });
 
       console.log(`[Video Builder] Successfully generated video: ${data.videoPath}`);
@@ -201,9 +234,10 @@ export function useImagePromptActions() {
         store.addGeneratedVideo(key, data.videoPath);
       }
       // Lệnh này hiện tại mô phỏng việc lưu vào store, nhưng ta có thể báo alert thành công
-      alert(`🎉 Đã sinh thành công Video cho đoạn c${sceneIndex+1}-${String(endPromptIndex+1).padStart(2, '0')}!`);
+      if (!silentError) alert(`🎉 Đã sinh thành công Video cho đoạn c${sceneIndex+1}-${String(endPromptIndex+1).padStart(2, '0')}!`);
     } catch (err: unknown) {
-      alert(`❌ Lỗi sinh video: ${err instanceof Error ? err.message : String(err)}`);
+      if (!silentError) alert(`❌ Lỗi sinh video: ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
     } finally {
       setGeneratingVideo(prev => ({ ...prev, [key]: false }));
     }
@@ -219,14 +253,34 @@ export function useImagePromptActions() {
 
     alert(`🚀 Đang tự động chạy sinh tuần tự toàn bộ Video cho phân cảnh...`);
     
+    let outOfCredits = false;
+    let errorCount = 0;
+    let lastErrorMsg = '';
+
     // Sinh tuần tự thay vì song song để tránh bị Google block
     for (let i = 1; i < promptsAsset.length; i++) {
+      if (outOfCredits) break;
       const startIdx = i - 1;
       const endIdx = i;
-      await handleGenerateVideo(sceneIndex, startIdx, endIdx, promptsAsset[i].prompt);
+      try {
+        await handleGenerateVideo(sceneIndex, startIdx, endIdx, promptsAsset[i].prompt, true);
+      } catch (err: any) {
+        if (err.message === 'HẾT_TÍN_DỤNG') {
+          outOfCredits = true;
+        } else {
+          errorCount++;
+          lastErrorMsg = err.message || String(err);
+        }
+      }
     }
     
-    alert('🎉 Đã hoàn tất luồng sinh tất cả Video!');
+    if (outOfCredits) {
+      alert('⚠️ Quá trình sinh Video đã dừng lại vì bạn đã hết Tín dụng. Vui lòng nạp thêm để tiếp tục!');
+    } else if (errorCount > 0) {
+      alert(`❌ Đã xảy ra lỗi với ${errorCount} video. Lỗi tiêu biểu: ${lastErrorMsg}`);
+    } else {
+      alert('🎉 Đã hoàn tất luồng sinh tất cả Video!');
+    }
   };
 
   return {

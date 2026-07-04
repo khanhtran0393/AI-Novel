@@ -148,6 +148,8 @@ interface GenerateImageParams {
   model?: string;
   imageProvider?: string;
   imageApiKey?: string;
+  imageAspectRatio?: string;
+  aiMasterApiKey?: string;
 }
 
 export async function generateImageAction(params: GenerateImageParams): Promise<{ imagePath: string; projectUrl?: string; usedApiKey?: string; method?: string }> {
@@ -168,7 +170,8 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
     apiKeys,
     imageProvider,
     imageApiKey,
-    model
+    model,
+    imageAspectRatio
   } = params;
 
   // Tự động tìm prompt tạo hình tham chiếu của nhân vật nếu tên được nhắc đến
@@ -204,7 +207,9 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
       apiKeys,
       model,
       imageProvider,
-      imageApiKey
+      imageApiKey,
+      imageAspectRatio,
+      aiMasterApiKey: params.aiMasterApiKey
     })
   });
 

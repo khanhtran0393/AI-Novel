@@ -16,10 +16,11 @@ import {
   Book,
   Settings,
   Image,
-  MonitorPlay
+  MonitorPlay,
+  PlaySquare
 } from 'lucide-react';
-import TTSConfigModal from './TTSConfigModal';
-import MediaConfigModal from './MediaConfigModal';
+import VideoEditorModal from './VideoEditorModal';
+import AutoRenderModal from './AutoRenderModal';
 
 interface SidebarProps {
   handleWriteChapter: (overwrite?: boolean) => Promise<void>;
@@ -38,9 +39,8 @@ export default function Sidebar({
   // Trạng thái mở rộng accordions của Dàn ý bên trái
   const [openOutlineTab, setOpenOutlineTab] = useState<'chapter' | 'overall' | 'lore' | null>('chapter');
   
-  // Trạng thái mở Modal cấu hình TTS
-  const [isTTSModalOpen, setIsTTSModalOpen] = useState(false);
-  const [isMediaConfigModalOpen, setIsMediaConfigModalOpen] = useState(false);
+  const [isVideoEditorOpen, setIsVideoEditorOpen] = useState(false);
+  const [isAutoRenderOpen, setIsAutoRenderOpen] = useState(false);
 
   // Khởi động các Custom Hooks hành động mô-đun hóa sạch sẽ
   const { handleResetProject } = useProjectActions('');
@@ -68,6 +68,7 @@ export default function Sidebar({
   } = useCharacterActions();
 
   return (
+    <>
     <aside className="w-80 flex flex-col border-r border-zinc-900 bg-zinc-950 p-5 shrink-0 overflow-y-auto font-sans">
       
       {/* Khối Cấu Hình tag (Read-only) */}
@@ -393,76 +394,31 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* Cụm Nút Hành Động Ở Dưới Cùng */}
-      <div className="mt-auto space-y-3 pt-4 border-t border-zinc-900">
-        
-        {/* Nút Cấu Hình Đầu Ra (Image/Video) */}
-        <button
-          type="button"
-          onClick={() => setIsMediaConfigModalOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/20 bg-indigo-500/5 py-2 text-[11px] font-bold uppercase tracking-wider text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer"
-        >
-          <Image className="h-3.5 w-3.5" />
-          Cấu Hình Đầu Ra (Image/Video)
-        </button>
+        {/* Cụm Nút Hành Động Ở Dưới Cùng */}
+        <div className="mt-auto space-y-3 pt-4 border-t border-zinc-900">
 
-        {/* Nút Cấu Hình Giọng Đọc Toàn Cục */}
-        <button
-          type="button"
-          onClick={() => setIsTTSModalOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-500 hover:bg-amber-500/10 transition-colors cursor-pointer"
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Cấu Hình Giọng Đọc (TTS)
-        </button>
-
-        {/* Nút 1-Click Xuất CapCut */}
-        <button
-          type="button"
-          disabled={store.dang_tai || !store.is_pro && !store.is_vip}
-          onClick={async () => {
-            if (!store.is_pro && !store.is_vip) {
-              alert('⚠️ Tính năng này yêu cầu nâng cấp gói Pro/VIP!');
-              return;
-            }
-            if (confirm('⚠️ Bạn có chắc chắn muốn xuất kịch bản này ra CapCut (Bao gồm Audio, Video, Ảnh)?')) {
-              try {
-                store.setDangTai(true);
-                const res = await fetch('/api/export-capcut', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    chapterNum: store.chuong_dang_chon,
-                    ten_tac_pham: store.ten_tac_pham,
-                    generatedAudioPaths: store.generatedAudioPaths,
-                    generatedImages: store.generatedImages,
-                    generatedVideos: store.generatedVideos
-                  })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error);
-                alert(`🎉 Đã xuất dự án CapCut thành công!\nĐường dẫn: ${data.projectPath}`);
-              } catch (error: unknown) {
-                const err = error as Error;
-                alert(`❌ Lỗi xuất CapCut: ${err.message}`);
-              } finally {
-                store.setDangTai(false);
-              }
-            }
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 py-2.5 text-xs font-bold uppercase tracking-wider text-sky-400 shadow-lg transition-all duration-300 hover:bg-sky-500 hover:text-black cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
-        >
-          {store.dang_tai && !isStreaming ? (
-            <>
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ĐANG XUẤT...
-            </>
-          ) : (
-            <>
-              ✂️ 1-Click Xuất CapCut
-            </>
-          )}
-        </button>
+        {/* HỆ SINH THÁI CAP-ASSISTANT */}
+        <div className="flex flex-col gap-2 bg-zinc-900/50 p-2.5 rounded-lg border border-zinc-800">
+          <label className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5 ml-1">
+            <Settings className="w-3 h-3" /> CÔNG CỤ CAP-ASSISTANT
+          </label>
+          <button
+            type="button"
+            onClick={() => setIsVideoEditorOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded bg-gradient-to-r from-sky-600 to-indigo-600 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-lg shadow-indigo-500/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/40 cursor-pointer font-sans"
+          >
+            <MonitorPlay className="h-3.5 w-3.5" />
+            Video Editor
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsAutoRenderOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded bg-gradient-to-r from-amber-600 to-orange-600 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-lg shadow-orange-500/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-orange-500/40 cursor-pointer font-sans"
+          >
+            <PlaySquare className="h-3.5 w-3.5" />
+            Auto Render (Hàng Loạt)
+          </button>
+        </div>
 
         {/* Nút Viết Lại Toàn Bộ Kịch Bản (Overwrite) */}
         <button
@@ -516,18 +472,18 @@ export default function Sidebar({
           Làm Mới Dự Án
         </button>
 
-        {/* Modal Cấu hình TTS Toàn cục */}
-        <TTSConfigModal
-          isOpen={isTTSModalOpen}
-          onClose={() => setIsTTSModalOpen(false)}
-        />
 
-        {/* Modal Cấu hình Media (Image/Video) Toàn cục */}
-        <MediaConfigModal
-          isOpen={isMediaConfigModalOpen}
-          onClose={() => setIsMediaConfigModalOpen(false)}
-        />
       </div>
     </aside>
+
+    <VideoEditorModal
+      isOpen={isVideoEditorOpen}
+      onClose={() => setIsVideoEditorOpen(false)}
+    />
+    <AutoRenderModal
+      isOpen={isAutoRenderOpen}
+      onClose={() => setIsAutoRenderOpen(false)}
+    />
+    </>
   );
 }

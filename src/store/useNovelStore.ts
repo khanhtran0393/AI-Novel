@@ -18,13 +18,14 @@ export interface SetupData {
 }
 
 export interface TTSConfig {
-  platform: 'tiktok_tts' | 'edge_tts' | 'vbee' | 'google' | 'elevenlabs' | 'capcut_tts' | 'vieneu_tts';
+  platform: 'tiktok_tts' | 'edge_tts' | 'vbee' | 'google' | 'elevenlabs' | 'capcut_tts' | 'piper' | 'gemini_tts' | 'omnivoice_local' | 'openai_tts' | 'hotai_tts' | 'vieneu_tts';
   language: string;
   voice: string;
   speed: number;
   pitch: number; // Pitch shift in semitones (-12 to 12)
   tiktokSessionId: string;
   api_url_vieneu: string; // Base URL for VieNeu-TTS API
+  syncMode?: 'default' | 'force_sync' | 'pro'; // Chế độ đồng bộ Timestamp
 }
 
 export interface NovelState {
@@ -36,6 +37,7 @@ export interface NovelState {
   danh_sach_chuong: Chuong[];
   chuong_dang_chon: number; // 1-indexed
   tab_hien_tai: 'dan_y' | 'noi_dung';
+  workspaceTab: 'script' | 'ainovel';
   dang_tai: boolean;
   useMock: boolean;
   apiKey: string;
@@ -76,8 +78,10 @@ export interface NovelState {
   visualDnaPrompt: string;
   imageProvider: string;
   imageApiKey: string;
+  imageAspectRatio: string;
   videoProvider: string;
   videoApiKey: string;
+  videoAspectRatio: string;
 
   // --- HỆ THỐNG THƯƠNG MẠI HÓA (VIP/PRO) ---
   is_vip: boolean;
@@ -103,6 +107,7 @@ export interface NovelActions {
   updateChuong: (so_chuong: number, update: Partial<Chuong>) => void;
   selectChuong: (so_chuong: number) => void;
   setTabHienTai: (tab: 'dan_y' | 'noi_dung') => void;
+  setWorkspaceTab: (tab: 'script' | 'ainovel') => void;
   setDangTai: (loading: boolean) => void;
   setUseMock: (mock: boolean) => void;
   setApiKey: (key: string) => void;
@@ -139,8 +144,10 @@ export interface NovelActions {
   setVisualDnaPrompt: (prompt: string) => void;
   setImageProvider: (provider: string) => void;
   setImageApiKey: (key: string) => void;
+  setImageAspectRatio: (ratio: string) => void;
   setVideoProvider: (provider: string) => void;
   setVideoApiKey: (key: string) => void;
+  setVideoAspectRatio: (ratio: string) => void;
 
   // Actions cho Thương mại hóa (VIP/PRO)
   setVipStatus: (is_vip: boolean, is_pro: boolean) => void;
@@ -156,9 +163,7 @@ export type NovelStore = NovelState & NovelActions;
 const INITIAL_SETUP: SetupData = {
   chu_de: 'Trinh Thám',
   phong_cach: 'Viễn Tưởng',
-  mo_ta: `Trong một đô thị tương lai mang tên Neo-Veridia, nơi những tòa nhà chọc trời vươn tới mây và ánh đèn neon lấp lánh không ngừng, cuộc sống được định nghĩa bởi "Mạng Lưới Thấu Cảm" (Empathic Net). Đây không chỉ là một mạng internet, mà là một hệ thống thần kinh tập thể, nơi mọi ký ức, trải nghiệm, và cảm xúc cá nhân được số hóa, chia sẻ và hợp nhất thành một dòng chảy dữ liệu khổng lồ. Mục đích ban đầu là tạo ra một xã hội hòa bình, không xung đột nhờ sự đồng cảm tuyệt đối. Tuy nhiên, sự phụ thuộc hoàn toàn vào Mạng Lưới đã biến ký ức thành tài sản công, và sự riêng tư trở thành một khái niệm lỗi thời.
-
-Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử kiêm kỹ thuật viên được cấp phép để điều tra các vụ án "xóa bỏ hiện thực" - những sự kiện mà quá khứ của cả một khu phố, một tập thể, hoặc thậm chí chỉ một cá nhân bị bóp méo.`,
+  mo_ta: '',
   so_chuong: 2,
   so_tu_chuong: 4250,
 };
@@ -213,6 +218,7 @@ Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử 
   ],
   chuong_dang_chon: 1,
   tab_hien_tai: 'dan_y',
+  workspaceTab: 'script',
   dang_tai: false,
   useMock: false,
   apiKey: '',
@@ -252,8 +258,10 @@ Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử 
   visualDnaPrompt: '',
   imageProvider: 'pollinations',
   imageApiKey: '',
+  imageAspectRatio: '16:9',
   videoProvider: 'ffmpeg',
   videoApiKey: '',
+  videoAspectRatio: '16:9',
 
   // Thương mại hóa
   is_vip: false,
@@ -262,13 +270,14 @@ Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử 
 
   // Cấu hình TTS Toàn cục
   ttsConfig: {
-    platform: 'tiktok_tts',
+    platform: 'piper',
+    voice: 'ngochuyen.onnx',
     language: 'vi',
-    voice: 'vn_tiktok_female',
     speed: 1.0,
     pitch: 0,
     tiktokSessionId: '',
-    api_url_vieneu: 'http://localhost:23333/v1'
+    api_url_vieneu: 'http://localhost:23333/v1',
+    syncMode: 'default'
   },
 };
 
@@ -307,6 +316,7 @@ export const useNovelStore = create<NovelStore>()(
       selectChuong: (chuong_dang_chon) => set({ chuong_dang_chon }),
 
       setTabHienTai: (tab_hien_tai) => set({ tab_hien_tai }),
+      setWorkspaceTab: (workspaceTab) => set({ workspaceTab }),
 
       setDangTai: (dang_tai) => set({ dang_tai }),
 
@@ -403,10 +413,12 @@ export const useNovelStore = create<NovelStore>()(
       setAiMasterModel: (model) => set({ aiMasterModel: model }),
       setAiMasterApiKey: (key) => set({ aiMasterApiKey: key }),
       setVisualDnaPrompt: (prompt) => set({ visualDnaPrompt: prompt }),
-      setImageProvider: (provider) => set({ imageProvider: provider }),
-      setImageApiKey: (key) => set({ imageApiKey: key }),
-      setVideoProvider: (provider) => set({ videoProvider: provider }),
-      setVideoApiKey: (key) => set({ videoApiKey: key }),
+      setImageProvider: (imageProvider) => set({ imageProvider }),
+      setImageApiKey: (imageApiKey) => set({ imageApiKey }),
+      setImageAspectRatio: (imageAspectRatio) => set({ imageAspectRatio }),
+      setVideoProvider: (videoProvider) => set({ videoProvider }),
+      setVideoApiKey: (videoApiKey) => set({ videoApiKey }),
+      setVideoAspectRatio: (videoAspectRatio) => set({ videoAspectRatio }),
 
       // Actions cho Thương mại hóa (VIP/PRO)
       setVipStatus: (is_vip, is_pro) => set({ is_vip, is_pro }),
@@ -457,6 +469,7 @@ export const useNovelStore = create<NovelStore>()(
         generatedImages: state.generatedImages,
         generatedVideos: state.generatedVideos,
         
+        workspaceTab: state.workspaceTab,
         savePathTTS: state.savePathTTS,
         savePathImage: state.savePathImage,
         savePathCharacter: state.savePathCharacter,

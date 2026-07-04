@@ -7,7 +7,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { 
       chapterNum, 
-      ten_tac_pham, 
       generatedAudioPaths, 
       generatedImages, 
       generatedVideos 
@@ -16,8 +15,6 @@ export async function POST(req: Request) {
     if (!chapterNum) {
       return NextResponse.json({ error: 'Missing chapterNum' }, { status: 400 });
     }
-
-    const title = `${ten_tac_pham || 'Project'}_Ch${chapterNum}_CapCut`;
 
     // 1. Build tracks
     const videoClips: ClipSpec[] = [];

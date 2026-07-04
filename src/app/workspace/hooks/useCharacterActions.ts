@@ -62,6 +62,15 @@ export function useCharacterActions() {
       if (data.thoi_quen) setThoiQuen(data.thoi_quen);
       if (data.prompt) setCharPrompt(data.prompt);
 
+      // Cập nhật trạng thái duy nhất toàn cục ngay lập tức (1 trạng thái duy nhất)
+      store.updateNhanVatPrompt(char, {
+        gioi_tinh: data.gioi_tinh || gioiTinh,
+        quan_ao: data.quan_ao || quanAo,
+        so_thich: data.so_thich || soThich,
+        thoi_quen: data.thoi_quen || thoiQuen,
+        prompt: data.prompt || charPrompt
+      });
+
       alert(`🎉 Đã tự động sinh và điền toàn bộ hồ sơ AI cho nhân vật "${char}" thành công!`);
     } catch (err: unknown) {
       alert(`❌ Lỗi tạo hồ sơ nhân vật: ${err instanceof Error ? err.message : String(err)}`);
@@ -87,6 +96,8 @@ export function useCharacterActions() {
 
       if (prompt) {
         setCharPrompt(prompt);
+        // Cập nhật trạng thái duy nhất toàn cục ngay lập tức
+        store.updateNhanVatPrompt(char, { prompt });
         alert('🎉 Đã tạo lại prompt vẽ ảnh cực kỳ an toàn để tránh vi phạm chính sách!');
       }
     } catch (err: unknown) {
@@ -99,6 +110,7 @@ export function useCharacterActions() {
   // Sinh ảnh concept art chân dung cho nhân vật bằng AI Whisk
   const handleGenerateCharImage = async (char: string) => {
     setGeneratingCharImage(true);
+    store.addGeneratedImage(`char_${char}`, '');
     try {
       const data = await generateCharImageAction({
         char,

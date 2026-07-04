@@ -54,18 +54,20 @@ export function useSetupActions() {
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         setupData: store.setup
-      });
+      }) as Record<string, unknown>;
 
-      store.updateTenTacPham(data.tieu_de || 'Ký Ức Phai Tàn: Mạng Lưới Hư Vô');
-      store.updateDanYTongThe(data.dan_y_tong_the || 'Dàn ý tổng thể.');
-      store.updateNhanVat(data.nhan_vat || ['Khải Đăng']);
+      store.updateTenTacPham((data.tieu_de as string) || 'Ký Ức Phai Tàn: Mạng Lưới Hư Vô');
+      store.updateDanYTongThe((data.dan_y_tong_the as string) || 'Dàn ý tổng thể.');
+      store.updateNhanVat((data.nhan_vat as string[]) || ['Khải Đăng']);
       
-      if (data.lorebook) store.updateLorebook(data.lorebook);
-      if (data.tom_tat_cuon_chieu) store.updateTomTatCuonChieu(data.tom_tat_cuon_chieu);
-      if (data.tri_nho_ngan_han) store.updateTriNhoNganHan(data.tri_nho_ngan_han);
+      if (data.lorebook) store.updateLorebook(data.lorebook as string);
+      if (data.tom_tat_cuon_chieu) store.updateTomTatCuonChieu(data.tom_tat_cuon_chieu as string);
+      if (data.tri_nho_ngan_han) store.updateTriNhoNganHan(data.tri_nho_ngan_han as string[]);
+
 
       // Convert to Chuong format with extremely robust key fallbacks and strict numeric parsing
-      const rawChapters = data.danh_sach_chuong || data.danhSachChuong || data.chapters || data.danh_sach_cac_chuong || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawChapters = (data.danh_sach_chuong || data.danhSachChuong || data.chapters || data.danh_sach_cac_chuong || []) as any[];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const convertedChapters: Chuong[] = rawChapters.map((ch: any, idx: number) => {
         const parsedSo = parseInt(String(ch.so_chuong || ch.chapter || ch.id || ch.index).replace(/\D/g, ''));

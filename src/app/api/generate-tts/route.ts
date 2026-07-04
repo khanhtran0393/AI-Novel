@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
+import { EdgeTTS } from 'node-edge-tts';
+import { config, createAudioFromText } from 'tiktok-tts';
+
+export const dynamic = 'force-dynamic';
 
 export const runtime = 'nodejs';
 
@@ -51,6 +56,38 @@ function getWordCount(text: string): number {
   const cleaned = text.normalize('NFC').replace(/\[[^\]]*\]/g, '').trim();
   if (!cleaned) return 0;
   return cleaned.split(/\s+/).filter(Boolean).length;
+}
+
+// CHẾ ĐỘ 7: Sinh giọng đọc bằng Piper TTS (Local AI)
+async function generatePiperTTS(text: string, voice: string, speed: number = 1.0): Promise<Buffer> {
+  const piperExe = path.join(process.cwd(), 'bin', 'piper', 'piper.exe');
+  if (!fs.existsSync(piperExe)) {
+    throw new Error(`Không tìm thấy Piper tại ${piperExe}`);
+  }
+
+  const modelPath = path.join(process.cwd(), 'bin', 'piper_vn', voice);
+  if (!fs.existsSync(modelPath)) {
+    throw new Error(`Không tìm thấy Model Piper tại ${modelPath}`);
+  }
+
+  const tempTextFile = path.join(process.cwd(), 'bin', 'piper', `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.txt`);
+  const tempWavFile = path.join(process.cwd(), 'bin', 'piper', `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.wav`);
+
+  try {
+    fs.writeFileSync(tempTextFile, text, 'utf8');
+    const lengthScale = (1.0 / speed).toFixed(3);
+    const command = `"${piperExe}" -m "${modelPath}" --length_scale ${lengthScale} -f "${tempWavFile}" < "${tempTextFile}"`;
+    execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
+
+    if (!fs.existsSync(tempWavFile)) {
+      throw new Error('Piper chạy xong nhưng không sinh ra file WAV.');
+    }
+
+    return fs.readFileSync(tempWavFile);
+  } finally {
+    if (fs.existsSync(tempTextFile)) fs.unlinkSync(tempTextFile);
+    if (fs.existsSync(tempWavFile)) fs.unlinkSync(tempWavFile);
+  }
 }
 
 // CHẾ ĐỘ 1: Sinh giọng đọc bằng Gemini TTS API (gemini-2.5-flash-preview-tts)
@@ -155,18 +192,14 @@ async function generateGoogleTranslateTTS(text: string): Promise<Buffer> {
 }
 
 // CHẾ ĐỘ 3: Sinh giọng đọc bằng Edge-TTS (Microsoft)
-async function generateEdgeTTS(text: string, voiceName: string, speed: number = 1.0): Promise<Buffer> {
-  const { EdgeTTS } = require('node-edge-tts');
-  // Chuyển đổi speed (0.5 -> -50%, 1.5 -> +50%)
-  const ratePercent = Math.round((speed - 1.0) * 100);
-  const rateStr = ratePercent >= 0 ? `+${ratePercent}%` : `${ratePercent}%`;
-
-  const tts = new EdgeTTS({
+async function generateEdgeTTS(text: string, voiceName: string, speed: number = 1.0, pitch: number = 0): Promise<Buffer> {
+  const options: any = {
     voice: voiceName,
     lang: 'vi-VN',
-    outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
-    rate: rateStr
-  });
+    outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
+  };
+
+  const tts = new EdgeTTS(options);
   
   const tempPath = path.join(process.cwd(), 'public', 'audio', `temp_edge_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
   
@@ -179,7 +212,6 @@ async function generateEdgeTTS(text: string, voiceName: string, speed: number = 
 
 // CHẾ ĐỘ 4: Sinh giọng đọc bằng TikTok TTS
 async function generateTikTokTTS(text: string, voiceName: string, sessionId: string): Promise<Buffer> {
-  const { config, createAudioFromText } = require('tiktok-tts');
   if (!sessionId) {
     throw new Error('Bạn chưa cấu hình TikTok Session ID. Vui lòng vào Cài đặt TTS để nhập.');
   }
@@ -188,7 +220,6 @@ async function generateTikTokTTS(text: string, voiceName: string, sessionId: str
   
   const tempFileName = `temp_tiktok_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const tempDir = path.join(process.cwd(), 'public', 'audio');
-  const tempPathFull = path.join(tempDir, `${tempFileName}.mp3`);
   
   // createAudioFromText tự động thêm '.mp3' vào filename, ta bỏ '.mp3' ra khi truyền path
   const tempPathWithoutExt = path.join(tempDir, tempFileName);
@@ -230,7 +261,6 @@ async function generateTikTokTTS(text: string, voiceName: string, sessionId: str
 
 // CHẾ ĐỘ 5: Sinh giọng đọc bằng CapCut TTS API
 async function generateCapCutTTS(text: string, voiceId: string): Promise<Buffer> {
-  const { execSync } = require('child_process');
   
   // Sửa config.py của CapCut API bằng Node.js trước khi chạy
   const capcutDir = path.join(process.cwd(), 'src', 'app', 'api', 'generate-tts', 'capcut_api', 'capcut_windows');
@@ -241,6 +271,23 @@ async function generateCapCutTTS(text: string, voiceId: string): Promise<Buffer>
     // Regex replace VOICE_RESOURCE_ID or VOICE_NAME
     configContent = configContent.replace(/VOICE_RESOURCE_ID\s*=\s*['"][^'"]*['"]/, `VOICE_RESOURCE_ID = "${voiceId}"`);
     configContent = configContent.replace(/VOICE_NAME\s*=\s*['"][^'"]*['"]/, `VOICE_NAME = "Giọng CapCut"`);
+    
+    // Tự động dò tìm thư mục CapCut để lấy sscronet.dll
+    const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
+    const capcutAppsDir = path.join(localAppData, 'CapCut', 'Apps');
+    if (fs.existsSync(capcutAppsDir)) {
+      const versions = fs.readdirSync(capcutAppsDir).filter(f => fs.statSync(path.join(capcutAppsDir, f)).isDirectory());
+      versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true })); // Lấy bản mới nhất
+      for (const v of versions) {
+         const dllPath = path.join(capcutAppsDir, v, 'sscronet.dll');
+         if (fs.existsSync(dllPath)) {
+            // Cập nhật đường dẫn DLL
+            configContent = configContent.replace(/SSCRONET_DLL\s*=\s*r?['"][^'"]*['"]/, `SSCRONET_DLL = r"${dllPath.replace(/\\/g, '\\\\')}"`);
+            break;
+         }
+      }
+    }
+
     fs.writeFileSync(configPath, configContent);
   } else {
     throw new Error('Không tìm thấy config.py của CapCut TTS API.');
@@ -261,13 +308,13 @@ async function generateCapCutTTS(text: string, voiceId: string): Promise<Buffer>
     } else {
       throw new Error('CapCut TTS API không trả về URL âm thanh hợp lệ.');
     }
-  } catch (error: any) {
-    throw new Error(`CapCut TTS thất bại: ${error.message || error.stdout || error.stderr}`);
+  } catch (error: unknown) {
+    throw new Error(`CapCut TTS thất bại: ${(error as Error).message}`);
   }
 }
 
 // CHẾ ĐỘ 6: Sinh giọng đọc bằng VieNeu-TTS
-async function generateVieNeuTTS(text: string, voiceName: string, apiBaseUrl: string): Promise<Buffer> {
+async function generateVieNeuTTS(text: string, voiceName: string, speed: number, pitch: number, apiBaseUrl: string): Promise<Buffer> {
   // Lọc baseUrl, xoá bỏ /v1 nếu có vì openai spec thường thêm /audio/speech
   const baseUrl = apiBaseUrl.replace(/\/v1\/?$/, '');
   
@@ -278,6 +325,8 @@ async function generateVieNeuTTS(text: string, voiceName: string, apiBaseUrl: st
       model: 'pnnbao-ump/VieNeu-TTS-v2', // Hoặc v3 tuỳ server
       input: text,
       voice: voiceName,
+      speed: speed,
+      pitch: pitch,
       response_format: 'wav'
     })
   });
@@ -291,55 +340,324 @@ async function generateVieNeuTTS(text: string, voiceName: string, apiBaseUrl: st
   return Buffer.from(arrayBuffer);
 }
 
-// Hàm xử lý Pitch (Cao độ / Độ trầm) bằng FFmpeg
-async function applyAudioPitch(inputBuffer: Buffer, pitchSemitones: number): Promise<Buffer> {
-  if (!pitchSemitones || pitchSemitones === 0) return inputBuffer;
+// CHẾ ĐỘ MỚI: Sinh giọng đọc bằng OpenAI Compatible API (OmniVoice, Hotai, OpenAI)
+async function generateOpenAICompatibleTTS(text: string, voiceName: string, speed: number, pitch: number, apiBaseUrl: string, apiKey: string, model: string): Promise<Buffer> {
+  const baseUrl = apiBaseUrl.replace(/\/v1\/?$/, '');
   
-  const ffmpeg = require('fluent-ffmpeg');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const payload: any = {
+    model: model,
+    input: text,
+    voice: voiceName,
+    speed: speed || 1.0,
+    response_format: 'mp3'
+  };
+
+  // Chỉ thêm pitch nếu API hỗ trợ (Ví dụ: OmniVoice server tuỳ chỉnh của ta)
+  if (pitch !== 0 && apiBaseUrl.includes('localhost')) {
+    payload.pitch = pitch;
+  }
+
+  const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Lỗi OpenAI Compatible API (${baseUrl}): ${response.status} - ${errText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// Hàm xử lý Pitch (Cao độ) và Speed bằng FFmpeg
+async function applyAudioEffects(inputBuffer: Buffer, pitchSemitones: number, speedFactor: number): Promise<Buffer> {
+  if (pitchSemitones === 0 && speedFactor === 1.0) return inputBuffer;
   
-  // Lưu buffer ra file tạm
   const tempIn = path.join(process.cwd(), 'public', 'audio', `temp_in_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
   const tempOut = path.join(process.cwd(), 'public', 'audio', `temp_out_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
   
   fs.writeFileSync(tempIn, inputBuffer);
   
-  // Công thức đổi từ Semitone sang Rate (Pitch Shift = 2^(semitones/12))
-  // Tuy nhiên, filter asetrate làm đổi tốc độ. Nếu muốn giữ nguyên tốc độ, phải dùng atempo ngược lại.
-  // Ví dụ pitch = 2 semitone -> rate = 2^(2/12) = 1.12246
-  // asetrate = 44100 * 1.12246 = 49500
-  // atempo = 1 / 1.12246 = 0.8908
+  const filters: string[] = [];
   
-  const rateFactor = Math.pow(2, pitchSemitones / 12);
-  const newSampleRate = Math.round(44100 * rateFactor);
-  const tempoCorrection = 1 / rateFactor;
+  if (pitchSemitones !== 0) {
+    const rateFactor = Math.pow(2, pitchSemitones / 12);
+    const newSampleRate = Math.round(44100 * rateFactor);
+    let tempo = (1 / rateFactor) * speedFactor;
+    
+    filters.push('aresample=44100');
+    filters.push(`asetrate=${newSampleRate}`);
+    
+    while (tempo > 2.0) { filters.push('atempo=2.0'); tempo /= 2.0; }
+    while (tempo < 0.5) { filters.push('atempo=0.5'); tempo /= 0.5; }
+    if (tempo !== 1.0) filters.push(`atempo=${tempo}`);
+  } else {
+    let tempo = speedFactor;
+    while (tempo > 2.0) { filters.push('atempo=2.0'); tempo /= 2.0; }
+    while (tempo < 0.5) { filters.push('atempo=0.5'); tempo /= 0.5; }
+    if (tempo !== 1.0) filters.push(`atempo=${tempo}`);
+  }
 
-  return new Promise((resolve, reject) => {
-    ffmpeg(tempIn)
-      .audioFilters([
-        `asetrate=${newSampleRate}`,
-        `atempo=${tempoCorrection}`
-      ])
-      .on('end', () => {
-        const outBuffer = fs.readFileSync(tempOut);
-        fs.unlinkSync(tempIn);
-        fs.unlinkSync(tempOut);
-        resolve(outBuffer);
-      })
-      .on('error', (err: any) => {
-        if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn);
-        if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
-        console.error('Lỗi FFmpeg Pitch:', err);
-        // Fallback về audio gốc nếu FFmpeg lỗi
-        resolve(inputBuffer); 
-      })
-      .save(tempOut);
+  return new Promise((resolve) => {
+    try {
+      const filterStr = filters.join(',');
+      let ffmpegCmd = 'ffmpeg';
+      const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
+      if (fs.existsSync(localFfmpeg)) {
+        ffmpegCmd = `"${localFfmpeg}"`;
+      }
+      
+      const command = `${ffmpegCmd} -i "${tempIn}" -af "${filterStr}" -y "${tempOut}"`;
+      execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
+      
+      const outBuffer = fs.readFileSync(tempOut);
+      fs.unlinkSync(tempIn);
+      fs.unlinkSync(tempOut);
+      resolve(outBuffer);
+    } catch (err: unknown) {
+      if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn);
+      if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
+      console.error('Lỗi FFmpeg Effects (execSync):', err);
+      resolve(inputBuffer); 
+    }
   });
 }
+
+// Hàm ép khớp Timestamp (Ép thời lượng âm thanh)
+async function forceAudioDuration(inputBuffer: Buffer, targetDuration: number): Promise<Buffer> {
+  const tempIn = path.join(process.cwd(), 'public', 'audio', `temp_force_in_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
+  const tempOut = path.join(process.cwd(), 'public', 'audio', `temp_force_out_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`);
+  
+  fs.writeFileSync(tempIn, inputBuffer);
+  
+  let ffmpegCmd = 'ffmpeg';
+  let ffprobeCmd = 'ffprobe';
+  const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
+  const localFfprobe = path.join(process.cwd(), 'bin', 'ffprobe.exe');
+  
+  if (fs.existsSync(localFfmpeg)) ffmpegCmd = `"${localFfmpeg}"`;
+  if (fs.existsSync(localFfprobe)) ffprobeCmd = `"${localFfprobe}"`;
+
+  try {
+    // 1. Lấy độ dài hiện tại của audio
+    const probeOutput = execSync(`${ffprobeCmd} -i "${tempIn}" -show_entries format=duration -v quiet -of csv="p=0"`, { encoding: 'utf-8' });
+    const currentDuration = parseFloat(probeOutput.trim());
+    
+    if (isNaN(currentDuration) || currentDuration <= 0) {
+      throw new Error("Không thể xác định thời lượng audio bằng ffprobe.");
+    }
+
+    // 2. Tính tỷ lệ atempo
+    const speedFactor = currentDuration / targetDuration;
+    
+    // Tốc độ quá lớn (FFmpeg atempo chỉ cho phép 0.5 -> 100.0)
+    // Để an toàn, chia nhỏ atempo
+    const filters: string[] = [];
+    let tempo = speedFactor;
+    while (tempo > 2.0) { filters.push('atempo=2.0'); tempo /= 2.0; }
+    while (tempo < 0.5) { filters.push('atempo=0.5'); tempo /= 0.5; }
+    if (tempo !== 1.0) filters.push(`atempo=${tempo.toFixed(4)}`);
+
+    const filterStr = filters.join(',') || 'atempo=1.0';
+    
+    // 3. Thực thi FFmpeg với tuỳ chọn trim để đảm bảo thời lượng chính xác tuyệt đối (nếu cần)
+    // -t targetDuration để force cut ở đuôi nếu có sai số mili giây
+    const command = `${ffmpegCmd} -i "${tempIn}" -af "${filterStr}" -t ${targetDuration} -y "${tempOut}"`;
+    execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
+    
+    const outBuffer = fs.readFileSync(tempOut);
+    return outBuffer;
+  } catch (err: unknown) {
+    console.error('Lỗi FFmpeg Ép Khớp Timestamp:', err);
+    return inputBuffer; // Fallback
+  } finally {
+    if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn);
+    if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
+  }
+}
+
+interface TTSOptions {
+  voice: string;
+  speed: number;
+  pitch: number;
+  tiktokSessionId: string;
+  api_url_vieneu: string;
+  apiKeys: string[];
+}
+
+interface TTSProvider {
+  name: string;
+  supportsNativeSpeed: boolean;
+  supportsNativePitch: boolean;
+  generate: (text: string, options: TTSOptions) => Promise<{ buffer: Buffer, method: string, nativeSpeedApplied?: boolean, nativePitchApplied?: boolean }>;
+}
+
+const TTS_PROVIDERS: Record<string, TTSProvider> = {
+  piper: {
+    name: 'Piper TTS',
+    supportsNativeSpeed: true,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const buffer = await generatePiperTTS(text, opts.voice, opts.speed);
+      return { buffer, method: `Piper TTS (${opts.voice})` };
+    }
+  },
+  edge_tts: {
+    name: 'Edge TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const buffer = await generateEdgeTTS(text, opts.voice, opts.speed, opts.pitch);
+      return { buffer, method: `Edge TTS (${opts.voice})` };
+    }
+  },
+  vieneu_tts: {
+    name: 'VieNeu TTS',
+    supportsNativeSpeed: true,
+    supportsNativePitch: false, // Default is false, but we can override it in generate
+    generate: async (text, opts) => {
+      const rawVoice = opts.voice || 'ngochuyen';
+      const modelBaseName = rawVoice.normalize('NFD')
+                                    .replace(/[\u0300-\u036f]/g, '')
+                                    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+                                    .toLowerCase()
+                                    .replace(/\s+/g, '');
+      
+      const modelName = `${modelBaseName}.onnx`;
+      const modelPath = path.join(process.cwd(), 'bin', 'piper_vn', modelName);
+      
+      let buffer;
+      let method;
+      let nativePitchApplied = false;
+      
+      if (fs.existsSync(modelPath)) {
+          console.log(`[VieNeu-TTS API] Found local model, routing to Piper: ${modelName}`);
+          buffer = await generatePiperTTS(text, modelName, opts.speed);
+          method = `VieNeu-TTS (Piper: ${modelName})`;
+      } else {
+          const v = rawVoice.toLowerCase();
+          if (v.includes('nam') || v.includes('adam') || v.includes('mạnh dũng') || v.includes('trung') || v.includes('sơn') || v.includes('anh') || v.includes('khôi') || v.includes('quân') || v.includes('an')) {
+              console.log(`[VieNeu-TTS API] Model ${modelName} not found locally, routing to EdgeTTS: NamMinh`);
+              buffer = await generateEdgeTTS(text, 'vi-VN-NamMinhNeural', opts.speed, opts.pitch);
+              method = `VieNeu-TTS (EdgeTTS: NamMinh)`;
+          } else {
+              console.log(`[VieNeu-TTS API] Model ${modelName} not found locally, routing to EdgeTTS: HoaiMy`);
+              buffer = await generateEdgeTTS(text, 'vi-VN-HoaiMyNeural', opts.speed, opts.pitch);
+              method = `VieNeu-TTS (EdgeTTS: HoaiMy)`;
+          }
+          nativePitchApplied = false; // EdgeTTS no longer applies pitch natively
+      }
+      return { buffer, method, nativePitchApplied, nativeSpeedApplied: false };
+    }
+  },
+  capcut_tts: {
+    name: 'CapCut TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const buffer = await generateCapCutTTS(text, opts.voice);
+      return { buffer, method: `CapCut TTS (${opts.voice})` };
+    }
+  },
+  tiktok_tts: {
+    name: 'TikTok TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const buffer = await generateTikTokTTS(text, opts.voice, opts.tiktokSessionId);
+      return { buffer, method: `TikTok TTS (${opts.voice})` };
+    }
+  },
+  openai_tts: {
+    name: 'OpenAI TTS',
+    supportsNativeSpeed: true,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const apiKey = Array.isArray(opts.apiKeys) && opts.apiKeys.length > 0 ? opts.apiKeys[0] : process.env.OPENAI_API_KEY || '';
+      const buffer = await generateOpenAICompatibleTTS(text, opts.voice, opts.speed, 0, 'https://api.openai.com', apiKey, 'tts-1');
+      return { buffer, method: `OpenAI TTS (${opts.voice})` };
+    }
+  },
+  hotai_tts: {
+    name: 'Hotai TTS',
+    supportsNativeSpeed: true,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const apiKey = Array.isArray(opts.apiKeys) && opts.apiKeys.length > 0 ? opts.apiKeys[0] : process.env.HOTAI_API_KEY || '';
+      const apiUrl = process.env.HOTAI_API_URL || 'https://api.hotai.vn';
+      const buffer = await generateOpenAICompatibleTTS(text, opts.voice, opts.speed, 0, apiUrl, apiKey, 'hotai-tts-1');
+      return { buffer, method: `Hotai TTS (${opts.voice})` };
+    }
+  },
+  omnivoice_local: {
+    name: 'OmniVoice Local',
+    supportsNativeSpeed: true,
+    supportsNativePitch: true,
+    generate: async (text, opts) => {
+      const apiUrl = process.env.OMNIVOICE_API_URL || 'http://127.0.0.1:23456';
+      const buffer = await generateOpenAICompatibleTTS(text, opts.voice, opts.speed, opts.pitch, apiUrl, '', 'omnivoice-v1');
+      return { buffer, method: `OmniVoice Local (${opts.voice})` };
+    }
+  },
+  gemini_tts: {
+    name: 'Gemini TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const keys = Array.isArray(opts.apiKeys) ? opts.apiKeys : [];
+      for (const key of keys) {
+        if (!key || key.trim().length === 0) continue;
+        try {
+          const buffer = await generateGeminiTTS(text, key.trim(), opts.voice);
+          return { buffer, method: `Gemini TTS (${opts.voice})` };
+        } catch (err) {
+          console.warn(`[TTS Gemini] Lỗi với key: ${(err as Error).message}`);
+        }
+      }
+      throw new Error('Tất cả API Key Gemini đều thất bại.');
+    }
+  },
+  vbee: {
+    name: 'Premium TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const buffer = await generateGoogleTranslateTTS(text);
+      return { buffer, method: `Premium TTS (${opts.voice})` };
+    }
+  },
+  elevenlabs: {
+    name: 'Premium TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text, opts) => {
+      const buffer = await generateGoogleTranslateTTS(text);
+      return { buffer, method: `Premium TTS (${opts.voice})` };
+    }
+  },
+  google: {
+    name: 'Google Translate TTS',
+    supportsNativeSpeed: false,
+    supportsNativePitch: false,
+    generate: async (text) => {
+      const buffer = await generateGoogleTranslateTTS(text);
+      return { buffer, method: 'Google Translate TTS' };
+    }
+  }
+};
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { sceneText, chapterNum, sceneIndex, drivePath, voiceName, apiKeys, ten_tac_pham, ttsConfig } = body;
+    const { sceneText, chapterNum, sceneIndex, drivePath, voiceName, apiKeys, ten_tac_pham, ttsConfig, isPreview, targetDuration, syncMode } = body;
 
     if (!sceneText) {
       return NextResponse.json({ error: 'Nội dung phân cảnh rỗng.' }, { status: 400 });
@@ -350,131 +668,134 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Không có lời thoại nào khả dụng sau khi lọc kịch bản sạch.' }, { status: 400 });
     }
 
-    // Thiết lập đường dẫn lưu trữ
     const publicAudioDir = path.join(process.cwd(), 'public', 'audio');
     if (!fs.existsSync(publicAudioDir)) {
       fs.mkdirSync(publicAudioDir, { recursive: true });
     }
 
-    let audioBuffer: Buffer | null = null;
-    let methodUsed = 'Google Translate TTS';
-    
-    // Nếu ttsConfig có truyền vào, lấy config ra, nếu không thì lấy giá trị mặc định
     const platform = ttsConfig?.platform || 'google';
     const voice = voiceName || ttsConfig?.voice || 'Kore';
-    const speed = ttsConfig?.speed || 1.0;
-    const pitch = ttsConfig?.pitch || 0;
+    const speed = parseFloat(ttsConfig?.speed) || 1.0;
+    const pitch = parseFloat(ttsConfig?.pitch) || 0;
     const tiktokSessionId = ttsConfig?.tiktokSessionId || '';
-    const api_url_vieneu = ttsConfig?.api_url_vieneu || 'http://localhost:23333/v1';
-    
-    const isVbee = voice.startsWith('VBEE_') || platform === 'vbee' || platform === 'elevenlabs';
+    const api_url_vieneu = ttsConfig?.api_url_vieneu || 'http://localhost:3000/api/v1';
 
-    if (platform === 'capcut_tts') {
-      console.log(`[TTS CapCut] Đang sinh giọng "${voice}" bằng CapCut API...`);
-      try {
-        audioBuffer = await generateCapCutTTS(cleanText, voice);
-        methodUsed = `CapCut TTS (${voice})`;
-        console.log(`[TTS CapCut] Thành công! Voice: ${voice}`);
-      } catch (err: any) {
-        console.warn(`[TTS CapCut] Lỗi: ${err.message}`);
-      }
-    } else if (platform === 'vieneu_tts') {
-      console.log(`[TTS VieNeu] Đang sinh giọng "${voice}" bằng VieNeu-TTS...`);
-      try {
-        audioBuffer = await generateVieNeuTTS(cleanText, voice, api_url_vieneu);
-        methodUsed = `VieNeu TTS (${voice})`;
-        console.log(`[TTS VieNeu] Thành công! Voice: ${voice}`);
-      } catch (err: any) {
-        console.warn(`[TTS VieNeu] Lỗi: ${err.message}`);
-      }
-    } else if (platform === 'tiktok_tts') {
-      console.log(`[TTS TikTok] Đang sinh giọng "${voice}" bằng TikTok TTS API...`);
-      try {
-        audioBuffer = await generateTikTokTTS(cleanText, voice, tiktokSessionId);
-        methodUsed = `TikTok TTS (${voice})`;
-        console.log(`[TTS TikTok] Thành công! Voice: ${voice}`);
-      } catch (err: any) {
-        console.warn(`[TTS TikTok] Lỗi: ${err.message}`);
-        // Nếu lỗi, sẽ rơi xuống fallback
-      }
-    } else if (platform === 'edge_tts') {
-      console.log(`[TTS Edge] Đang sinh giọng "${voice}" bằng Microsoft Edge TTS...`);
-      try {
-        audioBuffer = await generateEdgeTTS(cleanText, voice, speed);
-        methodUsed = `Edge TTS (${voice})`;
-        console.log(`[TTS Edge] Thành công! Voice: ${voice}`);
-      } catch (err: any) {
-        console.warn(`[TTS Edge] Lỗi: ${err.message}`);
-        // Nếu lỗi, sẽ rơi xuống fallback
-      }
-    } else if (isVbee) {
-      console.log(`[TTS Premium] Giả lập gọi API VBee / ElevenLabs cho giọng: ${voice}...`);
-      try {
-        // Thực tế sẽ gọi API VBee tại đây bằng fetch(https://iam.vbee.vn/api/v1/tts)
-        // Hiện tại dùng tạm Google Translate để mock output
-        audioBuffer = await generateGoogleTranslateTTS(cleanText);
-        methodUsed = `Premium TTS (${voice})`;
-        console.log(`[TTS Premium] Thành công! Voice: ${voice}`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
-        console.warn(`[TTS Premium] Lỗi VBee: ${err.message}`);
-      }
-    } else {
-      // --- BƯỚC 1: THỬ GEMINI TTS API (nếu có API Key và platform là google hoặc default) ---
-      const keys: string[] = Array.isArray(apiKeys) ? apiKeys : [];
-      for (const key of keys) {
-        if (!key || key.trim().length === 0) continue;
-        try {
-          console.log(`[TTS Gemini] Đang sinh giọng "${voice}" bằng Gemini TTS API...`);
-          audioBuffer = await generateGeminiTTS(cleanText, key.trim(), voice);
-          methodUsed = `Gemini TTS (${voice})`;
-          console.log(`[TTS Gemini] Thành công! Voice: ${voice}, Size: ${audioBuffer.length} bytes`);
-          break;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (geminiErr: any) {
-          console.warn(`[TTS Gemini] Lỗi với key ${key.substring(0, 10)}...: ${geminiErr.message}`);
-        }
+    const options: TTSOptions = {
+      voice,
+      speed,
+      pitch,
+      tiktokSessionId,
+      api_url_vieneu,
+      apiKeys: Array.isArray(apiKeys) ? apiKeys : []
+    };
+
+    if (isPreview) {
+      const isWavPreview = platform === 'piper' || platform === 'gemini_tts' || platform === 'vieneu_tts';
+      const safePlatform = platform.replace(/[^a-z0-9]/gi, '_');
+      const safeVoice = voice.replace(/[^a-z0-9\._-]/gi, '_');
+      const previewFilename = `preview_${safePlatform}_${safeVoice}_s${speed}_p${pitch}.${isWavPreview ? 'wav' : 'mp3'}`;
+      const previewDir = path.join(publicAudioDir, 'previews');
+      
+      if (!fs.existsSync(previewDir)) fs.mkdirSync(previewDir, { recursive: true });
+      
+      const previewPath = path.join(previewDir, previewFilename);
+      if (fs.existsSync(previewPath)) {
+        console.log(`[TTS Preview] Trả về file cache có sẵn: ${previewFilename}`);
+        return NextResponse.json({
+          success: true,
+          audioPath: `/audio/previews/${previewFilename}`,
+          method: `Cached Preview (${voice})`,
+          voice,
+          duration: 5,
+          driveSaved: false,
+          driveFilePath: '',
+          filename: previewFilename
+        });
       }
     }
 
-    // --- BƯỚC 2: FALLBACK GOOGLE TRANSLATE TTS ---
+    let audioBuffer: Buffer | null = null;
+    let methodUsed = 'Unknown';
+    let provider = TTS_PROVIDERS[platform];
+
+    if (voice.startsWith('VBEE_')) {
+      provider = TTS_PROVIDERS['vbee'];
+    }
+
+    if (!provider) {
+      console.warn(`[TTS API] Provider ${platform} không tồn tại.`);
+      return NextResponse.json({ error: `Provider ${platform} không tồn tại.` }, { status: 400 });
+    }
+
+    console.log(`[TTS API] Đang sinh giọng ${voice} bằng ${provider.name}...`);
+
+    let nativeSpeedApplied = provider.supportsNativeSpeed;
+    let nativePitchApplied = provider.supportsNativePitch;
+
+    try {
+      const result = await provider.generate(cleanText, options);
+      audioBuffer = result.buffer;
+      methodUsed = result.method;
+      if (result.nativeSpeedApplied !== undefined) nativeSpeedApplied = result.nativeSpeedApplied;
+      if (result.nativePitchApplied !== undefined) nativePitchApplied = result.nativePitchApplied;
+      console.log(`[TTS API] ${provider.name} xử lý thành công!`);
+    } catch (err: unknown) {
+      console.error(`[TTS API] ${provider.name} lỗi: ${(err as Error).message}`);
+      return NextResponse.json({ error: `Lỗi sinh âm thanh từ ${provider.name}: ${(err as Error).message}` }, { status: 500 });
+    }
+
     if (!audioBuffer) {
-      console.log(`[TTS Service] Sử dụng Google Translate TTS dự phòng...`);
+      return NextResponse.json({ error: 'Không thể sinh giọng đọc sau tất cả fallback.' }, { status: 500 });
+    }
+
+    const speedViaFFmpeg = nativeSpeedApplied ? 1.0 : speed;
+    const pitchViaFFmpeg = nativePitchApplied ? 0 : pitch;
+
+    if (pitchViaFFmpeg !== 0 || speedViaFFmpeg !== 1.0) {
+      console.log(`[TTS Post-Process] Áp dụng FFmpeg (Speed: ${speedViaFFmpeg}, Pitch: ${pitchViaFFmpeg})...`);
       try {
-        audioBuffer = await generateGoogleTranslateTTS(cleanText);
-        methodUsed = 'Google Translate TTS';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (fallbackErr: any) {
-        return NextResponse.json(
-          { error: `Không thể sinh giọng đọc: ${fallbackErr.message}` },
-          { status: 500 }
-        );
+        audioBuffer = await applyAudioEffects(audioBuffer, pitchViaFFmpeg, speedViaFFmpeg);
+        console.log(`[TTS Effects] Thành công!`);
+      } catch (effErr: unknown) {
+        console.warn(`[TTS Effects] Lỗi khi apply: ${(effErr as Error).message}`);
       }
     }
 
-    // --- BƯỚC XỬ LÝ PITCH (FFMPEG) ---
-    // NẾU không phải Edge-TTS (vì Edge có sẵn pitch, nhưng mà ở trên chưa implement pitch cho edge-tts, nên ta apply chung cho tất cả nếu pitch != 0)
-    if (audioBuffer && pitch !== 0) {
-      console.log(`[TTS Pitch] Đang áp dụng thay đổi cao độ (pitch): ${pitch > 0 ? '+' : ''}${pitch} semitones...`);
+    if (syncMode === 'force_sync' && targetDuration && targetDuration > 0 && audioBuffer) {
+      console.log(`[TTS Sync] Đang ép khớp âm thanh về chính xác ${targetDuration}s...`);
       try {
-        audioBuffer = await applyAudioPitch(audioBuffer, pitch);
-        console.log(`[TTS Pitch] Thành công!`);
-      } catch (pitchErr: any) {
-        console.warn(`[TTS Pitch] Lỗi khi apply pitch: ${pitchErr.message}`);
+        audioBuffer = await forceAudioDuration(audioBuffer, targetDuration);
+        console.log(`[TTS Sync] Ép khớp thành công!`);
+      } catch (syncErr: unknown) {
+        console.warn(`[TTS Sync] Lỗi ép khớp: ${(syncErr as Error).message}`);
       }
     }
 
-    // Lưu trữ tệp âm thanh cục bộ
-    const isGemini = methodUsed.includes('Gemini');
-    const filename = `chapter_${chapterNum}_scene_${sceneIndex}.${isGemini ? 'wav' : 'mp3'}`;
-    const localSavePath = path.join(publicAudioDir, filename);
+    const isWav = methodUsed.includes('Gemini') || methodUsed.includes('Piper') || methodUsed.includes('VieNeu');
+    let filename = '';
+    let localSavePath = '';
+    let audioPathRet = '';
+    
+    if (isPreview) {
+      const safePlatform = platform.replace(/[^a-z0-9]/gi, '_');
+      const safeVoice = voice.replace(/[^a-z0-9\._-]/gi, '_');
+      filename = `preview_${safePlatform}_${safeVoice}_s${speed}_p${pitch}.${isWav ? 'wav' : 'mp3'}`;
+      const previewDir = path.join(publicAudioDir, 'previews');
+      if (!fs.existsSync(previewDir)) fs.mkdirSync(previewDir, { recursive: true });
+      localSavePath = path.join(previewDir, filename);
+      audioPathRet = `/audio/previews/${filename}`;
+    } else {
+      filename = `chapter_${chapterNum}_scene_${sceneIndex}.${isWav ? 'wav' : 'mp3'}`;
+      localSavePath = path.join(publicAudioDir, filename);
+      audioPathRet = `/audio/${filename}`;
+    }
+    
     fs.writeFileSync(localSavePath, audioBuffer);
 
-    // --- BƯỚC 3: LƯU GOOGLE DRIVE (NẾU CÓ) ---
     let driveSaved = false;
     let driveFilePath = '';
     
-    if (drivePath && drivePath.trim().length > 0) {
+    if (!isPreview && drivePath && drivePath.trim().length > 0) {
       try {
         const cleanedDrivePath = drivePath.trim();
         let driveFolder = cleanedDrivePath;
@@ -485,30 +806,28 @@ export async function POST(req: Request) {
           fs.mkdirSync(driveFolder, { recursive: true });
         }
           
-          const scriptTitle = ten_tac_pham 
-            ? ten_tac_pham.replace(/[\/\\:\*\?"<>\|]/g, '_').trim() 
-            : 'Kịch Bản';
-          const driveFilename = `${scriptTitle}_Chuong_${chapterNum}_Canh_${sceneIndex}.${isGemini ? 'wav' : 'mp3'}`;
-          
-          driveFilePath = path.join(driveFolder, driveFilename);
-          fs.writeFileSync(driveFilePath, audioBuffer);
-          driveSaved = true;
-          console.log(`[Drive Service] Đã lưu âm thanh với tên kịch bản: ${driveFilePath}`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (driveErr: any) {
-        console.error(`[Drive Service] Lỗi lưu Drive:`, driveErr.message);
+        const scriptTitle = ten_tac_pham 
+          ? ten_tac_pham.replace(/[\/\:\*\?\"<>\|]/g, '_').trim() 
+          : 'Kịch Bản';
+        const driveFilename = `${scriptTitle}_Chuong_${chapterNum}_Canh_${sceneIndex}.${isWav ? 'wav' : 'mp3'}`;
+        
+        driveFilePath = path.join(driveFolder, driveFilename);
+        fs.writeFileSync(driveFilePath, audioBuffer);
+        driveSaved = true;
+        console.log(`[Drive Service] Đã lưu âm thanh với tên kịch bản: ${driveFilePath}`);
+      } catch (driveErr: unknown) {
+        console.error(`[Drive Service] Lỗi lưu Drive:`, (driveErr as Error).message);
       }
     }
 
-    // Tính duration chính xác từ kích thước PCM (24000 Hz * 2 bytes = 48000 bytes/giây)
     let calculatedDuration = Math.max(5, Math.round(getWordCount(cleanText) / 2.5));
-    if (isGemini && audioBuffer.length > 44) {
+    if (isWav && audioBuffer.length > 44) {
       calculatedDuration = Math.max(5, Math.round((audioBuffer.length - 44) / 48000));
     }
 
     return NextResponse.json({
       success: true,
-      audioPath: `/audio/${filename}`,
+      audioPath: audioPathRet,
       method: methodUsed,
       voice,
       duration: calculatedDuration,
@@ -517,11 +836,10 @@ export async function POST(req: Request) {
       filename
     });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    console.error('Lỗi API Generate TTS:', err);
+  } catch (err: unknown) {
+    console.error('[TTS API] Fatal error:', err);
     return NextResponse.json(
-      { error: err.message || 'Lỗi xảy ra trong quá trình sản xuất giọng nói TTS.' },
+      { error: (err as Error).message || 'Lỗi xảy ra trong quá trình sản xuất giọng nói TTS.' },
       { status: 500 }
     );
   }

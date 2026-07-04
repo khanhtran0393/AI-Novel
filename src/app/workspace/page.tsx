@@ -13,6 +13,7 @@ import Header from './components/Header';
 import SetupPhase from './components/SetupPhase';
 import Sidebar from './components/Sidebar';
 import ContentTab from './components/ContentTab';
+import AINovelDashboard from './components/AINovelDashboard';
 
 // Import custom business logic hooks modules
 import { useSetupActions } from './hooks/useSetupActions';
@@ -67,7 +68,8 @@ export default function Workspace() {
     generatingTTS,
     handlePlayTTS,
     handleStopTTS,
-    handleGenerateTTS
+    handleGenerateTTS,
+    ttsProgress
   } = useTTSActions();
 
   const {
@@ -166,39 +168,55 @@ export default function Workspace() {
           {/* CỘT PHẢI: KHÔNG GIAN SOẠN THẢO VĂN BẢN */}
           <section className="flex flex-1 flex-col bg-black overflow-hidden">
             
-            {/* Header Content Panel */}
+            {/* Header Content Panel (chung hoặc riêng tùy ý) */}
             <div className="flex h-12 w-full items-center justify-between border-b border-zinc-900 bg-zinc-950 px-6 shrink-0">
               <div className="flex items-center gap-1 text-xs font-bold text-amber-500 uppercase tracking-widest">
-                <span>📝 Kịch Bản Làm Việc (Working Script)</span>
+                <span>
+                  {store.workspaceTab === 'script' 
+                    ? '📝 Kịch Bản Làm Việc (Working Script)' 
+                    : '🤖 Sáng tác AI Novel (Engine)'}
+                </span>
               </div>
 
-              {/* Nút export */}
-              <button
-                type="button"
-                onClick={handleExportTxt}
-                className="flex items-center gap-1.5 rounded border border-zinc-900 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Tải Toàn Bộ (.txt)
-              </button>
+              {/* Nút export (chỉ hiện bên script) */}
+              {store.workspaceTab === 'script' && (
+                <button
+                  type="button"
+                  onClick={handleExportTxt}
+                  className="flex items-center gap-1.5 rounded border border-zinc-900 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Tải Toàn Bộ (.txt)
+                </button>
+              )}
             </div>
 
-            {/* Chapter Header Pagination */}
-            {currentChapter && (
-              <div className="px-8 py-3 bg-zinc-950/90 border-b border-zinc-900/80 flex flex-col gap-2 shrink-0 z-20 backdrop-blur-md">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-lg font-bold text-zinc-100 tracking-wide font-sans m-0 flex items-center gap-2">
-                    ✍️ {store.ten_tac_pham}
-                  </h2>
-                  
-                  {/* Nút lật trang Chương trước / sau */}
-                  <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-900 rounded px-2.5 py-1 text-xs shrink-0 shadow-inner">
-                    <button
-                      type="button"
-                      disabled={store.chuong_dang_chon <= 1}
-                      onClick={handlePrevChapter}
-                      className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 cursor-pointer"
-                    >
+            {/* AINOVEL DASHBOARD */}
+            {store.workspaceTab === 'ainovel' && (
+              <div className="flex-1 overflow-y-auto bg-black">
+                <AINovelDashboard />
+              </div>
+            )}
+
+            {/* KỊCH BẢN TTS WORKSPACE */}
+            {store.workspaceTab === 'script' && (
+              <>
+                {/* Chapter Header Pagination */}
+                {currentChapter && (
+                  <div className="px-8 py-3 bg-zinc-950/90 border-b border-zinc-900/80 flex flex-col gap-2 shrink-0 z-20 backdrop-blur-md">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="text-lg font-bold text-zinc-100 tracking-wide font-sans m-0 flex items-center gap-2">
+                        ✍️ {store.ten_tac_pham}
+                      </h2>
+                      
+                      {/* Nút lật trang Chương trước / sau */}
+                      <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-900 rounded px-2.5 py-1 text-xs shrink-0 shadow-inner">
+                        <button
+                          type="button"
+                          disabled={store.chuong_dang_chon <= 1}
+                          onClick={handlePrevChapter}
+                          className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 cursor-pointer"
+                        >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
                     <span className="font-bold text-zinc-400 select-none whitespace-nowrap font-sans">
@@ -330,6 +348,7 @@ export default function Workspace() {
                       handleGenerateAllVideos={handleGenerateAllVideos}
                       isPlayingTTS={isPlayingTTS}
                       generatingTTS={generatingTTS}
+                      ttsProgress={ttsProgress}
                       generatingPrompt={generatingPrompt}
                       regeneratingSinglePrompt={regeneratingSinglePrompt}
                       generatingImage={generatingImage}
@@ -341,6 +360,9 @@ export default function Workspace() {
                 </div>
               </div>
             </div>
+            </>
+            )}
+
           </section>
         </main>
       )}

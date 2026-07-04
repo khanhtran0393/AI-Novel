@@ -1,7 +1,7 @@
 /**
  * Module thiết lập ban đầu & Dàn ý tác phẩm (Novel Setup & Outline Generator)
  */
-import { SetupData, Chuong } from '@/store/useNovelStore';
+import { SetupData } from '@/store/useNovelStore';
 
 export const CO_THE_KHUYET_TAT = [
   'rách gân tay trái khiến kiếm chiêu bị lệch 1 phân',
@@ -83,7 +83,7 @@ export async function generateOutlineAction(params: {
   apiKey: string;
   apiKeys: string[];
   setupData: SetupData;
-}): Promise<any> {
+}): Promise<unknown> {
   const { useMock, apiKey, apiKeys, setupData } = params;
 
   if (useMock) {

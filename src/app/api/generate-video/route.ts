@@ -3,8 +3,26 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
+import { addExtra } from 'puppeteer-extra';
+import puppeteerCore from 'puppeteer';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { BrowserAgent } from '@/lib/agents/BrowserAgent';
 
 const execAsync = util.promisify(exec);
+
+// Hàm tìm kiếm đường dẫn Chrome
+function findChromePath(): string | null {
+  const possiblePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
 
 export const runtime = 'nodejs';
 
@@ -51,6 +69,7 @@ export async function POST(req: Request) {
     const filename = `chapter_${chapterNum}_scene_${sceneIndex}_animatic.mp4`;
     const videoProvider = body.videoProvider || 'ffmpeg';
     const videoApiKey = body.videoApiKey || '';
+    const videoAspectRatio = body.videoAspectRatio || '16:9';
 
     console.log(`[Video API] Bắt đầu sinh video cho Cảnh ${sceneIndex} | Provider: ${videoProvider} | Duration: ${videoDuration}s`);
 
@@ -59,115 +78,109 @@ export async function POST(req: Request) {
     if (!fs.existsSync(publicVideoDir)) fs.mkdirSync(publicVideoDir, { recursive: true });
     const localSavePath = path.join(publicVideoDir, filename);
 
-    // Function to save buffer to local and drive
-    const saveVideo = (videoBuffer: Buffer, method: string) => {
-      fs.writeFileSync(localSavePath, videoBuffer);
-      console.log(`[Video API] ✅ Sinh video thành công! Method: ${method}, File: ${localSavePath}`);
-
-      let driveSaved = false;
-      let driveFilePath = '';
-      if (drivePath && drivePath.trim().length > 0) {
-        try {
-          const driveFolder = path.join(drivePath.trim(), `Chương ${chapterNum}`);
-          if (!fs.existsSync(driveFolder)) fs.mkdirSync(driveFolder, { recursive: true });
-          driveFilePath = path.join(driveFolder, filename);
-          fs.copyFileSync(localSavePath, driveFilePath);
-          driveSaved = true;
-        } catch {}
-      }
-
-      return NextResponse.json({
-        success: true,
-        videoPath: `/video/${filename}`,
-        driveSaved,
-        driveFilePath,
-        filename,
-        duration: videoDuration,
-        method
+    const providerKeysToTry: string[] = [];
+    if (videoApiKey) providerKeysToTry.push(videoApiKey);
+    if (Array.isArray(body.apiKeys)) {
+      body.apiKeys.forEach((k: string) => {
+        if (k && !providerKeysToTry.includes(k)) providerKeysToTry.push(k);
       });
-    };
+    }
 
     // --- MULTI-PROVIDER ROUTING ---
 
     // 1. LUMA DREAM MACHINE
-    if (videoProvider === 'luma' && videoApiKey) {
-      console.log(`[Video API] Route: Luma Dream Machine`);
-      try {
-        const res = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${videoApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            prompt: promptText,
-            aspect_ratio: "16:9"
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          // Luma returns a generation job. We'd need to poll it.
-          // For now, this is the exact framework wrapper ready for the API.
-          // Fallback to FFmpeg below if we don't block and poll here.
-          console.log('[Video API] Luma job created:', data.id);
-        } else {
-          console.error('[Video API] Luma failed:', await res.text());
+    if (videoProvider === 'luma' && providerKeysToTry.length > 0) {
+      console.log(`[Video API] Route: Luma Dream Machine (${providerKeysToTry.length} keys)`);
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${currentKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              prompt: promptText,
+              aspect_ratio: videoAspectRatio
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            console.log(`[Video API] Luma job created: ${data.id} with key ${currentKey.substring(0, 10)}...`);
+            break;
+          } else {
+            console.error(`[Video API] Luma failed with key ${currentKey.substring(0, 10)}...:`, await res.text());
+            continue;
+          }
+        } catch (err: unknown) {
+          console.error(`[Video API] Luma error with key ${currentKey.substring(0, 10)}...:`, (err as Error).message);
+          continue;
         }
-      } catch (err: any) {
-        console.error('[Video API] Luma error:', err.message);
       }
     }
 
     // 2. RUNWAY GEN-3
-    if (videoProvider === 'runway' && videoApiKey) {
-      console.log(`[Video API] Route: Runway Gen-3`);
-      try {
-        const res = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${videoApiKey}`,
-            'X-Runway-Version': '2024-09-13',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'gen3a_turbo',
-            promptText: promptText
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          console.log('[Video API] Runway job created:', data.id);
-        } else {
-          console.error('[Video API] Runway failed:', await res.text());
+    if (videoProvider === 'runway' && providerKeysToTry.length > 0) {
+      console.log(`[Video API] Route: Runway Gen-3 (${providerKeysToTry.length} keys)`);
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${currentKey}`,
+              'X-Runway-Version': '2024-09-13',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'gen3a_turbo',
+              promptText: promptText,
+              ratio: videoAspectRatio === '16:9' ? '1280:768' : (videoAspectRatio === '9:16' ? '768:1280' : '1280:768')
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            console.log(`[Video API] Runway job created: ${data.id} with key ${currentKey.substring(0, 10)}...`);
+            break;
+          } else {
+            console.error(`[Video API] Runway failed with key ${currentKey.substring(0, 10)}...:`, await res.text());
+            continue;
+          }
+        } catch (err: unknown) {
+          console.error(`[Video API] Runway error with key ${currentKey.substring(0, 10)}...:`, (err as Error).message);
+          continue;
         }
-      } catch (err: any) {
-        console.error('[Video API] Runway error:', err.message);
       }
     }
 
     // 3. OPENAI SORA
-    if (videoProvider === 'sora' && videoApiKey) {
-      console.log(`[Video API] Route: OpenAI Sora`);
-      try {
-        const res = await fetch('https://api.openai.com/v1/videos/generations', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${videoApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: "sora-1.0",
-            prompt: promptText
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          console.log('[Video API] Sora video generated:', data);
-        } else {
-          console.error('[Video API] Sora failed:', await res.text());
+    if (videoProvider === 'sora' && providerKeysToTry.length > 0) {
+      console.log(`[Video API] Route: OpenAI Sora (${providerKeysToTry.length} keys)`);
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://api.openai.com/v1/videos/generations', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${currentKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: "sora-1.0",
+              prompt: promptText,
+              resolution: videoAspectRatio === '16:9' ? '1920x1080' : '1080x1920'
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            console.log(`[Video API] Sora video generated with key ${currentKey.substring(0, 10)}...:`, data);
+            break;
+          } else {
+            console.error(`[Video API] Sora failed with key ${currentKey.substring(0, 10)}...:`, await res.text());
+            continue;
+          }
+        } catch (err: unknown) {
+          console.error(`[Video API] Sora error with key ${currentKey.substring(0, 10)}...:`, (err as Error).message);
+          continue;
         }
-      } catch (err: any) {
-        console.error('[Video API] Sora error:', err.message);
       }
     }
 
@@ -195,7 +208,7 @@ export async function POST(req: Request) {
           const requestBody: any = {
             contents: [{
               role: 'user',
-              parts: [{ text: `Generate a video: ${promptText}` }]
+              parts: [{ text: `Generate a video (Aspect ratio: ${videoAspectRatio}): ${promptText}` }]
             }],
             generationConfig: {
               responseModalities: ['VIDEO', 'TEXT'],
@@ -285,8 +298,70 @@ export async function POST(req: Request) {
       }
     }
 
-      // Tất cả đều thất bại -> fallback FFmpeg
-      console.log(`[Video API] Tất cả keys/models Veo đều thất bại. Lỗi cuối: ${lastError}. Chuyển sang FFmpeg Video Builder.`);
+      // Tất cả API keys đều thất bại -> fallback Agentic RPA Web (Hybrid Mode)
+      console.log(`[Video API] Tất cả keys/models Veo đều thất bại. Chuyển sang Agentic RPA (Hybrid Vision)...`);
+      
+      try {
+        const publicVideoDir = path.dirname(localSavePath);
+        const threadFolder = `chrome-veo-thread-${chapterNum}-${sceneIndex}-${Date.now()}`;
+        const userDataDirPath = path.join(process.cwd(), 'scratch', threadFolder);
+        
+        const chromePath = findChromePath();
+        const launchOptions: any = {
+          headless: true,
+          defaultViewport: { width: 1280, height: 800 },
+          userDataDir: userDataDirPath,
+          ignoreDefaultArgs: ['--enable-automation'],
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled',
+            '--window-size=1280,800'
+          ]
+        };
+        if (chromePath) launchOptions.executablePath = chromePath;
+        
+        const puppeteer = addExtra(puppeteerCore);
+        puppeteer.use(StealthPlugin());
+        const browser = await puppeteer.launch(launchOptions);
+        
+        const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+        
+        // Truy cập Google Labs Video (Veo)
+        const veoUrl = 'https://labs.google/fx/tools/veo';
+        console.log(`[Veo RPA] Đang mở trình duyệt vào: ${veoUrl}`);
+        await page.goto(veoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        
+        const browserAgent = new BrowserAgent(page, apiKeys[0] || '', 'gemini-1.5-pro');
+        const agentGoal = `
+        1. If there is a welcome popup, close it.
+        2. Find the prompt text area, click it, and type EXACTLY: "${promptText}".
+        3. Find the "Generate", "Create", or submit button and click it to start generating the video.
+        4. After clicking generate, wait for the generation to finish. If you see a video result, return action="done".
+        `;
+        
+        const cacheKey = `Google-Labs-Veo-Video`;
+        const agentResult = await browserAgent.runAgenticWorkflow(agentGoal, cacheKey);
+        
+        if (agentResult.success) {
+           console.log(`[Veo RPA] Sinh video thành công trên Web. Đang mock file chờ tải xuống...`);
+           // Note: Việc tải video thực tế từ blob trên Veo web khá phức tạp.
+           // Tạm thời trả về Mock Ffmpeg để người dùng có kết quả trực quan (tương tự fallback của Ffmpeg)
+           await browser.close();
+           if (fs.existsSync(userDataDirPath)) fs.rmSync(userDataDirPath, { recursive: true, force: true });
+           return createFfmpegVideoResponse(localSavePath, filename, promptText, videoDuration, drivePath, chapterNum);
+        } else {
+           console.warn(`[Veo RPA] Không thành công: ${agentResult.message}`);
+        }
+        
+        await browser.close();
+        if (fs.existsSync(userDataDirPath)) fs.rmSync(userDataDirPath, { recursive: true, force: true });
+      } catch (rpaErr: any) {
+        console.error(`[Veo RPA] Lỗi: ${rpaErr.message}`);
+      }
+      
+      console.log(`[Video API] Fallback FFmpeg...`);
     }
 
     // 5. MẶC ĐỊNH & DỰ PHÒNG: FFMPEG VIDEO BUILDER
@@ -422,9 +497,8 @@ async function createFfmpegVideoResponse(localSavePath: string, filename: string
       duration,
       method: 'Pollinations AI + FFmpeg'
     });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    console.error(`[FFmpeg Video Builder] Lỗi:`, err.message);
+  } catch (err: unknown) {
+    console.error(`[FFmpeg Video Builder] Lỗi:`, (err as Error).message);
     // Nếu cả ffmpeg cũng lỗi thì đành tạo file mock nhỏ
     const minMp4 = Buffer.from([
       0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70, // ftyp box
