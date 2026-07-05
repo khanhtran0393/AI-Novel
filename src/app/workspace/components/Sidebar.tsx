@@ -7,20 +7,30 @@ import { useFolderActions } from '../hooks/useFolderActions';
 import { useCharacterActions } from '../hooks/useCharacterActions';
 import { useProjectActions } from '../hooks/useProjectActions';
 import {
+  Sparkles,
   RefreshCw,
-  User,
+  Copy,
   BookOpen,
+  Award,
   ChevronDown,
   ChevronUp,
-  Award,
-  Book,
+  Image as ImageIcon,
+  Video,
   Settings,
-  Image,
+  Book,
+  PlusCircle,
+  User,
   MonitorPlay,
-  PlaySquare
+  PlaySquare,
+  Activity,
+  UploadCloud
 } from 'lucide-react';
+import { planArcAction } from '../modules/writeModule';
+import { computeStyleStats, StyleStats } from '../modules/styleStatModule';
 import VideoEditorModal from './VideoEditorModal';
 import AutoRenderModal from './AutoRenderModal';
+import StyleStatModal from './StyleStatModal';
+import ImportModal from './ImportModal';
 
 interface SidebarProps {
   handleWriteChapter: (overwrite?: boolean) => Promise<void>;
@@ -38,9 +48,61 @@ export default function Sidebar({
 
   // Trạng thái mở rộng accordions của Dàn ý bên trái
   const [openOutlineTab, setOpenOutlineTab] = useState<'chapter' | 'overall' | 'lore' | null>('chapter');
+  const [isPlanningArc, setIsPlanningArc] = useState(false);
+
+  const handlePlanNextArc = async () => {
+    setIsPlanningArc(true);
+    try {
+      const so_chuong_moi_cung = store.setup.so_chuong || 10;
+      const chuong_bat_dau = store.danh_sach_chuong.length > 0 ? store.danh_sach_chuong[store.danh_sach_chuong.length - 1].so_chuong + 1 : 1;
+      
+      const tom_tat_cuon_chieu = store.danh_sach_chuong
+        .slice(-10)
+        .map(c => `Chương ${c.so_chuong}: ${c.tieu_de}\n${c.dan_y}`)
+        .join('\n\n');
+
+      const result = await planArcAction({
+        apiKey: store.apiKey,
+        apiKeys: store.apiKeys || [],
+        ten_tac_pham: store.ten_tac_pham,
+        lorebook: store.lorebook,
+        danh_sach_chuong_da_viet: tom_tat_cuon_chieu,
+        cung_hien_tai: store.cung_hien_tai,
+        so_chuong_moi_cung,
+        chuong_bat_dau
+      });
+
+      if (result.danh_sach_chuong && result.danh_sach_chuong.length > 0) {
+        const newChapters = result.danh_sach_chuong.map((c: any) => ({
+          ...c,
+          noi_dung: '',
+          trang_thai: 'empty'
+        }));
+        store.addChuongMoi(newChapters);
+        store.setCungHienTai(store.cung_hien_tai + 1);
+      }
+    } catch (err) {
+      console.error("Lỗi khi lập kế hoạch cung mới:", err);
+      alert("Lỗi khi lên kế hoạch: " + (err as Error).message);
+    } finally {
+      setIsPlanningArc(false);
+    }
+  };
+  
   
   const [isVideoEditorOpen, setIsVideoEditorOpen] = useState(false);
   const [isAutoRenderOpen, setIsAutoRenderOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [styleStats, setStyleStats] = useState<StyleStats | null>(null);
+
+  const handleScanStyle = () => {
+    const stats = computeStyleStats(store.danh_sach_chuong);
+    if (!stats) {
+      alert("Chưa có đủ nội dung chương hợp lệ để quét văn phong.");
+      return;
+    }
+    setStyleStats(stats);
+  };
 
   // Khởi động các Custom Hooks hành động mô-đun hóa sạch sẽ
   const { handleResetProject } = useProjectActions('');
@@ -197,6 +259,17 @@ export default function Sidebar({
             </div>
           )}
         </div>
+        
+        {/* Nút lập kế hoạch Arc tiếp theo */}
+        <button
+          type="button"
+          disabled={isPlanningArc}
+          onClick={handlePlanNextArc}
+          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded bg-sky-500/20 px-3 py-2 text-xs font-bold text-sky-400 hover:bg-sky-500/30 transition-colors disabled:opacity-50"
+        >
+          {isPlanningArc ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlusCircle className="h-3.5 w-3.5" />}
+          LÊN DÀN Ý CUNG (ARC) TIẾP THEO
+        </button>
       </div>
 
       {/* Hồ Sơ Nhân Vật Đã Phát Hiện */}
@@ -398,25 +471,38 @@ export default function Sidebar({
         <div className="mt-auto space-y-3 pt-4 border-t border-zinc-900">
 
         {/* HỆ SINH THÁI CAP-ASSISTANT */}
-        <div className="flex flex-col gap-2 bg-zinc-900/50 p-2.5 rounded-lg border border-zinc-800">
-          <label className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5 ml-1">
-            <Settings className="w-3 h-3" /> CÔNG CỤ CAP-ASSISTANT
-          </label>
-          <button
-            type="button"
-            onClick={() => setIsVideoEditorOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded bg-gradient-to-r from-sky-600 to-indigo-600 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-lg shadow-indigo-500/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-indigo-500/40 cursor-pointer font-sans"
-          >
-            <MonitorPlay className="h-3.5 w-3.5" />
-            Video Editor
-          </button>
+        <div className="mb-4 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setIsAutoRenderOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded bg-gradient-to-r from-amber-600 to-orange-600 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white shadow-lg shadow-orange-500/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-orange-500/40 cursor-pointer font-sans"
+            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-indigo-900/50 bg-indigo-950/20 py-3 text-indigo-400 hover:bg-indigo-900/40 hover:text-indigo-300 transition-colors"
           >
-            <PlaySquare className="h-3.5 w-3.5" />
-            Auto Render (Hàng Loạt)
+            <MonitorPlay className="h-5 w-5" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-center">Auto Render<br/>Phim</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsVideoEditorOpen(true)}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-purple-900/50 bg-purple-950/20 py-3 text-purple-400 hover:bg-purple-900/40 hover:text-purple-300 transition-colors"
+          >
+            <PlaySquare className="h-5 w-5" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-center">Video<br/>Editor</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleScanStyle}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-rose-900/50 bg-rose-950/20 py-3 text-rose-400 hover:bg-rose-900/40 hover:text-rose-300 transition-colors"
+          >
+            <Activity className="h-5 w-5" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-center">Radar<br/>Văn Phong</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-emerald-900/50 bg-emerald-950/20 py-3 text-emerald-400 hover:bg-emerald-900/40 hover:text-emerald-300 transition-colors"
+          >
+            <UploadCloud className="h-5 w-5" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-center">Kế Thừa<br/>Di Sản</span>
           </button>
         </div>
 
@@ -480,9 +566,19 @@ export default function Sidebar({
       isOpen={isVideoEditorOpen}
       onClose={() => setIsVideoEditorOpen(false)}
     />
-    <AutoRenderModal
-      isOpen={isAutoRenderOpen}
-      onClose={() => setIsAutoRenderOpen(false)}
+    <AutoRenderModal 
+      isOpen={isAutoRenderOpen} 
+      onClose={() => setIsAutoRenderOpen(false)} 
+    />
+
+    <StyleStatModal 
+      stats={styleStats} 
+      onClose={() => setStyleStats(null)} 
+    />
+
+    <ImportModal 
+      isOpen={isImportModalOpen} 
+      onClose={() => setIsImportModalOpen(false)} 
     />
     </>
   );

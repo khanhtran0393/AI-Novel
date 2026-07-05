@@ -5,6 +5,7 @@ import { useNovelStore } from '@/store/useNovelStore';
 import { FileText, Sparkles } from 'lucide-react';
 import { parseScenes } from '../utils/stringUtils';
 import SceneCard from './SceneCard';
+import EditorPanel from './EditorPanel';
 
 interface ContentTabProps {
   isStreaming: boolean;
@@ -17,7 +18,8 @@ interface ContentTabProps {
   handleGenerateTTS: (sceneText: string, sceneIndex: number, voice: string, targetDuration?: number) => Promise<number | undefined>;
   handleGenerateImagePrompt: (sceneText: string, sceneIndex: number, duration: number) => Promise<void>;
   handleRegenPrompt: (sceneIndex: number, promptIndex: number, sentence: string, currentPrompt: string) => Promise<void>;
-  handleWriteChapter: () => Promise<void>;
+  handleWriteChapter: (overwrite?: boolean) => Promise<void>;
+  handleIntervene: (text: string) => void;
   handleGenerateImage: (sceneIndex: number, promptIndex: number, prompt: string, sentence: string) => Promise<void>;
   handleGenerateAllImages: (sceneIndex: number) => Promise<void>;
   handleGenerateVideo: (sceneIndex: number, startPromptIndex: number, endPromptIndex: number, prompt: string) => Promise<void>;
@@ -44,6 +46,7 @@ export default function ContentTab({
   handleGenerateImagePrompt,
   handleRegenPrompt,
   handleWriteChapter,
+  handleIntervene,
   handleGenerateImage,
   handleGenerateAllImages,
   handleGenerateVideo,
@@ -98,6 +101,26 @@ export default function ContentTab({
         <div className="whitespace-pre-line bg-zinc-950/30 border border-zinc-900/50 rounded-lg p-6 text-md leading-loose font-sans">
           {streamText}
           <span className="inline-block h-4 w-2 bg-amber-500 animate-blink ml-1">▋</span>
+        </div>
+        
+        {/* Intervention Input */}
+        <div className="mt-4 p-4 border border-sky-500/50 bg-sky-900/20 rounded-lg shadow-[0_0_15px_rgba(14,165,233,0.15)] flex flex-col gap-2 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-sky-500 to-transparent animate-pulse" />
+          <label className="text-[10px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" />
+            Can Thiệp Trực Tiếp Thời Gian Thực
+          </label>
+          <input
+            type="text"
+            placeholder="Nhập lệnh bẻ lái (VD: Cho nam chính rút gươm ra đỡ đòn)... Nhấn Enter để gửi"
+            className="w-full bg-black border border-sky-800/50 rounded p-3 text-sm text-zinc-200 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all placeholder:text-zinc-600"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                handleIntervene(e.currentTarget.value.trim());
+                e.currentTarget.value = '';
+              }
+            }}
+          />
         </div>
       </div>
     );
@@ -167,6 +190,12 @@ export default function ContentTab({
             />
           </div>
         ))}
+        
+        <EditorPanel 
+          chapterIndex={store.chuong_dang_chon} 
+          isRewriting={store.dang_tai} 
+          onRewrite={() => handleWriteChapter(true)} 
+        />
       </div>
     );
   }

@@ -15,6 +15,7 @@ export interface SetupData {
   mo_ta: string;
   so_chuong: number;
   so_tu_chuong?: number; // Số lượng từ mục tiêu mỗi chương (mặc định 4250)
+  ngon_ngu?: string; // Ngôn ngữ muốn viết (mặc định Tiếng Việt)
 }
 
 export interface TTSConfig {
@@ -90,6 +91,20 @@ export interface NovelState {
   
   // --- HỆ THỐNG CẤU HÌNH GIỌNG ĐỌC TOÀN CỤC ---
   ttsConfig: TTSConfig;
+
+  // --- HỆ THỐNG LUẬT LỆ & CHỐNG VĂN PHONG AI ---
+  userRules: {
+    forbidden_words: string;
+    fatigue_words: string;
+  };
+
+  // --- HỆ THỐNG ĐA AGENT (EDITOR & ARCHITECT) ---
+  editorReviews: Record<number, {
+    dimensions: { dimension: string; score: number; comment: string }[];
+    verdict: 'accept' | 'rewrite' | 'polish';
+    summary: string;
+  }>;
+  cung_hien_tai: number; // Đánh dấu Arc hiện tại
 }
 
 export interface NovelActions {
@@ -156,6 +171,10 @@ export interface NovelActions {
 
   // Cấu hình TTS Toàn cục
   updateTTSConfig: (config: Partial<TTSConfig>) => void;
+  updateUserRules: (rules: Partial<NovelState['userRules']>) => void;
+  updateEditorReview: (chapterIndex: number, review: NovelState['editorReviews'][number]) => void;
+  setCungHienTai: (arc: number) => void;
+  addChuongMoi: (chuongList: Chuong[]) => void; // Architect thêm chương vào cuối
 }
 
 export type NovelStore = NovelState & NovelActions;
@@ -166,6 +185,7 @@ const INITIAL_SETUP: SetupData = {
   mo_ta: '',
   so_chuong: 2,
   so_tu_chuong: 4250,
+  ngon_ngu: 'Tiếng Việt',
 };
 
 const INITIAL_LOREBOOK = `📖 LÕI BẤT BIẾN (LOREBOOK) - KÝ ỨC PHAI TÀN: MẠNG LƯỚI HƯ VÔ
@@ -266,19 +286,23 @@ Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử 
   // Thương mại hóa
   is_vip: false,
   is_pro: false,
-  credits: 50, // Mặc định cho người dùng mới 50 credits
-
-  // Cấu hình TTS Toàn cục
+  credits: 0,
   ttsConfig: {
-    platform: 'piper',
-    voice: 'ngochuyen.onnx',
+    platform: 'tiktok_tts',
     language: 'vi',
-    speed: 1.0,
+    voice: 'vocal_1',
+    speed: 1,
     pitch: 0,
     tiktokSessionId: '',
-    api_url_vieneu: 'http://localhost:23333/v1',
-    syncMode: 'default'
+    api_url_vieneu: 'https://api.vieneu.com/tts',
+    syncMode: 'force_sync',
   },
+  userRules: {
+    forbidden_words: '',
+    fatigue_words: '',
+  },
+  editorReviews: {},
+  cung_hien_tai: 1,
 };
 
 export const useNovelStore = create<NovelStore>()(
@@ -438,9 +462,13 @@ export const useNovelStore = create<NovelStore>()(
         });
         return success;
       },
-      updateTTSConfig: (config) => set((state) => ({
-        ttsConfig: { ...state.ttsConfig, ...config }
-      }))
+      updateTTSConfig: (config) => set((state) => ({ ttsConfig: { ...state.ttsConfig, ...config } })),
+      updateUserRules: (rules) => set((state) => ({ userRules: { ...state.userRules, ...rules } })),
+      updateEditorReview: (chapterIndex, review) => set((state) => ({
+        editorReviews: { ...state.editorReviews, [chapterIndex]: review }
+      })),
+      setCungHienTai: (arc) => set({ cung_hien_tai: arc }),
+      addChuongMoi: (chuongList) => set((state) => ({ danh_sach_chuong: [...state.danh_sach_chuong, ...chuongList] })),
     }),
     {
       name: 'novel_generator_v2_store',

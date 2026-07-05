@@ -528,7 +528,7 @@ TRẢ VỀ JSON THUẦN TÚY, KHÔNG CÓ MARKDOWN, theo cấu trúc mảng JSON 
 
     // --- NODE 1: GENERATE_OUTLINE ---
     if (requestType === 'GENERATE_OUTLINE') {
-      const { chu_de, phong_cach, mo_ta, so_chuong } = payload;
+      const { chu_de, phong_cach, mo_ta, so_chuong, ngon_ngu } = payload;
 
       const prompt = `Bạn là một Trợ lý Biên kịch Sản xuất tiểu thuyết mạt thế, sinh tồn, huyền huyễn xuất sắc bậc nhất.
 Dựa trên các tham số cấu hình sau:
@@ -536,9 +536,10 @@ Dựa trên các tham số cấu hình sau:
 - Phong cách: ${phong_cach}
 - Ý tưởng cốt truyện gốc: ${mo_ta || 'Ngẫu nhiên bối cảnh hoang phế độc đáo'}
 - Số lượng chương cần phân bổ: ${so_chuong} chương (BẮT BUỘC: chỉ được phép lên dàn ý đúng chính xác ${so_chuong} chương, không thừa không thiếu)
+- Ngôn ngữ đầu ra: ${ngon_ngu || 'Tiếng Việt'}
 
 Nhiệm vụ của bạn là:
-1. Đề xuất một tên tác phẩm tiếng Việt kịch tính, đậm chất mạt thế, sinh tồn.
+1. Đề xuất một tên tác phẩm bằng ${ngon_ngu || 'Tiếng Việt'} kịch tính, đậm chất mạt thế, sinh tồn.
 2. Thiết lập Dàn ý Tổng thể (World-building & Plot Outline) thật chi tiết dưới dạng Markdown.
 3. Bóc tách ra khoảng 2-4 tên nhân vật chính yếu (bắt buộc phải là tên Hán Việt độc đáo mới mẻ, ví dụ: Tiêu Hàn, Thạch Dã, Diệp Dao... tuyệt đối không sử dụng Lâm Khuyết hay các tên quá phổ biến).
 4. Phác thảo dàn ý chi tiết cho từng chương (từ Chương 1 đến Chương ${so_chuong}) để người dùng chốt chặn trước khi viết. (BẮT BUỘC: danh sách "danh_sach_chuong" bên dưới phải có đúng chính xác ${so_chuong} phần tử chương, không được phép tự tiện thêm bớt bất kỳ chương nào ngoài số lượng này).
@@ -603,7 +604,9 @@ Chỉ trả về văn bản dàn ý (khoảng 100-200 từ), không bọc markdo
         tri_nho_ngan_han, 
         lorebook,
         so_tu_chuong,
-        noi_dung_hien_tai
+        ngon_ngu,
+        noi_dung_hien_tai,
+        userRules
       } = payload;
 
       const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : 4250;
@@ -628,18 +631,90 @@ DÀN Ý SỰ KIỆN CHƯƠNG HIỆN TẠI:
 ${chuong_hien_tai.dan_y}
 
 YÊU CẦU KỸ THUẬT KHI TẠO TÁC KỊCH BẢN CHI TIẾT:
+- Ngôn ngữ viết: BẮT BUỘC PHẢI VIẾT BẰNG ${ngon_ngu || 'Tiếng Việt'}. Dịch toàn bộ văn cảnh và đối thoại sang ngôn ngữ này nhưng phải giữ văn phong mượt mà, đậm chất điện ảnh.
 1. TUYỆT ĐỐI CẤM in lại, nhại lại hoặc chép lại Lõi Bất Biến (Lorebook), Trí nhớ, Dàn ý hay bất kỳ thông tin nào từ BỐI CẢNH VÀ TRÍ NHỚ VĨ MÔ vào trong kịch bản. Chữ duy nhất bạn xuất ra phải là NỘI DUNG KỊCH BẢN THUẦN TÚY.
 2. Viết dưới dạng văn học/kịch bản sạch sẽ nhất có thể. CẤM dùng các ghi chú đạo diễn (No Notes) hay hiệu ứng âm thanh/hình ảnh (No FX) như [âm thanh gió rít], (Cười)... 
 3. TUYỆT ĐỐI TUÂN THỦ: Tên mỗi cảnh phải được bọc trong DẤU NGOẶC VUÔNG trên một dòng riêng. Ví dụ:
-[CẢNH 1: NỘI CẢNH. CĂN HỘ TỒI TÀN - ĐÊM]
-Tuyệt đối KHÔNG dùng ký tự ** hay các định dạng Markdown khác bên trong dấu ngoặc vuông này.
+[CẢNH 1: Tên cảnh]
+Nội dung phân cảnh...
 4. Viết cực kỳ sống động đa giác quan. MIÊU TẢ CỰC KỲ CHẬM RÃI VÀ CHI TIẾT từng hành động, từng diễn biến tâm lý. Đừng tóm tắt, hãy kể chuyện theo thời gian thực (real-time pacing).
 5. Đạt chuẩn Cổng Từ (Word-Gate) - MỤC TIÊU SINH TỬ: Bạn BẮT BUỘC phải viết kịch bản vô cùng dài, siêu chi tiết. Hãy kéo dài hội thoại, độc thoại và tả cảnh để độ dài văn bản đạt lý tưởng khoảng ${wordGoal} từ (TUYỆT ĐỐI KHÔNG ĐƯỢC PHÉP VIẾT NGẮN DƯỚI ${wordMin} TỪ).
 6. ⚠️ MỆNH LỆNH TUYỆT ĐỐI VỀ PHÂN CẢNH: Bạn BẮT BUỘC PHẢI chia toàn bộ nội dung kịch bản thành TỐI THIỂU 3 đến 5 phân cảnh riêng biệt. Mỗi phân cảnh PHẢI bắt đầu bằng một dòng tag duy nhất trên một dòng riêng biệt theo cú pháp: [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM CỤ THỂ - THỜI GIAN]. Phân bổ ĐỀU số từ mục tiêu (${wordGoal} từ) cho tất cả các cảnh. TUYỆT ĐỐI CẤM viết toàn bộ chương thành chỉ 1 hoặc 2 cảnh duy nhất. Nếu vi phạm, kịch bản sẽ bị từ chối hoàn toàn.
+${userRules?.forbidden_words ? `7. 🚫 TỪ CẤM: TUYỆT ĐỐI KHÔNG ĐƯỢC SỬ DỤNG CÁC CỤM TỪ SAU ĐÂY: ${userRules.forbidden_words}. NẾU SỬ DỤNG SẼ BỊ PHẠT NẶNG.` : ''}
+${userRules?.fatigue_words ? `8. ⚠️ TỪ SÁO RỖNG: HẠN CHẾ TỐI ĐA VIỆC SỬ DỤNG CÁC TỪ SAU ĐÂY: ${userRules.fatigue_words}.` : ''}
 ${noi_dung_hien_tai ? '\n--- PHẦN NỘI DUNG ĐANG VIẾT DANG DỞ ---\n' + noi_dung_hien_tai + '\n\nBẠN ĐANG Ở CHẾ ĐỘ VIẾT TIẾP. HÃY ĐỌC PHẦN DANG DỞ TRÊN VÀ BẮT ĐẦU VIẾT NỐI TIẾP VÀO ĐÓ.' : '\nĐừng thêm tiêu đề chương, hãy bắt đầu viết trực tiếp nội dung chương truyện với Cảnh 1 ngay.'}`;
 
       const aiResponse = await callGemini(prompt, keysToUse);
       return NextResponse.json({ noi_dung: aiResponse, usedApiKey: globalLastWorkingKey });
+    }
+
+    // --- NODE: EVALUATE_CHAPTER (Trí tuệ Biên Tập Viên) ---
+    if (requestType === 'EVALUATE_CHAPTER') {
+      const { 
+        chuong_hien_tai, 
+        noi_dung_kich_ban, 
+        userRules
+      } = payload;
+
+      const prompt = `Bạn là một Tổng biên tập khắt khe của tòa soạn tiểu thuyết mạt thế.
+Hãy đọc kỹ nội dung Chương ${chuong_hien_tai.so_chuong} vừa được viết dưới đây và tiến hành CHẤM ĐIỂM 7 CHIỀU.
+
+--- NỘI DUNG CHƯƠNG VỪA VIẾT ---
+${noi_dung_kich_ban}
+
+--- SỞ THÍCH & LUẬT LỆ TỪ TÁC GIẢ ---
+${userRules?.forbidden_words ? `- Từ cấm tuyệt đối: ${userRules.forbidden_words}` : ''}
+${userRules?.fatigue_words ? `- Từ sáo rỗng cần hạn chế: ${userRules.fatigue_words}` : ''}
+
+Nhiệm Vụ:
+1. Đánh giá bản thảo theo 7 chiều: Consistency (Nhất quán), Character (Nhân vật), Pacing (Nhịp điệu), Continuity (Mạch lạc), Foreshadow (Phục bút), Hook (Điểm móc), Aesthetic (Thẩm mỹ & Văn phong).
+2. Nếu bản thảo dính nhiều "Từ cấm tuyệt đối" hoặc "Từ sáo rỗng" như yêu cầu của tác giả, hãy trừ nặng điểm Aesthetic.
+3. Cho điểm từ 0-100 cho mỗi chiều. Nếu có bất kỳ chiều nào dưới 60 điểm, hoặc tổng điểm trung bình dưới 70, verdict phải là "rewrite" (bắt viết lại). Nếu từ 70-80 là "polish" (chấp nhận nhưng cần trau chuốt). Trên 80 là "accept" (tuyệt vời).
+
+TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (Không bọc bằng markdown \`\`\`json):
+{
+  "dimensions": [
+    { "dimension": "consistency", "score": 85, "comment": "Nhận xét..." },
+    { "dimension": "character", "score": 85, "comment": "Nhận xét..." },
+    { "dimension": "pacing", "score": 85, "comment": "Nhận xét..." },
+    { "dimension": "continuity", "score": 85, "comment": "Nhận xét..." },
+    { "dimension": "foreshadow", "score": 85, "comment": "Nhận xét..." },
+    { "dimension": "hook", "score": 85, "comment": "Nhận xét..." },
+    { "dimension": "aesthetic", "score": 85, "comment": "Nhận xét..." }
+  ],
+  "summary": "Tóm tắt đánh giá tổng thể trong 1-2 câu",
+  "verdict": "accept" // hoặc "rewrite", "polish"
+}`;
+      const result = await generateJsonWithRetry(prompt, keysToUse);
+      return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
+    }
+
+    // --- NODE: PLAN_ARC (Kiến Trúc Sư) ---
+    if (requestType === 'PLAN_ARC') {
+      const { ten_tac_pham, lorebook, danh_sach_chuong_da_viet, cung_hien_tai, so_chuong_moi_cung } = payload;
+      const prompt = `Bạn là Kiến trúc sư của tiểu thuyết "${ten_tac_pham}".
+Hãy lập Dàn Ý cho Arc (Cung/Tập) ${cung_hien_tai + 1} gồm ${so_chuong_moi_cung} chương tiếp theo.
+
+1. LÕI BẤT BIẾN:
+${lorebook}
+
+2. TÓM TẮT CÁC CHƯƠNG ĐÃ VIẾT TRƯỚC ĐÓ:
+${danh_sach_chuong_da_viet}
+
+Dựa vào diễn biến hiện tại, hãy lập dàn ý chi tiết sự kiện cho ${so_chuong_moi_cung} chương kế tiếp.
+
+TRẢ VỀ JSON:
+{
+  "danh_sach_chuong": [
+    {
+      "so_chuong": number,
+      "tieu_de": "Tên chương",
+      "dan_y": "Tóm tắt sự kiện xảy ra trong chương này (càng chi tiết càng tốt)"
+    }
+  ]
+}`;
+      const result = await generateJsonWithRetry(prompt, keysToUse);
+      return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     }
 
     // --- NODE: EXPAND_SCENE ---
@@ -773,6 +848,69 @@ Hãy trả về định dạng JSON duy nhất và TUYỆT ĐỐI không bao b�
 
       const result = await generateJsonWithRetry(prompt, keysToUse);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
+    }
+    // --- NODE: COMPRESS_CONTEXT (Bộ Nén Trí Nhớ Giả Lập) ---
+    if (requestType === 'COMPRESS_CONTEXT') {
+      const { tom_tat_cuon_chieu, tri_nho_ngan_han } = payload;
+      const prompt = `Bạn là bộ tổng hợp hồ sơ mô phỏng trí nhớ cho một cuốn tiểu thuyết.
+Nhiệm vụ của bạn là nén "Tóm Tắt Cuốn Chiếu" (các chương trước đó) và "Trí Nhớ Ngắn Hạn" (những sự kiện vừa xảy ra) thành một khối dung lượng siêu nhỏ nhưng mang đậm ý nghĩa logic (Context Simulation).
+
+--- TÓM TẮT CUỐN CHIẾU HIỆN TẠI ---
+${tom_tat_cuon_chieu}
+
+--- TRÍ NHỚ NGẮN HẠN ---
+${tri_nho_ngan_han?.join('\n') || ''}
+
+YÊU CẦU BẮT BUỘC:
+1. Tổng hợp lại thành một đoạn văn duy nhất, ngắn gọn, súc tích (dưới 300 từ).
+2. Giữ lại được tuyến tình cảm, mâu thuẫn chính, và sự kiện mấu chốt để cung cấp cho người viết chương tiếp theo.
+3. Chỉ trả về một chuỗi văn bản thuần túy, không bọc trong định dạng JSON. Không có lời chào hay giải thích.`;
+
+      const aiResponse = await callGemini(prompt, keysToUse);
+      return NextResponse.json({ simulated_memory: aiResponse.trim(), usedApiKey: globalLastWorkingKey });
+    }
+
+    // --- NODE: IMPORT_FOUNDATION (Thuật toán Kế thừa Di sản) ---
+    if (requestType === 'IMPORT_FOUNDATION') {
+      const { text_content } = payload;
+      const prompt = `Bạn là chuyên gia phân tích tính liên tục của tiểu thuyết. Nhiệm vụ: đọc đoạn văn bản gốc mà người dùng cung cấp (có thể gồm nhiều chương), rồi phân tích ngược để xây dựng lại toàn bộ cài đặt nền tảng cần thiết cho việc tiếp tục viết các chương sau.
+
+Chế độ làm việc: Không sáng tác thêm, tái tạo foundation dựa hoàn toàn vào nội dung gốc, thà chi tiết còn hơn bỏ sót, không bịa đặt quy tắc không có.
+
+VĂN BẢN GỐC:
+${text_content}
+
+Yêu cầu định dạng đầu ra (Trọng yếu: Bạn PHẢI trả về ĐÚNG VÀ CHỈ MỘT định dạng JSON nguyên chất theo cấu trúc sau, không bọc markdown \`\`\`json, không văn bản thừa):
+
+{
+  "mo_ta": "Mô tả ngắn gọn thể loại, tông điệu, xung đột cốt lõi và mục tiêu của nhân vật chính.",
+  "nhan_vat": [
+    {
+      "name": "Tên nhân vật chính",
+      "gioi_tinh": "Nam/Nữ...",
+      "quan_ao": "Đặc điểm nhận dạng...",
+      "so_thich": "Phong cách/Vũ khí...",
+      "thoi_quen": "Động cơ...",
+      "prompt": "Prompt tiếng Anh miêu tả ngoại hình (an toàn) theo phong cách Cyberpunk Sci-fi"
+    }
+  ],
+  "lorebook": {
+    "magic_technology": "Quy tắc phép thuật/công nghệ được ám chỉ",
+    "geography": "Địa lý, bối cảnh",
+    "society": "Cơ cấu xã hội, tổ chức"
+  },
+  "dan_y_tong_the": [
+    {
+      "ten_cung": "Tiêu đề cung truyện/arc phân tích ngược",
+      "muc_tieu": "Chủ đề cốt lõi",
+      "so_chuong_du_kien": 5,
+      "mo_ta": "Tóm tắt sự kiện trong cung này"
+    }
+  ]
+}`;
+      const aiResponse = await callGemini(prompt, keysToUse);
+      const parsed = cleanAndParseJson(aiResponse);
+      return NextResponse.json({ foundation: parsed, usedApiKey: globalLastWorkingKey });
     }
 
     // --- NODE: GENERATE_CHARACTER_PROMPT_ONLY (Chỉ sinh/tạo lại prompt ngoại hình khi bị vi phạm chính sách) ---

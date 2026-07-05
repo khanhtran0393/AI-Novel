@@ -54,7 +54,8 @@ export default function Workspace() {
   const {
     isStreaming,
     streamText,
-    handleWriteChapter
+    handleWriteChapter,
+    handleIntervene
   } = useWriteChapter(setPromptError);
 
   const {
@@ -342,6 +343,7 @@ export default function Workspace() {
                       handleGenerateImagePrompt={handleGenerateImagePrompt}
                       handleRegenPrompt={handleRegenPrompt}
                       handleWriteChapter={handleWriteChapter}
+                      handleIntervene={handleIntervene}
                       handleGenerateImage={handleGenerateImage}
                       handleGenerateAllImages={handleGenerateAllImages}
                       handleGenerateVideo={handleGenerateVideo}

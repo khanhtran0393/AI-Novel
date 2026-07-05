@@ -34,14 +34,14 @@ export async function GET(req: NextRequest) {
       const head = {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
+        'Content-Length': chunksize.toString(),
         'Content-Type': 'video/mp4',
       };
 
       return new NextResponse(file as any, { status: 206, headers: head });
     } else {
       const head = {
-        'Content-Length': fileSize,
+        'Content-Length': fileSize.toString(),
         'Content-Type': 'video/mp4',
       };
       const file = fs.createReadStream(absolutePath);

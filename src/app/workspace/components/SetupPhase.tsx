@@ -56,7 +56,13 @@ export default function SetupPhase({
                 { name: 'Hệ Thống', desc: 'Giao diện nhiệm vụ & thăng cấp' },
                 { name: 'Sinh Tồn', desc: 'Vật lộn sống sót khắc nghiệt' },
                 { name: 'Võ Hiệp', desc: 'Ân oán giang hồ, kiếm hiệp' },
-                { name: 'Trinh Thám', desc: 'Phá án & ly kỳ bí ẩn' }
+                { name: 'Trinh Thám', desc: 'Phá án & ly kỳ bí ẩn' },
+                { name: 'Dị Năng', desc: 'Siêu năng lực đột biến' },
+                { name: 'Linh Khí Khôi Phục', desc: 'Trái đất thức tỉnh, linh khí trỗi dậy' },
+                { name: 'Kinh Dị', desc: 'Tâm linh bí ẩn, rùng rợn' },
+                { name: 'Hài Hước', desc: 'Giải trí nhẹ nhàng, tấu hài' },
+                { name: 'Cơ Giáp / Mecha', desc: 'Người máy chiến đấu khổng lồ' },
+                { name: 'Ngôn Tình', desc: 'Tình cảm lãng mạn' }
               ].map((theme) => (
                 <button
                   key={theme.name}
@@ -87,7 +93,11 @@ export default function SetupPhase({
                 { name: 'Đô Thị', desc: 'Cuộc chiến ngầm phố thị' },
                 { name: 'Viễn Tưởng', desc: 'Khoa học viễn tưởng siêu tưởng' },
                 { name: 'Mạt Thế', desc: 'Ngày tàn nhân loại, dị chủng' },
-                { name: 'Cổ Đại', desc: 'Cung đấu, lịch sử quân sự cổ kính' }
+                { name: 'Cổ Đại', desc: 'Cung đấu, lịch sử quân sự cổ kính' },
+                { name: 'Cyberpunk', desc: 'Công nghệ cao, đời sống thấp' },
+                { name: 'Steampunk', desc: 'Đế chế máy móc hơi nước' },
+                { name: 'Hắc Ám', desc: 'Thế giới đen tối, tàn khốc' },
+                { name: 'Đồng Nhân', desc: 'Phóng tác từ tác phẩm khác' }
               ].map((style) => (
                 <button
                   key={style.name}
@@ -138,34 +148,164 @@ export default function SetupPhase({
             )}
           </div>
 
-          {/* Khối QUY MÔ TÁC PHẨM */}
-          <div className="flex flex-col items-center justify-center rounded-lg border border-zinc-900 bg-zinc-900/20 py-5">
-            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3">
-              4. Quy Mô Tác Phẩm
+          {/* Khối QUY MÔ & NGÔN NGỮ */}
+          <div className="flex flex-col items-center justify-center rounded-lg border border-zinc-900 bg-zinc-900/20 py-5 px-6">
+            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-4 w-full text-left">
+              4. Quy Mô & Ngôn Ngữ
             </label>
-            <div className="flex items-center gap-6">
-              <button
-                type="button"
-                onClick={() => handleAdjustChapters(-1)}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <div className="flex flex-col items-center">
-                <span className="text-3xl font-extrabold tracking-wider text-zinc-100">
-                  {store.setup.so_chuong}
-                </span>
-                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mt-1">
-                  CHƯƠNG
-                </span>
+            <div className="flex w-full flex-col sm:flex-row items-center gap-6">
+              
+              {/* Cột Số Chương */}
+              <div className="flex flex-1 flex-col w-full">
+                <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span> Tổng Số Chương
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    min={1} 
+                    max={500}
+                    value={store.setup.so_chuong}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val > 0) {
+                        store.setSetup({ so_chuong: val });
+                      } else if (e.target.value === '') {
+                        store.setSetup({ so_chuong: '' as any });
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!store.setup.so_chuong || store.setup.so_chuong < 1) store.setSetup({ so_chuong: 1 });
+                    }}
+                    className="w-full bg-black border border-zinc-800 rounded p-3 text-2xl font-extrabold text-zinc-100 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-center"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1">
+                    <button type="button" onClick={() => handleAdjustChapters(1)} className="text-zinc-500 hover:text-white"><Plus className="h-3 w-3" /></button>
+                    <button type="button" onClick={() => handleAdjustChapters(-1)} className="text-zinc-500 hover:text-white"><Minus className="h-3 w-3" /></button>
+                  </div>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => handleAdjustChapters(1)}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
+
+              {/* Dấu X (chỉ hiển thị trên màn hình lớn) */}
+              <div className="hidden sm:flex text-zinc-600 font-bold text-xl mt-4">×</div>
+
+              {/* Cột Số Từ / Chương */}
+              <div className="flex flex-1 flex-col w-full">
+                <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Độ dài mỗi chương (Từ)
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    min={500} 
+                    max={10000}
+                    step={500}
+                    value={store.setup.so_tu_chuong || 4250}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val > 0) {
+                        store.setSetup({ so_tu_chuong: val });
+                      } else if (e.target.value === '') {
+                        store.setSetup({ so_tu_chuong: '' as any });
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!store.setup.so_tu_chuong || store.setup.so_tu_chuong < 500) store.setSetup({ so_tu_chuong: 4250 });
+                    }}
+                    className="w-full bg-black border border-zinc-800 rounded p-3 text-2xl font-extrabold text-zinc-100 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-center"
+                  />
+                </div>
+              </div>
+
+              {/* Dấu phân cách */}
+              <div className="hidden sm:flex text-zinc-800 font-bold text-2xl mt-4">|</div>
+
+              {/* Cột Ngôn Ngữ */}
+              <div className="flex flex-1 flex-col w-full">
+                <label className="text-[10px] font-bold text-sky-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-sky-500"></span> Ngôn Ngữ
+                </label>
+                <div className="relative h-full flex">
+                  <select
+                    value={store.setup.ngon_ngu || 'Tiếng Việt'}
+                    onChange={(e) => store.setSetup({ ngon_ngu: e.target.value })}
+                    className="w-full h-full bg-black border border-zinc-800 rounded p-3 text-base font-bold text-zinc-100 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all cursor-pointer appearance-none"
+                  >
+                    <option value="Tiếng Việt">Tiếng Việt</option>
+                    <option value="English">English</option>
+                    <option value="中文 (Chinese)">中文 (Chinese)</option>
+                    <option value="日本語 (Japanese)">日本語 (Japanese)</option>
+                    <option value="한국어 (Korean)">한국어 (Korean)</option>
+                    <option value="Français (French)">Français (French)</option>
+                    <option value="Español (Spanish)">Español (Spanish)</option>
+                    <option value="Русский (Russian)">Русский (Russian)</option>
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+              
+            </div>
+          </div>
+
+          {/* Khối LUẬT LỆ & CHỐNG AI */}
+          <div className="rounded-lg border border-red-900/50 bg-red-950/10 p-5 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+            <label className="text-xs font-bold uppercase tracking-wider text-red-500 mb-3 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              5. Bộ Lọc Chống Văn Phong AI & Cấm Từ
+            </label>
+            <div className="space-y-4 mt-4">
+              <div>
+                <label className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5 mb-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span> Từ cấm tuyệt đối (Cách nhau bằng dấu phẩy)
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="VD: đáng chú ý là, nhìn chung, có thể nói..." 
+                  value={store.userRules.forbidden_words}
+                  onChange={(e) => store.updateUserRules({ forbidden_words: e.target.value })}
+                  className="w-full bg-black border border-red-900/50 rounded p-3 text-sm text-zinc-200 outline-none focus:border-red-500 transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-orange-400 uppercase flex items-center gap-1.5 mb-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-500"></span> Từ sáo rỗng cần hạn chế (Cách nhau bằng dấu phẩy)
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="VD: không khỏi, dường như, bất chợt..." 
+                  value={store.userRules.fatigue_words}
+                  onChange={(e) => store.updateUserRules({ fatigue_words: e.target.value })}
+                  className="w-full bg-black border border-orange-900/50 rounded p-3 text-sm text-zinc-200 outline-none focus:border-orange-500 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Khối ĐỘNG CƠ CỐT LÕI */}
+          <div className="rounded-lg border border-sky-900/50 bg-sky-950/10 p-5 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
+            <label className="text-xs font-bold uppercase tracking-wider text-sky-400 mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              6. Động Cơ Cốt Lõi (Được kế thừa từ AI Novel CLI)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+              <div className="flex flex-col rounded border border-sky-800/50 bg-black p-3">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Đa Tác Nhân Tự Chủ</span>
+                <span className="text-[10px] text-zinc-400 mt-1">Điều phối viên (Coordinator) liên kết tự động Kiến trúc sư, Người viết và Biên tập viên.</span>
+              </div>
+              <div className="flex flex-col rounded border border-sky-800/50 bg-black p-3">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Kế Hoạch Cuộn</span>
+                <span className="text-[10px] text-zinc-400 mt-1">Lập đề cương theo từng cung truyện, không loãng ý tưởng, hỗ trợ 500+ chương.</span>
+              </div>
+              <div className="flex flex-col rounded border border-sky-800/50 bg-black p-3">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Đánh Giá 7 Chiều</span>
+                <span className="text-[10px] text-zinc-400 mt-1">Hệ thống khử "văn mẫu AI" cơ học, đảm bảo tính nhất quán, nhịp truyện, phục bút.</span>
+              </div>
+              <div className="flex flex-col rounded border border-amber-800/50 bg-amber-950/20 p-3 shadow-[0_0_10px_rgba(245,158,11,0.1)]">
+                <span className="text-[11px] font-bold text-amber-500 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span> Can Thiệp Thời Gian Thực</span>
+                <span className="text-[10px] text-zinc-300 mt-1">Nhập lệnh bẻ lái cốt truyện <b>ngay trong lúc AI đang viết chữ</b> (ở bước sau).</span>
+              </div>
             </div>
           </div>
 

@@ -55,8 +55,8 @@ export async function POST(req: Request) {
     const openMontageDir = path.join(process.cwd(), 'OpenMontage');
     const composerDir = path.join(openMontageDir, 'remotion-composer');
     
-    const cuts = [];
-    const overlays = [];
+    const cuts: any[] = [];
+    const overlays: any[] = [];
     
     // 1. Title sequence
     cuts.push({

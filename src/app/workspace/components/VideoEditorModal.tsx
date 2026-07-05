@@ -569,8 +569,8 @@ export default function VideoEditorModal({ isOpen, onClose }: VideoEditorModalPr
         </div>
       </div>
 
-      {showAudioTools && <AudioToolsPanel onClose={() => setShowAudioTools(false)} />}
-      {showDownloadStudio && <DownloadStudioPanel onClose={() => setShowDownloadStudio(false)} />}
+      {showAudioTools && <AudioToolsPanel isOpen={showAudioTools} onClose={() => setShowAudioTools(false)} />}
+      {showDownloadStudio && <DownloadStudioPanel isOpen={showDownloadStudio} onClose={() => setShowDownloadStudio(false)} />}
     </div>
   );
 }
