@@ -382,7 +382,12 @@ export default function Header() {
                     onClick={() => {
                       if (newApiInput.trim()) {
                         const keys = newApiInput.split('\n').map(k => k.trim()).filter(k => k);
-                        keys.forEach(k => handleAddApiKey(k));
+                        const currentKeys = store.apiKeys || [];
+                        const uniqueNewKeys = keys.filter(k => !currentKeys.includes(k));
+                        if (uniqueNewKeys.length > 0) {
+                          store.setApiKeys([...currentKeys, ...uniqueNewKeys]);
+                          if (!store.apiKey) store.setApiKey(uniqueNewKeys[0]);
+                        }
                         setNewApiInput('');
                       }
                     }}
