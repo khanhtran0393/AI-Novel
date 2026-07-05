@@ -429,7 +429,7 @@ export default function Sidebar({
               handleWriteChapter(true); // Ghi đè toàn bộ chương
             }
           }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-500 shadow-lg transition-all duration-300 hover:bg-amber-500 hover:text-black cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 bg-red-500/10 py-2.5 text-xs font-bold uppercase tracking-wider text-red-500 shadow-lg transition-all duration-300 hover:bg-red-500 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
         >
           {store.dang_tai && isStreaming ? (
             <>

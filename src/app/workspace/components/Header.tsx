@@ -98,6 +98,16 @@ export default function Header() {
           ⚡ TẢI 1.1.1.1 VPN
         </a>
 
+        {/* Nút Mở Thư Mục Lưu */}
+        <button
+          type="button"
+          onClick={() => handleOpenFolder('.')}
+          className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 hover:text-white transition-all duration-300 cursor-pointer"
+          title="Mở nhanh thư mục dự án cục bộ"
+        >
+          📁 Mở thư mục lưu
+        </button>
+
 
 
         {/* 4 Nút Hành Động Nhanh */}

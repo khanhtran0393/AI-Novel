@@ -60,11 +60,45 @@ export default function ContentTab({
   const store = useNovelStore();
   const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
 
+  const wordCount = (isStreaming ? streamText : currentChapter?.noi_dung || '')
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const targetWords = store.setup.so_tu_chuong || 4000;
+  const progressPercent = Math.min(100, Math.max(0, (wordCount / targetWords) * 100));
+  const isGoalReached = wordCount >= targetWords;
+
+  // Render ProgressBar
+  const renderProgressBar = () => (
+    <div className="mb-6 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+          Chỉ tiêu số từ (Word-Gate)
+        </span>
+        <span className={`text-[10px] font-bold ${isGoalReached ? 'text-emerald-500' : 'text-amber-500'}`}>
+          {wordCount} / {targetWords} từ
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 border border-zinc-800">
+        <div
+          className={`h-full transition-all duration-500 ${
+            isGoalReached
+              ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]'
+              : 'bg-gradient-to-r from-amber-600 to-orange-500 shadow-[0_0_8px_#f59e0b]'
+          }`}
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+    </div>
+  );
+
   if (isStreaming) {
     return (
-      <div className="whitespace-pre-line bg-zinc-950/30 border border-zinc-900/50 rounded-lg p-6 text-md leading-loose font-sans">
-        {streamText}
-        <span className="inline-block h-4 w-2 bg-amber-500 animate-blink ml-1">▋</span>
+      <div className="flex flex-col">
+        {renderProgressBar()}
+        <div className="whitespace-pre-line bg-zinc-950/30 border border-zinc-900/50 rounded-lg p-6 text-md leading-loose font-sans">
+          {streamText}
+          <span className="inline-block h-4 w-2 bg-amber-500 animate-blink ml-1">▋</span>
+        </div>
       </div>
     );
   }
@@ -73,11 +107,39 @@ export default function ContentTab({
     const scenes = parseScenes(currentChapter.noi_dung);
     return (
       <div className="flex flex-col gap-6">
+        {renderProgressBar()}
+        
+        {/* Sticky Navigation */}
+        <div className="sticky top-16 z-40 -mx-4 px-4 py-2 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-900/80 shadow-lg flex items-center gap-2 overflow-x-auto">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex-none">
+            Chuyển cảnh:
+          </span>
+          <div className="flex items-center gap-2">
+            {scenes.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById(`scene-card-container-${idx}`);
+                  if (el) {
+                    const yOffset = -120; // Trừ bớt chiều cao của header và sticky nav
+                    const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                    window.scrollTo({ top: y, behavior: 'smooth' });
+                  }
+                }}
+                className="flex-none rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[10px] font-bold text-zinc-400 hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-500 transition-all duration-200 cursor-pointer"
+              >
+                Cảnh {idx + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {scenes.map((scene, idx) => (
           <div 
             key={idx}
             id={`scene-card-container-${idx}`}
-            className="scroll-mt-12 transition-all duration-350 animate-in fade-in-50 duration-200"
+            className="scroll-mt-32 transition-all duration-350 animate-in fade-in-50 duration-200"
           >
             <SceneCard
               scene={scene}
