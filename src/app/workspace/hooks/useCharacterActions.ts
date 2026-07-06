@@ -53,7 +53,7 @@ export function useCharacterActions() {
         thoiQuen,
         apiKeys: store.apiKeys || [],
         apiKey: store.apiKey,
-        useMock: store.useMock
+        useMock: false
       });
 
       if (data.gioi_tinh) setGioiTinh(data.gioi_tinh);
@@ -91,7 +91,7 @@ export function useCharacterActions() {
         thoiQuen,
         apiKeys: store.apiKeys || [],
         apiKey: store.apiKey,
-        useMock: store.useMock
+        useMock: false
       });
 
       if (prompt) {
@@ -120,7 +120,7 @@ export function useCharacterActions() {
         ten_tac_pham: store.ten_tac_pham || 'Kịch Bản Vô Danh',
         googleStudioCookies: store.googleStudioCookies || [],
         googleStudioCookie: store.googleStudioCookie || '',
-        useMock: store.useMock
+        useMock: false
       });
 
       const imagePath = data.imagePath + '?t=' + Date.now();

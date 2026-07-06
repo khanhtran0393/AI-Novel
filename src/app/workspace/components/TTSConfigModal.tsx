@@ -9,7 +9,37 @@ interface TTSConfigModalProps {
   onClose: () => void;
 }
 
-const VOICES: Record<string, Record<string, {id: string, name: string, previewUrl?: string}[]>> = {
+type VoiceOption = { id: string; name: string; previewUrl?: string };
+type VoiceCatalog = Record<string, Record<string, VoiceOption[]>>;
+
+const OPENAI_VOICE_OPTIONS: VoiceOption[] = [
+  { id: 'alloy', name: 'Alloy' },
+  { id: 'ash', name: 'Ash' },
+  { id: 'ballad', name: 'Ballad' },
+  { id: 'coral', name: 'Coral' },
+  { id: 'echo', name: 'Echo' },
+  { id: 'fable', name: 'Fable' },
+  { id: 'nova', name: 'Nova' },
+  { id: 'onyx', name: 'Onyx' },
+  { id: 'sage', name: 'Sage' },
+  { id: 'shimmer', name: 'Shimmer' },
+  { id: 'verse', name: 'Verse' },
+  { id: 'marin', name: 'Marin' },
+  { id: 'cedar', name: 'Cedar' },
+];
+
+const GEMINI_VOICE_OPTIONS: VoiceOption[] = [
+  { id: 'Kore', name: 'Kore (Firm)' },
+  { id: 'Puck', name: 'Puck (Upbeat)' },
+  { id: 'Zephyr', name: 'Zephyr (Bright)' },
+  { id: 'Aoede', name: 'Aoede (Breezy)' },
+  { id: 'Charon', name: 'Charon (Informative)' },
+  { id: 'Fenrir', name: 'Fenrir (Excitable)' },
+  { id: 'Leda', name: 'Leda (Youthful)' },
+  { id: 'Orus', name: 'Orus (Firm)' },
+];
+
+const VOICES: VoiceCatalog = {
   omnivoice_local: {
     vi: [],
     en: [],
@@ -34,25 +64,16 @@ const VOICES: Record<string, Record<string, {id: string, name: string, previewUr
     ]
   },
   openai_tts: {
-    en: [
-      { id: 'alloy', name: 'Alloy' },
-      { id: 'ash', name: 'Ash' },
-      { id: 'ballad', name: 'Ballad' },
-      { id: 'cedar', name: 'Cedar' },
-      { id: 'coral', name: 'Coral' },
-      { id: 'fable', name: 'Fable' },
-      { id: 'halo', name: 'Halo' },
-      { id: 'nova', name: 'Nova' },
-      { id: 'onyx', name: 'Onyx' },
-      { id: 'sage', name: 'Sage' },
-      { id: 'shimmer', name: 'Shimmer' }
-    ],
-    vi: [
-      { id: 'alloy', name: 'Alloy' },
-      { id: 'nova', name: 'Nova' },
-      { id: 'onyx', name: 'Onyx' },
-      { id: 'shimmer', name: 'Shimmer' }
-    ]
+    vi: OPENAI_VOICE_OPTIONS,
+    en: OPENAI_VOICE_OPTIONS,
+    fr: OPENAI_VOICE_OPTIONS,
+    de: OPENAI_VOICE_OPTIONS,
+    es: OPENAI_VOICE_OPTIONS,
+    pt: OPENAI_VOICE_OPTIONS,
+    id: OPENAI_VOICE_OPTIONS,
+    ja: OPENAI_VOICE_OPTIONS,
+    zh: OPENAI_VOICE_OPTIONS,
+    ko: OPENAI_VOICE_OPTIONS
   },
   tiktok_tts: {
     vi: [
@@ -132,10 +153,16 @@ const VOICES: Record<string, Record<string, {id: string, name: string, previewUr
     ]
   },
   gemini_tts: {
-    vi: [
-      { id: 'gemini-2.5-flash-vi-f', name: 'Nữ Mặc Định' },
-      { id: 'gemini-2.5-flash-vi-m', name: 'Nam Mặc Định' }
-    ]
+    vi: GEMINI_VOICE_OPTIONS,
+    en: GEMINI_VOICE_OPTIONS,
+    fr: GEMINI_VOICE_OPTIONS,
+    de: GEMINI_VOICE_OPTIONS,
+    es: GEMINI_VOICE_OPTIONS,
+    pt: GEMINI_VOICE_OPTIONS,
+    id: GEMINI_VOICE_OPTIONS,
+    ja: GEMINI_VOICE_OPTIONS,
+    zh: GEMINI_VOICE_OPTIONS,
+    ko: GEMINI_VOICE_OPTIONS
   },
   piper: {
     vi: [
@@ -164,6 +191,26 @@ const VOICES: Record<string, Record<string, {id: string, name: string, previewUr
       { id: 'en-AU-WilliamNeural', name: 'William (Nam AU)' },
       { id: 'en-CA-ClaraNeural', name: 'Clara (Nữ CA)' },
       { id: 'en-CA-LiamNeural', name: 'Liam (Nam CA)' }
+    ],
+    fr: [
+      { id: 'fr-FR-DeniseNeural', name: 'Denise (Nu)' },
+      { id: 'fr-FR-HenriNeural', name: 'Henri (Nam)' }
+    ],
+    de: [
+      { id: 'de-DE-KatjaNeural', name: 'Katja (Nu)' },
+      { id: 'de-DE-ConradNeural', name: 'Conrad (Nam)' }
+    ],
+    es: [
+      { id: 'es-ES-ElviraNeural', name: 'Elvira (Nu)' },
+      { id: 'es-ES-AlvaroNeural', name: 'Alvaro (Nam)' }
+    ],
+    pt: [
+      { id: 'pt-BR-FranciscaNeural', name: 'Francisca (Nu)' },
+      { id: 'pt-BR-AntonioNeural', name: 'Antonio (Nam)' }
+    ],
+    id: [
+      { id: 'id-ID-GadisNeural', name: 'Gadis (Nu)' },
+      { id: 'id-ID-ArdiNeural', name: 'Ardi (Nam)' }
     ],
     zh: [
       { id: 'zh-CN-XiaoxiaoNeural', name: 'Xiaoxiao (Nữ)' },
@@ -235,6 +282,30 @@ const VOICES: Record<string, Record<string, {id: string, name: string, previewUr
     en: [
       { id: 'en-US-Journey-F', name: 'Journey Nữ (US)' },
       { id: 'en-US-Journey-D', name: 'Journey Nam (US)' }
+    ],
+    fr: [
+      { id: 'fr-FR-Translate', name: 'Google Translate French' }
+    ],
+    de: [
+      { id: 'de-DE-Translate', name: 'Google Translate German' }
+    ],
+    es: [
+      { id: 'es-ES-Translate', name: 'Google Translate Spanish' }
+    ],
+    pt: [
+      { id: 'pt-BR-Translate', name: 'Google Translate Portuguese' }
+    ],
+    id: [
+      { id: 'id-ID-Translate', name: 'Google Translate Indonesian' }
+    ],
+    ja: [
+      { id: 'ja-JP-Translate', name: 'Google Translate Japanese' }
+    ],
+    zh: [
+      { id: 'zh-CN-Translate', name: 'Google Translate Chinese' }
+    ],
+    ko: [
+      { id: 'ko-KR-Translate', name: 'Google Translate Korean' }
     ]
   },
   elevenlabs: {
@@ -259,12 +330,39 @@ const LANGUAGES = [
   { code: 'ko', label: 'Tiếng Hàn (Korean)' }
 ];
 
+function getVoiceList(catalog: VoiceCatalog, platform: string, language: string) {
+  return catalog[platform]?.[language] || [];
+}
+
+function getDefaultVoiceConfig(catalog: VoiceCatalog, platform: string, preferredLanguage: string) {
+  const platformVoices = catalog[platform] || {};
+  let language = preferredLanguage;
+  let voices = platformVoices[language] || [];
+
+  if (voices.length === 0) {
+    const fallbackLanguage = Object.keys(platformVoices).find(code => platformVoices[code]?.length > 0);
+    if (fallbackLanguage) {
+      language = fallbackLanguage;
+      voices = platformVoices[fallbackLanguage] || [];
+    }
+  }
+
+  return {
+    language,
+    voice: voices[0]?.id || '',
+  };
+}
+
 export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps) {
   const store = useNovelStore();
   const config = store.ttsConfig;
   const [isPreviewing, setIsPreviewing] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [dynamicVoices, setDynamicVoices] = useState<Record<string, Record<string, {id: string, name: string, previewUrl?: string}[]>>>(VOICES);
+  const [dynamicVoices, setDynamicVoices] = useState<VoiceCatalog>(VOICES);
+  const currentVoices = getVoiceList(dynamicVoices, config.platform, config.language);
+  const selectedVoice = currentVoices.find(v => v.id === config.voice) || currentVoices[0] || null;
+  const activeVoiceId = selectedVoice?.id || config.voice || '';
+  const isTikTokWithoutSession = config.platform === 'tiktok_tts' && !config.tiktokSessionId?.trim();
 
   
   // Load dynamic Piper models
@@ -341,9 +439,14 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     };
   }, []);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || currentVoices.length === 0) return;
+    if (!currentVoices.some(v => v.id === config.voice)) {
+      store.updateTTSConfig({ voice: currentVoices[0].id });
+    }
+  }, [isOpen, config.platform, config.language, config.voice, currentVoices, store]);
 
-  const currentVoices = dynamicVoices[config.platform as string]?.[config.language] || [];
+  if (!isOpen) return null;
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
   const handleUpdateConfig = (key: string, value: any) => {
@@ -359,12 +462,19 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
         audioRef.current = null;
       }
 
-      const selectedVoiceObj = currentVoices.find((v: any) => v.id === config.voice);
+      const selectedVoiceObj = selectedVoice;
       const currentVoiceName = selectedVoiceObj ? selectedVoiceObj.name : config.voice;
       const cleanVoiceName = currentVoiceName.split('(')[0].trim();
+      const effectiveConfig = {
+        ...config,
+        voice: activeVoiceId,
+      };
+      const previewApiKeys = effectiveConfig.platform === 'openai_tts'
+        ? (store.openaiApiKeys?.length ? store.openaiApiKeys : (store.openaiApiKey ? [store.openaiApiKey] : []))
+        : (store.apiKeys?.length ? store.apiKeys : (store.apiKey ? [store.apiKey] : []));
 
       let previewAudioUrl = '';
-      if (config.platform === 'omnivoice_local' && selectedVoiceObj?.previewUrl) {
+      if (effectiveConfig.platform === 'omnivoice_local' && selectedVoiceObj?.previewUrl) {
         // Use pre-rendered preview audio for OmniVoice local
         previewAudioUrl = selectedVoiceObj.previewUrl;
       } else {
@@ -376,7 +486,10 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
             chapterNum: 0,
             sceneIndex: 0,
             isPreview: true,
-            ttsConfig: config,
+            voiceName: activeVoiceId,
+            ttsConfig: effectiveConfig,
+            apiKeys: previewApiKeys,
+            ten_tac_pham: store.ten_tac_pham || 'AI Novel',
           })
         });
 
@@ -431,10 +544,11 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   value={config.platform}
                   onChange={(e) => {
                     const newPlatform = e.target.value as typeof config.platform;
-                    const availableVoices = dynamicVoices[newPlatform]?.[config.language];
+                    const nextVoiceConfig = getDefaultVoiceConfig(dynamicVoices, newPlatform, config.language);
                     store.updateTTSConfig({ 
                       platform: newPlatform,
-                      voice: availableVoices && availableVoices.length > 0 ? availableVoices[0].id : ''
+                      language: nextVoiceConfig.language,
+                      voice: nextVoiceConfig.voice
                     });
                   }}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-black/60 px-3 py-2.5 pr-10 text-sm text-zinc-200 outline-none focus:border-amber-500 transition-colors cursor-pointer"
@@ -445,7 +559,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   <option value="piper">Piper (Local AI - Gợi ý)</option>
                   <option value="capcut_tts">CapCut App TTS</option>
                   <option value="edge_tts">Microsoft Edge TTS (Free)</option>
-                  <option value="tiktok_tts">TikTok TTS (Free)</option>
+                  <option value="tiktok_tts">TikTok TTS (cần SessionID)</option>
                   <option value="elevenlabs">ElevenLabs (Pro)</option>
                   <option value="vbee">VBee Studio (Pro)</option>
                   <option value="gemini_tts">Google Gemini TTS</option>
@@ -466,10 +580,10 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   value={config.language}
                   onChange={(e) => {
                     const newLang = e.target.value;
-                    const availableVoices = dynamicVoices[config.platform]?.[newLang];
+                    const nextVoiceConfig = getDefaultVoiceConfig(dynamicVoices, config.platform, newLang);
                     store.updateTTSConfig({ 
-                      language: newLang,
-                      voice: availableVoices && availableVoices.length > 0 ? availableVoices[0].id : ''
+                      language: nextVoiceConfig.language,
+                      voice: nextVoiceConfig.voice
                     });
                   }}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-black/60 px-3 py-2.5 pr-10 text-sm text-zinc-200 outline-none focus:border-amber-500 transition-colors cursor-pointer"
@@ -492,6 +606,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   <button
                     onClick={handlePreviewVoice}
                     disabled={isPreviewing}
+                    title={isTikTokWithoutSession ? 'Thiếu SessionID TikTok, bản nghe thử sẽ tự dùng Edge TTS tương ứng.' : 'Nghe thử giọng đọc đang chọn'}
                     className="flex items-center gap-1.5 px-3 py-1 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
                   >
                     {isPreviewing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
@@ -501,7 +616,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
               </label>
               <div className="relative w-full">
                 <select
-                  value={config.voice}
+                  value={activeVoiceId}
                   onChange={(e) => store.updateTTSConfig({ voice: e.target.value })}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-black/60 px-3 py-2.5 pr-10 text-sm text-zinc-200 outline-none focus:border-amber-500 transition-colors cursor-pointer"
                 >
@@ -638,11 +753,14 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                 </div>
                 <input
                   type="text"
-                  placeholder="Nhập sessionid cookie của Tiktok.com vào đây (Tuỳ chọn)"
+                  placeholder="Nhập sessionid cookie của Tiktok.com nếu muốn dùng đúng TikTok TTS"
                   value={config.tiktokSessionId}
                   onChange={(e) => store.updateTTSConfig({ tiktokSessionId: e.target.value })}
                   className="w-full rounded-lg border border-zinc-800 bg-black/60 px-3 py-2.5 text-sm font-mono text-zinc-200 outline-none focus:border-sky-500 transition-colors"
                 />
+                <p className="text-[10px] text-zinc-500">
+                  TikTok TTS cần sessionid hợp lệ. Nếu bỏ trống, app sẽ tự dùng Edge TTS tương ứng để nghe thử và sinh audio không bị lỗi.
+                </p>
               </div>
             )}
             
@@ -682,7 +800,12 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
         {/* Footer */}
         <div className="border-t border-zinc-800 p-4 bg-zinc-900/50 flex justify-end">
           <button
-            onClick={onClose}
+            onClick={() => {
+              if (activeVoiceId && activeVoiceId !== config.voice) {
+                store.updateTTSConfig({ voice: activeVoiceId });
+              }
+              onClose();
+            }}
             className="rounded-lg bg-amber-500 px-6 py-2 text-xs font-bold text-black hover:bg-amber-400 transition-colors"
           >
             Lưu Cấu Hình

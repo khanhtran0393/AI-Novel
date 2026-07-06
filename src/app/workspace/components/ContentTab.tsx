@@ -132,31 +132,7 @@ export default function ContentTab({
       <div className="flex flex-col gap-6">
         {renderProgressBar()}
         
-        {/* Sticky Navigation */}
-        <div className="sticky top-16 z-40 -mx-4 px-4 py-2 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-900/80 shadow-lg flex items-center gap-2 overflow-x-auto">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex-none">
-            Chuyển cảnh:
-          </span>
-          <div className="flex items-center gap-2">
-            {scenes.map((_, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  const el = document.getElementById(`scene-card-container-${idx}`);
-                  if (el) {
-                    const yOffset = -120; // Trừ bớt chiều cao của header và sticky nav
-                    const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
-                    window.scrollTo({ top: y, behavior: 'smooth' });
-                  }
-                }}
-                className="flex-none rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[10px] font-bold text-zinc-400 hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-500 transition-all duration-200 cursor-pointer"
-              >
-                Cảnh {idx + 1}
-              </button>
-            ))}
-          </div>
-        </div>
+
 
         {scenes.map((scene, idx) => (
           <div 

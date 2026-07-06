@@ -1,8 +1,4 @@
-/**
- * Module xử lý sinh kịch bản chi tiết chương truyện (Novel AI Writer)
- */
-
-import { Chuong } from '@/store/useNovelStore';
+import { Chuong, useNovelStore } from '@/store/useNovelStore';
 
 interface WriteChapterParams {
   useMock: boolean;
@@ -35,8 +31,20 @@ export async function compressContextAction(params: {
   if (params.useMock) {
     return "Tóm tắt giả lập: Mọi thứ đang diễn ra rất kịch tính. Nhân vật chính vừa tìm được manh mối mới.";
   }
-  const keysToUse = (params.apiKeys && params.apiKeys.length > 0) ? params.apiKeys : (params.apiKey ? [params.apiKey] : []);
-  if (keysToUse.length === 0) throw new Error('Chưa cấu hình API Key.');
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
+  }
+
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
+  }
 
   const res = await fetch('/api/generate', {
     method: 'POST',
@@ -44,6 +52,7 @@ export async function compressContextAction(params: {
     body: JSON.stringify({
       requestType: 'COMPRESS_CONTEXT',
       apiKeys: keysToUse,
+      model,
       payload: {
         tom_tat_cuon_chieu: params.tom_tat_cuon_chieu,
         tri_nho_ngan_han: params.tri_nho_ngan_han
@@ -97,9 +106,19 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<st
     });
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('Chưa cấu hình API Key.');
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
+  }
+
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -110,6 +129,7 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<st
     body: JSON.stringify({
       requestType: 'WRITE_CHAPTER',
       apiKeys: keysToUse,
+      model,
       payload: {
         ten_tac_pham,
         dan_y_tong_the,
@@ -161,8 +181,20 @@ export async function evaluateChapterAction(params: {
     };
   }
 
-  const keysToUse = (params.apiKeys && params.apiKeys.length > 0) ? params.apiKeys : (params.apiKey ? [params.apiKey] : []);
-  if (keysToUse.length === 0) throw new Error('Chưa cấu hình API Key.');
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
+  }
+
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
+  }
 
   const res = await fetch('/api/generate', {
     method: 'POST',
@@ -170,6 +202,7 @@ export async function evaluateChapterAction(params: {
     body: JSON.stringify({
       requestType: 'EVALUATE_CHAPTER',
       apiKeys: keysToUse,
+      model,
       payload: {
         chuong_hien_tai: params.chuong_hien_tai,
         noi_dung_kich_ban: params.noi_dung_kich_ban,
@@ -196,8 +229,20 @@ export async function planArcAction(params: {
   so_chuong_moi_cung: number;
   chuong_bat_dau: number;
 }): Promise<any> {
-  const keysToUse = (params.apiKeys && params.apiKeys.length > 0) ? params.apiKeys : (params.apiKey ? [params.apiKey] : []);
-  if (keysToUse.length === 0) throw new Error('Chưa cấu hình API Key.');
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
+  }
+
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
+  }
 
   const res = await fetch('/api/generate', {
     method: 'POST',
@@ -205,6 +250,7 @@ export async function planArcAction(params: {
     body: JSON.stringify({
       requestType: 'PLAN_ARC',
       apiKeys: keysToUse,
+      model,
       payload: params
     })
   });
@@ -216,3 +262,58 @@ export async function planArcAction(params: {
 
   return await res.json();
 }
+
+export async function commitMemoryAction(params: {
+  apiKey: string;
+  apiKeys: string[];
+  ten_tac_pham: string;
+  chuong_hien_tai: Chuong;
+  noi_dung_kich_ban: string;
+  tom_tat_cuon_chieu: string;
+  tri_nho_ngan_han: string[];
+  lorebook: string;
+  useMock: boolean;
+}): Promise<any> {
+  const { useMock } = params;
+  if (useMock) {
+    return {
+      tom_tat_cuon_chieu: params.tom_tat_cuon_chieu + '\n(Đã cập nhật sau Chương ' + params.chuong_hien_tai.so_chuong + ')',
+      tri_nho_ngan_han_moi: 'Chương ' + params.chuong_hien_tai.so_chuong + ' đã diễn ra kịch tính.',
+      lorebook_cap_nhat: params.lorebook
+    };
+  }
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
+  }
+
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
+  }
+
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requestType: 'COMMIT_MEMORY',
+      apiKeys: keysToUse,
+      model,
+      payload: params
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Lỗi khi cập nhật bộ nhớ vĩ mô.');
+  }
+
+  return await res.json();
+}
+

@@ -51,6 +51,7 @@ next-env.d.ts
 
 # Scratch and Cache
 /scratch/
+/.ainovel-app/
 __pycache__/
 test_*.js
 test_*.mjs

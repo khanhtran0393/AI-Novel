@@ -1,7 +1,7 @@
 /**
  * Module thiết lập ban đầu & Dàn ý tác phẩm (Novel Setup & Outline Generator)
  */
-import { SetupData } from '@/store/useNovelStore';
+import { SetupData, useNovelStore } from '@/store/useNovelStore';
 
 export const CO_THE_KHUYET_TAT = [
   'rách gân tay trái khiến kiếm chiêu bị lệch 1 phân',
@@ -46,17 +46,21 @@ export async function randomTemplateAction(params: {
 }): Promise<string> {
   const { useMock, apiKey, apiKeys, chu_de, phong_cach } = params;
 
-  if (useMock) {
-    const tenMain = 'Khải Đăng';
-    const khuyetTat = CO_THE_KHUYET_TAT[Math.floor(Math.random() * CO_THE_KHUYET_TAT.length)];
-    const khongGian = KHONG_GIAN_HOANG_PHE[Math.floor(Math.random() * KHONG_GIAN_HOANG_PHE.length)];
-    const vatPham = VAT_PHAM_MAC_DINH[Math.floor(Math.random() * VAT_PHAM_MAC_DINH.length)];
-    return `Neo-Veridia rực rỡ dưới ánh neon nhưng trống rỗng bên trong. Nhân vật chính ${tenMain} (Memory Hunter) gánh chịu khuyết tật: ${khuyetTat}. Câu chuyện bắt đầu khi ${tenMain} lọt vào một ${khongGian} để tìm kiếm những mảnh ký ức bị xóa bỏ của một tập thể, trong tay chỉ có một ${vatPham}. Anh phải chiến đấu chống lại thực thể ảo ảnh bảo mật trước khi Mạng Lưới Thấu Cảm tự động khóa vùng dữ liệu này vào ban đêm.`;
+
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('⚠️ Vui lòng nhập API Key để dùng tính năng AI tạo ý tưởng!');
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -65,6 +69,7 @@ export async function randomTemplateAction(params: {
     body: JSON.stringify({
       requestType: 'GENERATE_IDEAS',
       apiKeys: keysToUse,
+      model,
       payload: { chu_de, phong_cach }
     })
   });
@@ -86,33 +91,21 @@ export async function generateOutlineAction(params: {
 }): Promise<unknown> {
   const { useMock, apiKey, apiKeys, setupData } = params;
 
-  if (useMock) {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const dummyChapters = Array.from({ length: setupData.so_chuong }).map((_, i) => ({
-      so_chuong: i + 1,
-      tieu_de: i === 0 ? 'Chương 1: Ký ức biến mất' : i === 1 ? 'Chương 2: Lần theo dấu vết' : `Chương ${i + 1}: Đi sâu vào Mạng Lưới`,
-      dan_y: i === 0 
-        ? 'Khải Đăng nhận một vụ án kỳ lạ tại khu phố ổ chuột của Neo-Veridia, nơi toàn bộ cư dân quên mất sự tồn tại của một cô gái trẻ. Anh phải kết nối trực tiếp vào Mạng Lưới Thấu Cảm để tìm lại những mảnh vụn ký ức bị xóa bỏ.'
-        : i === 1 
-        ? 'Khải Đăng phát hiện ra một lỗ hổng bảo mật chết người trong Mạng Lưới Thấu Cảm, cho phép một thế lực ẩn danh xóa sạch sự tồn tại của bất kỳ ai. Anh bị truy đuổi bởi các thực thể bảo vệ hệ thống.'
-        : `Diễn biến tóm tắt của Chương ${i + 1} tại khu hoang dã số liệu. Khải Đăng phải vượt qua các bức tường lửa mã hóa cảm xúc.`,
-      noi_dung: '',
-      trang_thai: 'empty'
-    }));
 
-    const mockOutline = `# DÀN Ý TỔNG THỂ TÁC PHẨM: KÝ ỨC PHAI TÀN: MẠNG LƯỚI HƯ VÔ\n\n## 1. Khái Quát Bối Cảnh\nĐô thị Neo-Veridia ngập trong ánh đèn neon và Mạng Lưới Thấu Cảm (Empathic Net) thần kinh kết nối vạn vật.\n\n## 2. Tuyến Nhân Vật\nKhải Đăng - Thợ Săn Ký Ức (Memory Hunter) điều tra các vụ án xóa bỏ hiện thực đầy hiểm nguy.\n\n## 3. Lịch Trình Phát Triển Cốt Truyện\n- Chương 1: Khải Đăng truy tìm dấu vết ký ức bị xóa bỏ của cô gái bí ẩn ở khu ổ chuột.\n- Chương 2: Anh lật mở lỗ hổng bảo mật chết người của hệ thống thần kinh tập thể.`;
 
-    return {
-      tieu_de: 'Ký ức Phai Tàn: Mạng Lưới Hư Vô',
-      dan_y_tong_the: mockOutline,
-      nhan_vat: ['Khải Đăng'],
-      danh_sach_chuong: dummyChapters
-    };
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('Chưa cấu hình API Key.');
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -121,6 +114,7 @@ export async function generateOutlineAction(params: {
     body: JSON.stringify({
       requestType: 'GENERATE_OUTLINE',
       apiKeys: keysToUse,
+      model,
       payload: setupData
     })
   });

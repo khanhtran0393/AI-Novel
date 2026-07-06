@@ -3,9 +3,13 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 
+import fs from 'fs';
+
 const execFileAsync = promisify(execFile);
-const PYTHON_EXE = 'D:\\SuperAudioTools\\omnivoice-python\\python.exe';
-const SCRIPTS_DIR = 'D:\\SuperAudioTools\\video-dub-scripts';
+const PYTHON_EXE = fs.existsSync('D:\\SuperAudioTools\\omnivoice-python\\python.exe')
+  ? 'D:\\SuperAudioTools\\omnivoice-python\\python.exe'
+  : 'python';
+const SCRIPTS_DIR = path.join(process.cwd(), 'python_core');
 
 export async function POST(req: NextRequest) {
   try {

@@ -40,7 +40,6 @@ export interface NovelState {
   tab_hien_tai: 'dan_y' | 'noi_dung';
   workspaceTab: 'script' | 'ainovel';
   dang_tai: boolean;
-  useMock: boolean;
   apiKey: string;
   apiKeys: string[]; // Mảng chứa nhiều API Key để xoay vòng
   googleStudioCookie: string; // Cookie Google Studio cho các dòng flow và TTS tự động
@@ -105,6 +104,19 @@ export interface NovelState {
     summary: string;
   }>;
   cung_hien_tai: number; // Đánh dấu Arc hiện tại
+
+  // --- HỆ THỐNG API KEYS CHO TỪNG NHÀ CUNG CẤP ---
+  openaiApiKey: string;
+  openaiApiKeys: string[];
+  grokApiKey: string;
+  grokApiKeys: string[];
+  lumaApiKey: string;
+  lumaApiKeys: string[];
+  runwayApiKey: string;
+  runwayApiKeys: string[];
+  falaiApiKey: string;
+  falaiApiKeys: string[];
+  useGpuAcceleration: boolean;
 }
 
 export interface NovelActions {
@@ -124,7 +136,6 @@ export interface NovelActions {
   setTabHienTai: (tab: 'dan_y' | 'noi_dung') => void;
   setWorkspaceTab: (tab: 'script' | 'ainovel') => void;
   setDangTai: (loading: boolean) => void;
-  setUseMock: (mock: boolean) => void;
   setApiKey: (key: string) => void;
   setApiKeys: (keys: string[]) => void; // Action cập nhật danh sách nhiều khóa
   prioritizeApiKey: (key: string) => void;
@@ -175,6 +186,19 @@ export interface NovelActions {
   updateEditorReview: (chapterIndex: number, review: NovelState['editorReviews'][number]) => void;
   setCungHienTai: (arc: number) => void;
   addChuongMoi: (chuongList: Chuong[]) => void; // Architect thêm chương vào cuối
+
+  // Actions cập nhật API Keys cho từng nhà cung cấp
+  setOpenaiApiKey: (key: string) => void;
+  setOpenaiApiKeys: (keys: string[]) => void;
+  setGrokApiKey: (key: string) => void;
+  setGrokApiKeys: (keys: string[]) => void;
+  setLumaApiKey: (key: string) => void;
+  setLumaApiKeys: (keys: string[]) => void;
+  setRunwayApiKey: (key: string) => void;
+  setRunwayApiKeys: (keys: string[]) => void;
+  setFalaiApiKey: (key: string) => void;
+  setFalaiApiKeys: (keys: string[]) => void;
+  setUseGpuAcceleration: (use: boolean) => void;
 }
 
 export type NovelStore = NovelState & NovelActions;
@@ -240,9 +264,19 @@ Khải Đăng là một "Thợ Săn Ký Ức" (Memory Hunter), một thám tử 
   tab_hien_tai: 'dan_y',
   workspaceTab: 'script',
   dang_tai: false,
-  useMock: false,
   apiKey: '',
   apiKeys: [], // Mảng khóa trống mặc định
+  openaiApiKey: '',
+  openaiApiKeys: [],
+  grokApiKey: '',
+  grokApiKeys: [],
+  lumaApiKey: '',
+  lumaApiKeys: [],
+  runwayApiKey: '',
+  runwayApiKeys: [],
+  falaiApiKey: '',
+  falaiApiKeys: [],
+  useGpuAcceleration: false,
   googleStudioCookie: '', // Khởi tạo chuỗi cookie rỗng
   googleStudioCookies: [], // Mảng cookie rỗng mặc định
   isHydrated: false,
@@ -344,11 +378,20 @@ export const useNovelStore = create<NovelStore>()(
 
       setDangTai: (dang_tai) => set({ dang_tai }),
 
-      setUseMock: (useMock) => set({ useMock }),
-
       setApiKey: (apiKey) => set({ apiKey }),
 
       setApiKeys: (apiKeys) => set({ apiKeys }),
+
+      setOpenaiApiKey: (openaiApiKey) => set({ openaiApiKey }),
+      setOpenaiApiKeys: (openaiApiKeys) => set({ openaiApiKeys }),
+      setGrokApiKey: (grokApiKey) => set({ grokApiKey }),
+      setGrokApiKeys: (grokApiKeys) => set({ grokApiKeys }),
+      setLumaApiKey: (lumaApiKey) => set({ lumaApiKey }),
+      setLumaApiKeys: (lumaApiKeys) => set({ lumaApiKeys }),
+      setRunwayApiKey: (runwayApiKey) => set({ runwayApiKey }),
+      setRunwayApiKeys: (runwayApiKeys) => set({ runwayApiKeys }),
+      setFalaiApiKey: (falaiApiKey) => set({ falaiApiKey }),
+      setFalaiApiKeys: (falaiApiKeys) => set({ falaiApiKeys }),
 
       prioritizeApiKey: (apiKey: string) => set((state) => {
         if (!apiKey || !state.apiKeys.includes(apiKey)) return state;
@@ -373,9 +416,18 @@ export const useNovelStore = create<NovelStore>()(
         isHydrated: true,
         apiKey: state.apiKey,
         apiKeys: state.apiKeys,
+        openaiApiKey: state.openaiApiKey,
+        openaiApiKeys: state.openaiApiKeys,
+        grokApiKey: state.grokApiKey,
+        grokApiKeys: state.grokApiKeys,
+        lumaApiKey: state.lumaApiKey,
+        lumaApiKeys: state.lumaApiKeys,
+        runwayApiKey: state.runwayApiKey,
+        runwayApiKeys: state.runwayApiKeys,
+        falaiApiKey: state.falaiApiKey,
+        falaiApiKeys: state.falaiApiKeys,
         googleStudioCookie: state.googleStudioCookie,
         googleStudioCookies: state.googleStudioCookies,
-        useMock: state.useMock,
         googleDrivePath: state.googleDrivePath,
         googleDriveConnected: state.googleDriveConnected,
         googleLoggedIn: state.googleLoggedIn,
@@ -469,10 +521,10 @@ export const useNovelStore = create<NovelStore>()(
       })),
       setCungHienTai: (arc) => set({ cung_hien_tai: arc }),
       addChuongMoi: (chuongList) => set((state) => ({ danh_sach_chuong: [...state.danh_sach_chuong, ...chuongList] })),
+      setUseGpuAcceleration: (useGpuAcceleration) => set({ useGpuAcceleration }),
     }),
     {
       name: 'novel_generator_v2_store',
-      skipHydration: true,
       partialize: (state) => ({
         giai_doan: state.giai_doan,
         setup: state.setup,
@@ -482,9 +534,18 @@ export const useNovelStore = create<NovelStore>()(
         danh_sach_chuong: state.danh_sach_chuong,
         chuong_dang_chon: state.chuong_dang_chon,
         tab_hien_tai: state.tab_hien_tai,
-        useMock: state.useMock,
         apiKey: state.apiKey,
         apiKeys: state.apiKeys, // Lưu trữ danh sách nhiều khóa API kiên trì
+        openaiApiKey: state.openaiApiKey,
+        openaiApiKeys: state.openaiApiKeys,
+        grokApiKey: state.grokApiKey,
+        grokApiKeys: state.grokApiKeys,
+        lumaApiKey: state.lumaApiKey,
+        lumaApiKeys: state.lumaApiKeys,
+        runwayApiKey: state.runwayApiKey,
+        runwayApiKeys: state.runwayApiKeys,
+        falaiApiKey: state.falaiApiKey,
+        falaiApiKeys: state.falaiApiKeys,
         googleStudioCookie: state.googleStudioCookie, // Lưu trữ kiên trì cookie Google Studio
         googleStudioCookies: state.googleStudioCookies, // Lưu trữ kiên trì mảng cookie đa luồng
         googleDrivePath: state.googleDrivePath,
@@ -520,7 +581,8 @@ export const useNovelStore = create<NovelStore>()(
         is_vip: state.is_vip,
         is_pro: state.is_pro,
         credits: state.credits,
-        ttsConfig: state.ttsConfig
+        ttsConfig: state.ttsConfig,
+        useGpuAcceleration: state.useGpuAcceleration
       }),
     }
   )

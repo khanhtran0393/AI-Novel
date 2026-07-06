@@ -2,6 +2,7 @@
 
 import { useNovelStore } from '@/store/useNovelStore';
 import { exportTxtAction, resetProjectAction } from '../modules/projectModule';
+import { resetEngineAction } from '../modules/engineModule';
 
 export function useProjectActions(streamText: string) {
   const store = useNovelStore();
@@ -23,6 +24,7 @@ export function useProjectActions(streamText: string) {
     if (confirm('⚠️ Bạn có chắc chắn muốn làm mới dự án? Toàn bộ thiết lập, kịch bản đã sinh cùng với tất cả file âm thanh/hình ảnh cũ liên quan sẽ bị XÓA SẠCH!')) {
       try {
         await resetProjectAction(store.googleDrivePath || '');
+        await resetEngineAction();
       } catch (err: unknown) {
         console.warn(err instanceof Error ? err.message : String(err));
       }

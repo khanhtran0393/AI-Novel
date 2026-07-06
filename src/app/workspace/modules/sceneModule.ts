@@ -1,7 +1,7 @@
 /**
  * Module quản lý các thao tác tương tác phân cảnh (Scene Card Interactivity Manager)
  */
-import { Chuong } from '@/store/useNovelStore';
+import { Chuong, useNovelStore } from '@/store/useNovelStore';
 import { parseScenes } from '../utils/stringUtils';
 
 export function sceneChangeAction(params: {
@@ -44,18 +44,30 @@ interface ExpandSceneParams {
 export async function expandSceneAction(params: ExpandSceneParams): Promise<string> {
   const { idx, useMock, apiKey, apiKeys, ten_tac_pham, currentChapter, lorebook, scenes, sceneToExpand } = params;
 
-  if (useMock) {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    return sceneToExpand.content + '\n\nKhải Đăng khẽ thở dài, hơi ấm phả ra tạo thành một làn sương mỏng manh trước mắt. Mạng Lưới Thấu Cảm quanh anh vẫn đang run rẩy truyền tải các luồng sóng cảm xúc lạnh giá từ khu phố ổ chuột. Mặc dù bộ giải mã ký ức trong tay bắt đầu báo lỗi quá tải, ánh mắt anh vẫn xoáy sâu vào vùng trống không của dữ liệu. Anh biết, đằng sau sự mất tích của cô gái kia là một bí mật kinh hoàng có thể làm sụp đổ toàn bộ Neo-Veridia.';
+
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
+  }
+
   const res = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       requestType: 'EXPAND_SCENE',
       apiKeys: keysToUse,
+      model,
       payload: {
         ten_tac_pham,
         chuong_hien_tai: currentChapter,

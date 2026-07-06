@@ -3,6 +3,31 @@ const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
 const path = require('path');
+const { execSync } = require('child_process');
+
+function killProcessOnPort(port) {
+  if (process.platform !== 'win32') return;
+  try {
+    const output = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' });
+    const lines = output.split('\n');
+    for (const line of lines) {
+      if (line.includes('LISTENING')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && parseInt(pid) > 0 && parseInt(pid) !== process.pid) {
+          console.log(`[Startup Cleanup] Phát hiện tiến trình chiếm cổng ${port} (PID: ${pid}). Đang giải phóng...`);
+          execSync(`taskkill /F /PID ${pid}`);
+          console.log(`[Startup Cleanup] Đã giải phóng cổng ${port} thành công.`);
+        }
+      }
+    }
+  } catch (err) {
+    // Không có tiến trình nào chiếm cổng
+  }
+}
+
+// Tự động giải phóng cổng 3000 (cổng Next.js dev mặc định) để tránh xung đột cache biên dịch
+killProcessOnPort(3000);
 
 const dev = !app.isPackaged;
 // The directory containing the Next.js app.

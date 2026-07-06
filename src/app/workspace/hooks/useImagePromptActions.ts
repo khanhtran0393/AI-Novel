@@ -24,7 +24,7 @@ export function useImagePromptActions() {
     store.addGeneratedPrompts(assetKey, []);
     try {
       const prompts = await generateImagePromptAction({
-        useMock: store.useMock,
+        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         sceneText,
@@ -62,7 +62,7 @@ export function useImagePromptActions() {
     setRegeneratingSinglePrompt(prev => ({ ...prev, [key]: true }));
     try {
       const newPromptStr = await regenPromptAction({
-        useMock: store.useMock,
+        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         sceneIndex,
@@ -105,6 +105,15 @@ export function useImagePromptActions() {
       const cookiesList = store.googleStudioCookies || [];
       const selectedCookie = cookiesList[promptIndex % Math.max(1, cookiesList.length)] || store.googleStudioCookie;
 
+      let resolvedImageApiKey = '';
+      if (store.imageProvider === 'openai') {
+        resolvedImageApiKey = store.openaiApiKey || (store.openaiApiKeys && store.openaiApiKeys[0]) || '';
+      } else if (store.imageProvider === 'falai') {
+        resolvedImageApiKey = store.falaiApiKey || (store.falaiApiKeys && store.falaiApiKeys[0]) || '';
+      } else if (store.imageProvider === 'gemini') {
+        resolvedImageApiKey = store.apiKey || (store.apiKeys && store.apiKeys[0]) || '';
+      }
+
       const data = await generateImageAction({
         prompt,
         sentence,
@@ -117,12 +126,12 @@ export function useImagePromptActions() {
         selectedCookie,
         nhan_vat: store.nhan_vat || [],
         nhan_vat_prompts: store.nhan_vat_prompts,
-        useMock: store.useMock,
+        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         model: store.imageModel,
         imageProvider: store.imageProvider,
-        imageApiKey: store.imageApiKey,
+        imageApiKey: resolvedImageApiKey,
         imageAspectRatio: store.imageAspectRatio || '16:9',
         aiMasterApiKey: store.aiMasterApiKey,
       });
@@ -156,7 +165,7 @@ export function useImagePromptActions() {
 
     const hasApiKey = !!store.apiKey || (store.apiKeys && store.apiKeys.length > 0);
     const hasCookie = !!store.googleStudioCookie || (store.googleStudioCookies && store.googleStudioCookies.length > 0);
-    if (!store.useMock && !hasApiKey && !hasCookie) {
+    if (!hasApiKey && !hasCookie) {
       alert('⚠️ Chưa cấu hình API Key Google hoặc Cookie Google Studio để sinh ảnh.');
       return;
     }
@@ -215,6 +224,17 @@ export function useImagePromptActions() {
         throw new Error('Cần phải sinh ảnh cho cả 2 Prompt trước khi tạo Video nội suy giữa chúng!');
       }
 
+      let resolvedVideoApiKey = '';
+      if (store.videoProvider === 'luma') {
+        resolvedVideoApiKey = store.lumaApiKey || (store.lumaApiKeys && store.lumaApiKeys[0]) || '';
+      } else if (store.videoProvider === 'runway') {
+        resolvedVideoApiKey = store.runwayApiKey || (store.runwayApiKeys && store.runwayApiKeys[0]) || '';
+      } else if (store.videoProvider === 'sora') {
+        resolvedVideoApiKey = store.openaiApiKey || (store.openaiApiKeys && store.openaiApiKeys[0]) || '';
+      } else if (store.videoProvider === 'veo') {
+        resolvedVideoApiKey = store.apiKey || (store.apiKeys && store.apiKeys[0]) || '';
+      }
+
       const data = await generateVideoAction({
         chapterNum: store.chuong_dang_chon,
         sceneIndex,
@@ -225,7 +245,7 @@ export function useImagePromptActions() {
         endImage,
         model: store.videoModel,
         videoProvider: store.videoProvider,
-        videoApiKey: store.videoApiKey,
+        videoApiKey: resolvedVideoApiKey,
         videoAspectRatio: store.videoAspectRatio || '16:9',
       });
 

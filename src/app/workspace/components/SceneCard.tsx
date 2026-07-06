@@ -68,6 +68,7 @@ export default function SceneCard({
   const [openSceneTab, setOpenSceneTab] = useState<'tts' | 'studio' | null>('studio');
   const [manualDuration, setManualDuration] = useState('');
   const [upscalingImage, setUpscalingImage] = useState<Record<string, boolean>>({});
+  const [removingBg, setRemovingBg] = useState<Record<string, boolean>>({});
 
   const handleUpscaleImage = async (imagePath: string, key: string) => {
     setUpscalingImage(prev => ({ ...prev, [key]: true }));
@@ -88,6 +89,28 @@ export default function SceneCard({
       console.error(err);
     } finally {
       setUpscalingImage(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleBgRemoveImage = async (imagePath: string, key: string) => {
+    setRemovingBg(prev => ({ ...prev, [key]: true }));
+    try {
+      const outPath = imagePath.replace('.png', '_nobg.png').replace('.jpg', '_nobg.png');
+      const res = await fetch('/api/navtools/bg_remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePath, outPath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        store.addGeneratedImage(key, data.outPath);
+      } else {
+        alert("Xóa nền thất bại: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRemovingBg(prev => ({ ...prev, [key]: false }));
     }
   };
 
@@ -521,10 +544,14 @@ export default function SceneCard({
                               </button>
                               <button
                                 type="button"
-                                className="flex-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 hover:bg-emerald-900/40 hover:text-emerald-300 px-1 py-1 rounded transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer font-sans"
+                                disabled={removingBg[singlePromptKey]}
+                                onClick={() => handleBgRemoveImage(generatedImg, singlePromptKey)}
+                                className="flex-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 hover:bg-emerald-900/40 hover:text-emerald-300 px-1 py-1 rounded transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-sans"
                                 title="Tách phông nền ảnh bằng NAVTools AI"
                               >
-                                ✂ Tách Nền
+                                <span className={removingBg[singlePromptKey] ? 'animate-pulse' : ''}>
+                                  ✂ {removingBg[singlePromptKey] ? 'Đang Tách...' : 'Tách Nền'}
+                                </span>
                               </button>
                             </div>
                           </>

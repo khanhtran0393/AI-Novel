@@ -20,20 +20,16 @@ import {
   Book,
   PlusCircle,
   User,
-  MonitorPlay,
-  PlaySquare,
   Activity,
   UploadCloud
 } from 'lucide-react';
 import { planArcAction } from '../modules/writeModule';
 import { computeStyleStats, StyleStats } from '../modules/styleStatModule';
-import VideoEditorModal from './VideoEditorModal';
-import AutoRenderModal from './AutoRenderModal';
 import StyleStatModal from './StyleStatModal';
 import ImportModal from './ImportModal';
 
 interface SidebarProps {
-  handleWriteChapter: (overwrite?: boolean) => Promise<void>;
+  handleWriteChapter: (overwrite?: boolean, chapterNumber?: number) => Promise<void>;
   isStreaming: boolean;
   onImageZoom: (url: string) => void;
 }
@@ -90,8 +86,6 @@ export default function Sidebar({
   };
   
   
-  const [isVideoEditorOpen, setIsVideoEditorOpen] = useState(false);
-  const [isAutoRenderOpen, setIsAutoRenderOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [styleStats, setStyleStats] = useState<StyleStats | null>(null);
 
@@ -474,22 +468,6 @@ export default function Sidebar({
         <div className="mb-4 grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => setIsAutoRenderOpen(true)}
-            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-indigo-900/50 bg-indigo-950/20 py-3 text-indigo-400 hover:bg-indigo-900/40 hover:text-indigo-300 transition-colors"
-          >
-            <MonitorPlay className="h-5 w-5" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-center">Auto Render<br/>Phim</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsVideoEditorOpen(true)}
-            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-purple-900/50 bg-purple-950/20 py-3 text-purple-400 hover:bg-purple-900/40 hover:text-purple-300 transition-colors"
-          >
-            <PlaySquare className="h-5 w-5" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-center">Video<br/>Editor</span>
-          </button>
-          <button
-            type="button"
             onClick={handleScanStyle}
             className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-rose-900/50 bg-rose-950/20 py-3 text-rose-400 hover:bg-rose-900/40 hover:text-rose-300 transition-colors"
           >
@@ -512,7 +490,7 @@ export default function Sidebar({
           disabled={store.dang_tai}
           onClick={() => {
             if (confirm('⚠️ Bạn có chắc chắn muốn viết lại toàn bộ kịch bản Chương này? Nội dung hiện tại của chương sẽ bị ghi đè!')) {
-              handleWriteChapter(true); // Ghi đè toàn bộ chương
+              void handleWriteChapter(true).catch(() => undefined); // Ghi đè toàn bộ chương
             }
           }}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 bg-red-500/10 py-2.5 text-xs font-bold uppercase tracking-wider text-red-500 shadow-lg transition-all duration-300 hover:bg-red-500 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
@@ -533,7 +511,7 @@ export default function Sidebar({
         <button
           type="button"
           disabled={store.dang_tai}
-          onClick={() => handleWriteChapter(false)}
+          onClick={() => { void handleWriteChapter(false).catch(() => undefined); }}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 text-xs font-bold uppercase tracking-wider text-black shadow-lg shadow-emerald-500/5 transition-all duration-300 hover:bg-emerald-400 hover:shadow-emerald-500/15 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
         >
           {store.dang_tai && isStreaming ? (
@@ -561,15 +539,6 @@ export default function Sidebar({
 
       </div>
     </aside>
-
-    <VideoEditorModal
-      isOpen={isVideoEditorOpen}
-      onClose={() => setIsVideoEditorOpen(false)}
-    />
-    <AutoRenderModal 
-      isOpen={isAutoRenderOpen} 
-      onClose={() => setIsAutoRenderOpen(false)} 
-    />
 
     <StyleStatModal 
       stats={styleStats} 

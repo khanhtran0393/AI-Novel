@@ -250,7 +250,7 @@ export default function SetupPhase({
           </div>
 
           {/* Khối LUẬT LỆ & CHỐNG AI */}
-          <div className="rounded-lg border border-red-900/50 bg-red-950/10 p-5 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+          <div className="hidden rounded-lg border border-red-900/50 bg-red-950/10 p-5 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
             <label className="text-xs font-bold uppercase tracking-wider text-red-500 mb-3 flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
               5. Bộ Lọc Chống Văn Phong AI & Cấm Từ
@@ -284,7 +284,7 @@ export default function SetupPhase({
           </div>
 
           {/* Khối ĐỘNG CƠ CỐT LÕI */}
-          <div className="rounded-lg border border-sky-900/50 bg-sky-950/10 p-5 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
+          <div className="hidden rounded-lg border border-sky-900/50 bg-sky-950/10 p-5 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
             <label className="text-xs font-bold uppercase tracking-wider text-sky-400 mb-3 flex items-center gap-2">
               <Sparkles className="h-4 w-4" />
               6. Động Cơ Cốt Lõi (Được kế thừa từ AI Novel CLI)

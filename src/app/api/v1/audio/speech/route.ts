@@ -94,15 +94,7 @@ export async function POST(req: Request) {
             console.log(`[VieNeu-TTS API] Found local model, routing to Piper: ${modelName}`);
             result = await runPiper(textToSpeech, modelName, parsedSpeed);
         } else {
-            // Fallback sang EdgeTTS tải qua mạng nếu model chưa có offline
-            const v = rawVoice.toLowerCase();
-            if (v.includes('nam') || v.includes('adam') || v.includes('mạnh dũng') || v.includes('trung') || v.includes('sơn') || v.includes('anh') || v.includes('khôi') || v.includes('quân') || v.includes('an')) {
-                console.log(`[VieNeu-TTS API] Model ${modelName} not found locally, routing to EdgeTTS: NamMinh`);
-                result = await runEdgeTTS(textToSpeech, 'vi-VN-NamMinhNeural', parsedSpeed, parsedPitch);
-            } else {
-                console.log(`[VieNeu-TTS API] Model ${modelName} not found locally, routing to EdgeTTS: HoaiMy`);
-                result = await runEdgeTTS(textToSpeech, 'vi-VN-HoaiMyNeural', parsedSpeed, parsedPitch);
-            }
+            throw new Error(`Không tìm thấy mô hình Piper cục bộ: ${modelName} tại đường dẫn: ${modelPath}. Vui lòng tải xuống mô hình hoặc chọn platform khác.`);
         }
 
         return new Response(result.buffer, {

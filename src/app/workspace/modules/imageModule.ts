@@ -3,6 +3,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { parseScenes } from '../utils/stringUtils';
+import { useNovelStore } from '@/store/useNovelStore';
 
 export type NhanVatPrompts = Record<string, { gioi_tinh: string; quan_ao: string; so_thich: string; thoi_quen: string; prompt: string }>;
 
@@ -21,24 +22,21 @@ export async function generateImagePromptAction(params: GenImagePromptParams): P
 
   let prompts: { timestamp: string; prompt: string; sentence?: string }[] = [];
 
-  if (useMock) {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const sentences = sceneText.split(/[.!?。]\s*/).filter(s => s.trim().length > 10);
-    const segDur = Math.max(3, Math.round(duration / Math.max(1, sentences.length)));
-    prompts = sentences.slice(0, 8).map((s, i) => ({
-      timestamp: `${i * segDur}s`,
-      sentence: s,
-      prompt: `Cinematic wide shot, Neo-Veridia city, neon light rays, ${i % 2 === 0 ? 'glowing Empathic Net nerve structures floating' : 'detective Khải Đăng holds a memory scanner decrypter'}, hyper realistic, Unreal Engine 5, 8k, cinematic lighting, depth of field`
-    }));
-    if (prompts.length === 0) {
-      prompts = [{ timestamp: '0s', sentence: sceneText, prompt: 'Cinematic shot, detective Khải Đăng walking in a dark neon alleyway in Neo-Veridia, holding a blue-glowing memory reader device, detailed, cinematic atmosphere, 8k, realistic render.' }];
-    }
-    return prompts;
+
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('Chưa cấu hình API Key. Vui lòng nhập API Key ở góc trên bên phải.');
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -47,6 +45,7 @@ export async function generateImagePromptAction(params: GenImagePromptParams): P
     body: JSON.stringify({
       requestType: 'GENERATE_IMAGE_PROMPT',
       apiKeys: keysToUse,
+      model,
       payload: {
         sceneText,
         style,
@@ -96,14 +95,21 @@ interface RegenPromptParams {
 export async function regenPromptAction(params: RegenPromptParams): Promise<string> {
   const { useMock, apiKey, apiKeys, sceneIndex, promptIndex, sentence, currentPrompt, style, nhan_vat_prompts } = params;
 
-  if (useMock) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return `[REGEN c${sceneIndex+1}-${String(promptIndex+1).padStart(2, '0')}] Cinematic high dynamic range, Neo-Veridia cyberpunk scene, Khải Đăng resolving mysteries under purple neon haze, photorealistic, 8k.`;
+
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('Chưa cấu hình API Key.');
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -112,6 +118,7 @@ export async function regenPromptAction(params: RegenPromptParams): Promise<stri
     body: JSON.stringify({
       requestType: 'REGENERATE_PROMPT',
       apiKeys: keysToUse,
+      model,
       payload: {
         sentence: sentence || 'Mô tả bối cảnh hoặc hành động của nhân vật',
         currentPrompt,

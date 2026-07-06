@@ -46,7 +46,7 @@ export function useSceneActions(streamText: string) {
     try {
       const expandedContent = await expandSceneAction({
         idx,
-        useMock: store.useMock,
+        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         ten_tac_pham: store.ten_tac_pham,

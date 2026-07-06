@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -34,13 +34,20 @@ export async function POST(req: Request) {
       }, { status: 404 });
     }
 
-    // Windows shell command to open Explorer at specific path
-    const command = `explorer.exe "${resolvedPath}"`;
-    exec(command, (err) => {
-      if (err) {
-        console.error('Lỗi khi mở thư mục:', err);
-      }
-    });
+    try {
+      const child = spawn('explorer.exe', [resolvedPath], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+    } catch (openError: unknown) {
+      return NextResponse.json({
+        error: openError instanceof Error ? openError.message : String(openError),
+        fallbackUrl: 'https://drive.google.com/drive/my-drive',
+        path: resolvedPath
+      }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true, opened: resolvedPath });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

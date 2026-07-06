@@ -22,7 +22,7 @@ export function useSetupActions() {
 
     try {
       const idea = await randomTemplateAction({
-        useMock: store.useMock,
+        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         chu_de: store.setup.chu_de,
@@ -50,7 +50,7 @@ export function useSetupActions() {
 
     try {
       const data = await generateOutlineAction({
-        useMock: store.useMock,
+        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         setupData: store.setup

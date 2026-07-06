@@ -72,15 +72,17 @@ export async function playTTSAction(params: PlayTTSParams): Promise<void> {
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         // Tải file về dạng blob để đưa vào Cache Storage
         const audioRes = await fetch(data.audioPath);
         if (audioRes.ok) {
           const blob = await audioRes.blob();
+          const contentType = audioRes.headers.get('Content-Type')
+            || (data.audioPath?.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
           // Lưu vào cache
           await cache.put(cacheKey, new Response(blob, {
-            headers: { 'Content-Type': 'audio/wav' }
+            headers: { 'Content-Type': contentType }
           }));
 
           const blobUrl = URL.createObjectURL(blob);
@@ -93,35 +95,15 @@ export async function playTTSAction(params: PlayTTSParams): Promise<void> {
             onError('❌ File âm thanh bị lỗi, thử lại.');
           };
           return;
+        } else {
+          throw new Error(`Không thể tải tệp âm thanh nghe thử từ đường dẫn: ${data.audioPath}`);
         }
       } else {
-        // Fallback to Google Translate TTS only if generating through API fails completely
-        // and platform is not explicitly required to be something else.
+        const errMsg = data?.error || 'Lỗi gọi API sinh giọng đọc TTS';
+        throw new Error(errMsg);
       }
-    }
-
-    // 3. Fallback: Google Translate TTS
-    const gtSample = sampleText.substring(0, 180);
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encodeURIComponent(gtSample)}`;
-    
-    const audioRes = await fetch(url);
-    if (audioRes.ok) {
-      const blob = await audioRes.blob();
-      await cache.put(cacheKey, new Response(blob, {
-        headers: { 'Content-Type': 'audio/mpeg' }
-      }));
-
-      const blobUrl = URL.createObjectURL(blob);
-      const audio = new Audio(blobUrl);
-      audio.play();
-      onSuccess(audio);
-      audio.onended = onEnded;
-      audio.onerror = () => {
-        onEnded();
-        onError('❌ Không thể tải âm thanh nghe thử từ máy chủ.');
-      };
     } else {
-      throw new Error('Google Translate TTS phản hồi không thành công.');
+      throw new Error('Không thể nghe thử ở chế độ Mock.');
     }
   } catch (err: unknown) {
     onEnded();

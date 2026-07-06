@@ -32,13 +32,9 @@ export default function Workspace() {
   const store = useNovelStore();
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
 
-  // Rehydrate store để đồng bộ localStorage trên client an toàn cho Next.js SSR
+  // Đánh dấu đã nạp xong trạng thái trên client (Zustand tự động hydrate từ localStorage)
   useEffect(() => {
-    const hydrate = async () => {
-      await useNovelStore.persist.rehydrate();
-      store.setHydrated(true);
-    };
-    hydrate();
+    store.setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -1,6 +1,4 @@
-/**
- * Module quản lý Hồ sơ & Tạo hình Nhân vật AI (AI Character Profile & Portrait Art)
- */
+import { useNovelStore } from '@/store/useNovelStore';
 
 interface GenCharPromptParams {
   char: string;
@@ -24,20 +22,21 @@ export async function generateCharPromptAction(params: GenCharPromptParams): Pro
 }> {
   const { char, dan_y_tong_the, lorebook, gioiTinh, quanAo, soThich, thoiQuen, apiKeys, apiKey, useMock } = params;
   
-  if (useMock) {
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    return {
-      gioi_tinh: 'Nam, khoảng 26 tuổi',
-      quan_ao: 'Áo khoác chống thời tiết rách, áo giáp nhẹ chống va đập',
-      so_thich: 'Nghiên cứu công nghệ mạng thấu cảm cổ xưa, giải mã ổ cứng',
-      thoi_quen: 'Luôn vân vê ổ cứng cơ học nhỏ phát sáng neon',
-      prompt: `A premium 3D character concept render of ${char}, male survivor in Neo-Veridia, wearing weather-resistant coat, post-apocalyptic cyberpunk style, highly detailed.`
-    };
+
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('Chưa cấu hình API Key. Vui lòng nhập API Key ở góc trên bên phải.');
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -46,6 +45,7 @@ export async function generateCharPromptAction(params: GenCharPromptParams): Pro
     body: JSON.stringify({
       requestType: 'GENERATE_CHARACTER_PROMPT',
       apiKeys: keysToUse,
+      model,
       payload: {
         name: char,
         dan_y_tong_the,
@@ -80,14 +80,21 @@ interface RegenCharPromptParams {
 export async function regenerateCharPromptOnlyAction(params: RegenCharPromptParams): Promise<string> {
   const { char, gioiTinh, quanAo, soThich, thoiQuen, apiKeys, apiKey, useMock } = params;
 
-  if (useMock) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return `A safe and clean cyberpunk portrait concept of ${char}, highly detailed, Unreal Engine 5 render.`;
+
+
+  const storeState = useNovelStore.getState();
+  const model = storeState.aiMasterModel;
+  let keysToUse: string[] = [];
+  if (model === 'gpt4o') {
+    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
+  } else if (model === 'llama') {
+    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
+  } else {
+    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
   }
 
-  const keysToUse = (apiKeys && apiKeys.length > 0) ? apiKeys : (apiKey ? [apiKey] : []);
-  if (keysToUse.length === 0) {
-    throw new Error('Chưa cấu hình API Key.');
+  if (keysToUse.length === 0 && model !== 'aistudio') {
+    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
   }
 
   const res = await fetch('/api/generate', {
@@ -96,6 +103,7 @@ export async function regenerateCharPromptOnlyAction(params: RegenCharPromptPara
     body: JSON.stringify({
       requestType: 'GENERATE_CHARACTER_PROMPT_ONLY',
       apiKeys: keysToUse,
+      model,
       payload: {
         name: char,
         gioi_tinh: gioiTinh,

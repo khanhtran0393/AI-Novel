@@ -210,6 +210,137 @@ function cleanJsonStructurally(jsonStr: string): string {
   return result;
 }
 
+async function callOpenAI(prompt: string, apiKeyOrKeys: string | string[]) {
+  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  if (keys.length === 0) {
+    throw new Error('Không có OpenAI API Key nào hợp lệ để sử dụng.');
+  }
+
+  const models = ['gpt-4o', 'gpt-4o-mini'];
+  let lastError: any = null;
+
+  for (const apiKey of keys) {
+    for (const model of models) {
+      try {
+        console.log(`[OpenAI API] Thử gọi mô hình: ${model} ...`);
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.85,
+            max_tokens: 4096
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content;
+          if (text) return text;
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || 'Lỗi không xác định từ OpenAI API');
+        }
+      } catch (e: any) {
+        lastError = e;
+        console.warn(`[OpenAI API] Thất bại với model ${model}: ${e.message}`);
+      }
+    }
+  }
+  throw lastError || new Error('Tất cả API Key hoặc Model của OpenAI đều thất bại.');
+}
+
+async function callGroq(prompt: string, apiKeyOrKeys: string | string[]) {
+  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  if (keys.length === 0) {
+    throw new Error('Không có Groq API Key nào hợp lệ để sử dụng.');
+  }
+
+  const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'];
+  let lastError: any = null;
+
+  for (const apiKey of keys) {
+    for (const model of models) {
+      try {
+        console.log(`[Groq API] Thử gọi mô hình: ${model} ...`);
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.85,
+            max_tokens: 4096
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content;
+          if (text) return text;
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || 'Lỗi không xác định từ Groq API');
+        }
+      } catch (e: any) {
+        lastError = e;
+        console.warn(`[Groq API] Thất bại với model ${model}: ${e.message}`);
+      }
+    }
+  }
+  throw lastError || new Error('Tất cả API Key hoặc Model của Groq đều thất bại.');
+}
+
+async function callGrok(prompt: string, apiKeyOrKeys: string | string[]) {
+  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  if (keys.length === 0) {
+    throw new Error('Không có Grok API Key nào hợp lệ để sử dụng.');
+  }
+
+  const models = ['grok-2-1212', 'grok-beta', 'grok-2'];
+  let lastError: any = null;
+
+  for (const apiKey of keys) {
+    for (const model of models) {
+      try {
+        console.log(`[xAI Grok API] Thử gọi mô hình: ${model} ...`);
+        const response = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.85
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content;
+          if (text) return text;
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || 'Lỗi không xác định từ xAI Grok API');
+        }
+      } catch (e: any) {
+        lastError = e;
+        console.warn(`[xAI Grok API] Thất bại với model ${model}: ${e.message}`);
+      }
+    }
+  }
+  throw lastError || new Error('Tất cả API Key hoặc Model của Grok đều thất bại.');
+}
+
 let globalLastWorkingKey = '';
 let globalLastWorkingModel = '';
 
@@ -352,12 +483,39 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
   throw lastError || new Error('Tất cả các API Key và dòng mô hình đều thất bại hoặc quá hạn ngạch.');
 }
 
+async function callActiveModel(prompt: string, apiKeyOrKeys: string | string[], model: string = 'gemini') {
+  if (model === 'gpt4o') {
+    return await callOpenAI(prompt, apiKeyOrKeys);
+  } else if (model === 'llama') {
+    let isGroq = false;
+    const firstKey = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys[0] : apiKeyOrKeys;
+    if (firstKey && String(firstKey).startsWith('gsk_')) {
+      isGroq = true;
+    }
+    if (isGroq) {
+      try {
+        return await callGroq(prompt, apiKeyOrKeys);
+      } catch (err) {
+        return await callGrok(prompt, apiKeyOrKeys);
+      }
+    } else {
+      try {
+        return await callGrok(prompt, apiKeyOrKeys);
+      } catch (err) {
+        return await callGroq(prompt, apiKeyOrKeys);
+      }
+    }
+  } else {
+    return await callGemini(prompt, apiKeyOrKeys);
+  }
+}
+
 // Luồng kiểm tra chéo (Cross-check thread) tự động phát hiện lỗi định dạng JSON và thử lại
-async function generateJsonWithRetry(prompt: string, keysToUse: string[], maxRetries = 2) {
+async function generateJsonWithRetry(prompt: string, keysToUse: string[], maxRetries = 2, model: string = 'gemini') {
   let lastError = null;
   for (let i = 0; i <= maxRetries; i++) {
     try {
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       const result = cleanAndParseJson(aiResponse);
       return result;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -372,7 +530,7 @@ async function generateJsonWithRetry(prompt: string, keysToUse: string[], maxRet
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { requestType, apiKey: clientApiKey, apiKeys: clientApiKeys, payload } = body;
+    const { requestType, apiKey: clientApiKey, apiKeys: clientApiKeys, model, payload } = body;
 
     // Thiết lập danh sách API Key hợp lệ
     let keysToUse: string[] = [];
@@ -384,7 +542,7 @@ export async function POST(req: Request) {
       keysToUse = [process.env.GEMINI_API_KEY];
     }
 
-    if (keysToUse.length === 0) {
+    if (keysToUse.length === 0 && model !== 'aistudio') {
       return NextResponse.json(
         { error: 'Thiếu API Key. Vui lòng nhập ít nhất một API Key ở góc trên bên phải hoặc cấu hình biến môi trường server.' },
         { status: 400 }
@@ -397,7 +555,7 @@ export async function POST(req: Request) {
       const prompt = `Bạn là Trợ lý Biên kịch sáng tạo chuyên nghiệp bậc nhất.
 Với Khối Chủ đề: "${chu_de || 'Sinh tồn mạt thế'}" và Khối Phong cách: "${phong_cach || 'Kịch tính, Tăm tối'}".
 Hãy sáng tạo ra một ý tưởng cốt truyện/bối cảnh (khoảng 4-6 câu) thật độc đáo, chi tiết, có chiều sâu, mô tả nghịch cảnh mà nhân vật chính đang phải đối mặt. Hãy để trí tưởng tượng bay bổng, không bị gò bó vào bất kỳ lối mòn nào. Không trả về Markdown, chỉ trả về văn bản thuần túy.`;
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       return NextResponse.json({ idea: aiResponse.trim(), mo_ta: aiResponse.trim(), usedApiKey: globalLastWorkingKey });
     }
 
@@ -483,7 +641,7 @@ TRẢ VỀ JSON THUẦN TÚY, KHÔNG CÓ MARKDOWN, theo cấu trúc mảng JSON 
   { "id": 2, "emotion": "...", "prompt": "..." }
 ]`;
 
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       
       // Phân tích JSON trả về
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -564,7 +722,7 @@ Hạn chế/Yêu cầu:
 
 Hãy viết cực kỳ hấp dẫn, logic, áp đặt các quy luật sinh tồn khắc nghiệt. Trả về đúng cấu trúc JSON nêu trên.`;
 
-      const result = await generateJsonWithRetry(prompt, keysToUse);
+      const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     } 
     
@@ -644,7 +802,7 @@ ${userRules?.forbidden_words ? `7. 🚫 TỪ CẤM: TUYỆT ĐỐI KHÔNG ĐƯ�
 ${userRules?.fatigue_words ? `8. ⚠️ TỪ SÁO RỖNG: HẠN CHẾ TỐI ĐA VIỆC SỬ DỤNG CÁC TỪ SAU ĐÂY: ${userRules.fatigue_words}.` : ''}
 ${noi_dung_hien_tai ? '\n--- PHẦN NỘI DUNG ĐANG VIẾT DANG DỞ ---\n' + noi_dung_hien_tai + '\n\nBẠN ĐANG Ở CHẾ ĐỘ VIẾT TIẾP. HÃY ĐỌC PHẦN DANG DỞ TRÊN VÀ BẮT ĐẦU VIẾT NỐI TIẾP VÀO ĐÓ.' : '\nĐừng thêm tiêu đề chương, hãy bắt đầu viết trực tiếp nội dung chương truyện với Cảnh 1 ngay.'}`;
 
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       return NextResponse.json({ noi_dung: aiResponse, usedApiKey: globalLastWorkingKey });
     }
 
@@ -685,7 +843,7 @@ TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (Không bọc bằng markdown \`\`\`js
   "summary": "Tóm tắt đánh giá tổng thể trong 1-2 câu",
   "verdict": "accept" // hoặc "rewrite", "polish"
 }`;
-      const result = await generateJsonWithRetry(prompt, keysToUse);
+      const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     }
 
@@ -713,7 +871,7 @@ TRẢ VỀ JSON:
     }
   ]
 }`;
-      const result = await generateJsonWithRetry(prompt, keysToUse);
+      const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     }
 
@@ -749,7 +907,7 @@ Hãy bổ sung chi tiết: miêu tả biểu cảm nhân vật, suy nghĩ nội 
 Đặc biệt quan trọng: NỘI DUNG MỞ RỘNG PHẢI KẾT NỐI MƯỢT MÀ, HỢP LÝ VỚI CẢNH TRƯỚC VÀ CẢNH TIẾP THEO (nếu có). Tránh thay đổi mạch truyện hay tạo ra tình tiết vô lý lệch pha với cảnh kế tiếp.
 Chỉ trả về nội dung thuần túy của cảnh hiện tại đã được mở rộng. TUYỆT ĐỐI KHÔNG trả về Tên Cảnh (như [CẢNH X...]) hay bất kỳ định dạng nào khác. Không kèm cảnh trước hay cảnh sau vào kết quả.`;
 
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       return NextResponse.json({ expanded_content: aiResponse, usedApiKey: globalLastWorkingKey });
     }
 
@@ -775,7 +933,7 @@ YÊU CẦU ĐỊNH DẠNG:
   "nhan_vat": ["Tên Nhân Vật 1", "Tên Nhân Vật 2"]
 }
 `;
-      const result = await generateJsonWithRetry(prompt, keysToUse);
+      const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     }
 
@@ -813,7 +971,7 @@ YÊU CẦU ĐỊNH DẠNG:
   "tri_nho_ngan_han_moi": "Tóm tắt cực ngắn 1 câu của chương vừa rồi (dưới 30 từ)",
   "lorebook_cap_nhat": "Nếu có luật lệ mạt thế mới được khám phá ra trong chương thì thêm vào Lorebook, ngược lại trả về nguyên văn Lorebook cũ."
 }`;
-      const result = await generateJsonWithRetry(prompt, keysToUse);
+      const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     }
 
@@ -846,7 +1004,7 @@ Hãy trả về định dạng JSON duy nhất và TUYỆT ĐỐI không bao b�
   "prompt": "Detailed English concept art prompt of the character for Stable Diffusion/Midjourney..."
 }`;
 
-      const result = await generateJsonWithRetry(prompt, keysToUse);
+      const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
       return NextResponse.json({ ...result, usedApiKey: globalLastWorkingKey });
     }
     // --- NODE: COMPRESS_CONTEXT (Bộ Nén Trí Nhớ Giả Lập) ---
@@ -866,7 +1024,7 @@ YÊU CẦU BẮT BUỘC:
 2. Giữ lại được tuyến tình cảm, mâu thuẫn chính, và sự kiện mấu chốt để cung cấp cho người viết chương tiếp theo.
 3. Chỉ trả về một chuỗi văn bản thuần túy, không bọc trong định dạng JSON. Không có lời chào hay giải thích.`;
 
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       return NextResponse.json({ simulated_memory: aiResponse.trim(), usedApiKey: globalLastWorkingKey });
     }
 
@@ -908,7 +1066,7 @@ Yêu cầu định dạng đầu ra (Trọng yếu: Bạn PHẢI trả về ĐÚ
     }
   ]
 }`;
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       const parsed = cleanAndParseJson(aiResponse);
       return NextResponse.json({ foundation: parsed, usedApiKey: globalLastWorkingKey });
     }
@@ -931,7 +1089,7 @@ YÊU CẦU BẮT BUỘC:
 4. Đảm bảo từ ngữ hoàn toàn an toàn, lành mạnh để vượt qua mọi bộ lọc chính sách.
 5. Chỉ trả về chuỗi prompt tiếng Anh duy nhất, không giải thích gì thêm, không bọc markdown.`;
 
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       return NextResponse.json({ prompt: aiResponse.trim(), usedApiKey: globalLastWorkingKey });
     }
 
@@ -970,7 +1128,7 @@ YÊU CẦU BẮT BUỘC VỀ SỰ LIÊN KẾT:
 4. Chất lượng đầu ra: Sử dụng các thẻ chất lượng (Unreal Engine 5, 8k, dramatic lighting, epic cinematic view).
 5. Chỉ trả về chuỗi văn bản Prompt tiếng Anh mới duy nhất, không giải thích gì thêm, không bọc markdown.`;
 
-      const aiResponse = await callGemini(prompt, keysToUse);
+      const aiResponse = await callActiveModel(prompt, keysToUse, model);
       return NextResponse.json({ prompt: aiResponse.trim(), usedApiKey: globalLastWorkingKey });
     }
 

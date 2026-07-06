@@ -563,8 +563,25 @@ const TTS_PROVIDERS: Record<string, TTSProvider> = {
     supportsNativeSpeed: false,
     supportsNativePitch: false,
     generate: async (text, opts) => {
-      const buffer = await generateCapCutTTS(text, opts.voice);
-      return { buffer, method: `CapCut TTS (${opts.voice})` };
+      const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
+      const capcutAppsDir = path.join(localAppData, 'CapCut', 'Apps');
+      let capcutInstalled = false;
+      if (fs.existsSync(capcutAppsDir)) {
+        const versions = fs.readdirSync(capcutAppsDir).filter(f => fs.statSync(path.join(capcutAppsDir, f)).isDirectory());
+        for (const v of versions) {
+          if (fs.existsSync(path.join(capcutAppsDir, v, 'sscronet.dll'))) {
+            capcutInstalled = true;
+            break;
+          }
+        }
+      }
+
+      if (capcutInstalled) {
+        const buffer = await generateCapCutTTS(text, opts.voice);
+        return { buffer, method: `CapCut TTS (${opts.voice})` };
+      } else {
+        throw new Error('Không tìm thấy thư viện CapCut sscronet.dll cục bộ trên hệ thống. Vui lòng cài đặt CapCut phiên bản Desktop hoặc chuyển đổi sang platform khác (như Edge TTS, Piper TTS, v.v.).');
+      }
     }
   },
   tiktok_tts: {
@@ -612,7 +629,20 @@ const TTS_PROVIDERS: Record<string, TTSProvider> = {
     supportsNativeSpeed: false,
     supportsNativePitch: false,
     generate: async (text, opts) => {
-      const keys = Array.isArray(opts.apiKeys) ? opts.apiKeys : [];
+      let keys = Array.isArray(opts.apiKeys) ? opts.apiKeys : [];
+      if (keys.length === 0) {
+        keys = [
+          process.env.GEMINI_KEY_1,
+          process.env.GEMINI_KEY_2,
+          process.env.GEMINI_KEY_3,
+          process.env.GEMINI_KEY_4,
+          process.env.GEMINI_KEY_5,
+          process.env.GEMINI_KEY_6,
+          process.env.GEMINI_KEY_7,
+          process.env.GEMINI_KEY_8,
+          process.env.GEMINI_API_KEY
+        ].filter((k): k is string => !!k && k.trim().length > 0);
+      }
       for (const key of keys) {
         if (!key || key.trim().length === 0) continue;
         try {
@@ -630,8 +660,7 @@ const TTS_PROVIDERS: Record<string, TTSProvider> = {
     supportsNativeSpeed: false,
     supportsNativePitch: false,
     generate: async (text, opts) => {
-      const buffer = await generateGoogleTranslateTTS(text);
-      return { buffer, method: `Premium TTS (${opts.voice})` };
+      throw new Error('Vbee API chưa được tích hợp chính thức trong phiên bản này.');
     }
   },
   elevenlabs: {
@@ -639,8 +668,7 @@ const TTS_PROVIDERS: Record<string, TTSProvider> = {
     supportsNativeSpeed: false,
     supportsNativePitch: false,
     generate: async (text, opts) => {
-      const buffer = await generateGoogleTranslateTTS(text);
-      return { buffer, method: `Premium TTS (${opts.voice})` };
+      throw new Error('ElevenLabs API chưa được tích hợp chính thức trong phiên bản này.');
     }
   },
   google: {

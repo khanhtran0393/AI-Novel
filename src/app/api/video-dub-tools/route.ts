@@ -26,11 +26,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Công cụ không hợp lệ hoặc không được phép.' }, { status: 400 });
     }
 
-    const scriptsDir = 'D:\\SuperAudioTools\\video-dub-scripts';
+    const scriptsDir = path.join(process.cwd(), 'python_core');
     const scriptPath = path.join(scriptsDir, tool);
-    const pythonExe = 'D:\\SuperAudioTools\\omnivoice-python\\python.exe';
+    const pythonExe = fs.existsSync('D:\\SuperAudioTools\\omnivoice-python\\python.exe')
+      ? 'D:\\SuperAudioTools\\omnivoice-python\\python.exe'
+      : 'python';
 
-    if (!fs.existsSync(pythonExe)) {
+    if (pythonExe !== 'python' && !fs.existsSync(pythonExe)) {
       return NextResponse.json({ error: `Không tìm thấy Python tại ${pythonExe}` }, { status: 404 });
     }
     if (!fs.existsSync(scriptPath)) {

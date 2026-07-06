@@ -71,15 +71,30 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                   <div className="flex-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-4 py-2.5 text-xs font-semibold text-emerald-500 flex items-center">
                     🔥 AI STUDIO: Chạy Auto-Web không cần API Key!
                   </div>
-                ) : (
-                  <input
-                    type="password"
-                    placeholder="Nhập API Key..."
-                    value={store.aiMasterApiKey}
-                    onChange={(e) => store.setAiMasterApiKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-zinc-700 bg-black px-4 py-2.5 text-xs text-zinc-300 outline-none focus:border-amber-500 transition-colors"
-                  />
-                )}
+                ) : (() => {
+                  let hasKey = false;
+                  let providerLabel = '';
+                  if (store.aiMasterModel === 'gemini') {
+                    hasKey = (store.apiKeys && store.apiKeys.length > 0) || !!store.apiKey;
+                    providerLabel = 'Google Gemini';
+                  } else if (store.aiMasterModel === 'gpt4o') {
+                    hasKey = (store.openaiApiKeys && store.openaiApiKeys.length > 0) || !!store.openaiApiKey;
+                    providerLabel = 'OpenAI';
+                  } else if (store.aiMasterModel === 'llama') {
+                    hasKey = (store.grokApiKeys && store.grokApiKeys.length > 0) || !!store.grokApiKey;
+                    providerLabel = 'Groq / Grok';
+                  }
+
+                  return hasKey ? (
+                    <div className="flex-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-4 py-2.5 text-xs font-semibold text-emerald-500 flex items-center">
+                      🟢 Đã cấu hình {providerLabel} API Key (Lấy từ Cài đặt chung)
+                    </div>
+                  ) : (
+                    <div className="flex-1 rounded-lg border border-red-500/30 bg-red-950/20 px-4 py-2.5 text-xs font-semibold text-red-400 flex items-center">
+                      🔴 Chưa cấu hình {providerLabel} API Key trong Cài đặt chung!
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -176,15 +191,37 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
               </div>
-              <input
-                type="password"
-                placeholder={store.imageProvider === 'pollinations' ? "Không cần API Key" : "Nhập API Key..."}
-                value={store.imageApiKey || ''}
-                onChange={(e) => store.setImageApiKey(e.target.value)}
-                disabled={store.imageProvider === 'pollinations'}
-                className="w-full sm:flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300 outline-none focus:border-cyan-500 disabled:opacity-50 transition-colors"
-                title="API Key"
-              />
+              {(() => {
+                if (store.imageProvider === 'pollinations') {
+                  return (
+                    <div className="w-full sm:flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-500 flex items-center justify-center">
+                      Không cần API Key
+                    </div>
+                  );
+                }
+                let hasKey = false;
+                let providerLabel = '';
+                if (store.imageProvider === 'openai') {
+                  hasKey = (store.openaiApiKeys && store.openaiApiKeys.length > 0) || !!store.openaiApiKey;
+                  providerLabel = 'OpenAI';
+                } else if (store.imageProvider === 'falai') {
+                  hasKey = (store.falaiApiKeys && store.falaiApiKeys.length > 0) || !!store.falaiApiKey;
+                  providerLabel = 'Fal.ai';
+                } else if (store.imageProvider === 'gemini') {
+                  hasKey = (store.apiKeys && store.apiKeys.length > 0) || !!store.apiKey;
+                  providerLabel = 'Gemini';
+                }
+
+                return hasKey ? (
+                  <div className="w-full sm:flex-1 rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-3 py-2 text-xs font-semibold text-emerald-500 flex items-center justify-center">
+                    🟢 Đã có Key ({providerLabel})
+                  </div>
+                ) : (
+                  <div className="w-full sm:flex-1 rounded-lg border border-red-500/20 bg-red-950/10 px-3 py-2 text-xs font-semibold text-red-400 flex items-center justify-center">
+                    🔴 Thiếu Key ({providerLabel})
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Trình Sinh Video */}
@@ -266,14 +303,40 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
               </div>
-              <input
-                type="password"
-                placeholder={store.videoProvider === 'ffmpeg' ? "Không cần API Key" : "Nhập API Key..."}
-                value={store.videoApiKey || ''}
-                onChange={(e) => store.setVideoApiKey(e.target.value)}
-                disabled={store.videoProvider === 'ffmpeg'}
-                className="w-full sm:flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300 outline-none focus:border-cyan-500 disabled:opacity-50 transition-colors"
-              />
+              {(() => {
+                if (store.videoProvider === 'ffmpeg') {
+                  return (
+                    <div className="w-full sm:flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-500 flex items-center justify-center">
+                      Không cần API Key
+                    </div>
+                  );
+                }
+                let hasKey = false;
+                let providerLabel = '';
+                if (store.videoProvider === 'luma') {
+                  hasKey = (store.lumaApiKeys && store.lumaApiKeys.length > 0) || !!store.lumaApiKey;
+                  providerLabel = 'Luma';
+                } else if (store.videoProvider === 'runway') {
+                  hasKey = (store.runwayApiKeys && store.runwayApiKeys.length > 0) || !!store.runwayApiKey;
+                  providerLabel = 'Runway';
+                } else if (store.videoProvider === 'sora') {
+                  hasKey = (store.openaiApiKeys && store.openaiApiKeys.length > 0) || !!store.openaiApiKey;
+                  providerLabel = 'OpenAI (Sora)';
+                } else if (store.videoProvider === 'veo') {
+                  hasKey = (store.apiKeys && store.apiKeys.length > 0) || !!store.apiKey;
+                  providerLabel = 'Gemini (Veo)';
+                }
+
+                return hasKey ? (
+                  <div className="w-full sm:flex-1 rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-3 py-2 text-xs font-semibold text-emerald-500 flex items-center justify-center">
+                    🟢 Đã có Key ({providerLabel})
+                  </div>
+                ) : (
+                  <div className="w-full sm:flex-1 rounded-lg border border-red-500/20 bg-red-950/10 px-3 py-2 text-xs font-semibold text-red-400 flex items-center justify-center">
+                    🔴 Thiếu Key ({providerLabel})
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
