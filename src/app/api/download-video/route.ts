@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
     console.log('[download-video] Executing:', PYTHON_EXE, args.join(' '));
 
     const { stdout, stderr } = await execFileAsync(PYTHON_EXE, args, {
+      cwd: SCRIPTS_DIR,
+      env: { ...process.env, PYTHONPATH: SCRIPTS_DIR },
       timeout: 600000,
       maxBuffer: 50 * 1024 * 1024,
     });

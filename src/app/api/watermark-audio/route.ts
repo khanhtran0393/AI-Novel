@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
 
     const args: string[] = [
       path.join(SCRIPTS_DIR, 'watermark_audio.py'),
-      '--input', audioPath,
-      '--mode', mode,
+      mode,
+      audioPath,
     ];
 
     if (mode === 'embed') {
@@ -40,12 +40,14 @@ export async function POST(req: NextRequest) {
       );
       const outputDirectory = path.dirname(resolvedOutputPath);
       fs.mkdirSync(outputDirectory, { recursive: true });
-      args.push('--output', resolvedOutputPath);
+      args.push(resolvedOutputPath);
     }
 
     console.log('[watermark-audio] Executing:', PYTHON_EXE, args.join(' '));
 
     const { stdout, stderr } = await execFileAsync(PYTHON_EXE, args, {
+      cwd: SCRIPTS_DIR,
+      env: { ...process.env, PYTHONPATH: SCRIPTS_DIR, TORCH_COMPILE_DISABLE: '1' },
       timeout: 300000,
       maxBuffer: 50 * 1024 * 1024,
     });

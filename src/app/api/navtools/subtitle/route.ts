@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       : 'python';
 
     const { stdout, stderr } = await execFileAsync(PYTHON_EXE, [scriptPath, videoPath, outputPath, String(model), String(language)], {
+      cwd: pythonCore,
+      env: { ...process.env, PYTHONPATH: pythonCore, TORCH_COMPILE_DISABLE: '1' },
       timeout: 600000,
       maxBuffer: 50 * 1024 * 1024,
       windowsHide: true,

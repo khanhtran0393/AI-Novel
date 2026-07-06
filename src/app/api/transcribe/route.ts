@@ -27,13 +27,15 @@ export async function POST(req: NextRequest) {
 
     const args: string[] = [
       path.join(SCRIPTS_DIR, 'diarize_audio.py'),
-      '--input', audioPath,
       '--language', resolvedLanguage,
+      audioPath,
     ];
 
     console.log('[transcribe] Executing:', PYTHON_EXE, args.join(' '));
 
     const { stdout, stderr } = await execFileAsync(PYTHON_EXE, args, {
+      cwd: SCRIPTS_DIR,
+      env: { ...process.env, PYTHONPATH: SCRIPTS_DIR, TORCH_COMPILE_DISABLE: '1' },
       timeout: 600000,
       maxBuffer: 50 * 1024 * 1024,
     });
