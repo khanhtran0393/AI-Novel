@@ -21,14 +21,7 @@ function findChromePath() {
 
 const TARGET = process.argv[2] || 'labs'; // 'labs' hoặc 'aistudio'
 function getHeadersVeoPath() {
-  const localPath = path.join(process.cwd(), 'headers_veo.txt');
-  const fallbackPath = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026\\headers_veo.txt';
-  const fallbackDir = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026';
-  
-  if (fs.existsSync(fallbackDir)) {
-    return fallbackPath;
-  }
-  return localPath;
+  return path.join(process.cwd(), 'headers_veo.txt');
 }
 const HEADERS_VEO_PATH = getHeadersVeoPath();
 
@@ -186,3 +179,4 @@ ${sessionInfo}
     process.exit(1);
   }
 })();
+

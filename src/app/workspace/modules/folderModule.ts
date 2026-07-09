@@ -30,15 +30,9 @@ export async function openFolderAction(folderPath: string): Promise<void> {
     
     if (!res.ok) {
       const err = await res.json();
-      if (res.status === 404 && err.fallbackUrl) {
-        // Trả về một đối tượng đặc biệt để UI tự mở link Google Drive nếu muốn
-        return Promise.reject({ isFallback: true, fallbackUrl: err.fallbackUrl, message: err.error });
-      }
       throw new Error(err.error || 'Thư mục cục bộ không tồn tại.');
     }
   } catch (err: unknown) {
-    const errorObj = err as { isFallback?: boolean };
-    if (errorObj.isFallback) throw err;
     throw new Error(`Không thể mở thư mục: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

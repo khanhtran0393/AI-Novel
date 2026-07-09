@@ -105,7 +105,7 @@ export class BrowserAgent {
         executedActions.push(action);
       }
 
-      // 3. Act (Hành động giả lập người dùng)
+      // 3. Act (thao tac browser that theo quyet dinh cua AI)
       try {
         switch (action.action) {
           case 'click':

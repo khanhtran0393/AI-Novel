@@ -8,14 +8,7 @@ const nextConfig: NextConfig = {
     "puppeteer-extra-plugin-stealth",
     "music-metadata"
   ],
-  async rewrites() {
-    return [
-      {
-        source: '/api/ainovel/:path*',
-        destination: 'http://localhost:8080/api/:path*',
-      },
-    ];
-  },
+  // Native /api/ainovel/* — không còn proxy ainovel-gui :8080
 };
 
 export default nextConfig;

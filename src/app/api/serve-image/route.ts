@@ -30,10 +30,13 @@ export async function GET(req: NextRequest) {
     let contentType = 'image/png';
     const ext = path.extname(sanitized).toLowerCase();
 
-    // Kiểm tra nếu nội dung bắt đầu bằng thẻ <svg (cho phép Mock SVG lưu đuôi .png hiển thị đúng)
+    // Tu choi SVG trong che do production vi pipeline anh/video yeu cau raster that.
     const contentHead = buffer.toString('utf8', 0, 100).trim();
     if (contentHead.includes('<svg')) {
-      contentType = 'image/svg+xml';
+      return NextResponse.json(
+        { error: 'Tệp tin vector SVG không được hỗ trợ trong chế độ sản xuất. Vui lòng sử dụng hình ảnh raster thực tế.' },
+        { status: 415 },
+      );
     } else {
       if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
       else if (ext === '.webp') contentType = 'image/webp';

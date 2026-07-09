@@ -29,7 +29,6 @@ export async function POST(req: Request) {
     if (!fs.existsSync(resolvedPath)) {
       return NextResponse.json({
         error: `Thư mục không tồn tại cục bộ: ${resolvedPath}`,
-        fallbackUrl: 'https://drive.google.com/drive/my-drive',
         path: resolvedPath
       }, { status: 404 });
     }
@@ -44,7 +43,6 @@ export async function POST(req: Request) {
     } catch (openError: unknown) {
       return NextResponse.json({
         error: openError instanceof Error ? openError.message : String(openError),
-        fallbackUrl: 'https://drive.google.com/drive/my-drive',
         path: resolvedPath
       }, { status: 500 });
     }

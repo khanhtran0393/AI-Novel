@@ -22,7 +22,7 @@ function findChromePath(): string | undefined {
 }
 
 export async function GET() {
-  const scratchDir = path.join(process.cwd(), 'scratch');
+  const scratchDir = './scratch';
   if (!fs.existsSync(scratchDir)) {
     fs.mkdirSync(scratchDir, { recursive: true });
   }
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Profile ID không hợp lệ.' }, { status: 400 });
     }
 
-    const profilePath = path.join(process.cwd(), 'scratch', profileId);
+    const profilePath = './scratch/' + profileId;
 
     if (action === 'delete') {
       if (fs.existsSync(profilePath)) {

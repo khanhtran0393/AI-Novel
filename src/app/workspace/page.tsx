@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   Download,
@@ -27,16 +27,11 @@ import { useProjectActions } from './hooks/useProjectActions';
 
 // Import các tiện ích xử lý chuỗi
 import { parseScenes, getWordCount } from './utils/stringUtils';
+import { YOUTUBE_HOOK_SCENE_INDEX } from '@/lib/youtubeSafe';
 
 export default function Workspace() {
   const store = useNovelStore();
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
-
-  // Đánh dấu đã nạp xong trạng thái trên client (Zustand tự động hydrate từ localStorage)
-  useEffect(() => {
-    store.setHydrated(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // 8 Custom React Hooks để quản lý toàn bộ các hành động mượt mà theo mô-đun
   const {
@@ -51,13 +46,16 @@ export default function Workspace() {
     isStreaming,
     streamText,
     handleWriteChapter,
-    handleIntervene
+    handleIntervene,
+    handleReviseFromReview,
+    retryMemoryCommit,
   } = useWriteChapter(setPromptError);
 
   const {
     handleSceneChange,
     handleCopyScene,
-    handleExpandScene
+    handleExpandScene,
+    handleRewriteScene
   } = useSceneActions(streamText);
 
   const {
@@ -66,7 +64,14 @@ export default function Workspace() {
     handlePlayTTS,
     handleStopTTS,
     handleGenerateTTS,
-    ttsProgress
+    handleGenerateChapterTTS,
+    handleStopChapterTTS,
+    handleChapterCastPreflight,
+    ttsProgress,
+    ttsStatus,
+    chapterTtsRunning,
+    chapterTtsProgress,
+    chapterTtsStatus,
   } = useTTSActions();
 
   const {
@@ -114,7 +119,9 @@ export default function Workspace() {
   const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
   const wordsCount = getWordCount(currentChapter?.noi_dung || '');
   const targetWords = store.setup.so_tu_chuong || 4250;
-  const progressPercent = Math.min(100, Math.round((wordsCount / targetWords) * 100));
+  // % đúng tỉ lệ (có thể >100% khi vượt chỉ tiêu) — không ép trần 100
+  const progressPercent =
+    targetWords > 0 ? Math.round((wordsCount / targetWords) * 100) : 0;
 
   // Tính toán thống kê hình ảnh chương hiện tại
   const activeChapterNum = store.chuong_dang_chon;
@@ -122,7 +129,9 @@ export default function Workspace() {
   let successImagesCount = 0;
 
   const scenesList = currentChapter ? parseScenes(currentChapter.noi_dung) : [];
-  scenesList.forEach((_, sceneIdx) => {
+  // Include Hook (990) + normal scenes in image progress
+  const sceneIndicesForStats = [YOUTUBE_HOOK_SCENE_INDEX, ...scenesList.map((_, i) => i)];
+  sceneIndicesForStats.forEach((sceneIdx) => {
     const assetKey = `${activeChapterNum}_${sceneIdx}`;
     const prompts = store.generatedPrompts[assetKey] || [];
     totalPromptsCount += prompts.length;
@@ -162,177 +171,176 @@ export default function Workspace() {
             onImageZoom={setZoomImageUrl}
           />
 
-          {/* CỘT PHẢI: KHÔNG GIAN SOẠN THẢO VĂN BẢN */}
-          <section className="flex flex-1 flex-col bg-black overflow-hidden">
-            
-            {/* Header Content Panel (chung hoặc riêng tùy ý) */}
-            <div className="flex h-12 w-full items-center justify-between border-b border-zinc-900 bg-zinc-950 px-6 shrink-0">
-              <div className="flex items-center gap-1 text-xs font-bold text-amber-500 uppercase tracking-widest">
-                <span>
-                  {store.workspaceTab === 'script' 
-                    ? '📝 Kịch Bản Làm Việc (Working Script)' 
-                    : '🤖 Sáng tác AI Novel (Engine)'}
-                </span>
-              </div>
+          {/* CỘT PHẢI: KHÔNG GIAN SOẠN THẢO */}
+          <section className="flex flex-1 flex-col bg-black overflow-hidden min-w-0">
+            {/* Hàng 1: 1 dòng gọn — không vỡ / không dính chữ */}
+            <div className="shrink-0 border-b border-zinc-900 bg-zinc-950 px-3 sm:px-4 h-11 flex items-center gap-2 min-w-0">
+              <span className="text-[11px] font-bold text-amber-500 uppercase tracking-wide shrink-0 whitespace-nowrap">
+                {store.workspaceTab === 'script' ? '📝 Kịch Bản Làm Việc' : '🤖 AI Novel Engine'}
+              </span>
 
-              {/* Nút export (chỉ hiện bên script) */}
-              {store.workspaceTab === 'script' && (
-                <button
-                  type="button"
-                  onClick={handleExportTxt}
-                  className="flex items-center gap-1.5 rounded border border-zinc-900 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Tải Toàn Bộ (.txt)
-                </button>
+              {store.workspaceTab === 'script' && currentChapter && (
+                <>
+                  <span className="text-zinc-800 shrink-0 select-none" aria-hidden>
+                    ·
+                  </span>
+                  {/* Cổng từ: một chuỗi liền, có khoảng trắng rõ */}
+                  <span
+                    className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ${
+                      progressPercent >= 92
+                        ? 'border-emerald-900/50 bg-emerald-950/30 text-emerald-400'
+                        : 'border-amber-900/50 bg-amber-950/30 text-amber-400'
+                    }`}
+                    title={`Tối thiểu ${Math.round(targetWords * 0.92)} từ (92%)`}
+                  >
+                    Cổng từ {wordsCount}/{targetWords} · {progressPercent}%
+                  </span>
+                  {/* Ảnh: một pill, không xuống dòng từng ký tự */}
+                  <span
+                    className="inline-flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/50 px-2 py-0.5 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 text-zinc-300"
+                    title={`Sinh ảnh chương ${activeChapterNum}`}
+                  >
+                    Ảnh {successImagesCount}✓/{failedImagesCount}✗ ({totalPromptsCount})
+                  </span>
+                </>
               )}
-            </div>
 
-            {/* AINOVEL DASHBOARD */}
-            {store.workspaceTab === 'ainovel' && (
-              <div className="flex-1 overflow-y-auto bg-black">
-                <AINovelDashboard />
-              </div>
-            )}
+              <div className="flex-1 min-w-0" />
 
-            {/* KỊCH BẢN TTS WORKSPACE */}
-            {store.workspaceTab === 'script' && (
-              <>
-                {/* Chapter Header Pagination */}
-                {currentChapter && (
-                  <div className="px-8 py-3 bg-zinc-950/90 border-b border-zinc-900/80 flex flex-col gap-2 shrink-0 z-20 backdrop-blur-md">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="text-lg font-bold text-zinc-100 tracking-wide font-sans m-0 flex items-center gap-2">
-                        ✍️ {store.ten_tac_pham}
-                      </h2>
-                      
-                      {/* Nút lật trang Chương trước / sau */}
-                      <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-900 rounded px-2.5 py-1 text-xs shrink-0 shadow-inner">
-                        <button
-                          type="button"
-                          disabled={store.chuong_dang_chon <= 1}
-                          onClick={handlePrevChapter}
-                          className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 cursor-pointer"
-                        >
-                      <ChevronLeft className="h-4 w-4" />
+              {store.workspaceTab === 'script' && (
+                <div className="inline-flex items-center gap-1 shrink-0">
+                  <div className="inline-flex items-center rounded border border-zinc-800 bg-black/50 h-7">
+                    <button
+                      type="button"
+                      disabled={store.chuong_dang_chon <= 1}
+                      onClick={handlePrevChapter}
+                      className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30 px-1 h-full"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
                     </button>
-                    <span className="font-bold text-zinc-400 select-none whitespace-nowrap font-sans">
-                      Chương {store.chuong_dang_chon} / {store.danh_sach_chuong.length}
+                    <span className="text-[10px] font-bold text-zinc-400 px-1.5 tabular-nums whitespace-nowrap">
+                      Ch. {store.chuong_dang_chon}/{store.danh_sach_chuong.length}
                     </span>
                     <button
                       type="button"
                       disabled={store.chuong_dang_chon >= store.danh_sach_chuong.length}
                       onClick={handleNextChapter}
-                      className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 cursor-pointer"
+                      className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30 px-1 h-full"
                     >
-                      <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleExportTxt}
+                    className="inline-flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/60 px-2 h-7 text-[10px] font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                  >
+                    <Download className="h-3 w-3" />
+                    .txt
+                  </button>
                 </div>
+              )}
+            </div>
+
+            {/* AINOVEL DASHBOARD */}
+            {store.workspaceTab === 'ainovel' && (
+              <div className="flex-1 overflow-y-auto bg-black min-h-0">
+                <AINovelDashboard />
               </div>
             )}
 
-            {/* Dãy nút Cuộn nhanh đến các Cảnh - CỐ ĐỊNH TUYỆT ĐỐI KHÔNG TRÔI */}
-            {currentChapter && scenesList.length > 0 && (
-              <div className="px-8 py-2 bg-zinc-950/95 border-b border-zinc-900/60 backdrop-blur-md shrink-0 z-10">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mr-1 font-sans">
-                    Cuộn nhanh Cảnh:
-                  </span>
-                  {scenesList.map((sc, idx) => {
-                    let shortTitle = sc.title;
-                    if (sc.title.toUpperCase().includes('CẢNH')) {
-                      const match = sc.title.match(/CẢNH\s+(\d+)/i);
-                      if (match) {
-                        shortTitle = `Cảnh ${match[1]}`;
-                      }
-                    } else if (sc.title.toUpperCase() === 'MỞ ĐẦU') {
-                      shortTitle = 'Mở đầu';
-                    } else if (sc.title.toUpperCase() === 'KỊCH BẢN') {
-                      shortTitle = 'Kịch bản';
-                    }
-
-                    return (
+            {/* KỊCH BẢN WORKSPACE */}
+            {store.workspaceTab === 'script' && (
+              <>
+                {/* Hàng 2: tên series + cuộn cảnh + viết lại toàn bộ chương (phải) */}
+                {currentChapter && (
+                  <div className="shrink-0 border-b border-zinc-900/80 bg-zinc-950/95 px-3 sm:px-4 py-1.5 flex items-center gap-2 min-w-0 z-10">
+                    <span
+                      className="text-[10px] font-semibold text-zinc-500 truncate max-w-[24%] sm:max-w-[32%] shrink min-w-0"
+                      title={store.ten_tac_pham}
+                    >
+                      {store.ten_tac_pham || '—'}
+                    </span>
+                    <div className="h-3 w-px bg-zinc-800 shrink-0" />
+                    <div className="flex flex-1 items-center gap-1 min-w-0 overflow-x-auto scrollbar-thin py-0.5">
                       <button
-                        key={idx}
                         type="button"
                         onClick={() => {
-                          const el = document.getElementById(`scene-card-container-${idx}`);
-                          if (el) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }
+                          document
+                            .getElementById('scene-card-container-hook')
+                            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }}
-                        className="px-2.5 py-1 rounded bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-amber-400 border border-zinc-800/80 text-xs font-bold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-[1.03] active:scale-95 animate-in fade-in slide-in-from-left-2 duration-150"
+                        className="shrink-0 px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-900/40 text-[10px] font-bold hover:bg-amber-500/20"
                       >
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 animate-pulse"></span>
-                        {shortTitle}
+                        Hook
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Box Nội Dung Soạn Thảo */}
-            <div className="flex-1 overflow-y-auto bg-black flex flex-col">
-
-              <div className="p-8 flex flex-col">
-                <div className="prose prose-invert max-w-full text-zinc-300 leading-relaxed font-sans text-sm w-full">
-                  
-                  {/* 1. HIỆN THỊ THÔNG SỐ TỪ CẢ CHƯƠNG VÀ PROGRESS BAR */}
-                  {currentChapter && (
-                    <div className="mb-6 bg-zinc-950/60 border border-zinc-900/80 rounded-xl p-4 font-sans animate-in fade-in duration-200 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-2">
-                          <span className="text-zinc-400">Tiến Độ Cổng Từ (Word-Gate Progress)</span>
-                          <span className={progressPercent >= 92 ? 'text-emerald-400' : 'text-amber-500'}>
-                            {wordsCount} / {targetWords} từ ({progressPercent}%)
-                          </span>
-                        </div>
-                        <div className="h-2.5 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/80">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              progressPercent >= 92 
-                                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
-                                : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
-                            }`}
-                            style={{ width: `${progressPercent}%` }}
-                          />
-                        </div>
-                        {progressPercent < 92 && (
-                          <p className="text-[10px] text-zinc-500 italic mt-1.5 leading-normal">
-                            * Gợi ý: Hãy nhấp &ldquo;Sinh phần tiếp theo&rdquo; để viết thêm các phân đoạn chi tiết nhằm vượt Cổng từ ({Math.round(targetWords * 0.92)} từ).
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="border-t md:border-t-0 md:border-l border-zinc-900/80 pt-3 md:pt-0 md:pl-4 flex flex-col justify-center">
-                        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-2">
-                          <span className="text-zinc-400">Thống Kê Sinh Ảnh Chương {activeChapterNum}</span>
-                          <span className="text-zinc-500">Tổng số: {totalPromptsCount}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-zinc-900/50 rounded-lg p-2.5 flex items-center justify-between border border-zinc-800/60">
-                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Thành công</span>
-                            <span className="text-xs font-bold text-emerald-400">{successImagesCount} ảnh</span>
-                          </div>
-                          <div className="flex-1 bg-zinc-900/50 rounded-lg p-2.5 flex items-center justify-between border border-zinc-800/60">
-                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Lỗi / Chưa gen</span>
-                            <span className="text-xs font-bold text-red-500">{failedImagesCount} ảnh</span>
-                          </div>
-                        </div>
-                      </div>
+                      {scenesList.map((sc, idx) => {
+                        let shortTitle = `C${idx + 1}`;
+                        if (sc.title.toUpperCase().includes('CẢNH')) {
+                          const match = sc.title.match(/CẢNH\s+(\d+)/i);
+                          if (match) shortTitle = `C${match[1]}`;
+                        } else if (sc.title.toUpperCase() === 'MỞ ĐẦU') {
+                          shortTitle = 'Mở';
+                        }
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            title={sc.title}
+                            onClick={() => {
+                              document
+                                .getElementById(`scene-card-container-${idx}`)
+                                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            className="shrink-0 px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 hover:text-amber-400 border border-zinc-800 text-[10px] font-bold"
+                          >
+                            {shortTitle}
+                          </button>
+                        );
+                      })}
                     </div>
-                  )}
+                    {store.memoryPipelineStatus?.status === 'failed' &&
+                      store.memoryPipelineStatus.chapter === activeChapterNum && (
+                        <button
+                          type="button"
+                          onClick={() => void retryMemoryCommit(activeChapterNum)}
+                          className="shrink-0 text-[9px] font-bold text-red-400 hover:text-red-300"
+                          title={store.memoryPipelineStatus.message}
+                        >
+                          ⚠ Memory
+                        </button>
+                      )}
+                    <button
+                      type="button"
+                      disabled={store.dang_tai || isStreaming}
+                      title="Viết lại toàn bộ chương này từ đầu (xóa kịch bản + media chương)"
+                      onClick={() => {
+                        if (
+                          !confirm(
+                            `⚠️ Viết lại toàn bộ Chương ${store.chuong_dang_chon}?\nSẽ xóa kịch bản và media (audio/ảnh/video/prompt) của chương này.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        void handleWriteChapter(true);
+                      }}
+                      className="ml-auto shrink-0 inline-flex items-center gap-1 rounded border border-red-900/50 bg-red-500/15 px-2.5 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      Viết lại toàn bộ chương
+                    </button>
+                  </div>
+                )}
 
-                  {/* 2. CHƯƠNG TRÌNH PHÂN CẢNH VĂN HỌC BÀN LÀM VIỆC */}
-                  <div className="space-y-4">
+                {/* Vùng cuộn nội dung — min-h-0 để không tràn đè header */}
+                <div className="flex-1 min-h-0 overflow-y-auto bg-black">
+                  <div className="p-3 sm:p-5 text-zinc-300 font-sans text-sm">
                     <ContentTab
                       isStreaming={isStreaming}
                       streamText={streamText}
                       handleSceneChange={handleSceneChange}
                       handleCopyScene={handleCopyScene}
                       handleExpandScene={handleExpandScene}
+                      handleRewriteScene={handleRewriteScene}
                       handlePlayTTS={handlePlayTTS}
                       handleStopTTS={handleStopTTS}
                       handleGenerateTTS={handleGenerateTTS}
@@ -340,6 +348,7 @@ export default function Workspace() {
                       handleRegenPrompt={handleRegenPrompt}
                       handleWriteChapter={handleWriteChapter}
                       handleIntervene={handleIntervene}
+                      handleReviseFromReview={handleReviseFromReview}
                       handleGenerateImage={handleGenerateImage}
                       handleGenerateAllImages={handleGenerateAllImages}
                       handleGenerateVideo={handleGenerateVideo}
@@ -347,6 +356,13 @@ export default function Workspace() {
                       isPlayingTTS={isPlayingTTS}
                       generatingTTS={generatingTTS}
                       ttsProgress={ttsProgress}
+                      ttsStatus={ttsStatus}
+                      chapterTtsRunning={chapterTtsRunning}
+                      chapterTtsProgress={chapterTtsProgress}
+                      chapterTtsStatus={chapterTtsStatus}
+                      handleGenerateChapterTTS={handleGenerateChapterTTS}
+                      handleStopChapterTTS={handleStopChapterTTS}
+                      handleChapterCastPreflight={handleChapterCastPreflight}
                       generatingPrompt={generatingPrompt}
                       regeneratingSinglePrompt={regeneratingSinglePrompt}
                       generatingImage={generatingImage}
@@ -354,13 +370,9 @@ export default function Workspace() {
                       onImageZoom={setZoomImageUrl}
                     />
                   </div>
-
                 </div>
-              </div>
-            </div>
-            </>
+              </>
             )}
-
           </section>
         </main>
       )}

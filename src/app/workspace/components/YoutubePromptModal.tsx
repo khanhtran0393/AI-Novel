@@ -22,13 +22,27 @@ export default function YoutubePromptModal({ isOpen, onClose, novelTitle = '' }:
     
     setLoading(true);
     try {
-      // Giả lập gọi API youtube prompt của NAVTools
-      setTimeout(() => {
-        setResult(`Tiêu đề đề xuất:\n1. 🚨 SỐC: BÍ MẬT ĐẰNG SAU ${novelTitle.toUpperCase()} - BẠN ĐÃ BIẾT CHƯA?\n2. 🔥 ${novelTitle} - SỰ THẬT KHỦNG KHIẾP ĐƯỢC HÉ LỘ!\n\nMô tả:\nTrong video này, chúng ta sẽ cùng khám phá câu chuyện đầy hấp dẫn về ${novelTitle}...\n\nHashtags:\n#${novelTitle.replace(/\s+/g, '')} #TruyenTranh #KhamPha`);
-        setLoading(false);
-      }, 1500);
+      const res = await fetch('/api/navtools/youtube-seo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: scriptText,
+          novelTitle,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Không thể tạo metadata YouTube');
+      }
+      setResult(
+        typeof data.formatted === 'string' && data.formatted.trim()
+          ? data.formatted
+          : JSON.stringify(data.data ?? data, null, 2),
+      );
     } catch (error) {
       console.error(error);
+      alert(error instanceof Error ? error.message : 'Lỗi khi gọi NAV backend');
+    } finally {
       setLoading(false);
     }
   };

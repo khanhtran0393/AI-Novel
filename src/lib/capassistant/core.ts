@@ -23,13 +23,74 @@ export interface CapAssistantBuildResult {
   filterComplex: string;
 }
 
-const PROJECT_ROOT = process.cwd();
+/**
+ * CapAssistant parity engine — fully independent of CapAssistant install path.
+ * All tools resolve from AI Novel project root: bin/, fonts/, output/.
+ * Also supports Electron packaged layout (resources/bin).
+ */
+function electronResourcesPath(): string {
+  const maybe = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  return typeof maybe === 'string' ? maybe : '';
+}
+
+function resolveProjectRoot(): string {
+  const candidates = [
+    process.env.AI_NOVEL_ROOT,
+    process.env.INIT_CWD,
+    process.cwd(),
+    electronResourcesPath(),
+    path.join(process.cwd(), '..'),
+  ].filter(Boolean) as string[];
+
+  for (const root of candidates) {
+    if (fs.existsSync(path.join(root, 'bin', 'ffmpeg.exe'))) return root;
+    if (fs.existsSync(path.join(root, 'package.json')) && fs.existsSync(path.join(root, 'bin'))) return root;
+  }
+  return process.cwd();
+}
+
+const PROJECT_ROOT = resolveProjectRoot();
 const LOCAL_FFMPEG = path.join(PROJECT_ROOT, 'bin', 'ffmpeg.exe');
 const LOCAL_FFPROBE = path.join(PROJECT_ROOT, 'bin', 'ffprobe.exe');
-const FFMPEG_PATH = fs.existsSync(LOCAL_FFMPEG) ? LOCAL_FFMPEG : 'ffmpeg';
-const FFPROBE_PATH = fs.existsSync(LOCAL_FFPROBE) ? LOCAL_FFPROBE : 'ffprobe';
+const LOCAL_FFPLAY = path.join(PROJECT_ROOT, 'bin', 'ffplay.exe');
 const FONTS_DIR = path.join(PROJECT_ROOT, 'fonts');
 const DEFAULT_FONT = path.join(FONTS_DIR, 'Anton-Regular.ttf');
+const OUTPUT_DIR = path.join(PROJECT_ROOT, 'output');
+
+export function resolveFfmpegPath(): string {
+  const roots = [PROJECT_ROOT, process.cwd(), electronResourcesPath()].filter(Boolean) as string[];
+  for (const root of roots) {
+    const p = path.join(root, 'bin', 'ffmpeg.exe');
+    if (fs.existsSync(p)) return p;
+  }
+  if (fs.existsSync(LOCAL_FFMPEG)) return LOCAL_FFMPEG;
+  return 'ffmpeg';
+}
+
+export function resolveFfprobePath(): string {
+  const roots = [PROJECT_ROOT, process.cwd(), electronResourcesPath()].filter(Boolean) as string[];
+  for (const root of roots) {
+    const p = path.join(root, 'bin', 'ffprobe.exe');
+    if (fs.existsSync(p)) return p;
+  }
+  if (fs.existsSync(LOCAL_FFPROBE)) return LOCAL_FFPROBE;
+  return 'ffprobe';
+}
+
+export function resolveFfplayPath(): string {
+  const roots = [PROJECT_ROOT, process.cwd(), electronResourcesPath()].filter(Boolean) as string[];
+  for (const root of roots) {
+    const p = path.join(root, 'bin', 'ffplay.exe');
+    if (fs.existsSync(p)) return p;
+  }
+  if (fs.existsSync(LOCAL_FFPLAY)) return LOCAL_FFPLAY;
+  return 'ffplay';
+}
+
+/** @deprecated use resolveFfmpegPath() — kept for compatibility */
+const FFMPEG_PATH = resolveFfmpegPath();
+/** @deprecated use resolveFfprobePath() */
+const FFPROBE_PATH = resolveFfprobePath();
 
 export const CAPASSISTANT_BYPASS_FX: Record<string, string> = {
   'Không (None)': '',
@@ -78,15 +139,15 @@ export function escapeFilterPath(filePath: string) {
   return filePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
 }
 
-function parsePercent(value: unknown, fallback = 100) {
+function parsePercent(value: unknown, defaultValue = 100) {
   if (typeof value === 'number') return value;
-  const parsed = parseFloat(String(value ?? fallback).replace('%', ''));
-  return Number.isFinite(parsed) ? parsed : fallback;
+  const parsed = parseFloat(String(value ?? defaultValue).replace('%', ''));
+  return Number.isFinite(parsed) ? parsed : defaultValue;
 }
 
-function parseNumber(value: unknown, fallback = 0) {
+function parseNumber(value: unknown, defaultValue = 0) {
   const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
-  return Number.isFinite(parsed) ? parsed : fallback;
+  return Number.isFinite(parsed) ? parsed : defaultValue;
 }
 
 function parseTimeInput(value: unknown) {
@@ -125,6 +186,7 @@ export function detectGpu(): GpuType {
 }
 
 export function probeVideo(videoPath: string): VideoMetadata {
+  const ffprobe = resolveFfprobePath();
   const metadata: VideoMetadata = {
     width: 1920,
     height: 1080,
@@ -135,7 +197,7 @@ export function probeVideo(videoPath: string): VideoMetadata {
   };
 
   const videoProbe = spawnSync(
-    FFPROBE_PATH,
+    ffprobe,
     [
       '-v', 'error',
       '-select_streams', 'v:0',
@@ -160,7 +222,7 @@ export function probeVideo(videoPath: string): VideoMetadata {
   }
 
   const formatProbe = spawnSync(
-    FFPROBE_PATH,
+    ffprobe,
     ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', videoPath],
     { windowsHide: true, encoding: 'utf8' },
   );
@@ -168,13 +230,33 @@ export function probeVideo(videoPath: string): VideoMetadata {
   if (!metadata.frameCount && metadata.duration > 0) metadata.frameCount = Math.round(metadata.duration * metadata.fps);
 
   const audioProbe = spawnSync(
-    FFPROBE_PATH,
+    ffprobe,
     ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', videoPath],
     { windowsHide: true, encoding: 'utf8' },
   );
   metadata.hasAudio = (audioProbe.stdout || '').toLowerCase().includes('audio');
 
   return metadata;
+}
+
+/** Chain atempo filters for speeds outside FFmpeg's 0.5–2.0 per-stage range (CapAssistant parity + fix). */
+export function buildAtempoChain(speed: number): string {
+  let remaining = speed;
+  const parts: string[] = [];
+  // Clamp extreme values
+  remaining = Math.max(0.05, Math.min(100, remaining));
+  while (remaining > 2.0001) {
+    parts.push('atempo=2.0');
+    remaining /= 2;
+  }
+  while (remaining < 0.4999) {
+    parts.push('atempo=0.5');
+    remaining /= 0.5;
+  }
+  if (Math.abs(remaining - 1) > 0.001) {
+    parts.push(`atempo=${remaining.toFixed(4)}`);
+  }
+  return parts.join(',');
 }
 
 function shiftSrtTimestamp(timestamp: string, delayMs: number) {
@@ -318,8 +400,11 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
     vFilters.push(`[${currV}]setpts=${1 / speedFactor}*PTS[vspd]`);
     currV = 'vspd';
     if (metadata.hasAudio) {
-      aFilters.push(`[${currA}]atempo=${speedFactor}[aspd]`);
-      currA = 'aspd';
+      const atempo = buildAtempoChain(speedFactor);
+      if (atempo) {
+        aFilters.push(`[${currA}]${atempo}[aspd]`);
+        currA = 'aspd';
+      }
     }
   }
 
@@ -476,21 +561,35 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
   }
 
   if (sub.enableSub && activeSrtContent.trim()) {
-    const styleIndex = Number.isFinite(Number(sub.styleIndex)) ? Number(sub.styleIndex) : Number.isFinite(Number(payload.style?.srtStyleIndex)) ? Number(payload.style.srtStyleIndex) : 0;
+    const styleIndex = Number.isFinite(Number(sub.styleIndex))
+      ? Number(sub.styleIndex)
+      : Number.isFinite(Number(payload.style?.srtStyleIndex))
+        ? Number(payload.style.srtStyleIndex)
+        : 0;
+    // CapAssistant style index from combo text (Netflix/TikTok/...)
+    const styleFromName = payload.style?.srtStyle ?? sub.srtStyle ?? styleIndex;
     const processedSrt = processSrtForCapAssistant(activeSrtContent, {
       delaySec: parseNumber(sub.delay ?? sub.srtDelay, 0),
-      styleIndex,
-      padX: parseNumber(sub.padX, 16),
-      padY: parseNumber(sub.padY, 6),
-      usePadding: Boolean(sub.hasBg || sub.usePadding || payload.style?.usePadding),
+      styleIndex: Number.isFinite(Number(styleFromName)) ? Number(styleFromName) : styleIndex,
+      padX: parseNumber(sub.padX ?? payload.style?.padX, 16),
+      padY: parseNumber(sub.padY ?? payload.style?.padY, 6),
+      usePadding: Boolean(sub.hasBg || sub.usePadding || payload.style?.bgPadding || payload.style?.usePadding),
     });
+    fs.mkdirSync(outputDir, { recursive: true });
     const tempSrtPath = path.join(outputDir, `temp_render_active_${Date.now()}_${Math.round(Math.random() * 100000)}.srt`);
     fs.writeFileSync(tempSrtPath, processedSrt, 'utf8');
     tempFiles.push(tempSrtPath);
 
-    const assStyle = getSubtitleStyle(payload.style?.srtStyle ?? sub.srtStyle ?? sub.styleIndex ?? styleIndex);
+    const assStyle = getSubtitleStyle(styleFromName);
     const fontName = sub.srtFont || sub.font || 'Anton';
-    const marginV = Math.max(0, Math.round(parseNumber(sub.marginV, 40)));
+    // CapAssistant: margin_v = dist_from_bottom / preview_h * 288
+    let marginV = Math.max(0, Math.round(parseNumber(sub.marginV, 40)));
+    if (sub.proxyY !== undefined || sub.srtY !== undefined) {
+      const proxyY = parseNumber(sub.proxyY ?? sub.srtY, previewH * 0.85);
+      const proxyH = parseNumber(sub.proxyH ?? sub.srtH, 40);
+      const distFromBottom = previewH - (proxyY + proxyH);
+      marginV = Math.max(0, Math.round((distFromBottom / previewH) * 288));
+    }
     const syncSize = Math.round(parseNumber(sub.srtSize ?? sub.fontSize, 24) * 1.25);
     const fontsDir = fs.existsSync(FONTS_DIR) ? `:fontsdir='${escapeFilterPath(FONTS_DIR)}'` : '';
     const forceStyle = `FontName=${fontName},FontSize=${syncSize},Alignment=2,MarginV=${marginV},${assStyle}`;
@@ -533,6 +632,7 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
     currA = 'af';
   }
 
+  const ffmpegPath = resolveFfmpegPath();
   const ffmpegArgs = ['-hide_banner', '-loglevel', 'error', ...inputsRaw];
   const filterComplex = [...vFilters, ...aFilters].join(';');
   if (filterComplex) {
@@ -557,9 +657,9 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
   ffmpegArgs.push('-profile:v', 'high', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', outputPath);
 
   return {
-    ffmpegPath: FFMPEG_PATH,
+    ffmpegPath,
     ffmpegArgs,
-    commandLine: displayCommand(FFMPEG_PATH, ffmpegArgs),
+    commandLine: displayCommand(ffmpegPath, ffmpegArgs),
     outputPath,
     tempFiles,
     metadata,
@@ -576,29 +676,36 @@ export function buildSmartJoinCommand(videoPaths: string[], outputPath: string, 
 
   let targetW = 1920;
   let targetH = 1080;
-  if (targetRatio.includes('9:16') || targetRatio.toLowerCase().includes('doc')) {
+  const ratioLower = targetRatio.toLowerCase();
+  if (targetRatio.includes('9:16') || ratioLower.includes('doc') || ratioLower.includes('dọc')) {
     targetW = 1080;
     targetH = 1920;
-  } else if (!targetRatio.includes('16:9') && !targetRatio.toLowerCase().includes('ngang')) {
+  } else if (ratioLower.includes('giữ') || ratioLower.includes('giu') || ratioLower.includes('nguyên') || ratioLower.includes('nguyen') || (!targetRatio.includes('16:9') && !ratioLower.includes('ngang'))) {
     const firstMeta = probeVideo(videoPaths[0]);
     targetW = Math.floor((firstMeta.width || 1920) / 2) * 2;
     targetH = Math.floor((firstMeta.height || 1080) / 2) * 2;
   }
 
-  const args = ['-y'];
+  const ffmpegPath = resolveFfmpegPath();
+  const args = ['-y', '-hide_banner', '-loglevel', 'error'];
   const vFilters: string[] = [];
   const aFilters: string[] = [];
   const concatV: string[] = [];
   const concatA: string[] = [];
 
   videoPaths.forEach((videoPath, i) => {
+    const meta = probeVideo(videoPath);
+    const duration = Math.max(0.1, meta.duration || 1);
     args.push('-i', videoPath.replace(/\\/g, '/'));
-    vFilters.push(`[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v${i}]`);
+    vFilters.push(
+      `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v${i}]`,
+    );
     concatV.push(`[v${i}]`);
-    if (probeVideo(videoPath).hasAudio) {
-      aFilters.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
+    if (meta.hasAudio) {
+      aFilters.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo,aresample=async=1[a${i}]`);
     } else {
-      aFilters.push(`aevalsrc=0:d=1:sample_rate=44100:channel_layout=stereo[a${i}]`);
+      // CapAssistant SmartJoin parity: silent audio matching real clip duration.
+      aFilters.push(`aevalsrc=0:d=${duration.toFixed(3)}:sample_rate=44100:channel_layout=stereo[a${i}]`);
     }
     concatA.push(`[a${i}]`);
   });
@@ -610,13 +717,72 @@ export function buildSmartJoinCommand(videoPaths: string[], outputPath: string, 
     `${concatA.join('')}concat=n=${videoPaths.length}:v=0:a=1[outa]`,
   ].join(';');
 
-  args.push('-filter_complex', filterComplex, '-map', '[outv]', '-map', '[outa]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '192k', outputPath);
+  args.push(
+    '-filter_complex', filterComplex,
+    '-map', '[outv]',
+    '-map', '[outa]',
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-movflags', '+faststart',
+    outputPath,
+  );
 
   return {
-    ffmpegPath: FFMPEG_PATH,
+    ffmpegPath,
     ffmpegArgs: args,
-    commandLine: displayCommand(FFMPEG_PATH, args),
+    commandLine: displayCommand(ffmpegPath, args),
     outputPath,
     filterComplex,
   };
 }
+
+/** CapAssistant VideoJoinerWorker parity: stream-copy concat demuxer. */
+export function buildSimpleJoinCommand(videoPaths: string[], outputPath: string) {
+  if (videoPaths.length === 0) throw new Error('No videos provided');
+  videoPaths.forEach(videoPath => {
+    if (!fs.existsSync(videoPath)) throw new Error(`Video file not found: ${videoPath}`);
+  });
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  const listPath = path.join(path.dirname(outputPath), `concat_list_${Date.now()}.txt`);
+  const listBody = videoPaths
+    .map(vp => `file '${vp.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+    .join('\n');
+  fs.writeFileSync(listPath, listBody, 'utf8');
+
+  const ffmpegPath = resolveFfmpegPath();
+  const args = [
+    '-y', '-hide_banner', '-loglevel', 'error',
+    '-f', 'concat', '-safe', '0',
+    '-i', listPath,
+    '-c', 'copy',
+    outputPath,
+  ];
+
+  return {
+    ffmpegPath,
+    ffmpegArgs: args,
+    commandLine: displayCommand(ffmpegPath, args),
+    outputPath,
+    tempFiles: [listPath],
+    filterComplex: '',
+  };
+}
+
+export function getCapAssistantRuntimeInfo() {
+  return {
+    projectRoot: PROJECT_ROOT,
+    ffmpeg: resolveFfmpegPath(),
+    ffprobe: resolveFfprobePath(),
+    ffplay: resolveFfplayPath(),
+    fontsDir: FONTS_DIR,
+    defaultFont: DEFAULT_FONT,
+    outputDir: OUTPUT_DIR,
+    independent: true,
+    source: 'AI Novel local CapAssistant engine (no CapAssistant.exe dependency)',
+  };
+}
+

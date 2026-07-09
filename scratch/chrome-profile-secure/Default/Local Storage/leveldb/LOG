@@ -1,3 +1,2 @@
-2026/06/04-22:32:47.336 66f0 Reusing MANIFEST D:\chuyen gia mac the app\scratch\chrome-profile-secure\Default\Local Storage\leveldb/MANIFEST-000001
-2026/06/04-22:32:47.345 66f0 Recovering log #4
-2026/06/04-22:32:47.346 66f0 Reusing old log D:\chuyen gia mac the app\scratch\chrome-profile-secure\Default\Local Storage\leveldb/000004.log 
+2026/07/09-00:24:43.464 1788 Creating DB D:\My app\AI Novel\scratch\chrome-profile-secure\Default\Local Storage\leveldb since it was missing.
+2026/07/09-00:24:43.487 1788 Reusing MANIFEST D:\My app\AI Novel\scratch\chrome-profile-secure\Default\Local Storage\leveldb/MANIFEST-000001

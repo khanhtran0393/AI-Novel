@@ -6,12 +6,7 @@ import path from 'path';
 export const runtime = 'nodejs';
 
 function getApiKeyPath(): string {
-  const localPath = path.join(process.cwd(), 'apikey.txt');
-  if (fs.existsSync(localPath)) return localPath;
-  const fallbackPath = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026\\apikey.txt';
-  const fallbackDir = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026';
-  if (fs.existsSync(fallbackDir)) return fallbackPath;
-  return localPath;
+  return path.join(process.cwd(), 'apikey.txt');
 }
 const APIKEY_PATH = getApiKeyPath();
 

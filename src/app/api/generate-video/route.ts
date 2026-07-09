@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import util from 'util';
+import { spawn } from 'child_process';
 import { addExtra } from 'puppeteer-extra';
 import puppeteerCore from 'puppeteer';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { BrowserAgent } from '@/lib/agents/BrowserAgent';
-
-const execAsync = util.promisify(exec);
 
 // Hàm tìm kiếm đường dẫn Chrome
 function findChromePath(): string | null {
@@ -27,12 +24,7 @@ function findChromePath(): string | null {
 export const runtime = 'nodejs';
 
 function getApiKeyPath(): string {
-  const localPath = path.join(process.cwd(), 'apikey.txt');
-  if (fs.existsSync(localPath)) return localPath;
-  const fallbackPath = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026\\apikey.txt';
-  const fallbackDir = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026';
-  if (fs.existsSync(fallbackDir)) return fallbackPath;
-  return localPath;
+  return path.join(process.cwd(), 'apikey.txt');
 }
 const APIKEY_PATH = getApiKeyPath();
 
@@ -54,20 +46,157 @@ const VEO_MODELS = [
   'gemini-2.5-flash-preview-video',
 ];
 
+// Helper function to upload local image to a temporary public host (tmpfiles.org)
+async function uploadToPublicTempHost(localFilePath: string): Promise<string | null> {
+  try {
+    if (!fs.existsSync(localFilePath)) {
+      console.warn(`[Temp Host] File does not exist: ${localFilePath}`);
+      return null;
+    }
+    const buffer = fs.readFileSync(localFilePath);
+    const blob = new Blob([buffer], { type: 'image/png' });
+    const formData = new FormData();
+    formData.append('file', blob, path.basename(localFilePath));
+
+    console.log(`[Temp Host] Uploading file to tmpfiles.org: ${path.basename(localFilePath)}...`);
+    const resp = await fetch('https://tmpfiles.org/api/v1/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (resp.ok) {
+      const json = await resp.json();
+      const url = json.data?.url;
+      if (url) {
+        // Convert to direct download link
+        const directUrl = url.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/');
+        console.log(`[Temp Host] Upload successful! Direct URL: ${directUrl}`);
+        return directUrl;
+      }
+    } else {
+      console.error(`[Temp Host] Upload failed: ${resp.status} ${resp.statusText}`);
+    }
+  } catch (err: any) {
+    console.error(`[Temp Host] Exception during upload: ${err.message}`);
+  }
+  return null;
+}
+
+function resolveLocalImagePath(imageRef?: string): string | null {
+  if (!imageRef) return null;
+  if (/^https?:\/\//i.test(imageRef)) return null;
+  if (path.isAbsolute(imageRef) && fs.existsSync(imageRef)) return imageRef;
+
+  let fileName = '';
+  try {
+    const url = new URL(imageRef, 'http://local.app');
+    fileName = url.searchParams.get('file') || '';
+  } catch {}
+
+  if (!fileName && imageRef.includes('file=')) {
+    fileName = imageRef.split('file=')[1].split('&')[0];
+  }
+  if (!fileName && imageRef.startsWith('/images/')) {
+    fileName = imageRef.replace('/images/', '');
+  }
+  if (!fileName && imageRef.startsWith('/api/serve-image/')) {
+    fileName = path.basename(imageRef);
+  }
+
+  if (!fileName) return null;
+  fileName = decodeURIComponent(fileName).split('?')[0].split('#')[0];
+  const localImagePath = path.join(process.cwd(), 'public', 'images', path.basename(fileName));
+  return fs.existsSync(localImagePath) ? localImagePath : null;
+}
+
+function runwayRatioFromAspect(aspectRatio: string): string {
+  if (aspectRatio === '9:16') return '768:1280';
+  if (aspectRatio === '1:1') return '960:960';
+  if (aspectRatio === '4:5') return '768:960';
+  return '1280:768';
+}
+
+function quoteCmdArg(arg: string): string {
+  return /[\s"]/u.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+}
+
+function appendProcessOutput(current: string, chunk: Buffer): string {
+  const next = current + chunk.toString('utf8');
+  return next.length > 6000 ? next.slice(-6000) : next;
+}
+
+async function runFfmpegProcess(executable: string, args: string[], timeoutMs: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(executable, args, { windowsHide: true });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+
+    const timer = setTimeout(() => {
+      finish(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`FFmpeg timeout sau ${Math.round(timeoutMs / 1000)}s. ${stderr || stdout}`.trim()));
+      });
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout = appendProcessOutput(stdout, chunk);
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr = appendProcessOutput(stderr, chunk);
+    });
+    child.on('error', (err) => {
+      finish(() => reject(err));
+    });
+    child.on('close', (code) => {
+      finish(() => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`FFmpeg exited with code ${code}. ${stderr || stdout}`.trim()));
+        }
+      });
+    });
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { chapterNum, sceneIndex, promptIndex, prompt, drivePath, duration, model } = body;
+    const { chapterNum, sceneIndex, promptIndex, prompt, drivePath, duration, model, startImage, endImage } = body;
 
     if (chapterNum === undefined || sceneIndex === undefined) {
       return NextResponse.json({ error: 'Thiếu thông tin chương hoặc phân cảnh.' }, { status: 400 });
     }
 
-    const promptText = prompt || 'Beautiful cinematic shot';
-    const videoDuration = duration || 5;
+    const promptText = typeof prompt === 'string' ? prompt.trim() : '';
+    if (!promptText) {
+      return NextResponse.json({ error: '[Video API] Thieu prompt video thuc te. He thong khong tu chen prompt mau.' }, { status: 400 });
+    }
+
+    const videoDuration = Number(duration);
+    if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+      return NextResponse.json({ error: '[Video API] Thieu thoi luong video hop le.' }, { status: 400 });
+    }
+
     const filename = `chapter_${chapterNum}_scene_${sceneIndex}_animatic.mp4`;
-    const videoProvider = body.videoProvider || 'ffmpeg';
+    const videoProvider = typeof body.videoProvider === 'string' ? body.videoProvider.trim() : '';
+    const supportedVideoProviders = ['sora', 'veo', 'grok', 'luma', 'runway', 'ffmpeg'];
+    if (!videoProvider) {
+      return NextResponse.json({ error: '[Video API] Thieu videoProvider. He thong khong tu chay provider mac dinh.' }, { status: 400 });
+    }
+    if (!supportedVideoProviders.includes(videoProvider)) {
+      return NextResponse.json({ error: `[Video API] Provider ${videoProvider} khong duoc ho tro trong che do production.` }, { status: 400 });
+    }
+
     const videoApiKey = body.videoApiKey || '';
     const videoAspectRatio = body.videoAspectRatio || '16:9';
 
@@ -77,6 +206,10 @@ export async function POST(req: Request) {
     const publicVideoDir = path.join(process.cwd(), 'public', 'video');
     if (!fs.existsSync(publicVideoDir)) fs.mkdirSync(publicVideoDir, { recursive: true });
     const localSavePath = path.join(publicVideoDir, filename);
+    const sourceImagePath = resolveLocalImagePath(startImage);
+    const publicImageUrl = /^https?:\/\//i.test(startImage || '')
+      ? startImage
+      : (sourceImagePath && ['luma', 'runway'].includes(videoProvider) ? await uploadToPublicTempHost(sourceImagePath) : null);
 
     const providerKeysToTry: string[] = [];
     if (videoApiKey) providerKeysToTry.push(videoApiKey);
@@ -96,16 +229,25 @@ export async function POST(req: Request) {
       let lastError = '';
       for (const currentKey of providerKeysToTry) {
         try {
+          const payload: any = {
+            prompt: promptText,
+            aspect_ratio: videoAspectRatio
+          };
+          if (publicImageUrl) {
+            payload.keyframes = {
+              frame0: {
+                type: 'image',
+                url: publicImageUrl
+              }
+            };
+          }
           const res = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${currentKey}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              prompt: promptText,
-              aspect_ratio: videoAspectRatio
-            })
+            body: JSON.stringify(payload)
           });
           if (res.ok) {
             const data = await res.json();
@@ -140,7 +282,8 @@ export async function POST(req: Request) {
             body: JSON.stringify({
               model: 'gen3a_turbo',
               promptText: promptText,
-              ratio: videoAspectRatio === '16:9' ? '1280:768' : (videoAspectRatio === '9:16' ? '768:1280' : '1280:768')
+              promptImage: publicImageUrl || undefined,
+              ratio: runwayRatioFromAspect(videoAspectRatio)
             })
           });
           if (res.ok) {
@@ -156,6 +299,52 @@ export async function POST(req: Request) {
         }
       }
       return NextResponse.json({ error: `[Runway Gen-3 Error] ${lastError}` }, { status: 500 });
+    }
+
+    // 3. xAI GROK IMAGINE VIDEO
+    else if (videoProvider === 'grok') {
+      if (providerKeysToTry.length === 0) {
+        return NextResponse.json({ error: '[Grok Imagine Video Error] Vui long cau hinh xAI Grok API Key.' }, { status: 400 });
+      }
+      if (!sourceImagePath || !fs.existsSync(sourceImagePath)) {
+        return NextResponse.json({ error: '[Grok Imagine Video Error] Can sinh anh truoc de chay image-to-video.' }, { status: 400 });
+      }
+
+      const imageUrl = imageDataUriFromLocalFile(sourceImagePath);
+      const requestDuration = Math.max(1, Math.min(15, Number(videoDuration) || 6));
+      let lastError = '';
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const res = await fetch('https://api.x.ai/v1/videos/generations', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${currentKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'grok-imagine-video-1.5',
+              prompt: promptText,
+              image_url: imageUrl,
+              duration: requestDuration,
+              aspect_ratio: videoAspectRatio,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.request_id) {
+            const videoData = await pollXaiVideo(data.request_id, currentKey, 180000);
+            if (videoData) {
+              fs.writeFileSync(localSavePath, videoData);
+              return createSuccessResponse(localSavePath, filename, requestDuration, drivePath, chapterNum, 'Grok Imagine Video 1.5');
+            }
+            lastError = 'Timeout while waiting for Grok Imagine video result.';
+          } else {
+            lastError = data.error?.message || JSON.stringify(data) || `xAI error ${res.status}`;
+          }
+        } catch (err: any) {
+          lastError = err.message;
+        }
+      }
+      return NextResponse.json({ error: `[Grok Imagine Video Error] ${lastError}` }, { status: 500 });
     }
 
     // 3. OPENAI SORA
@@ -194,7 +383,7 @@ export async function POST(req: Request) {
 
     // 4. GOOGLE VEO
     else if (videoProvider === 'veo') {
-      const apiKeys = loadApiKeys();
+      const apiKeys = providerKeysToTry.length > 0 ? providerKeysToTry : loadApiKeys();
       if (apiKeys.length === 0) {
         return NextResponse.json({ error: '[Google Veo Error] Vui lòng cấu hình Google Studio API Key cho Veo.' }, { status: 400 });
       }
@@ -266,7 +455,7 @@ export async function POST(req: Request) {
 
     // 5. FFMPEG VIDEO BUILDER (Ken Burns)
     else if (videoProvider === 'ffmpeg') {
-      return createFfmpegVideoResponse(localSavePath, filename, promptText, videoDuration, drivePath, chapterNum, body.useGpuAcceleration);
+      return createFfmpegVideoResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, body.useGpuAcceleration, sourceImagePath);
     }
 
     else {
@@ -281,6 +470,51 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+function imageDataUriFromLocalFile(localFilePath: string): string {
+  const ext = path.extname(localFilePath).toLowerCase();
+  const mimeType = ext === '.jpg' || ext === '.jpeg'
+    ? 'image/jpeg'
+    : ext === '.webp'
+      ? 'image/webp'
+      : 'image/png';
+  const base64 = fs.readFileSync(localFilePath).toString('base64');
+  return `data:${mimeType};base64,${base64}`;
+}
+
+function isSvgLikeFile(localFilePath: string) {
+  try {
+    const header = fs.readFileSync(localFilePath, { encoding: 'utf8', flag: 'r' }).slice(0, 256).trimStart().toLowerCase();
+    return header.startsWith('<svg') || header.includes('<svg');
+  } catch {
+    return false;
+  }
+}
+
+async function pollXaiVideo(requestId: string, apiKey: string, timeoutMs: number): Promise<Buffer | null> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const response = await fetch(`https://api.x.ai/v1/videos/${requestId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || `xAI video poll failed: ${response.status}`);
+    }
+    if (data.status === 'done' && data.video?.url) {
+      const videoResponse = await fetch(data.video.url);
+      if (!videoResponse.ok) {
+        throw new Error(`xAI video download failed: ${videoResponse.statusText}`);
+      }
+      return Buffer.from(await videoResponse.arrayBuffer());
+    }
+    if (data.status === 'failed' || data.status === 'error') {
+      throw new Error(data.error?.message || 'xAI video generation failed.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  return null;
 }
 
 // Poll long-running operation
@@ -353,53 +587,81 @@ function createSuccessResponse(localSavePath: string, filename: string, duration
   });
 }
 
-// Tạo response bằng FFmpeg + Pollinations
-async function createFfmpegVideoResponse(localSavePath: string, filename: string, promptText: string, duration: number, drivePath: string, chapterNum: number, useGpu = false) {
+// Tạo response bằng FFmpeg từ ảnh đã gen
+async function createFfmpegVideoResponse(localSavePath: string, filename: string, duration: number, drivePath: string, chapterNum: number, useGpu = false, sourceImagePath?: string | null) {
   try {
     const publicVideoDir = path.dirname(localSavePath);
-    const tempImagePath = path.join(publicVideoDir, `temp_${Date.now()}.jpg`);
+    let tempImagePath = path.join(publicVideoDir, `temp_${Date.now()}.jpg`);
 
-    console.log(`[FFmpeg Video Builder] 1. Tải ảnh nền từ Pollinations...`);
-    const cleanPrompt = `${promptText}, cinematic lighting, highly detailed`;
-    const seed = Math.floor(Math.random() * 1000000);
-    const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=1280&height=720&seed=${seed}&nologo=true`;
-    
-    const res = await fetch(pollUrl);
-    if (!res.ok) throw new Error('Không thể tải ảnh từ Pollinations');
-    const buffer = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(tempImagePath, buffer);
+    if (!sourceImagePath || !fs.existsSync(sourceImagePath)) {
+      return NextResponse.json(
+        { error: '[FFmpeg Video Builder] Cần sinh ảnh trước. FFmpeg sẽ dùng đúng ảnh đã gen, không tự tải ảnh mới từ prompt.' },
+        { status: 400 }
+      );
+    }
+    console.log(`[FFmpeg Video Builder] Using existing generated image: ${sourceImagePath}`);
+    if (isSvgLikeFile(sourceImagePath)) {
+      return NextResponse.json(
+        { error: '[FFmpeg Video Builder] Ảnh đầu vào không hợp lệ hoặc là định dạng vector. Vui lòng sử dụng ảnh raster thực tế để tạo video.' },
+        { status: 400 }
+      );
+    }
+    fs.copyFileSync(sourceImagePath, tempImagePath);
 
     console.log(`[FFmpeg Video Builder] 2. Xác định đường dẫn FFmpeg...`);
     const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
-    const ffmpegCmdExecutable = fs.existsSync(localFfmpeg) ? `"${localFfmpeg}"` : 'ffmpeg';
+    const ffmpegExecutable = fs.existsSync(localFfmpeg) ? localFfmpeg : 'ffmpeg';
 
     console.log(`[FFmpeg Video Builder] 3. Tạo video pan/zoom chất lượng cao bằng FFmpeg...`);
-    const filterComplex = `"[0:v]scale=2560x1440,zoompan=z='min(zoom+0.0015,1.5)':d=${duration * 25}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=2560x1440,scale=1280x720,framerate=25,format=yuv420p[v]"`;
+    const frameCount = Math.max(1, Math.ceil(duration * 25));
+    const filterComplex = `[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,zoompan=z='min(zoom+0.0015,1.5)':d=${frameCount}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720,framerate=25,format=yuv420p[v]`;
     
     let codec = 'libx264';
     if (useGpu) {
       const codecsToTry = ['h264_nvenc', 'h264_amf', 'h264_qsv'];
       const { execSync } = require('child_process');
+      const ffmpegTestExecutable = quoteCmdArg(ffmpegExecutable);
+      let gpuCodec = '';
       for (const c of codecsToTry) {
         try {
-          execSync(`${ffmpegCmdExecutable} -y -f lavfi -i nullsrc=s=64x64:d=1 -c:v ${c} -f null -`, { stdio: 'ignore' });
-          codec = c;
+          execSync(`${ffmpegTestExecutable} -y -f lavfi -i nullsrc=s=64x64:d=1 -c:v ${c} -f null -`, { stdio: 'ignore' });
+          gpuCodec = c;
           console.log(`[FFmpeg Video Builder] GPU acceleration (${c}) enabled successfully.`);
           break;
         } catch {}
       }
-      if (codec === 'libx264') {
-        console.warn('[FFmpeg Video Builder] GPU requested but all tests failed. Falling back to libx264.');
+      if (!gpuCodec) {
+        throw new Error('[FFmpeg Video Builder] GPU encoder requested but no supported GPU codec is available.');
       }
+      codec = gpuCodec;
     }
     
-    const ffmpegCmd = `${ffmpegCmdExecutable} -y -loop 1 -i "${tempImagePath}" -filter_complex ${filterComplex} -map "[v]" -c:v ${codec} -t ${duration} -pix_fmt yuv420p "${localSavePath}"`;
+    const encodeOptions = codec === 'libx264' ? ['-preset', 'veryfast', '-crf', '20'] : [];
+    const ffmpegArgs = [
+      '-y',
+      '-framerate', '25',
+      '-i', tempImagePath,
+      '-filter_complex', filterComplex,
+      '-map', '[v]',
+      '-c:v', codec,
+      ...encodeOptions,
+      '-frames:v', String(frameCount),
+      '-pix_fmt', 'yuv420p',
+      localSavePath,
+    ];
+    const ffmpegCmd = [ffmpegExecutable, ...ffmpegArgs].map(quoteCmdArg).join(' ');
     
     console.log(`[FFmpeg Video Builder] Chạy lệnh: ${ffmpegCmd}`);
-    await execAsync(ffmpegCmd);
-    
-    // Xóa file ảnh tạm
-    if (fs.existsSync(tempImagePath)) fs.unlinkSync(tempImagePath);
+    try {
+      await runFfmpegProcess(ffmpegExecutable, ffmpegArgs, Math.max(300000, duration * 120000));
+    } finally {
+      try {
+        if (fs.existsSync(tempImagePath)) fs.unlinkSync(tempImagePath);
+      } catch (cleanupErr) {
+        console.warn(`[FFmpeg Video Builder] Khong the xoa anh tam ${tempImagePath}:`, (cleanupErr as Error).message);
+      }
+      tempImagePath = '';
+    }
     console.log(`[FFmpeg Video Builder] ✅ Đã tạo file video thật sắc nét: ${localSavePath}`);
 
     // Lưu vào Drive nếu có
@@ -422,7 +684,7 @@ async function createFfmpegVideoResponse(localSavePath: string, filename: string
       driveFilePath,
       filename,
       duration,
-      method: 'Pollinations AI + FFmpeg'
+      method: 'Generated Image + FFmpeg Ken Burns'
     });
   } catch (err: unknown) {
     console.error(`[FFmpeg Video Builder] Lỗi:`, (err as Error).message);

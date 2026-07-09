@@ -1,0 +1,512 @@
+/**
+ * CapAssistant Auto Master pipeline — independent AI Novel implementation.
+ * Flow: STT → Translate → TTS → FFmpeg Render
+ * No CapAssistant.exe / app path dependency.
+ */
+import fs from 'fs';
+import path from 'path';
+import { spawn, spawnSync } from 'child_process';
+import { callNavGateway } from '@/lib/nav/navPythonBridge';
+import {
+  buildCapAssistantCommand,
+  buildSmartJoinCommand,
+  probeVideo,
+  resolveFfmpegPath,
+} from '@/lib/capassistant/core';
+import { compressAudioToMp3, transcribeAudioViaGemini } from '@/app/api/self-heal/media/mediaHelpers';
+
+export type AutoMasterSrtMode = 'auto' | 'untranslated' | 'translated' | 'none';
+export type AutoMasterTranslateMethod = 'api' | 'rpa' | 'skip';
+
+export interface AutoMasterRequest {
+  videoPath: string;
+  videoPaths?: string[];
+  outputDir: string;
+  finalOutputPath?: string;
+  srtMode?: AutoMasterSrtMode;
+  srtContent?: string;
+  translatedSrtContent?: string;
+  audioLang?: string; // zh | vi | en
+  targetLang?: string; // vi | en | zh
+  translateMethod?: AutoMasterTranslateMethod;
+  ruleId?: string;
+  apiKey?: string;
+  apiKeys?: string[];
+  ttsVoice?: string;
+  ttsSpeed?: number;
+  enableTts?: boolean;
+  enableRender?: boolean;
+  muteOriginal?: boolean;
+  vocalFilter?: boolean;
+  gpu?: boolean;
+  zoom?: number | string;
+  speed?: number | string;
+  volume?: number | string;
+  flip?: boolean;
+  wmText?: string;
+  srtStyle?: number | string;
+  srtFont?: string;
+  srtSize?: number | string;
+  logoPath?: string;
+  useLogo?: boolean;
+  exportRatio?: string;
+  skipTranslateIfSameLang?: boolean;
+}
+
+export interface AutoMasterArtifacts {
+  workDir: string;
+  originSrtPath?: string;
+  translatedSrtPath?: string;
+  ttsAudioPath?: string;
+  joinedVideoPath?: string;
+  finalVideoPath?: string;
+  originSrt?: string;
+  translatedSrt?: string;
+}
+
+export type AutoMasterLogFn = (line: string) => void;
+
+function langCode(raw?: string): string {
+  const t = String(raw || '').toLowerCase();
+  if (t.includes('zh') || t.includes('trung') || t.includes('cn')) return 'zh';
+  if (t.includes('en') || t.includes('anh') || t.includes('english')) return 'en';
+  if (t.includes('vi') || t.includes('việt') || t.includes('viet')) return 'vi';
+  return t.slice(0, 2) || 'vi';
+}
+
+function ensureDir(dir: string) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function baseName(filePath: string) {
+  return path.basename(filePath, path.extname(filePath)) || `job_${Date.now()}`;
+}
+
+async function extractAudioWav(videoPath: string, outWav: string, log: AutoMasterLogFn): Promise<string> {
+  const ffmpeg = resolveFfmpegPath();
+  log(`[STT] Extract audio via ${ffmpeg}`);
+  const res = spawnSync(
+    ffmpeg,
+    ['-y', '-i', videoPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', outWav],
+    { encoding: 'utf8', windowsHide: true, timeout: 300_000 },
+  );
+  if (res.status !== 0 || !fs.existsSync(outWav)) {
+    throw new Error(`Extract audio failed: ${(res.stderr || res.stdout || '').slice(0, 400)}`);
+  }
+  return outWav;
+}
+
+async function runStt(
+  videoPath: string,
+  workDir: string,
+  language: string,
+  log: AutoMasterLogFn,
+): Promise<{ srtPath: string; srt: string }> {
+  const srtPath = path.join(workDir, `${baseName(videoPath)}_origin.srt`);
+  ensureDir(workDir);
+
+  // 1) Prefer local Whisper/subtitle gateway (python_core)
+  log('[STT] Trying python_core subtitle gateway...');
+  try {
+    const gateway = await callNavGateway({
+      action: 'subtitle',
+      payload: {
+        video_path: videoPath,
+        out_path: srtPath,
+        model: 'small',
+        language: language === 'zh' ? 'zh' : language === 'en' ? 'en' : language === 'vi' ? 'vi' : 'auto',
+      },
+      timeoutMs: 600_000,
+    });
+    if (gateway.success && fs.existsSync(srtPath)) {
+      const srt = fs.readFileSync(srtPath, 'utf8');
+      if (srt.trim()) {
+        log(`[STT] Gateway OK -> ${srtPath}`);
+        return { srtPath, srt };
+      }
+    }
+    log(`[STT] Gateway miss: ${gateway.error || 'empty srt'}`);
+  } catch (err) {
+    log(`[STT] Gateway error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 2) Fallback: extract audio + Gemini online STT
+  log('[STT] Fallback: FFmpeg extract + Gemini transcription...');
+  const wavPath = path.join(workDir, `${baseName(videoPath)}_audio.wav`);
+  const mp3Path = path.join(workDir, `${baseName(videoPath)}_audio.mp3`);
+  await extractAudioWav(videoPath, wavPath, log);
+  const compressed = await compressAudioToMp3(wavPath, mp3Path);
+  const audioForGemini = compressed ? mp3Path : wavPath;
+  const srt = await transcribeAudioViaGemini(audioForGemini, language === 'en' ? 'en' : 'vi');
+  if (!srt.trim()) throw new Error('Gemini STT returned empty SRT');
+  fs.writeFileSync(srtPath, srt, 'utf8');
+  log(`[STT] Gemini OK -> ${srtPath}`);
+  return { srtPath, srt };
+}
+
+async function translateSrtWithGemini(
+  srtText: string,
+  apiKeys: string[],
+  ruleId: string,
+  targetLang: string,
+  log: AutoMasterLogFn,
+): Promise<string> {
+  if (apiKeys.length === 0) {
+    throw new Error('Thieu Gemini API key de dich SRT. Hay cau hinh API key trong app.');
+  }
+
+  const ruleMap: Record<string, string> = {
+    modern: 'Tone chan thuc, gan gui, doi song hang ngay.',
+    strict: 'Dich 1-1 sat nghia, giu cau truc goc.',
+    auto: 'Tu dong doan boi canh va dieu chinh van phong.',
+    xianxia: 'Han Viet co kinh, trang trong.',
+    comedy: 'Vui tuoi, hai huoc, ngon tu hien dai.',
+    action: 'Gon gang, manh me, dut khoat.',
+  };
+  const ruleDesc = ruleMap[ruleId] || ruleMap.modern;
+  const langName = targetLang === 'en' ? 'English' : targetLang === 'zh' ? 'Chinese' : 'Vietnamese';
+
+  const prompt = `You are a professional subtitle translator.
+Translate the following SRT subtitles into ${langName}.
+Style rule: ${ruleDesc}
+
+HARD RULES:
+1. Keep original SRT structure (index, timestamps, blank lines).
+2. Do not merge/split cues. Same number of blocks.
+3. Return ONLY pure SRT text, no markdown.
+
+--- SRT ---
+${srtText}`;
+
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+  let lastError: Error | null = null;
+
+  for (const apiKey of apiKeys) {
+    for (const model of models) {
+      try {
+        log(`[TRANS] Gemini ${model} key ...${apiKey.slice(-4)}`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          lastError = new Error(data?.error?.message || `HTTP ${res.status}`);
+          continue;
+        }
+        let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        text = String(text).replace(/```(?:srt|text)?/gi, '').trim();
+        if (text.includes('-->')) {
+          log('[TRANS] Translate OK');
+          return text;
+        }
+        lastError = new Error('Gemini returned non-SRT content');
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+  }
+
+  throw lastError || new Error('Translate failed');
+}
+
+async function generateEdgeTtsFromSrt(
+  srtText: string,
+  outPath: string,
+  voice: string,
+  speed: number,
+  log: AutoMasterLogFn,
+): Promise<{ audioPath: string; duration: number }> {
+  // Strip SRT to spoken text lines
+  const lines = srtText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !/^\d+$/.test(l) && !l.includes('-->'));
+  const spoken = lines.join('. ').replace(/\s+/g, ' ').trim();
+  if (!spoken) throw new Error('No spoken text extracted from SRT for TTS');
+
+  ensureDir(path.dirname(outPath));
+  log(`[TTS] Edge TTS voice=${voice} speed=${speed}`);
+
+  // Use node-edge-tts via dynamic import if available, else call generate-tts route logic inline
+  try {
+    const { EdgeTTS } = await import('node-edge-tts');
+    const lang = voice.startsWith('vi') ? 'vi-VN' : voice.startsWith('en') ? 'en-US' : 'vi-VN';
+    const ratePct = Math.round((speed - 1) * 100);
+    const rate = ratePct === 0 ? 'default' : `${ratePct > 0 ? '+' : ''}${ratePct}%`;
+    const tts = new EdgeTTS({
+      voice,
+      lang,
+      outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+      rate,
+      timeout: 120000,
+    });
+    await tts.ttsPromise(spoken, outPath);
+  } catch (err) {
+    log(`[TTS] node-edge-tts direct failed (${err instanceof Error ? err.message : err}), using edge-tts CLI fallback`);
+    const pyCandidates = ['edge-tts', 'python', 'py'];
+    let ok = false;
+    for (const bin of pyCandidates) {
+      const args =
+        bin === 'edge-tts'
+          ? ['--voice', voice, '--text', spoken, '--write-media', outPath]
+          : ['-m', 'edge_tts', '--voice', voice, '--text', spoken, '--write-media', outPath];
+      const r = spawnSync(bin, args, { encoding: 'utf8', windowsHide: true, timeout: 180_000 });
+      if (r.status === 0 && fs.existsSync(outPath)) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) {
+      throw new Error(
+        `TTS failed. Install/use node-edge-tts or edge-tts. Last: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  if (!fs.existsSync(outPath)) throw new Error('TTS output missing');
+
+  const { resolveFfprobePath } = await import('@/lib/capassistant/core');
+  const probe = spawnSync(
+    resolveFfprobePath(),
+    ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', outPath],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const duration = parseFloat(probe.stdout || '') || 0;
+  log(`[TTS] OK ${outPath} duration=${duration.toFixed(2)}s`);
+  return { audioPath: outPath, duration };
+}
+
+function runFfmpegStreaming(
+  ffmpegPath: string,
+  args: string[],
+  log: AutoMasterLogFn,
+  totalDuration = 0,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegPath, args, {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout.on('data', (d) => log(d.toString()));
+    child.stderr.on('data', (d) => {
+      const str = d.toString();
+      log(str);
+      if (totalDuration > 0) {
+        const m = str.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+        if (m) {
+          const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+          const pct = Math.min(99, Math.max(1, Math.floor((sec / totalDuration) * 100)));
+          log(`PROGRESS:${pct}`);
+        }
+      }
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`FFmpeg exited with code ${code}`));
+    });
+  });
+}
+
+export async function runAutoMaster(
+  request: AutoMasterRequest,
+  log: AutoMasterLogFn = console.log,
+): Promise<AutoMasterArtifacts> {
+  const videoList = (request.videoPaths?.length ? request.videoPaths : [request.videoPath])
+    .map(String)
+    .filter(Boolean);
+  if (videoList.length === 0) throw new Error('Missing videoPath');
+  for (const vp of videoList) {
+    if (!fs.existsSync(vp)) throw new Error(`Video not found: ${vp}`);
+  }
+
+  const outputDir = request.outputDir || path.join(process.cwd(), 'output', 'auto-master');
+  ensureDir(outputDir);
+  const stamp = Date.now();
+  const workDir = path.join(outputDir, `job_${stamp}`);
+  ensureDir(workDir);
+
+  const artifacts: AutoMasterArtifacts = { workDir };
+  const srtMode: AutoMasterSrtMode = request.srtMode || 'auto';
+  const enableTts = request.enableTts !== false;
+  const enableRender = request.enableRender !== false;
+  const srcLang = langCode(request.audioLang || 'zh');
+  const tgtLang = langCode(request.targetLang || 'vi');
+  const apiKeys = [
+    ...(Array.isArray(request.apiKeys) ? request.apiKeys : []),
+    request.apiKey || '',
+  ].filter(Boolean);
+
+  log('[START] AI Novel CapAssistant Auto Master (independent)');
+  log(`[INFO] videos=${videoList.length} srtMode=${srtMode} ${srcLang}->${tgtLang}`);
+  log(`PROGRESS:2`);
+
+  // Join multi-video if needed
+  let activeVideo = videoList[0];
+  if (videoList.length > 1) {
+    log('[JOIN] SmartJoin multiple sources...');
+    const joined = path.join(workDir, `joined_${stamp}.mp4`);
+    const builtJoin = buildSmartJoinCommand(videoList, joined, request.exportRatio || 'Giữ nguyên');
+    await runFfmpegStreaming(builtJoin.ffmpegPath, builtJoin.ffmpegArgs, log);
+    if (!fs.existsSync(joined)) throw new Error('SmartJoin failed');
+    activeVideo = joined;
+    artifacts.joinedVideoPath = joined;
+    log(`[JOIN_OK] ${joined}`);
+  }
+  log(`PROGRESS:8`);
+
+  // ---- STEP 1: SRT origin ----
+  let originSrt = '';
+  if (srtMode === 'none') {
+    log('[STEP 1/4] Skip subtitle (none mode)');
+  } else if (srtMode === 'translated' && request.translatedSrtContent?.trim()) {
+    originSrt = request.translatedSrtContent;
+    artifacts.translatedSrt = originSrt;
+    log('[STEP 1/4] Using provided translated SRT');
+  } else if ((srtMode === 'untranslated' || srtMode === 'translated') && request.srtContent?.trim()) {
+    originSrt = request.srtContent;
+    log('[STEP 1/4] Using provided origin SRT');
+  } else if (srtMode === 'auto' || !request.srtContent?.trim()) {
+    log('[STEP 1/4] STT auto extract...');
+    const stt = await runStt(activeVideo, workDir, srcLang, log);
+    originSrt = stt.srt;
+    artifacts.originSrtPath = stt.srtPath;
+  } else {
+    originSrt = request.srtContent || '';
+  }
+
+  if (originSrt) {
+    const originPath = path.join(workDir, 'origin.srt');
+    fs.writeFileSync(originPath, originSrt, 'utf8');
+    artifacts.originSrtPath = originPath;
+    artifacts.originSrt = originSrt;
+  }
+  log(`PROGRESS:30`);
+
+  // ---- STEP 2: Translate ----
+  let translatedSrt = artifacts.translatedSrt || '';
+  if (srtMode === 'none') {
+    translatedSrt = '';
+  } else if (srtMode === 'translated' && request.translatedSrtContent?.trim()) {
+    translatedSrt = request.translatedSrtContent;
+  } else if (request.skipTranslateIfSameLang !== false && srcLang === tgtLang) {
+    translatedSrt = originSrt;
+    log('[STEP 2/4] Same language — skip translate');
+  } else if (request.translateMethod === 'skip') {
+    translatedSrt = originSrt;
+    log('[STEP 2/4] Translate skipped by config');
+  } else if (originSrt) {
+    log('[STEP 2/4] Translating SRT...');
+    translatedSrt = await translateSrtWithGemini(
+      originSrt,
+      apiKeys,
+      request.ruleId || 'modern',
+      tgtLang,
+      log,
+    );
+  }
+
+  if (translatedSrt) {
+    const tPath = path.join(workDir, 'translated.srt');
+    fs.writeFileSync(tPath, translatedSrt, 'utf8');
+    artifacts.translatedSrtPath = tPath;
+    artifacts.translatedSrt = translatedSrt;
+  }
+  log(`PROGRESS:55`);
+
+  // ---- STEP 3: TTS ----
+  let ttsPath = '';
+  if (enableTts && (translatedSrt || originSrt) && srtMode !== 'none') {
+    log('[STEP 3/4] Generating TTS voiceover...');
+    const voice = request.ttsVoice || 'vi-VN-HoaiMyNeural';
+    const speed = Number(request.ttsSpeed) || 1.2;
+    const outAudio = path.join(workDir, `voice_${stamp}.mp3`);
+    const tts = await generateEdgeTtsFromSrt(translatedSrt || originSrt, outAudio, voice, speed, log);
+    ttsPath = tts.audioPath;
+    artifacts.ttsAudioPath = ttsPath;
+  } else {
+    log('[STEP 3/4] TTS skipped');
+  }
+  log(`PROGRESS:70`);
+
+  // ---- STEP 4: Render ----
+  if (!enableRender) {
+    log('[STEP 4/4] Render skipped');
+    log('PROGRESS:100');
+    return artifacts;
+  }
+
+  log('[STEP 4/4] FFmpeg render with CapAssistant engine...');
+  const meta = probeVideo(activeVideo);
+  const finalName = request.finalOutputPath
+    || path.join(outputDir, `AutoMaster_${baseName(videoList[0])}_${stamp}.mp4`);
+  ensureDir(path.dirname(finalName));
+
+  const built = buildCapAssistantCommand({
+    videoPath: activeVideo,
+    outputPath: outputDir,
+    finalOutputPath: finalName,
+    video: {
+      zoom: request.zoom ?? 100,
+      speed: request.speed ?? 100,
+      mute: request.muteOriginal ?? Boolean(ttsPath),
+      vocalFilter: request.vocalFilter ?? false,
+      flip: request.flip ?? false,
+      gpu: request.gpu ?? true,
+      volume: request.volume ?? 100,
+    },
+    sub: {
+      enableSub: srtMode !== 'none' && Boolean(translatedSrt || originSrt),
+      srtContent: translatedSrt || originSrt || '',
+      srtFont: request.srtFont || 'Anton',
+      srtSize: request.srtSize ?? 24,
+      srtDelay: 0,
+      marginV: 40,
+    },
+    style: {
+      srtStyle: request.srtStyle ?? 1,
+      bgPadding: true,
+      padX: 16,
+      padY: 6,
+    },
+    bgm: {
+      items: ttsPath
+        ? [{ path: ttsPath, vol: 150, delay: 0, dur: 0, loop: false }]
+        : [],
+    },
+    brand: {
+      useLogo: Boolean(request.useLogo && request.logoPath),
+      logoPath: request.logoPath || '',
+      useWm: Boolean(request.wmText),
+      wmText: request.wmText || 'AI Novel',
+      useText: false,
+    },
+    trim: { enableTrim: false, items: [] },
+    blur: { items: [] },
+    phantom: {},
+  });
+
+  log(`[CMD] ${built.commandLine.slice(0, 300)}...`);
+  await runFfmpegStreaming(built.ffmpegPath, built.ffmpegArgs, log, meta.duration || 0);
+
+  // cleanup temp srt from builder
+  for (const f of built.tempFiles || []) {
+    try {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!fs.existsSync(finalName)) throw new Error('Render finished but output file missing');
+  artifacts.finalVideoPath = finalName;
+  log(`PROGRESS:100`);
+  log(`[SUCCESS] ${finalName}`);
+  return artifacts;
+}

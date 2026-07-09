@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
+import { callNavGateway } from '@/lib/nav/navPythonBridge';
 
-const execFileAsync = promisify(execFile);
-const PYTHON_EXE = fs.existsSync('D:\\SuperAudioTools\\omnivoice-python\\python.exe')
-  ? 'D:\\SuperAudioTools\\omnivoice-python\\python.exe'
-  : 'python';
-const SCRIPTS_DIR = path.join(process.cwd(), 'python_core');
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +13,6 @@ export async function POST(req: NextRequest) {
     if (!audioPath || typeof audioPath !== 'string') {
       return NextResponse.json({ error: 'Missing or invalid "audioPath" parameter' }, { status: 400 });
     }
-
     if (!fs.existsSync(audioPath)) {
       return NextResponse.json({ error: `Audio file not found: ${audioPath}` }, { status: 400 });
     }
@@ -26,41 +20,25 @@ export async function POST(req: NextRequest) {
     const resolvedOutputDir = outputDir || path.join(process.cwd(), 'public', 'isolated');
     fs.mkdirSync(resolvedOutputDir, { recursive: true });
 
-    const args: string[] = [
-      path.join(SCRIPTS_DIR, 'isolate_vocals.py'),
-      audioPath,
-      resolvedOutputDir,
-    ];
-
-    console.log('[isolate-vocals] Executing:', PYTHON_EXE, args.join(' '));
-
-    const { stdout, stderr } = await execFileAsync(PYTHON_EXE, args, {
-      cwd: SCRIPTS_DIR,
-      env: { ...process.env, PYTHONPATH: SCRIPTS_DIR, TORCH_COMPILE_DISABLE: '1' },
-      timeout: 600000,
-      maxBuffer: 50 * 1024 * 1024,
+    const gateway = await callNavGateway({
+      action: 'isolate_vocals',
+      payload: { audio_path: audioPath, output_dir: resolvedOutputDir },
+      timeoutMs: 600_000,
     });
 
-    if (stderr) {
-      const logLines = stderr.split('\n').filter((l) => l.startsWith('LOG:'));
-      if (logLines.length > 0) {
-        console.log('[isolate-vocals] Progress:', logLines.join('\n'));
-      }
+    if (!gateway.success) {
+      return NextResponse.json(
+        { error: gateway.error || 'isolate_vocals failed', stderr: gateway.stderr || null },
+        { status: 500 },
+      );
     }
 
-    const jsonLines = stdout.split('\n').filter((l) => l.trim().startsWith('{') || l.trim().startsWith('['));
-    const resultText = jsonLines.length > 0 ? jsonLines[jsonLines.length - 1] : stdout.trim();
-
-    const result = JSON.parse(resultText);
-    console.log('[isolate-vocals] Success:', JSON.stringify(result).slice(0, 200));
-    return NextResponse.json(result);
+    return NextResponse.json(gateway.result ?? gateway);
   } catch (error: unknown) {
-    const err = error as Error & { stderr?: string; code?: string };
-    console.error('[isolate-vocals] Error:', err.message);
-    if (err.stderr) console.error('[isolate-vocals] Stderr:', err.stderr);
+    const err = error as Error & { stderr?: string };
     return NextResponse.json(
       { error: err.message, stderr: err.stderr || null },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

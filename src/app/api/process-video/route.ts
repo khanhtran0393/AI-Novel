@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (ffmpegErr: any) {
       console.error('[FFmpeg] Lỗi khi chạy lệnh:', ffmpegErr);
-      // Ném ra một lỗi giả lập nếu máy người dùng chưa cài đặt ffmpeg trong PATH
+      // Tra ve loi that khi FFmpeg khong co trong PATH.
       if (ffmpegErr.message && ffmpegErr.message.includes('not recognized')) {
          return NextResponse.json({ 
            error: 'Không tìm thấy phần mềm FFmpeg trên hệ thống. Vui lòng cài đặt FFmpeg và thêm vào biến môi trường PATH.',

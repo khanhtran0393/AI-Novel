@@ -15,12 +15,42 @@ import {
 
 // Định nghĩa 6 công cụ phẳng
 type NavToolType = 'whisper_sub' | 'isolate_vocals' | 'transcribe_sub' | 'watermark' | 'split_video' | 'download_video';
+type PickerMode = 'file' | 'folder';
+type PickerKind = 'media' | 'text';
+
+interface SelectPathResult {
+  success?: boolean;
+  cancelled?: boolean;
+  path?: string;
+  paths?: string[];
+  content?: string;
+  error?: string;
+}
+
+interface UiClickDiagnosis {
+  logId?: string;
+  logPath?: string;
+  shouldRetry?: boolean;
+  patch?: {
+    pickerStrategy?: PickerStrategy;
+  };
+  issue?: {
+    kind?: string;
+    message?: string;
+  };
+  summary?: string;
+}
 
 interface NavToolsPanelProps {
   isOpen: boolean;
   initialTool?: NavToolType;
   onClose: () => void;
 }
+
+const PICKER_WATCHDOG_MS = 8000;
+const PICKER_STRATEGY_KEY = 'ai_novel_navtools_picker_strategy';
+const PICKER_PENDING_LOG_KEY = 'ai_novel_navtools_picker_pending_log';
+type PickerStrategy = 'windows_dialog' | 'compat_dialog';
 
 export default function NavToolsPanel({ isOpen, initialTool = 'whisper_sub', onClose }: NavToolsPanelProps) {
   const [activeTool, setActiveTool] = useState<NavToolType>(initialTool);
@@ -46,7 +76,9 @@ export default function NavToolsPanel({ isOpen, initialTool = 'whisper_sub', onC
   const [downloadOutputDir, setDownloadOutputDir] = useState('');
 
   useEffect(() => {
-    if (isOpen) setActiveTool(initialTool);
+    if (!isOpen) return;
+    const frame = window.requestAnimationFrame(() => setActiveTool(initialTool));
+    return () => window.cancelAnimationFrame(frame);
   }, [initialTool, isOpen]);
 
   if (!isOpen) return null;
@@ -55,21 +87,240 @@ export default function NavToolsPanel({ isOpen, initialTool = 'whisper_sub', onC
     setLog(prev => `${prev}${message.endsWith('\n') ? message : `${message}\n`}`);
   };
 
-  const selectPath = async (mode: 'file' | 'folder', type: 'media' | 'text' = 'media') => {
+  const logUiClickIssue = async (
+    action: string,
+    error: unknown,
+    details: Record<string, unknown> = {},
+  ): Promise<UiClickDiagnosis> => {
+    const errorMessage =
+      typeof error === 'string'
+        ? error.trim() || 'UI click did not respond'
+        : error instanceof Error
+          ? error.message.trim() || 'UI click did not respond'
+          : String(error || 'UI click did not respond');
+
+    const payload = {
+      domain: 'ui_click',
+      error: errorMessage,
+      config: {
+        operation: action,
+        activeTool,
+        ...details,
+      },
+      credentials: {},
+    };
+
     try {
-      const res = await fetch('/api/navtools/select-path', {
+      const res = await fetch('/api/self-heal/media', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, type }),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.success && data.path) {
-        return data;
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        const apiError = data?.error || `HTTP ${res.status}`;
+        console.warn('[NavTools Self-Heal] API log failed:', apiError);
+        return {
+          logId: `local_ui_${Date.now()}`,
+          issue: { kind: 'unknown', message: errorMessage },
+          summary: `Self-heal (local) logged UI click error: ${apiError}`,
+        };
       }
-    } catch (error) {
-      console.error('Lỗi khi mở hộp thoại:', error);
+      return data.diagnosis || {
+        logId: `local_ui_${Date.now()}`,
+        issue: { kind: 'unknown', message: errorMessage },
+        summary: 'Self-heal logged UI click error.',
+      };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn('[NavTools Self-Heal] Cannot write UI click log:', reason);
+      return {
+        logId: `local_ui_${Date.now()}`,
+        issue: { kind: 'unknown', message: errorMessage },
+        summary: `Self-heal (local) UI click log failed: ${reason}`,
+      };
     }
-    return null;
+  };
+
+  const resolveUiClickLog = async (logId?: string) => {
+    if (!logId) return;
+    try {
+      await fetch('/api/self-heal/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolve', logId }),
+      });
+    } catch (err) {
+      console.warn('[NavTools Self-Heal] Cannot resolve UI click log:', err);
+    }
+  };
+
+  const getPickerStrategy = (): PickerStrategy => {
+    if (typeof window === 'undefined') return 'windows_dialog';
+    const saved = window.localStorage.getItem(PICKER_STRATEGY_KEY);
+    return saved === 'compat_dialog' ? 'compat_dialog' : 'windows_dialog';
+  };
+
+  const setPickerStrategy = (strategy: PickerStrategy, logId?: string) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(PICKER_STRATEGY_KEY, strategy);
+    if (logId) window.localStorage.setItem(PICKER_PENDING_LOG_KEY, logId);
+  };
+
+  const consumePendingPickerLog = () => {
+    if (typeof window === 'undefined') return undefined;
+    const logId = window.localStorage.getItem(PICKER_PENDING_LOG_KEY) || undefined;
+    if (logId) window.localStorage.removeItem(PICKER_PENDING_LOG_KEY);
+    return logId;
+  };
+
+  const requestUiClickRepairApproval = (
+    diagnosis: UiClickDiagnosis | null,
+    action: string,
+    reason: string,
+  ) => {
+    if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false;
+    const nextStrategy = diagnosis?.patch?.pickerStrategy;
+    if (!diagnosis?.shouldRetry || nextStrategy !== 'compat_dialog') return false;
+
+    return window.confirm([
+      'AI da ghi log loi click khong phan hoi.',
+      `Thao tac: ${action}`,
+      `Ly do: ${reason}`,
+      `Log: ${diagnosis.logPath || diagnosis.logId || 'chua tao duoc log'}`,
+      '',
+      'De xuat sua: chuyen bo chon file/thu muc sang compat_dialog.',
+      'Bam OK de ap dung. Sau do bam lai nut Chon file/thu muc.',
+    ].join('\n'));
+  };
+
+  const applyUiClickRepairPatch = (diagnosis: UiClickDiagnosis | null) => {
+    const nextStrategy = diagnosis?.patch?.pickerStrategy;
+    if (nextStrategy !== 'compat_dialog') return false;
+    setPickerStrategy(nextStrategy, diagnosis?.logId);
+    appendLog('> Da ap dung sua picker: compat_dialog. Hay bam lai nut chon file/thu muc.');
+    return true;
+  };
+
+  const callPickerEndpoint = async (
+    strategy: PickerStrategy,
+    mode: PickerMode,
+    type: PickerKind,
+    signal?: AbortSignal,
+  ) => {
+    if (strategy === 'compat_dialog') {
+      const endpoint = mode === 'folder' ? '/api/select-folder' : '/api/capassistant/select-file';
+      const payload = mode === 'folder'
+        ? {}
+        : {
+            kind: type === 'text' ? 'text' : 'media',
+            multi: true,
+            readContent: type === 'text',
+            title: 'Chon file dau vao',
+          };
+
+      return fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+      });
+    }
+
+    return fetch('/api/navtools/select-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, type }),
+      signal,
+    });
+  };
+
+  const normalizePickerResult = (data: SelectPathResult | null): SelectPathResult | null => {
+    if (!data || data.cancelled) return data;
+    const joinedPaths = Array.isArray(data.paths) && data.paths.length > 0 ? data.paths.join('|') : '';
+    const path = joinedPaths || data.path || '';
+    if (!path && !data.content) return null;
+    return {
+      ...data,
+      success: data.success ?? true,
+      path,
+    };
+  };
+
+  const selectPath = async (mode: PickerMode, type: PickerKind = 'media') => {
+    const action = `navtools.${activeTool}.${mode}.${type}`;
+    const initialStrategy = getPickerStrategy();
+    appendLog(`> Click: ${action} (${initialStrategy})`);
+    const controller = new AbortController();
+    let settled = false;
+    let timeoutLogId: string | undefined;
+    const watchdog = typeof window !== 'undefined'
+      ? window.setTimeout(() => {
+          void (async () => {
+            if (settled) return;
+            const reason = `Picker did not return after ${PICKER_WATCHDOG_MS / 1000} seconds.`;
+            appendLog(`> Canh bao: ${reason}`);
+            const diagnosis = await logUiClickIssue(action, reason, {
+              mode,
+              type,
+              pickerStrategy: initialStrategy,
+              watchdogMs: PICKER_WATCHDOG_MS,
+            });
+            timeoutLogId = diagnosis?.logId;
+            appendLog(`> Self-heal da ghi log click: ${diagnosis?.logPath || diagnosis?.logId || 'khong ro duong dan log'}`);
+            if (!settled && requestUiClickRepairApproval(diagnosis, action, reason)) {
+              applyUiClickRepairPatch(diagnosis);
+              controller.abort();
+            }
+          })();
+        }, PICKER_WATCHDOG_MS)
+      : undefined;
+
+    try {
+      const strategy = getPickerStrategy();
+      const res = await callPickerEndpoint(strategy, mode, type, controller.signal);
+      settled = true;
+      if (watchdog) window.clearTimeout(watchdog);
+
+      const data = await res.json().catch(() => ({} as SelectPathResult));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || `Picker HTTP ${res.status}`);
+      }
+      if (data.cancelled) {
+        appendLog('> Nguoi dung da huy hop chon.');
+        await resolveUiClickLog(timeoutLogId);
+        return null;
+      }
+
+      const normalized = normalizePickerResult(data);
+      if (!normalized) {
+        throw new Error('Picker khong tra ve duong dan hop le.');
+      }
+
+      await resolveUiClickLog(timeoutLogId);
+      await resolveUiClickLog(consumePendingPickerLog());
+      return normalized;
+    } catch (error) {
+      settled = true;
+      if (watchdog) window.clearTimeout(watchdog);
+
+      if ((error as Error).name === 'AbortError') {
+        appendLog('> Da huy thao tac picker dang treo sau khi ap dung sua. Hay bam lai.');
+        return null;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Loi khi mo hop thoai:', error);
+      appendLog(`[LOI CLICK PICKER] ${message}`);
+      const diagnosis = await logUiClickIssue(action, message, { mode, type, pickerStrategy: getPickerStrategy() });
+      appendLog(`> Self-heal da ghi log click: ${diagnosis?.logPath || diagnosis?.logId || 'khong ro duong dan log'}`);
+      if (requestUiClickRepairApproval(diagnosis, action, message)) {
+        applyUiClickRepairPatch(diagnosis);
+      } else {
+        appendLog('> Chua ap dung sua picker. Giu log loi noi bo.');
+      }
+      return null;
+    }
   };
 
   const handleSelectSubtitleVideo = async () => {
@@ -194,6 +445,7 @@ export default function NavToolsPanel({ isOpen, initialTool = 'whisper_sub', onC
           payload = {
             audioPath: mPath,
             language: language.trim() || 'vi',
+            outputDir: audioOutputDir.trim() || undefined,
           };
         } else if (tool === 'watermark') {
           endpoint = '/api/watermark-audio';

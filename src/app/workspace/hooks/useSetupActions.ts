@@ -22,7 +22,6 @@ export function useSetupActions() {
 
     try {
       const idea = await randomTemplateAction({
-        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         chu_de: store.setup.chu_de,
@@ -50,32 +49,51 @@ export function useSetupActions() {
 
     try {
       const data = await generateOutlineAction({
-        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         setupData: store.setup
       }) as Record<string, unknown>;
 
-      store.updateTenTacPham((data.tieu_de as string) || 'Ký Ức Phai Tàn: Mạng Lưới Hư Vô');
-      store.updateDanYTongThe((data.dan_y_tong_the as string) || 'Dàn ý tổng thể.');
-      store.updateNhanVat((data.nhan_vat as string[]) || ['Khải Đăng']);
+      const title = typeof data.tieu_de === 'string' ? data.tieu_de.trim() : '';
+      const outline = typeof data.dan_y_tong_the === 'string' ? data.dan_y_tong_the.trim() : '';
+      const characters = Array.isArray(data.nhan_vat)
+        ? data.nhan_vat.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+        : [];
+      if (!title || !outline || characters.length === 0) {
+        throw new Error('AI outline response is missing required title, outline, or character data.');
+      }
+
+      store.updateTenTacPham(title);
+      store.updateDanYTongThe(outline);
+      store.updateNhanVat(characters);
       
       if (data.lorebook) store.updateLorebook(data.lorebook as string);
       if (data.tom_tat_cuon_chieu) store.updateTomTatCuonChieu(data.tom_tat_cuon_chieu as string);
       if (data.tri_nho_ngan_han) store.updateTriNhoNganHan(data.tri_nho_ngan_han as string[]);
+      if (data.world_state) store.updateWorldState(data.world_state as any);
 
-
-      // Convert to Chuong format with extremely robust key fallbacks and strict numeric parsing
+      // Convert to Chuong format with strict key parsing.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawChapters = (data.danh_sach_chuong || data.danhSachChuong || data.chapters || data.danh_sach_cac_chuong || []) as any[];
+      const rawChapters = Array.isArray(data.danh_sach_chuong) ? data.danh_sach_chuong as any[] : [];
+      if (rawChapters.length === 0) {
+        throw new Error('AI outline response is missing required danh_sach_chuong data.');
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const convertedChapters: Chuong[] = rawChapters.map((ch: any, idx: number) => {
-        const parsedSo = parseInt(String(ch.so_chuong || ch.chapter || ch.id || ch.index).replace(/\D/g, ''));
-        const so_chuong = isNaN(parsedSo) ? (idx + 1) : parsedSo;
+        const parsedSo = parseInt(String(ch.so_chuong).replace(/\D/g, ''));
+        if (isNaN(parsedSo)) {
+          throw new Error(`Chapter item ${idx + 1} is missing required so_chuong.`);
+        }
+        const so_chuong = parsedSo;
+        const chapterTitle = typeof ch.tieu_de === 'string' ? ch.tieu_de.trim() : '';
+        const chapterOutline = typeof ch.dan_y === 'string' ? ch.dan_y.trim() : '';
+        if (!chapterTitle || !chapterOutline) {
+          throw new Error(`Chapter item ${idx + 1} is missing required tieu_de or dan_y.`);
+        }
         return {
           so_chuong,
-          tieu_de: ch.tieu_de || ch.title || ch.ten_chuong || `Chương ${so_chuong}`,
-          dan_y: ch.dan_y || ch.summary || ch.outline || ch.dan_y_chi_tiet || 'Dàn ý chi tiết chưa có.',
+          tieu_de: chapterTitle,
+          dan_y: chapterOutline,
           noi_dung: '',
           trang_thai: 'empty'
         };
@@ -99,3 +117,4 @@ export function useSetupActions() {
     handleGenerateOutline
   };
 }
+

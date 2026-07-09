@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
+import { callNavGateway } from '@/lib/nav/navPythonBridge';
 
-import fs from 'fs';
-
-const execFileAsync = promisify(execFile);
-const PYTHON_EXE = fs.existsSync('D:\\SuperAudioTools\\omnivoice-python\\python.exe')
-  ? 'D:\\SuperAudioTools\\omnivoice-python\\python.exe'
-  : 'python';
-const SCRIPTS_DIR = path.join(process.cwd(), 'python_core');
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,38 +16,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Only "youtube" platform is supported currently' }, { status: 400 });
     }
 
-    const args: string[] = [
-      path.join(SCRIPTS_DIR, 'yt_goi_y.py'),
-      '--keyword', keyword,
-    ];
-
-    console.log('[suggest-channels] Executing:', PYTHON_EXE, args.join(' '));
-
-    const { stdout, stderr } = await execFileAsync(PYTHON_EXE, args, {
-      timeout: 300000,
-      maxBuffer: 10 * 1024 * 1024,
+    const gateway = await callNavGateway({
+      action: 'suggest_channels',
+      payload: { keyword },
+      timeoutMs: 300_000,
     });
 
-    if (stderr) {
-      const logLines = stderr.split('\n').filter((l) => l.startsWith('LOG:'));
-      if (logLines.length > 0) {
-        console.log('[suggest-channels] Progress:', logLines.join('\n'));
-      }
+    if (!gateway.success) {
+      return NextResponse.json(
+        { error: gateway.error || 'suggest_channels failed', stderr: gateway.stderr || null },
+        { status: 500 },
+      );
     }
 
-    const jsonLines = stdout.split('\n').filter((l) => l.trim().startsWith('{') || l.trim().startsWith('['));
-    const resultText = jsonLines.length > 0 ? jsonLines[jsonLines.length - 1] : stdout.trim();
-
-    const result = JSON.parse(resultText);
-    console.log('[suggest-channels] Success:', JSON.stringify(result).slice(0, 200));
+    const result = gateway.result ?? gateway;
     return NextResponse.json(result);
   } catch (error: unknown) {
-    const err = error as Error & { stderr?: string; code?: string };
-    console.error('[suggest-channels] Error:', err.message);
-    if (err.stderr) console.error('[suggest-channels] Stderr:', err.stderr);
+    const err = error as Error & { stderr?: string };
     return NextResponse.json(
       { error: err.message, stderr: err.stderr || null },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

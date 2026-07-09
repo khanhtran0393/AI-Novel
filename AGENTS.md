@@ -7,6 +7,7 @@ Tài liệu này được viết theo phương pháp "Giải phẫu sinh học",
 
 ## 1. HỆ THẦN KINH TRUNG ƯƠNG (CẤU HÌNH & KIẾN TRÚC LÕI)
 Cơ thể của dự án này hoạt động trên bộ khung siêu hiện đại, không cho phép sai lệch:
+- **Engine AI Novel native (độc lập 100%):** Tab AI Novel = `src/lib/novel-engine/*` + `/api/ainovel/*` in-process. **CẤM** `ainovel-gui.exe` / proxy `:8080`. Gồm: Flow Router, rules checker, context pack, plan/draft/review/commit, arc/volume summary, architect expand, sync 2 chiều Zustand backup ↔ `.ainovel-app/`, diag read-only, capabilities matrix. CapCut TTS thiếu → auto Edge TTS. NAV chỉ qua `python_core` (không NAVTools.exe).
 - **Bộ xương (Framework):** Next.js App Router (TypeScript) kết hợp TailwindCSS v4.
 - **Trí nhớ (State Management):** Sử dụng Zustand tích hợp middleware `persist` (Lưu LocalStorage).
   - *Cơ chế phòng vệ (Hydration Safe):* Mọi component đọc dữ liệu Zustand BẮT BUỘC phải có cờ `isHydrated` (chỉ render sau khi `useEffect` đã mount) để triệt tiêu lỗi Hydration Mismatch của Next.js SSR.
@@ -22,7 +23,7 @@ Hệ thống mang thẩm mỹ Cyberpunk/Sci-Fi cao cấp. Cấm sử dụng các
 - **Màu sắc:** Kính mờ (Glassmorphism), viền mỏng `zinc-900/60`.
 - **Nút bấm & Chức năng:**
   - Nút **"🤖 Lấy Cookie Tự Động"**: Kích hoạt API mở Chrome ẩn danh, tự bắt session Google và lưu vào Zustand.
-  - Nút **"⚡ TẢI 1.1.1.1 VPN"**: Nút màu Neon nhấp nháy, link trực tiếp đến trang tải Cloudflare Warp để người dùng né Rate Limit/Block IP của Google.
+  - Nút **"Kế Thừa Di Sản"**: Mở ImportModal — nạp bối cảnh, nhân vật và dàn ý từ truyện/di sản có sẵn.
   - Ô nhập API Key/Cookie: Lưu kiên trì.
   - Nút **"📁 Mở thư mục lưu"**: Dùng `child_process` gọi `explorer.exe` kích hoạt thư mục cục bộ của hệ điều hành. Nếu lỗi trả về Fallback URL mở Google Drive.
 

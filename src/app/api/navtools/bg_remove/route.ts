@@ -1,29 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import fs from 'fs';
+import { callNavGateway } from '@/lib/nav/navPythonBridge';
 
-const execAsync = promisify(exec);
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
     const { imagePath, outPath, color } = await req.json();
-    const pythonCore = path.join(process.cwd(), 'python_core');
-    const scriptPath = path.join(pythonCore, 'cli_bg_remove.py');
-    const PYTHON_EXE = fs.existsSync('D:\\SuperAudioTools\\omnivoice-python\\python.exe')
-      ? 'D:\\SuperAudioTools\\omnivoice-python\\python.exe'
-      : 'python';
-    
-    let command = `"${PYTHON_EXE}" "${scriptPath}" --image "${imagePath}" --output "${outPath}"`;
-    if (color) {
-      command += ` --color "${color}"`;
+
+    if (!imagePath || !outPath) {
+      return NextResponse.json(
+        { success: false, error: 'Missing imagePath or outPath' },
+        { status: 400 },
+      );
     }
-    
-    const { stdout, stderr } = await execAsync(command);
-    
-    return NextResponse.json({ success: true, stdout, stderr, outPath });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+
+    const result = await callNavGateway({
+      action: 'bg_remove',
+      payload: {
+        image_path: imagePath,
+        out_path: outPath,
+        color: color ?? '',
+      },
+      timeoutMs: 300_000,
+    });
+
+    const status = result.success ? 200 : 500;
+    return NextResponse.json({ ...result, outPath }, { status });
+  } catch (error: unknown) {
+    const err = error as Error;
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

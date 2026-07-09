@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
-import { buildCapAssistantCommand } from '@/lib/capassistant/core';
+import { buildCapAssistantCommand, getCapAssistantRuntimeInfo } from '@/lib/capassistant/core';
 
 export const runtime = 'nodejs';
 
@@ -19,11 +19,13 @@ export async function POST(req: Request) {
   try {
     const payload = await req.json();
     const built = buildCapAssistantCommand(payload);
+    const runtime = getCapAssistantRuntimeInfo();
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       start(controller) {
-        controller.enqueue(encoder.encode('[START] CapAssistant parity FFmpeg Engine\n'));
+        controller.enqueue(encoder.encode('[START] AI Novel CapAssistant Engine (independent)\n'));
+        controller.enqueue(encoder.encode(`[RUNTIME] ffmpeg=${runtime.ffmpeg}\n`));
         controller.enqueue(
           encoder.encode(
             `[META] ${built.metadata.width}x${built.metadata.height} @ ${built.metadata.fps.toFixed(3)}fps, duration=${built.metadata.duration.toFixed(3)}s, audio=${built.metadata.hasAudio}\n`,

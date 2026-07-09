@@ -1,52 +1,76 @@
-import React, { useState } from 'react';
-import { Download, Search, Link as LinkIcon, Loader2, X, RefreshCw } from 'lucide-react';
+'use client';
 
-export default function DownloadStudioPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+import React, { useState } from 'react';
+import { Download, Loader2, X, RefreshCw } from 'lucide-react';
+
+export default function DownloadStudioPanel({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
   const [platform, setPlatform] = useState('yt');
-  const [type, setType] = useState('search');
+  const [type, setType] = useState<'search' | 'creator' | 'detail'>('search');
   const [input, setInput] = useState('');
+  const [count, setCount] = useState(10);
+  const [outputDir, setOutputDir] = useState('');
   const [processing, setProcessing] = useState(false);
   const [log, setLog] = useState('');
 
   if (!isOpen) return null;
 
+  const appendLog = (msg: string) => setLog((prev) => `${prev}${msg}\n`);
+
   const handleProcess = async () => {
     if (!input.trim()) {
-      alert("Vui lòng nhập link hoặc từ khóa!");
+      alert('Vui lòng nhập link hoặc từ khóa!');
       return;
     }
     setProcessing(true);
-    setLog(`Đang khởi tạo Download Studio cho [${platform}] - Loại: ${type}...\n`);
-    
-    // Giả lập API gọi
-    setTimeout(() => {
-      setLog(prev => prev + `\n[yt-dlp] Đang tải danh sách metadata...\n[SUCCESS] Tải hoàn tất! File được lưu tại: D:\\SuperAudioTools\\MediaCrawler\\data\\`);
+    setLog(`> NAV download_video [${platform}] · ${type}\n`);
+    try {
+      const res = await fetch('/api/download-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform,
+          type,
+          input: input.trim(),
+          count,
+          outputDir: outputDir.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      appendLog(`[HTTP ${res.status}] ${res.ok ? 'OK' : 'ERROR'}`);
+      appendLog(JSON.stringify(data, null, 2));
+    } catch (error) {
+      appendLog(`[ERROR] ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
       setProcessing(false);
-    }, 2500);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-sans text-zinc-200">
-      <div className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl flex flex-col h-[80vh]">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
-          <h2 className="font-bold text-sky-400 flex items-center gap-2 uppercase tracking-wide text-sm">
-            <Download size={18} /> Media Crawler Studio
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/80 p-4 font-sans text-zinc-200 backdrop-blur-sm">
+      <div className="flex h-[80vh] w-full max-w-4xl flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/50 p-4">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-sky-400">
+            <Download size={18} /> Media Crawler Studio (NAV)
           </h2>
-          <button onClick={onClose} className="p-1 hover:bg-zinc-800 rounded text-zinc-400">
+          <button type="button" onClick={onClose} className="rounded p-1 text-zinc-400 hover:bg-zinc-800">
             <X size={18} />
           </button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Menu Cấu Hình Trái */}
-          <div className="w-72 border-r border-zinc-800 bg-zinc-900/30 p-4 flex flex-col gap-4 overflow-y-auto">
-            
+          <div className="flex w-72 flex-col gap-4 overflow-y-auto border-r border-zinc-800 bg-zinc-900/30 p-4">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Nền Tảng</label>
-              <select 
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Nền tảng</label>
+              <select
                 value={platform}
                 onChange={(e) => setPlatform(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none"
               >
                 <option value="yt">YouTube</option>
                 <option value="tt">TikTok</option>
@@ -57,54 +81,65 @@ export default function DownloadStudioPanel({ isOpen, onClose }: { isOpen: boole
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Kiểu Tải</label>
-              <select 
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Kiểu tải</label>
+              <select
                 value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none"
+                onChange={(e) => setType(e.target.value as 'search' | 'creator' | 'detail')}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none"
               >
-                <option value="search">Từ Khóa (Search)</option>
-                <option value="creator">Theo Kênh (Creator/User)</option>
-                <option value="detail">Link Trực Tiếp (Detail)</option>
+                <option value="search">Từ khóa (Search)</option>
+                <option value="creator">Theo kênh (Creator)</option>
+                <option value="detail">Link trực tiếp (Detail)</option>
               </select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Đầu Vào (Link / Từ khóa)</label>
-              <textarea 
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Đầu vào</label>
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ví dụ: Truyện ma, tiktok.com/@user..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none min-h-[100px]"
+                placeholder="Từ khóa hoặc URL..."
+                className="min-h-[100px] w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Số lượng (Count)</label>
-              <input 
-                type="number" 
-                defaultValue={10}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none"
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Số lượng</label>
+              <input
+                type="number"
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value) || 10)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none"
               />
             </div>
 
-            <button 
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Thư mục lưu (tùy chọn)</label>
+              <input
+                value={outputDir}
+                onChange={(e) => setOutputDir(e.target.value)}
+                placeholder="Để trống = public/downloads"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none"
+              />
+            </div>
+
+            <button
+              type="button"
               onClick={handleProcess}
               disabled={processing || !input.trim()}
-              className="mt-auto bg-sky-500 hover:bg-sky-600 text-black font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 disabled:opacity-50"
+              className="mt-auto flex items-center justify-center gap-2 rounded-lg bg-sky-500 py-3 font-bold text-black shadow-lg shadow-sky-500/20 hover:bg-sky-600 disabled:opacity-50"
             >
               {processing ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
               {processing ? 'ĐANG TẢI...' : 'BẮT ĐẦU TẢI'}
             </button>
           </div>
 
-          {/* Khung Phải */}
-          <div className="flex-1 p-0 flex flex-col bg-[#111]">
-            <div className="bg-zinc-900 border-b border-zinc-800 p-2 flex items-center gap-2 text-xs font-mono text-zinc-400">
-              <RefreshCw size={14} className={processing ? 'animate-spin' : ''} /> Live Log Output
+          <div className="flex flex-1 flex-col bg-[#111]">
+            <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900 p-2 font-mono text-xs text-zinc-400">
+              <RefreshCw size={14} className={processing ? 'animate-spin' : ''} /> Live Log
             </div>
-            <div className="flex-1 p-4 font-mono text-xs text-green-400 overflow-y-auto whitespace-pre-wrap">
-              {log || '> Hệ thống Crawler sẵn sàng. Điền thông tin và bấm Bắt đầu tải.'}
+            <div className="flex-1 overflow-y-auto whitespace-pre-wrap p-4 font-mono text-xs text-green-400">
+              {log || '> Hệ thống Crawler sẵn sàng qua NAV gateway.'}
             </div>
           </div>
         </div>

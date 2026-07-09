@@ -3,6 +3,7 @@
  */
 import { SetupData, useNovelStore } from '@/store/useNovelStore';
 
+
 export const CO_THE_KHUYET_TAT = [
   'rách gân tay trái khiến kiếm chiêu bị lệch 1 phân',
   'mù mắt phải do vết cào của dị chủng cấp cao',
@@ -32,23 +33,19 @@ export const VAT_PHAM_MAC_DINH = [
 export const getFriendlyErrorMessage = (err: unknown): string => {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('429') || msg.includes('Quota') || msg.includes('quota') || msg.includes('limit')) {
-    return `⚠️ Hạn mức API miễn phí (Quota Exceeded 429) của bạn đã tạm thời cạn kiệt.\n\n💡 Hướng dẫn khắc phục:\n1. Truy cập https://aistudio.google.com/app/apikey để tạo thêm API Key miễn phí.\n2. Nhấp vào "API Keys" ở góc trên bên phải để thêm nhiều Key dự phòng. Hệ thống sẽ TỰ ĐỘNG XOAY VÒNG khi hết hạn ngạch.\n3. Hoặc chờ 5-15 phút để Google tự reset hạn ngạch.`;
+    return `⚠️ Hạn mức API miễn phí (Quota Exceeded 429) của bạn đã tạm thời cạn kiệt.\n\n💡 Hướng dẫn khắc phục:\n1. Truy cập https://aistudio.google.com/app/apikey để tạo thêm API Key miễn phí.\n2. Nhấp vào "API Keys" ở góc trên bên phải để thêm nhiều Key xoay vòng quota. Hệ thống sẽ TỰ ĐỘNG XOAY VÒNG khi hết hạn ngạch.\n3. Hoặc chờ 5-15 phút để Google tự reset hạn ngạch.`;
   }
   return `❌ Lỗi hệ thống AI: ${msg}`;
 };
 
 export async function randomTemplateAction(params: {
-  useMock: boolean;
-  apiKey: string;
+apiKey: string;
   apiKeys: string[];
   chu_de: string;
   phong_cach: string;
 }): Promise<string> {
-  const { useMock, apiKey, apiKeys, chu_de, phong_cach } = params;
-
-
-
-  const storeState = useNovelStore.getState();
+  const { apiKey, apiKeys, chu_de, phong_cach } = params;
+const storeState = useNovelStore.getState();
   const model = storeState.aiMasterModel;
   let keysToUse: string[] = [];
   if (model === 'gpt4o') {
@@ -84,16 +81,12 @@ export async function randomTemplateAction(params: {
 }
 
 export async function generateOutlineAction(params: {
-  useMock: boolean;
-  apiKey: string;
+apiKey: string;
   apiKeys: string[];
   setupData: SetupData;
 }): Promise<unknown> {
-  const { useMock, apiKey, apiKeys, setupData } = params;
-
-
-
-  const storeState = useNovelStore.getState();
+  const { apiKey, apiKeys, setupData } = params;
+const storeState = useNovelStore.getState();
   const model = storeState.aiMasterModel;
   let keysToUse: string[] = [];
   if (model === 'gpt4o') {
@@ -126,3 +119,4 @@ export async function generateOutlineAction(params: {
 
   return await res.json();
 }
+

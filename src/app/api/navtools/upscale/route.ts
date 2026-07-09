@@ -1,25 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import fs from 'fs';
+import { callNavGateway } from '@/lib/nav/navPythonBridge';
 
-const execAsync = promisify(exec);
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
     const { imagePath, outPath, targetHeight } = await req.json();
-    const pythonCore = path.join(process.cwd(), 'python_core');
-    const scriptPath = path.join(pythonCore, 'api_upscale.py');
-    const PYTHON_EXE = fs.existsSync('D:\\SuperAudioTools\\omnivoice-python\\python.exe')
-      ? 'D:\\SuperAudioTools\\omnivoice-python\\python.exe'
-      : 'python';
-    
-    const command = `"${PYTHON_EXE}" "${scriptPath}" "${imagePath}" "${outPath}" "${targetHeight}"`;
-    const { stdout, stderr } = await execAsync(command);
-    
-    return NextResponse.json({ success: true, stdout, stderr, outPath });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+
+    if (!imagePath || !outPath) {
+      return NextResponse.json(
+        { success: false, error: 'Missing imagePath or outPath' },
+        { status: 400 },
+      );
+    }
+
+    const result = await callNavGateway({
+      action: 'upscale',
+      payload: {
+        image_path: imagePath,
+        out_path: outPath,
+        target_height: targetHeight ?? 0,
+      },
+      timeoutMs: 300_000,
+    });
+
+    const status = result.success ? 200 : 500;
+    return NextResponse.json(
+      {
+        ...result,
+        outPath,
+      },
+      { status },
+    );
+  } catch (error: unknown) {
+    const err = error as Error;
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

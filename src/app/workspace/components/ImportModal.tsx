@@ -54,11 +54,21 @@ export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
           store.updateNhanVat(names);
           foundation.nhan_vat.forEach((c: any) => {
             store.updateNhanVatPrompt(c.name, {
-              gioi_tinh: c.gioi_tinh,
-              quan_ao: c.quan_ao,
-              so_thich: c.so_thich,
-              thoi_quen: c.thoi_quen,
-              prompt: c.prompt
+              gioi_tinh: c.gioi_tinh || '',
+              tuoi: c.tuoi || '',
+              dang_nguoi: c.dang_nguoi || '',
+              vai_tro: c.vai_tro || '',
+              quan_ao: c.quan_ao || '',
+              so_thich: c.so_thich || '',
+              thoi_quen: c.thoi_quen || '',
+              dong_co: c.dong_co || '',
+              giong_thoai: c.giong_thoai || '',
+              ngoai_hinh: c.ngoai_hinh || '',
+              dac_diem_nhan_dang: c.dac_diem_nhan_dang || '',
+              khuet_tat: c.khuet_tat || '',
+              prompt: c.prompt || '',
+              angle_prompts: c.angle_prompts || {},
+              expression_prompts: c.expression_prompts || {},
             });
           });
         }

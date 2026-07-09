@@ -17,11 +17,8 @@ export default function AudioToolsPanel({ isOpen, onClose }: { isOpen: boolean, 
     setProcessing(true);
     setLog(`Đang xử lý ${file.name} với công cụ ${activeTab}...\n`);
     
-    // Giả lập API gọi (Vì API yêu cầu đường dẫn tuyệt đối của file từ file system, ta giả lập upload & nhận đường dẫn)
-    setTimeout(() => {
-      setLog(prev => prev + `[SUCCESS] Đã xử lý xong!\nFile kết quả lưu tại: D:\\SuperAudioTools\\MediaCrawler\\data\\...`);
-      setProcessing(false);
-    }, 2000);
+    setLog(prev => `${prev}[STOP] Panel cu nay khong xu ly file that. Hay dung Studio Cong Cu Media Nang Cao (6-in-1) de chon file bang duong dan he dieu hanh va goi API thuc.\n`);
+    setProcessing(false);
   };
 
   return (

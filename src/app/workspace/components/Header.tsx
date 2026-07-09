@@ -20,14 +20,17 @@ import {
   Settings,
   Image,
   FileText,
-  Briefcase
+  Briefcase,
+  UploadCloud
 } from 'lucide-react';
 import TTSConfigModal from './TTSConfigModal';
 import MediaConfigModal from './MediaConfigModal';
 import ProTranslateSRTModal from './ProTranslateSRTModal';
 import NavToolsPanel from './NavToolsPanel';
+import DownloadStudioPanel from './DownloadStudioPanel';
 import VideoEditorModal from './VideoEditorModal';
 import AutoRenderModal from './AutoRenderModal';
+import ImportModal from './ImportModal';
 
 export default function Header() {
   const store = useNovelStore();
@@ -46,8 +49,10 @@ export default function Header() {
   const [isMediaConfigModalOpen, setIsMediaConfigModalOpen] = useState(false);
   const [isSRTModalOpen, setIsSRTModalOpen] = useState(false);
   const [isNavToolsOpen, setIsNavToolsOpen] = useState(false);
+  const [isDownloadStudioOpen, setIsDownloadStudioOpen] = useState(false);
   const [isVideoEditorOpen, setIsVideoEditorOpen] = useState(false);
   const [isAutoRenderOpen, setIsAutoRenderOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showToolsDropdown, setShowToolsDropdown] = useState(false);
   const [newCookieInput, setNewCookieInput] = useState('');
   const [newApiInput, setNewApiInput] = useState('');
@@ -155,16 +160,16 @@ export default function Header() {
           )}
         </div>
 
-        {/* Nút Tải 1.1.1.1 VPN Bypass Chặn */}
-        <a
-          href="https://1.1.1.1/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-600 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-black shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer select-none"
-          title="Tải ứng dụng Warp 1.1.1.1 để chạy đa luồng cực nhanh và tránh bị Google chặn địa lý hoặc chặn IP."
+        {/* Kế Thừa Di Sản — import bối cảnh / nhân vật / dàn ý từ truyện có sẵn */}
+        <button
+          type="button"
+          onClick={() => setIsImportModalOpen(true)}
+          className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-black shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer select-none"
+          title="Nạp bối cảnh, nhân vật và dàn ý từ truyện/di sản có sẵn"
         >
-          ⚡ TẢI 1.1.1.1 VPN
-        </a>
+          <UploadCloud className="h-3.5 w-3.5" />
+          Kế Thừa Di Sản
+        </button>
 
         {/* Nút Mở Thư Mục Lưu */}
         <button
@@ -201,7 +206,17 @@ export default function Header() {
                   }}
                   className="w-full text-left rounded-lg px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer flex items-center gap-2"
                 >
-                  💼 6 Công Cụ Media & Crawler
+                  💼 Media Tools (classic 6)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDownloadStudioOpen(true);
+                    setShowToolsDropdown(false);
+                  }}
+                  className="w-full text-left rounded-lg px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer flex items-center gap-2"
+                >
+                  📥 Media Crawler Studio
                 </button>
                 <button
                   type="button"
@@ -817,8 +832,10 @@ export default function Header() {
       <MediaConfigModal isOpen={isMediaConfigModalOpen} onClose={() => setIsMediaConfigModalOpen(false)} />
       <ProTranslateSRTModal isOpen={isSRTModalOpen} onClose={() => setIsSRTModalOpen(false)} />
       <NavToolsPanel isOpen={isNavToolsOpen} onClose={() => setIsNavToolsOpen(false)} />
+      <DownloadStudioPanel isOpen={isDownloadStudioOpen} onClose={() => setIsDownloadStudioOpen(false)} />
       <VideoEditorModal isOpen={isVideoEditorOpen} onClose={() => setIsVideoEditorOpen(false)} />
       <AutoRenderModal isOpen={isAutoRenderOpen} onClose={() => setIsAutoRenderOpen(false)} />
+      <ImportModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
     </>
   );
 }

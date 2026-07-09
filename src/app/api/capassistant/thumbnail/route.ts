@@ -2,14 +2,13 @@ import { NextResponse } from 'next/server';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { resolveFfmpegPath, resolveFfprobePath } from '@/lib/capassistant/core';
 
 export const runtime = 'nodejs';
 
 const PROJECT_ROOT = process.cwd();
-const LOCAL_FFMPEG = path.join(PROJECT_ROOT, 'bin', 'ffmpeg.exe');
-const LOCAL_FFPROBE = path.join(PROJECT_ROOT, 'bin', 'ffprobe.exe');
-const FFMPEG_PATH = fs.existsSync(LOCAL_FFMPEG) ? LOCAL_FFMPEG : 'ffmpeg';
-const FFPROBE_PATH = fs.existsSync(LOCAL_FFPROBE) ? LOCAL_FFPROBE : 'ffprobe';
+const FFMPEG_PATH = resolveFfmpegPath();
+const FFPROBE_PATH = resolveFfprobePath();
 
 function probeDuration(videoPath: string) {
   const res = spawnSync(

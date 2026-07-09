@@ -3,43 +3,89 @@
 import { useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
+  emptyNhanVatProfile,
+  normalizeNhanVatProfile,
+  type NhanVatProfile,
+} from '@/lib/characterProfile';
+import {
   generateCharPromptAction,
   regenerateCharPromptOnlyAction,
-  generateCharImageAction
+  generateCharImageAction,
 } from '../modules/characterModule';
+import { composeCharacterReferenceSheetPrompt } from '@/lib/characterProfile';
 
 export function useCharacterActions() {
   const store = useNovelStore();
 
-  // Trạng thái cấu hình Hồ sơ nhân vật trực tiếp ở Sidebar trái
   const [editingChar, setEditingChar] = useState<string | null>(null);
-  const [gioiTinh, setGioiTinh] = useState('');
-  const [quanAo, setQuanAo] = useState('');
-  const [soThich, setSoThich] = useState('');
-  const [thoiQuen, setThoiQuen] = useState('');
-  const [charPrompt, setCharPrompt] = useState('');
-  
-  // Trạng thái loading
+  const [profileDraft, setProfileDraft] = useState<NhanVatProfile>(emptyNhanVatProfile());
+  const [renameDraft, setRenameDraft] = useState('');
+  const [replaceNameInText, setReplaceNameInText] = useState(true);
+
   const [generatingCharPrompt, setGeneratingCharPrompt] = useState(false);
   const [generatingCharImage, setGeneratingCharImage] = useState(false);
   const [regeneratingCharPromptOnly, setRegeneratingCharPromptOnly] = useState(false);
 
-  // Trình gõ nút tag nhân vật
+  const patchDraft = (partial: Partial<NhanVatProfile>) => {
+    setProfileDraft((prev) =>
+      normalizeNhanVatProfile({
+        ...prev,
+        ...partial,
+        angle_prompts: {
+          ...(prev.angle_prompts || {}),
+          ...(partial.angle_prompts || {}),
+        },
+        expression_prompts: {
+          ...(prev.expression_prompts || {}),
+          ...(partial.expression_prompts || {}),
+        },
+      }),
+    );
+  };
+
   const handleCharTagClick = (char: string) => {
     if (editingChar === char) {
       setEditingChar(null);
     } else {
       setEditingChar(char);
-      const data = store.nhan_vat_prompts?.[char] || { gioi_tinh: '', quan_ao: '', so_thich: '', thoi_quen: '', prompt: '' };
-      setGioiTinh(data.gioi_tinh || '');
-      setQuanAo(data.quan_ao || '');
-      setSoThich(data.so_thich || '');
-      setThoiQuen(data.thoi_quen || '');
-      setCharPrompt(data.prompt || '');
+      setRenameDraft(char);
+      setProfileDraft(normalizeNhanVatProfile(store.nhan_vat_prompts?.[char]));
     }
   };
 
-  // Sáng tạo toàn bộ hồ sơ nhân vật và prompt ngoại hình bằng AI
+  /** Đổi tên nhân vật — chuyển hồ sơ/ảnh + tuỳ chọn thay trong kịch bản */
+  const handleRenameChar = (oldName: string) => {
+    const next = renameDraft.trim().normalize('NFC');
+    if (!next || next === oldName) {
+      alert('⚠️ Nhập tên mới khác tên hiện tại.');
+      return;
+    }
+    // Lưu draft hồ sơ trước khi đổi key
+    persistProfile(oldName, profileDraft);
+
+    const result = store.renameNhanVat(oldName, next, {
+      replaceInText: replaceNameInText,
+    });
+    if (!result.ok) {
+      alert(`❌ ${result.error}`);
+      return;
+    }
+    setEditingChar(result.newName);
+    setRenameDraft(result.newName);
+    setProfileDraft(
+      normalizeNhanVatProfile(useNovelStore.getState().nhan_vat_prompts?.[result.newName]),
+    );
+    alert(
+      replaceNameInText
+        ? `🎉 Đã đổi "${oldName}" → "${result.newName}" (hồ sơ + kịch bản/lore).`
+        : `🎉 Đã đổi "${oldName}" → "${result.newName}" (chỉ hồ sơ & key ảnh).`,
+    );
+  };
+
+  const persistProfile = (char: string, data: Partial<NhanVatProfile>) => {
+    store.updateNhanVatPrompt(char, data);
+  };
+
   const handleGenerateCharPrompt = async (char: string) => {
     setGeneratingCharPrompt(true);
     try {
@@ -47,31 +93,24 @@ export function useCharacterActions() {
         char,
         dan_y_tong_the: store.dan_y_tong_the,
         lorebook: store.lorebook,
-        gioiTinh,
-        quanAo,
-        soThich,
-        thoiQuen,
-        apiKeys: store.apiKeys || [],
-        apiKey: store.apiKey,
-        useMock: false
+        profile: profileDraft,
       });
 
-      if (data.gioi_tinh) setGioiTinh(data.gioi_tinh);
-      if (data.quan_ao) setQuanAo(data.quan_ao);
-      if (data.so_thich) setSoThich(data.so_thich);
-      if (data.thoi_quen) setThoiQuen(data.thoi_quen);
-      if (data.prompt) setCharPrompt(data.prompt);
-
-      // Cập nhật trạng thái duy nhất toàn cục ngay lập tức (1 trạng thái duy nhất)
-      store.updateNhanVatPrompt(char, {
-        gioi_tinh: data.gioi_tinh || gioiTinh,
-        quan_ao: data.quan_ao || quanAo,
-        so_thich: data.so_thich || soThich,
-        thoi_quen: data.thoi_quen || thoiQuen,
-        prompt: data.prompt || charPrompt
+      const merged = normalizeNhanVatProfile({
+        ...profileDraft,
+        ...data,
+        angle_prompts: {
+          ...(profileDraft.angle_prompts || {}),
+          ...(data.angle_prompts || {}),
+        },
+        expression_prompts: {
+          ...(profileDraft.expression_prompts || {}),
+          ...(data.expression_prompts || {}),
+        },
       });
-
-      alert(`🎉 Đã tự động sinh và điền toàn bộ hồ sơ AI cho nhân vật "${char}" thành công!`);
+      setProfileDraft(merged);
+      persistProfile(char, merged);
+      alert(`🎉 Đã sinh hồ sơ đầy đủ (identity lock + 4 góc + biểu cảm) cho "${char}"!`);
     } catch (err: unknown) {
       alert(`❌ Lỗi tạo hồ sơ nhân vật: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -79,26 +118,17 @@ export function useCharacterActions() {
     }
   };
 
-  // Chỉ sinh/tạo lại prompt vẽ ảnh chân dung cực kỳ an toàn
   const handleRegenerateCharPromptOnly = async (char: string) => {
     setRegeneratingCharPromptOnly(true);
     try {
       const prompt = await regenerateCharPromptOnlyAction({
         char,
-        gioiTinh,
-        quanAo,
-        soThich,
-        thoiQuen,
-        apiKeys: store.apiKeys || [],
-        apiKey: store.apiKey,
-        useMock: false
+        profile: profileDraft,
       });
-
       if (prompt) {
-        setCharPrompt(prompt);
-        // Cập nhật trạng thái duy nhất toàn cục ngay lập tức
-        store.updateNhanVatPrompt(char, { prompt });
-        alert('🎉 Đã tạo lại prompt vẽ ảnh cực kỳ an toàn để tránh vi phạm chính sách!');
+        patchDraft({ prompt });
+        persistProfile(char, { prompt });
+        alert('🎉 Đã tạo lại master identity lock (an toàn policy)!');
       }
     } catch (err: unknown) {
       alert(`❌ Lỗi tạo lại prompt: ${err instanceof Error ? err.message : String(err)}`);
@@ -107,68 +137,97 @@ export function useCharacterActions() {
     }
   };
 
-  // Sinh ảnh concept art chân dung cho nhân vật bằng AI Whisk
+  const imageCtx = () => ({
+    savePathCharacter: store.savePathCharacter || '',
+    googleDrivePath: store.googleDrivePath || '',
+    ten_tac_pham: store.ten_tac_pham || 'Kịch Bản Vô Danh',
+    googleStudioCookies: store.googleStudioCookies || [],
+    googleStudioCookie: store.googleStudioCookie || '',
+  });
+
+  const applyImageResult = (key: string, path: string, projectUrl?: string) => {
+    const imagePath = path + (path.includes('?') ? '&' : '?') + 't=' + Date.now();
+    store.addGeneratedImage(key, imagePath);
+    if (projectUrl) store.addProjectUrl(key, projectUrl);
+  };
+
+  /**
+   * Gen 1 ảnh sheet gộp: chân dung front + 4 chiều + biểu cảm khuôn mặt.
+   */
   const handleGenerateCharImage = async (char: string) => {
+    if (!profileDraft.prompt?.trim() && !profileDraft.ngoai_hinh?.trim() && !profileDraft.dac_diem_nhan_dang?.trim()) {
+      alert('⚠️ Cần master prompt / face lock / đặc điểm nhận dạng trước. Bấm "Gen Prompt AI".');
+      return;
+    }
     setGeneratingCharImage(true);
     store.addGeneratedImage(`char_${char}`, '');
     try {
+      persistProfile(char, profileDraft);
+      const sheetPrompt = composeCharacterReferenceSheetPrompt(profileDraft, char);
       const data = await generateCharImageAction({
         char,
-        charPrompt,
-        savePathCharacter: store.savePathCharacter || '',
-        googleDrivePath: store.googleDrivePath || '',
-        ten_tac_pham: store.ten_tac_pham || 'Kịch Bản Vô Danh',
-        googleStudioCookies: store.googleStudioCookies || [],
-        googleStudioCookie: store.googleStudioCookie || '',
-        useMock: false
+        charPrompt: sheetPrompt,
+        profile: profileDraft,
+        ...imageCtx(),
       });
-
-      const imagePath = data.imagePath + '?t=' + Date.now();
-      store.addGeneratedImage(`char_${char}`, imagePath);
-      if (data.projectUrl) {
-        store.addProjectUrl(`char_${char}`, data.projectUrl);
-      }
-      alert(`🎉 Đã sinh ảnh chân dung cho nhân vật "${char}" thành công!`);
+      applyImageResult(`char_${char}`, data.imagePath, data.projectUrl);
+      alert(
+        `🎉 Đã sinh 1 ảnh sheet tham chiếu cho "${char}"\n(front + 4 chiều + biểu cảm gộp chung).`,
+      );
     } catch (err: unknown) {
-      alert(`❌ Lỗi sinh ảnh nhân vật: ${err instanceof Error ? err.message : String(err)}\n💡 Hãy đảm bảo bạn đã nhập Cookie và tắt chặn địa lý (hoặc dùng Warp 1.1.1.1).`);
+      alert(
+        `❌ Lỗi sinh ảnh nhân vật: ${err instanceof Error ? err.message : String(err)}\n💡 Kiểm tra Cookie Google Labs / session còn hợp lệ không.`,
+      );
     } finally {
       setGeneratingCharImage(false);
     }
   };
 
-  // Lưu hồ sơ nhân vật
+  // Compat stubs (UI cũ gọi 4 góc / biểu cảm → cùng 1 sheet)
+  const handleGenerateTurnaround = handleGenerateCharImage;
+  const handleGenerateExpressions = handleGenerateCharImage;
+
   const handleSaveChar = (char: string) => {
-    store.updateNhanVatPrompt(char, {
-      gioi_tinh: gioiTinh,
-      quan_ao: quanAo,
-      so_thich: soThich,
-      thoi_quen: thoiQuen,
-      prompt: charPrompt
-    });
-    alert(`🎉 Đã lưu cấu hình tạo hình cho nhân vật "${char}"!`);
+    persistProfile(char, profileDraft);
+    alert(`🎉 Đã lưu hồ sơ tạo hình đầy đủ cho "${char}"!`);
     setEditingChar(null);
   };
 
+  // Legacy field setters for minimal Sidebar churn — map onto profileDraft
   return {
     editingChar,
     setEditingChar,
-    gioiTinh,
-    setGioiTinh,
-    quanAo,
-    setQuanAo,
-    soThich,
-    setSoThich,
-    thoiQuen,
-    setThoiQuen,
-    charPrompt,
-    setCharPrompt,
+    profileDraft,
+    setProfileDraft,
+    renameDraft,
+    setRenameDraft,
+    replaceNameInText,
+    setReplaceNameInText,
+    patchDraft,
+    // convenience aliases
+    gioiTinh: profileDraft.gioi_tinh,
+    setGioiTinh: (v: string) => patchDraft({ gioi_tinh: v }),
+    quanAo: profileDraft.quan_ao,
+    setQuanAo: (v: string) => patchDraft({ quan_ao: v }),
+    soThich: profileDraft.so_thich,
+    setSoThich: (v: string) => patchDraft({ so_thich: v }),
+    thoiQuen: profileDraft.thoi_quen,
+    setThoiQuen: (v: string) => patchDraft({ thoi_quen: v }),
+    charPrompt: profileDraft.prompt,
+    setCharPrompt: (v: string) => patchDraft({ prompt: v }),
     generatingCharPrompt,
     generatingCharImage,
     regeneratingCharPromptOnly,
+    generatingTurnaround: generatingCharImage,
+    generatingExpressions: generatingCharImage,
+    sheetProgress: null as null,
     handleCharTagClick,
     handleGenerateCharPrompt,
     handleRegenerateCharPromptOnly,
     handleGenerateCharImage,
-    handleSaveChar
+    handleGenerateTurnaround,
+    handleGenerateExpressions,
+    handleSaveChar,
+    handleRenameChar,
   };
 }

@@ -182,14 +182,14 @@ ${srtText}`;
           break;
         }
       }
-      if (!target) target = textareas[textareas.length - 1]; // Fallback
-      
-      if (target) {
-        target.focus();
-        target.value = text;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-        target.dispatchEvent(new Event('change', { bubbles: true }));
+      if (!target) {
+        throw new Error('No visible input textarea was found.');
       }
+      
+      target.focus();
+      target.value = text;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
     }, prompt);
 
     await new Promise(r => setTimeout(r, 1000));
@@ -222,9 +222,7 @@ ${srtText}`;
         // Cách quét thô bạo: Tìm thẻ markdown-view hoặc .model-response
         const modelBlocks = Array.from(document.querySelectorAll('markdown-view, [class*="model"], [class*="response"]'));
         if (modelBlocks.length === 0) {
-          // Fallback: Tìm tất cả các thẻ p, pre, code
-          const paras = Array.from(document.querySelectorAll('p, pre, code'));
-          return paras.map(p => p.textContent).join('\n');
+          return '';
         }
         // Lấy nội dung của block model cuối cùng
         return modelBlocks[modelBlocks.length - 1].textContent || '';
@@ -286,3 +284,4 @@ ${srtText}`;
     );
   }
 }
+

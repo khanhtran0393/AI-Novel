@@ -1,6 +1,8 @@
 {
-  "name": "chuyen-gia-mac-the-app",
-  "version": "0.1.0",
+  "name": "ai-novel-script-generator",
+  "version": "1.0.0",
+  "description": "AI Novel & Script Generator desktop app with independent CapAssistant engine",
+  "author": "AI Novel",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -9,22 +11,60 @@
     "start": "next start",
     "lint": "eslint",
     "dev:desktop": "electron .",
-    "build:desktop": "next build && electron-builder"
+    "build:desktop": "next build && electron-builder --win nsis",
+    "pack:portable": "next build && electron-builder --win portable",
+    "test:capassistant": "npx tsx scratch/test-capassistant-independent.mjs",
+    "test:auto-master": "npx tsx scratch/test-auto-master.mjs",
+    "test:self-heal": "npx tsx scratch/test-self-heal-brain.mjs",
+    "test:persist": "node scratch/test-durable-persist.mjs"
   },
   "build": {
     "appId": "com.ainovel.desktop",
     "productName": "AI Novel & Script Generator",
+    "copyright": "Copyright © AI Novel",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "artifactName": "AI-Novel-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "AI Novel"
     },
     "asar": false,
     "files": [
-      "**/*",
-      "!.git/*",
-      "!dist/*"
+      "main.js",
+      "preload.js",
+      "electron/**/*",
+      "package.json",
+      "next.config.ts",
+      "next.config.js",
+      "public/**/*",
+      ".next/**/*",
+      "node_modules/**/*",
+      "src/**/*",
+      "bin/**/*",
+      "fonts/**/*",
+      "python_core/**/*",
+      "output/**/*",
+      "!python_core/**/__pycache__/**",
+      "!python_core/**/*.pyc",
+      "!scratch/**/*",
+      "!.git/**/*",
+      "!dist/**/*",
+      "!OpenMontage/**/*"
+    ],
+    "extraResources": [
+      { "from": "bin", "to": "bin", "filter": ["**/*"] },
+      { "from": "fonts", "to": "fonts", "filter": ["**/*"] }
     ]
   },
   "dependencies": {

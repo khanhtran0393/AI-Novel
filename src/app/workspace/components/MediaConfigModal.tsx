@@ -1,396 +1,412 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
-import { X, Key, Palette, Camera, Copy, ChevronDown } from 'lucide-react';
+import { X, Palette, Camera, Copy, ChevronDown, ImagePlus, Loader2 } from 'lucide-react';
 
 interface MediaConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+const STYLE_PRESETS = [
+  {
+    label: 'Cinematic Realism',
+    value: 'cinematic natural realism, grounded production design, expressive practical lighting, tactile materials, restrained color grade',
+  },
+  {
+    label: 'Grok Imagine Clean',
+    value: 'clean contemporary editorial image style, strong subject clarity, polished commercial lighting, modern social-media composition',
+  },
+  {
+    label: 'Glossy Product Shot',
+    value: 'glossy product photography, clean studio background, premium reflections, controlled softbox lighting, crisp material detail',
+  },
+  {
+    label: 'Professional Headshot',
+    value: 'professional headshot photography, natural skin texture, soft studio lighting, neutral background, confident expression',
+  },
+  {
+    label: 'Haze Portrait',
+    value: 'hazy portrait photography, soft atmospheric light, gentle bloom, intimate framing, muted cinematic palette',
+  },
+  {
+    label: 'Chibi',
+    value: 'stylized chibi character art, cute proportions, expressive face, clean colorful shapes, playful lighting',
+  },
+];
+
+const IMAGE_RATIOS = [
+  ['2:3', '2:3 Cao'],
+  ['3:2', '3:2 Rong'],
+  ['1:1', '1:1 Vuong'],
+  ['9:16', '9:16 Doc'],
+  ['16:9', '16:9 Wide'],
+  ['3:4', '3:4 Portrait'],
+  ['4:3', '4:3 Classic'],
+  ['4:5', '4:5 Social'],
+];
+
+const VIDEO_RATIOS = [
+  ['16:9', '16:9 YouTube'],
+  ['9:16', '9:16 Shorts'],
+  ['1:1', '1:1 Square'],
+  ['4:5', '4:5 Social'],
+  ['21:9', '21:9 Cinema'],
+];
+
+const VIDEO_DURATIONS: Record<string, number[]> = {
+  sora: [5, 10, 15],
+  veo: [4, 6, 8],
+  grok: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15],
+};
+
+const IMAGE_PROVIDERS = ['openai', 'gemini', 'grok'];
+const VIDEO_PROVIDERS = ['sora', 'veo', 'grok'];
+
+function SelectShell({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      {children}
+      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+    </div>
+  );
+}
+
+function readImageFile(file: File): Promise<{ name: string; mimeType: string; data: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Khong the doc file ${file.name}`));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const data = result.includes(',') ? result.split(',')[1] : result;
+      resolve({ name: file.name, mimeType: file.type || 'image/png', data });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalProps) {
   const store = useNovelStore();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
+  const effectiveImageProvider = IMAGE_PROVIDERS.includes(store.imageProvider) ? store.imageProvider : 'gemini';
+  const effectiveVideoProvider = VIDEO_PROVIDERS.includes(store.videoProvider) ? store.videoProvider : 'veo';
+  const durationOptions = VIDEO_DURATIONS[effectiveVideoProvider] || VIDEO_DURATIONS.veo;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (store.imageProvider !== effectiveImageProvider) {
+      store.setImageProvider(effectiveImageProvider);
+      store.setImageModel('banana');
+    }
+    if (store.videoProvider !== effectiveVideoProvider) {
+      store.setVideoProvider(effectiveVideoProvider);
+      store.setVideoModel('veo');
+    }
+    if (!durationOptions.includes(store.videoDuration || 6)) {
+      store.setVideoDuration(durationOptions[0]);
+    }
+  }, [durationOptions, effectiveImageProvider, effectiveVideoProvider, isOpen, store]);
 
   if (!isOpen) return null;
 
+  const getAnalysisKeys = () => {
+    if (store.aiMasterModel === 'gpt4o') {
+      return store.openaiApiKeys?.length ? store.openaiApiKeys : (store.openaiApiKey ? [store.openaiApiKey] : []);
+    }
+    if (store.aiMasterModel === 'llama') {
+      return store.grokApiKeys?.length ? store.grokApiKeys : (store.grokApiKey ? [store.grokApiKey] : []);
+    }
+    return store.apiKeys?.length ? store.apiKeys : (store.apiKey ? [store.apiKey] : []);
+  };
+
+  const analyzeVisualDna = async (files: FileList | null) => {
+    const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length < 4 || imageFiles.length > 6) {
+      alert('Hay chon tu 4 den 6 anh tham chieu de phan tich DNA thi giac.');
+      return;
+    }
+
+    const apiKeys = getAnalysisKeys();
+    if (apiKeys.length === 0) {
+      alert('Chua co API key cho AI phan tich DNA thi giac trong Cai dat chung.');
+      return;
+    }
+
+    setIsAnalyzingDna(true);
+    try {
+      const images = await Promise.all(imageFiles.map(readImageFile));
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestType: 'ANALYZE_VISUAL_DNA',
+          apiKeys,
+          model: store.aiMasterModel,
+          payload: { images },
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Loi phan tich DNA thi giac.');
+      }
+
+      const data = await res.json();
+      const dna = data.visualDnaPrompt || data.prompt || '';
+      if (!dna.trim()) throw new Error('AI khong tra ve DNA thi giac hop le.');
+      store.setVisualDnaPrompt(dna.trim());
+      alert(`Da phan tich DNA thi giac tu ${imageFiles.length} anh.`);
+    } catch (err) {
+      alert(`Loi phan tich DNA: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsAnalyzingDna(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const setImageProvider = (provider: string) => {
+    store.setImageProvider(provider);
+    if (provider === 'openai') store.setImageModel('gpt-image-1');
+    else if (provider === 'grok') store.setImageModel('grok-imagine-image-quality');
+    else if (!['banana', 'whisk'].includes(store.imageModel)) store.setImageModel('banana');
+  };
+
+  const setVideoProvider = (provider: string) => {
+    store.setVideoProvider(provider);
+    if (provider === 'sora') store.setVideoModel('sora');
+    else if (provider === 'grok') store.setVideoModel('grok-imagine-video-1.5');
+    else store.setVideoModel('veo');
+    const nextDurations = VIDEO_DURATIONS[provider] || VIDEO_DURATIONS.veo;
+    if (!nextDurations.includes(store.videoDuration || 6)) {
+      store.setVideoDuration(nextDurations[0]);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      {/* Modal Container */}
-      <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* Header */}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <div className="relative flex max-h-[90vh] w-full max-w-5xl animate-in flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/50 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500 text-black shadow-lg shadow-indigo-500/20">
               <Palette className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-100">Cấu Hình Đầu Ra</h2>
-              <p className="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold">
-                Image / Video Generation
-              </p>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-100">Cau hinh dau ra</h2>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400">Image / Video Generation</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-          >
+          <button onClick={onClose} className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          
-          {/* Section A: CẤU HÌNH KẾT NỐI API AI MASTER (Dành cho Kịch bản) */}
-          <div className="rounded-xl border border-amber-500/50 bg-amber-950/10 p-5 shadow-[0_0_15px_rgba(245,158,11,0.05)]">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-amber-500 uppercase tracking-wide">
-              <Key className="h-4 w-4" />
-              Cấu Hình AI Tổng (Kịch bản & Phân tích)
-            </h3>
-            
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="relative w-full sm:w-64">
-                <select
-                  value={store.aiMasterModel}
-                  onChange={(e) => store.setAiMasterModel(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-amber-500/30 bg-black px-4 py-2.5 pr-10 text-xs font-semibold text-zinc-300 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer"
-                >
-                  <option value="gemini">Google Gemini 2.5 Pro</option>
-                  <option value="gpt4o">OpenAI GPT-4o</option>
-                  <option value="llama">Groq Llama 3.3</option>
-                  <option value="aistudio">🔥 AI STUDIO (MIỄN PHÍ)</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500/50 pointer-events-none" />
-              </div>
-
-              <div className="flex-1 flex items-center gap-2 w-full">
-                <span className="text-xs font-semibold text-zinc-400 whitespace-nowrap">API Key:</span>
-                {store.aiMasterModel === 'aistudio' ? (
-                  <div className="flex-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-4 py-2.5 text-xs font-semibold text-emerald-500 flex items-center">
-                    🔥 AI STUDIO: Chạy Auto-Web không cần API Key!
-                  </div>
-                ) : (() => {
-                  let hasKey = false;
-                  let providerLabel = '';
-                  if (store.aiMasterModel === 'gemini') {
-                    hasKey = (store.apiKeys && store.apiKeys.length > 0) || !!store.apiKey;
-                    providerLabel = 'Google Gemini';
-                  } else if (store.aiMasterModel === 'gpt4o') {
-                    hasKey = (store.openaiApiKeys && store.openaiApiKeys.length > 0) || !!store.openaiApiKey;
-                    providerLabel = 'OpenAI';
-                  } else if (store.aiMasterModel === 'llama') {
-                    hasKey = (store.grokApiKeys && store.grokApiKeys.length > 0) || !!store.grokApiKey;
-                    providerLabel = 'Groq / Grok';
-                  }
-
-                  return hasKey ? (
-                    <div className="flex-1 rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-4 py-2.5 text-xs font-semibold text-emerald-500 flex items-center">
-                      🟢 Đã cấu hình {providerLabel} API Key (Lấy từ Cài đặt chung)
-                    </div>
-                  ) : (
-                    <div className="flex-1 rounded-lg border border-red-500/30 bg-red-950/20 px-4 py-2.5 text-xs font-semibold text-red-400 flex items-center">
-                      🔴 Chưa cấu hình {providerLabel} API Key trong Cài đặt chung!
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {/* Section A2: CẤU HÌNH ĐẦU RA ẢNH & VIDEO */}
-          <div className="rounded-xl border border-cyan-500/50 bg-cyan-950/10 p-5 shadow-[0_0_15px_rgba(6,182,212,0.05)] flex flex-col gap-4">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-cyan-400 uppercase tracking-wide">
+        <div className="flex-1 space-y-6 overflow-y-auto p-6">
+          <div className="flex flex-col gap-4 rounded-xl border border-cyan-500/50 bg-cyan-950/10 p-5 shadow-[0_0_15px_rgba(6,182,212,0.05)]">
+            <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-cyan-400">
               <Camera className="h-4 w-4" />
-              Cấu Hình Động Cơ Sinh Ảnh & Video
+              Cau hinh dong co sinh anh & video
             </h3>
 
-            {/* Trình Sinh Ảnh */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 bg-black/40 p-3 rounded-lg border border-zinc-800/50">
-              <span className="text-xs font-bold text-zinc-300 w-24 shrink-0">IMAGE AI:</span>
-              
-              <div className="relative w-full sm:w-48 shrink-0">
+            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/40 p-3 lg:grid-cols-[110px_1fr_150px_120px_120px]">
+              <span className="flex items-center text-xs font-bold text-zinc-300">IMAGE AI:</span>
+              <SelectShell>
                 <select
-                  value={store.imageProvider || 'pollinations'}
-                  onChange={(e) => {
-                    const newProvider = e.target.value;
-                    store.setImageProvider(newProvider);
-                    if (newProvider === 'openai') store.setImageModel('dalle3');
-                    else if (newProvider === 'falai') store.setImageModel('flux-pro');
-                    else if (newProvider === 'gemini') store.setImageModel('imagen3');
-                    else if (newProvider === 'huggingface') store.setImageModel('sd3');
-                    else store.setImageModel('flux');
-                  }}
-                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                  title="Nhà cung cấp (API Provider)"
+                  value={effectiveImageProvider}
+                  onChange={(e) => setImageProvider(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  <option value="pollinations">Pollinations (Free)</option>
-                  <option value="openai">OpenAI (DALL-E)</option>
-                  <option value="falai">Grok/Flux (Fal.ai)</option>
-                  <option value="huggingface">Meta (Llama 3)</option>
-                  <option value="gemini">Google (Imagen 3)</option>
+                  <option value="openai">OpenAI Images</option>
+                  <option value="gemini">Google Studio</option>
+                  <option value="grok">Grok Imagine</option>
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-              </div>
-
-              <div className="relative w-full sm:w-40 shrink-0">
-                <select
-                  value={store.imageModel}
-                  onChange={(e) => store.setImageModel(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                  title="Mô hình AI (AI Model)"
-                >
-                  {store.imageProvider === 'openai' ? (
-                    <>
-                      <option value="dalle3">DALL-E 3 Standard</option>
-                      <option value="dalle3-hd">DALL-E 3 HD</option>
-                    </>
-                  ) : store.imageProvider === 'falai' ? (
-                    <>
-                      <option value="flux-pro">Flux.1 Pro</option>
-                      <option value="flux-schnell">Flux.1 Schnell</option>
-                      <option value="flux-dev">Flux.1 Dev</option>
-                      <option value="grok">Grok Vision</option>
-                    </>
-                  ) : store.imageProvider === 'gemini' ? (
-                    <>
-                      <option value="imagen3">Imagen 3</option>
-                      <option value="imagen3-fast">Imagen 3 Fast</option>
-                    </>
-                  ) : store.imageProvider === 'huggingface' ? (
-                    <>
-                      <option value="sd35">Stable Diffusion 3.5</option>
-                      <option value="sd3">Stable Diffusion 3</option>
-                      <option value="sdxl">Stable Diffusion XL</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="flux">Flux</option>
-                      <option value="flux-pro">Flux Pro</option>
-                      <option value="midjourney">Midjourney</option>
-                      <option value="turbo">Turbo</option>
-                    </>
-                  )}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-              </div>
-
-              <div className="relative w-full sm:w-32 shrink-0">
+              </SelectShell>
+              {effectiveImageProvider === 'gemini' ? (
+                <SelectShell>
+                  <select
+                    value={['banana', 'whisk'].includes(store.imageModel) ? store.imageModel : 'banana'}
+                    onChange={(e) => store.setImageModel(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
+                  >
+                    <option value="banana">Banana API</option>
+                    <option value="whisk">Whisk Cookie</option>
+                  </select>
+                </SelectShell>
+              ) : (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-400">
+                  {effectiveImageProvider === 'openai' ? 'OpenAI API' : 'xAI API'}
+                </div>
+              )}
+              <SelectShell>
                 <select
                   value={store.imageAspectRatio || '16:9'}
                   onChange={(e) => store.setImageAspectRatio(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                  title="Tỉ lệ khung hình (Aspect Ratio)"
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  <option value="16:9">16:9 (Youtube)</option>
-                  <option value="9:16">9:16 (TikTok)</option>
-                  <option value="1:1">1:1 (Square)</option>
-                  <option value="3:4">3:4 (Portrait)</option>
-                  <option value="4:3">4:3 (Classic)</option>
+                  {IMAGE_RATIOS.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-              </div>
-              {(() => {
-                if (store.imageProvider === 'pollinations') {
-                  return (
-                    <div className="w-full sm:flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-500 flex items-center justify-center">
-                      Không cần API Key
-                    </div>
-                  );
-                }
-                let hasKey = false;
-                let providerLabel = '';
-                if (store.imageProvider === 'openai') {
-                  hasKey = (store.openaiApiKeys && store.openaiApiKeys.length > 0) || !!store.openaiApiKey;
-                  providerLabel = 'OpenAI';
-                } else if (store.imageProvider === 'falai') {
-                  hasKey = (store.falaiApiKeys && store.falaiApiKeys.length > 0) || !!store.falaiApiKey;
-                  providerLabel = 'Fal.ai';
-                } else if (store.imageProvider === 'gemini') {
-                  hasKey = (store.apiKeys && store.apiKeys.length > 0) || !!store.apiKey;
-                  providerLabel = 'Gemini';
-                }
-
-                return hasKey ? (
-                  <div className="w-full sm:flex-1 rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-3 py-2 text-xs font-semibold text-emerald-500 flex items-center justify-center">
-                    🟢 Đã có Key ({providerLabel})
-                  </div>
-                ) : (
-                  <div className="w-full sm:flex-1 rounded-lg border border-red-500/20 bg-red-950/10 px-3 py-2 text-xs font-semibold text-red-400 flex items-center justify-center">
-                    🔴 Thiếu Key ({providerLabel})
-                  </div>
-                );
-              })()}
+              </SelectShell>
+              <SelectShell>
+                <select
+                  value={store.imageCount || 1}
+                  onChange={(e) => store.setImageCount(Number(e.target.value))}
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
+                >
+                  {[1, 2, 3, 4].map((count) => (
+                    <option key={count} value={count}>{count} anh</option>
+                  ))}
+                </select>
+              </SelectShell>
             </div>
 
-            {/* Trình Sinh Video */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 bg-black/40 p-3 rounded-lg border border-zinc-800/50">
-              <span className="text-xs font-bold text-zinc-300 w-24 shrink-0">VIDEO AI:</span>
-              
-              <div className="relative w-full sm:w-48 shrink-0">
+            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/40 p-3 lg:grid-cols-[110px_1fr_150px_120px_120px]">
+              <span className="flex items-center text-xs font-bold text-zinc-300">VIDEO AI:</span>
+              <SelectShell>
                 <select
-                  value={store.videoProvider || 'ffmpeg'}
-                  onChange={(e) => {
-                    const newProvider = e.target.value;
-                    store.setVideoProvider(newProvider);
-                    if (newProvider === 'luma') store.setVideoModel('luma-dream');
-                    else if (newProvider === 'runway') store.setVideoModel('gen3-alpha');
-                    else if (newProvider === 'sora') store.setVideoModel('sora');
-                    else if (newProvider === 'veo') store.setVideoModel('veo-3.1-low');
-                    else store.setVideoModel('ffmpeg-basic');
-                  }}
-                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                  title="Nhà cung cấp (API Provider)"
+                  value={effectiveVideoProvider}
+                  onChange={(e) => setVideoProvider(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  <option value="ffmpeg">FFmpeg (Miễn phí)</option>
-                  <option value="luma">Luma API</option>
-                  <option value="runway">Runway API</option>
-                  <option value="sora">OpenAI API</option>
-                  <option value="veo">Google API</option>
+                  <option value="sora">OpenAI Sora</option>
+                  <option value="veo">Google Studio Flow</option>
+                  <option value="grok">Grok Imagine Video</option>
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+              </SelectShell>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-400">
+                {effectiveVideoProvider === 'sora' && 'OpenAI video'}
+                {effectiveVideoProvider === 'veo' && 'Flow / Veo'}
+                {effectiveVideoProvider === 'grok' && 'Image-to-video'}
               </div>
-
-              <div className="relative w-full sm:w-32 shrink-0">
-                <select
-                  value={store.videoModel}
-                  onChange={(e) => store.setVideoModel(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                  title="Mô hình AI (AI Model)"
-                >
-                  {store.videoProvider === 'luma' ? (
-                    <>
-                      <option value="luma-dream">Luma Dream Machine</option>
-                      <option value="luma-ray">Luma Ray</option>
-                    </>
-                  ) : store.videoProvider === 'runway' ? (
-                    <>
-                      <option value="gen3-alpha">Runway Gen-3 Alpha</option>
-                      <option value="gen3-turbo">Runway Gen-3 Turbo</option>
-                    </>
-                  ) : store.videoProvider === 'sora' ? (
-                    <>
-                      <option value="sora">Sora 1.0</option>
-                      <option value="sora-turbo">Sora Turbo</option>
-                    </>
-                  ) : store.videoProvider === 'veo' ? (
-                    <>
-                      <option value="veo-3.1-low">Google Veo 3.1 Low</option>
-                      <option value="veo-3.1-high">Google Veo 3.1 High</option>
-                      <option value="veo-3.1-omni">Google Veo 3.1 Omni</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="ffmpeg-basic">FFmpeg Basic</option>
-                      <option value="ffmpeg-pro">FFmpeg Pro</option>
-                    </>
-                  )}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-              </div>
-
-              <div className="relative w-full sm:w-28 shrink-0">
+              <SelectShell>
                 <select
                   value={store.videoAspectRatio || '16:9'}
                   onChange={(e) => store.setVideoAspectRatio(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-cyan-500 transition-colors cursor-pointer"
-                  title="Tỉ lệ khung hình (Aspect Ratio)"
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  <option value="16:9">16:9 (Youtube)</option>
-                  <option value="9:16">9:16 (TikTok)</option>
-                  <option value="1:1">1:1 (Square)</option>
+                  {VIDEO_RATIOS.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
-              </div>
-              {(() => {
-                if (store.videoProvider === 'ffmpeg') {
-                  return (
-                    <div className="w-full sm:flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-500 flex items-center justify-center">
-                      Không cần API Key
-                    </div>
-                  );
-                }
-                let hasKey = false;
-                let providerLabel = '';
-                if (store.videoProvider === 'luma') {
-                  hasKey = (store.lumaApiKeys && store.lumaApiKeys.length > 0) || !!store.lumaApiKey;
-                  providerLabel = 'Luma';
-                } else if (store.videoProvider === 'runway') {
-                  hasKey = (store.runwayApiKeys && store.runwayApiKeys.length > 0) || !!store.runwayApiKey;
-                  providerLabel = 'Runway';
-                } else if (store.videoProvider === 'sora') {
-                  hasKey = (store.openaiApiKeys && store.openaiApiKeys.length > 0) || !!store.openaiApiKey;
-                  providerLabel = 'OpenAI (Sora)';
-                } else if (store.videoProvider === 'veo') {
-                  hasKey = (store.apiKeys && store.apiKeys.length > 0) || !!store.apiKey;
-                  providerLabel = 'Gemini (Veo)';
-                }
-
-                return hasKey ? (
-                  <div className="w-full sm:flex-1 rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-3 py-2 text-xs font-semibold text-emerald-500 flex items-center justify-center">
-                    🟢 Đã có Key ({providerLabel})
-                  </div>
-                ) : (
-                  <div className="w-full sm:flex-1 rounded-lg border border-red-500/20 bg-red-950/10 px-3 py-2 text-xs font-semibold text-red-400 flex items-center justify-center">
-                    🔴 Thiếu Key ({providerLabel})
-                  </div>
-                );
-              })()}
+              </SelectShell>
+              <SelectShell>
+                <select
+                  value={store.videoDuration || durationOptions[0]}
+                  onChange={(e) => store.setVideoDuration(Number(e.target.value))}
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
+                >
+                  {durationOptions.map((duration) => (
+                    <option key={duration} value={duration}>{duration}s</option>
+                  ))}
+                </select>
+              </SelectShell>
             </div>
-          </div>
 
-          {/* Section B: BƯỚC 1: THIẾT LẬP DNA (PHONG CÁCH THỊ GIÁC) CHỦ ĐẠO */}
-          <div className="rounded-xl border border-rose-500/50 bg-rose-950/10 p-5 shadow-[0_0_15px_rgba(244,63,94,0.05)]">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-rose-500 uppercase tracking-wide">
-              <Palette className="h-4 w-4" />
-              BƯỚC 1: THIẾT LẬP DNA (PHONG CÁCH THỊ GIÁC) CHỦ ĐẠO
-            </h3>
-            
-            <div className="flex flex-col lg:flex-row gap-6">
-              <div className="flex-1 space-y-6">
-                <div className="flex items-start gap-2 text-zinc-400 text-xs leading-relaxed font-semibold">
-                  <span className="text-amber-500 text-sm">👉</span>
-                  <p>
-                    Upload tối đa 6 ảnh cắt từ Video.<br />
-                    AI sẽ quét và trích xuất DNA Phong cách.
-                  </p>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <button className="flex flex-1 items-center justify-center gap-2 rounded bg-[#8b5cf6] px-4 py-2 text-xs font-bold text-white shadow-[0_0_15px_rgba(139,92,246,0.4)] transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer">
-                    <Camera className="h-5 w-5 shrink-0" />
-                    <div className="flex flex-col items-center leading-tight">
-                      <span>QUÉT 6 ẢNH</span>
-                      <span className="text-[9px] opacity-90">(CẦN API)</span>
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                        navigator.clipboard.writeText(store.visualDnaPrompt);
-                        alert('Đã copy DNA thị giác!');
-                      }
-                    }}
-                    className="flex flex-1 items-center justify-center gap-2 rounded bg-[#3b82f6] px-4 py-2.5 text-xs font-bold text-white shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer uppercase"
-                  >
-                    <Copy className="h-4 w-4" />
-                    COPY PROMPT
-                  </button>
-                </div>
-              </div>
+            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/30 p-3 lg:grid-cols-[110px_1fr]">
+              <span className="flex items-center text-xs font-bold text-zinc-300">KIEU ANH:</span>
+              <SelectShell>
+                <select
+                  value={store.mediaStylePreset}
+                  onChange={(e) => store.setMediaStylePreset(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
+                >
+                  {STYLE_PRESETS.map((preset) => (
+                    <option key={preset.label} value={preset.value}>{preset.label}</option>
+                  ))}
+                </select>
+              </SelectShell>
+            </div>
 
-              <div className="flex-[2]">
-                <textarea
-                  placeholder="Nhập vào DNA thị giác..."
-                  value={store.visualDnaPrompt}
-                  onChange={(e) => store.setVisualDnaPrompt(e.target.value)}
-                  className="w-full h-32 rounded-lg border-2 border-dashed border-cyan-500/50 bg-black/50 p-4 text-sm text-amber-500 outline-none focus:border-cyan-400 focus:bg-black transition-colors resize-none font-mono"
+            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/30 p-3 lg:grid-cols-[110px_1fr_1fr]">
+              <span className="flex items-center text-xs font-bold text-zinc-300">NHỊP ĐỌC & CẢNH:</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold text-zinc-500 uppercase">Tốc độ đọc (WPM):</span>
+                <input
+                  type="number"
+                  min={100}
+                  max={300}
+                  value={store.wpm || 140}
+                  onChange={(e) => store.setWpm(Math.max(100, Math.min(300, Number(e.target.value) || 140)))}
+                  className="w-20 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 />
               </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold text-zinc-500 uppercase">Thời lượng/Cảnh:</span>
+                <input
+                  type="number"
+                  min={3}
+                  max={30}
+                  value={store.secondsPerBeat || 6}
+                  onChange={(e) => store.setSecondsPerBeat(Math.max(3, Math.min(30, Number(e.target.value) || 6)))}
+                  className="w-16 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500 text-center"
+                />
+                <span className="text-[10px] font-semibold text-zinc-500">giây</span>
+              </div>
             </div>
           </div>
-          
+
+          <div className="rounded-xl border border-rose-500/50 bg-rose-950/10 p-5 shadow-[0_0_15px_rgba(244,63,94,0.05)]">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-rose-500">
+              <Palette className="h-4 w-4" />
+              DNA thi giac chu dao
+            </h3>
+
+            <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
+              <div className="space-y-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => analyzeVisualDna(e.target.files)}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isAnalyzingDna}
+                  className="flex w-full items-center justify-center gap-2 rounded bg-violet-500 px-4 py-2.5 text-xs font-bold uppercase text-white shadow-[0_0_15px_rgba(139,92,246,0.35)] transition-transform hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isAnalyzingDna ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {isAnalyzingDna ? 'Dang phan tich' : 'Quet 4-6 anh'}
+                </button>
+                <button
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                      navigator.clipboard.writeText(store.visualDnaPrompt || store.mediaStylePreset);
+                      alert('Da copy cau hinh phong cach!');
+                    }
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded bg-blue-500 px-4 py-2.5 text-xs font-bold uppercase text-white shadow-[0_0_15px_rgba(59,130,246,0.35)] transition-transform hover:scale-[1.02] active:scale-95"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy prompt
+                </button>
+                <p className="text-xs font-semibold leading-relaxed text-zinc-400">
+                  Neu DNA co noi dung, Gen Prompt Studio se uu tien DNA nay. Neu bo trong, he thong dung kieu anh da chon.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <textarea
+                  placeholder="Nhap DNA thi giac rieng. Bo trong de dung kieu anh da chon..."
+                  value={store.visualDnaPrompt}
+                  onChange={(e) => store.setVisualDnaPrompt(e.target.value)}
+                  className="min-h-56 w-full resize-y rounded-lg border-2 border-dashed border-cyan-500/50 bg-black/50 p-4 font-mono text-sm leading-relaxed text-amber-500 outline-none transition-colors focus:border-cyan-400 focus:bg-black"
+                />
+                <div className="text-right text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  {(store.visualDnaPrompt || '').trim().split(/\s+/).filter(Boolean).length} tu DNA
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

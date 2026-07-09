@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { X, Play } from 'lucide-react';
 import { useNovelStore } from '@/store/useNovelStore';
+import { getEdgePresetList } from '@/lib/voiceCatalog';
 
 export interface VideoEditorModalProps {
   isOpen: boolean;
@@ -37,15 +38,14 @@ const SectionPanel = ({ title, index, children }: { title: string, index: number
   </div>
 );
 
-const CAPASSISTANT_TTS_VOICES = [
-  { name: 'Co gai hoat ngon', tiktok: 'BV074_streaming', edge: 'vi-VN-HoaiMyNeural', preview: 'Xin chao, day la giong doc thu cua he thong AI Novel.' },
-  { name: 'Thanh nien tu tin', tiktok: 'BV075_streaming', edge: 'vi-VN-NamMinhNeural', preview: 'Xin chao, day la giong doc thu cua he thong AI Novel.' },
-  { name: 'Adam ke chuyen', tiktok: 'en_us_006', edge: 'en-US-ChristopherNeural', preview: 'Hello, this is a voice preview for the AI Novel system.' },
-  { name: 'Chris nang dong', tiktok: 'en_us_002', edge: 'en-US-GuyNeural', preview: 'Hello, this is a voice preview for the AI Novel system.' },
-  { name: 'Nam tre tuoi vui', tiktok: 'en_us_007', edge: 'en-US-EricNeural', preview: 'Hello, this is a voice preview for the AI Novel system.' },
-  { name: 'Nu tre ngot ngao', tiktok: 'en_us_009', edge: 'en-US-AnaNeural', preview: 'Hello, this is a voice preview for the AI Novel system.' },
-  { name: 'Nu nghiem tuc', tiktok: 'en_us_010', edge: 'en-US-MichelleNeural', preview: 'Hello, this is a voice preview for the AI Novel system.' },
-];
+const CAPASSISTANT_TTS_VOICES = getEdgePresetList().map((p) => ({
+  name: p.name,
+  tiktok: p.tiktok || 'BV074_streaming',
+  edge: p.edge,
+  preview: p.edge.startsWith('vi-')
+    ? 'Xin chào, đây là giọng đọc thử của hệ thống AI Novel.'
+    : 'Hello, this is a voice preview for the AI Novel system.',
+}));
 
 type SrtEditorState = {
   open: boolean;
@@ -531,6 +531,110 @@ export default function VideoEditorModal({ isOpen, onClose }: VideoEditorModalPr
   const updateSelectedMusic = (patch: Partial<{ vol: string; delay: string; dur: string; loop: boolean }>) => {
     if (selectedMusicIndex === null) return;
     setMusicList(prev => prev.map((item, index) => index === selectedMusicIndex ? { ...item, ...patch } : item));
+  };
+
+  const handleAutoMaster = async () => {
+    const activeVideo = videoPath || videoList[0];
+    if (!activeVideo) {
+      alert('Vui lòng chọn Video trước!');
+      return;
+    }
+    if (!confirm('Chạy Auto Master 1-Click?\nSTT → Dịch → TTS → Render (engine local, không cần CapAssistant.exe)')) {
+      return;
+    }
+
+    const controller = new AbortController();
+    renderAbortRef.current = controller;
+    setIsRendering(true);
+    setProgress(0);
+    setRenderLog('[START] CapAssistant Auto Master (AI Novel independent)\n');
+
+    try {
+      const voice = CAPASSISTANT_TTS_VOICES.find((item) => item.name === masterVoice) || CAPASSISTANT_TTS_VOICES[0];
+      const language =
+        audioLang.includes('Trung') || audioLang.includes('ZH')
+          ? 'zh'
+          : audioLang.includes('Anh') || audioLang.includes('EN')
+            ? 'en'
+            : 'vi';
+      const target =
+        tgtLang.includes('Anh') || tgtLang.includes('EN')
+          ? 'en'
+          : tgtLang.includes('Trung') || tgtLang.includes('ZH')
+            ? 'zh'
+            : 'vi';
+
+      const res = await fetch('/api/capassistant/auto-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          videoPath: activeVideo,
+          videoPaths: videoList.length > 1 ? videoList : undefined,
+          outputDir: outputPath,
+          srtMode: srtMode === 'auto' ? 'auto' : srtMode === 'untranslated' ? 'untranslated' : srtMode === 'translated' ? 'translated' : 'auto',
+          srtContent,
+          translatedSrtContent,
+          audioLang: language,
+          targetLang: target,
+          enableTts: true,
+          enableRender: true,
+          muteOriginal: true,
+          gpu,
+          zoom,
+          speed,
+          volume,
+          flip,
+          vocalFilter,
+          ttsVoice: voice.edge,
+          ttsSpeed: Number(masterSpeed) || 1.2,
+          wmText,
+          apiKey: store.apiKey,
+          apiKeys: store.apiKeys,
+          srtFont,
+          srtSize,
+          srtStyle,
+          logoPath,
+          useLogo,
+          exportRatio,
+        }),
+      });
+
+      if (!res.body) throw new Error('Streaming Auto Master API unavailable');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        const chunk = decoder.decode(value, { stream: true });
+        setRenderLog((prev) => prev + chunk);
+        const pMatch = chunk.match(/PROGRESS:(\d+)/g);
+        if (pMatch?.length) {
+          const p = parseInt(pMatch[pMatch.length - 1].replace('PROGRESS:', ''), 10);
+          if (!Number.isNaN(p)) setProgress(p);
+        }
+        if (chunk.includes('[SUCCESS]')) {
+          setProgress(100);
+          const urlMatch = chunk.match(/\[SUCCESS\]\s+(.*)/);
+          if (urlMatch) {
+            setLastResultPath(urlMatch[1].trim());
+            appendPanelLog(`[AUTO MASTER] ${urlMatch[1].trim()}`);
+          }
+        }
+      }
+    } catch (e: unknown) {
+      const err = e as { name?: string; message?: string };
+      if (err?.name === 'AbortError') {
+        setRenderLog((prev) => `${prev}\n[STOP] Da huy Auto Master.\n`);
+      } else {
+        alert(`Loi Auto Master: ${err?.message || String(e)}`);
+        setRenderLog((prev) => `${prev}\n[ERROR] ${err?.message || String(e)}\n`);
+      }
+    } finally {
+      setIsRendering(false);
+      renderAbortRef.current = null;
+    }
   };
 
   const handleRender = async () => {
@@ -1061,7 +1165,7 @@ export default function VideoEditorModal({ isOpen, onClose }: VideoEditorModalPr
             <div className="flex gap-3 mt-4">
               <button onClick={handlePreviewSource} className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-black text-[14px] py-3 rounded-lg shadow-lg">👀 XEM TRƯỚC</button>
               <button onClick={handleRender} disabled={isRendering} className="flex-1 bg-orange-500 hover:bg-orange-400 text-white font-black text-[14px] py-3 rounded-lg shadow-lg disabled:opacity-50">🚀 XUẤT</button>
-              <button onClick={handleRender} disabled={isRendering} className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black text-[14px] py-3 rounded-lg shadow-lg disabled:opacity-50">🤖 AUTO</button>
+              <button onClick={handleAutoMaster} disabled={isRendering} className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black text-[14px] py-3 rounded-lg shadow-lg disabled:opacity-50" title="STT → Dịch → TTS → Render">🤖 AUTO</button>
               <button onClick={handleStopRender} disabled={!isRendering} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black text-[14px] py-3 rounded-lg shadow-lg disabled:opacity-50">🛑 STOP</button>
               <button
                 className="flex-1 bg-slate-700 text-slate-200 font-black text-[14px] py-3 rounded-lg shadow-lg disabled:text-slate-500 disabled:opacity-50"

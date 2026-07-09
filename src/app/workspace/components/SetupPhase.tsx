@@ -249,20 +249,24 @@ export default function SetupPhase({
             </div>
           </div>
 
-          {/* Khối LUẬT LỆ & CHỐNG AI */}
-          <div className="hidden rounded-lg border border-red-900/50 bg-red-950/10 p-5 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+          {/* Khối LUẬT LỆ & CHỐNG AI + YouTube-safe */}
+          <div className="rounded-lg border border-red-900/50 bg-red-950/10 p-5 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
             <label className="text-xs font-bold uppercase tracking-wider text-red-500 mb-3 flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
-              5. Bộ Lọc Chống Văn Phong AI & Cấm Từ
+              5. Chống Văn AI & YouTube-Safe
             </label>
-            <div className="space-y-4 mt-4">
+            <p className="text-[10px] text-zinc-500 mb-3 leading-relaxed">
+              Giảm rủi ro YouTube &quot;reused / low-quality automated&quot;: lọc sáo AI, humanize kịch bản,
+              chặn TTS khi Editor chưa accept/rewrite.
+            </p>
+            <div className="space-y-4 mt-2">
               <div>
                 <label className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1.5 mb-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span> Từ cấm tuyệt đối (Cách nhau bằng dấu phẩy)
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span> Từ cấm tuyệt đối (cách nhau bằng dấu phẩy)
                 </label>
-                <input 
-                  type="text" 
-                  placeholder="VD: đáng chú ý là, nhìn chung, có thể nói..." 
+                <input
+                  type="text"
+                  placeholder="VD: đáng chú ý là, nhìn chung, có thể nói..."
                   value={store.userRules.forbidden_words}
                   onChange={(e) => store.updateUserRules({ forbidden_words: e.target.value })}
                   className="w-full bg-black border border-red-900/50 rounded p-3 text-sm text-zinc-200 outline-none focus:border-red-500 transition-all"
@@ -270,16 +274,61 @@ export default function SetupPhase({
               </div>
               <div>
                 <label className="text-[10px] font-bold text-orange-400 uppercase flex items-center gap-1.5 mb-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-orange-500"></span> Từ sáo rỗng cần hạn chế (Cách nhau bằng dấu phẩy)
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-500"></span> Từ sáo / văn AI cần hạn chế
                 </label>
-                <input 
-                  type="text" 
-                  placeholder="VD: không khỏi, dường như, bất chợt..." 
+                <input
+                  type="text"
+                  placeholder="VD: không khỏi, dường như, bất chợt..."
                   value={store.userRules.fatigue_words}
                   onChange={(e) => store.updateUserRules({ fatigue_words: e.target.value })}
                   className="w-full bg-black border border-orange-900/50 rounded p-3 text-sm text-zinc-200 outline-none focus:border-orange-500 transition-all"
                 />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {(
+                  [
+                    ['enforceEditorGate', 'Chặn TTS khi Editor = rewrite / chưa chấm'],
+                    ['requireHumanEdit', 'Bắt buộc Human Pass (sửa tay) trước TTS'],
+                    ['humanizeScript', 'Humanize kịch bản (thoại đời, câu đùa người, anti-sáo)'],
+                    ['autoAudioReadability', 'Pass tối ưu nhịp đọc audio sau polish'],
+                    ['injectBreathPauses', 'Chèn nghỉ thở giữa câu trước TTS'],
+                    ['roomTone', 'Room tone (pink noise) dưới giọng'],
+                    ['bgmMix', 'Mix BGM bed (cần đường dẫn hoặc synth)'],
+                    ['emotionTts', 'Pitch theo emotion phân cảnh'],
+                    ['applyLoudnorm', 'Loudnorm audio (mức YouTube)'],
+                    ['lockSeriesVoice', 'Khóa Voice DNA series'],
+                    ['enforceShotGraph', 'Shot graph wide→close (anti-slideshow)'],
+                    ['enforceAntiReuse', 'Cảnh báo reuse cùng file ảnh'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label
+                    key={key}
+                    className="flex items-start gap-2 rounded border border-zinc-800 bg-black/50 p-2.5 cursor-pointer hover:border-zinc-700"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-emerald-500"
+                      checked={!!(store.youtubeSafe || {})[key as keyof typeof store.youtubeSafe]}
+                      onChange={(e) => store.updateYoutubeSafe({ [key]: e.target.checked })}
+                    />
+                    <span className="text-[11px] text-zinc-300 leading-snug">{label}</span>
+                  </label>
+                ))}
+              </div>
+              {(store.youtubeSafe?.bgmMix) && (
+                <div className="pt-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase mb-1.5 block">
+                    Đường dẫn file BGM (tuỳ chọn)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="D:\music\ambient_bed.mp3 — để trống = synth bed nhẹ"
+                    value={store.youtubeSafe?.bgmPath || ''}
+                    onChange={(e) => store.updateYoutubeSafe({ bgmPath: e.target.value })}
+                    className="w-full bg-black border border-zinc-800 rounded p-2.5 text-sm text-zinc-200 outline-none focus:border-amber-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -292,7 +341,7 @@ export default function SetupPhase({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
               <div className="flex flex-col rounded border border-sky-800/50 bg-black p-3">
                 <span className="text-[11px] font-bold text-emerald-400 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Đa Tác Nhân Tự Chủ</span>
-                <span className="text-[10px] text-zinc-400 mt-1">Điều phối viên (Coordinator) liên kết tự động Kiến trúc sư, Người viết và Biên tập viên.</span>
+                <span className="text-[10px] text-zinc-400 mt-1">Pipeline nối tiếp: Viết → Cổng Từ → Commit Memory → Editor 7 chiều → tự sửa nếu rewrite.</span>
               </div>
               <div className="flex flex-col rounded border border-sky-800/50 bg-black p-3">
                 <span className="text-[11px] font-bold text-emerald-400 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Kế Hoạch Cuộn</span>
@@ -303,8 +352,8 @@ export default function SetupPhase({
                 <span className="text-[10px] text-zinc-400 mt-1">Hệ thống khử "văn mẫu AI" cơ học, đảm bảo tính nhất quán, nhịp truyện, phục bút.</span>
               </div>
               <div className="flex flex-col rounded border border-amber-800/50 bg-amber-950/20 p-3 shadow-[0_0_10px_rgba(245,158,11,0.1)]">
-                <span className="text-[11px] font-bold text-amber-500 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span> Can Thiệp Thời Gian Thực</span>
-                <span className="text-[10px] text-zinc-300 mt-1">Nhập lệnh bẻ lái cốt truyện <b>ngay trong lúc AI đang viết chữ</b> (ở bước sau).</span>
+                <span className="text-[11px] font-bold text-amber-500 uppercase flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span> Can Thiệp Lượt Viết Tiếp</span>
+                <span className="text-[10px] text-zinc-300 mt-1">Gửi lệnh bẻ lái cốt truyện khi AI đang hiện chữ — hệ thống lưu phần đã có và <b>viết tiếp theo chỉ đạo</b>.</span>
               </div>
             </div>
           </div>

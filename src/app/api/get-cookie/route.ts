@@ -99,7 +99,6 @@ export async function POST(req: Request) {
             break;
           }
         }
-        // Fallback: bấm nút có id identifierNext
         if (nextBtns.length === 0) {
           await page.click('#identifierNext');
         }
@@ -216,8 +215,6 @@ export async function POST(req: Request) {
     // Tự động lưu cookie vào headers_veo.txt để generate-video sử dụng
     try {
       const localPath = path.join(process.cwd(), 'headers_veo.txt');
-      const fallbackPath = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026\\headers_veo.txt';
-      const fallbackDir = 'C:\\Users\\Khanh\\Downloads\\tool sua\\CREATE VIDEO PRO 12052026\\CREATE VIDEO PRO 12052026';
       const headerContent = `======================================================================
  HEADERS TẤT CẢ PROFILES - GOOGLE FLOW
 ======================================================================
@@ -248,12 +245,6 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)
       // Ghi ra file local
       fs.writeFileSync(localPath, headerContent, 'utf8');
       console.log(`[Cookie Service] ✅ Đã tự động lưu cookie mới vào local: ${localPath}`);
-
-      // Ghi thêm ra file fallback nếu thư mục tồn tại
-      if (fs.existsSync(fallbackDir)) {
-        fs.writeFileSync(fallbackPath, headerContent, 'utf8');
-        console.log(`[Cookie Service] ✅ Đã tự động lưu cookie mới vào fallback: ${fallbackPath}`);
-      }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (saveErr: any) {
       console.warn(`[Cookie Service] Không thể lưu headers_veo.txt: ${saveErr.message}`);
@@ -275,3 +266,4 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)
     );
   }
 }
+

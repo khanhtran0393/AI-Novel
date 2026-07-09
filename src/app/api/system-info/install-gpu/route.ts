@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     fs.writeFileSync(statusPath, JSON.stringify(initialStatus, null, 2), 'utf8');
 
     // Spawn the background worker script
-    const workerPath = path.join(process.cwd(), 'python_core', 'install_gpu_worker.js');
+    const workerPath = './python_core/install_gpu_worker.js';
     const child = spawn('node', [workerPath, vendor], {
       detached: true,
       stdio: 'ignore',

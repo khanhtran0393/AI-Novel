@@ -39,12 +39,6 @@ export function useFileActions(streamText: string) {
       });
       if (!res.ok) {
         const err = await res.json();
-        if (res.status === 404 && err.fallbackUrl) {
-          if (confirm(`❌ Thư mục cục bộ không tồn tại: ${folderPath}\n\nBạn có muốn mở Google Drive trực tuyến trên Web để truy cập các tệp của mình không?`)) {
-            window.open(err.fallbackUrl, '_blank');
-          }
-          return;
-        }
         throw new Error(err.error || 'Lỗi khi mở thư mục.');
       }
       console.log(`[Folder Opener] Successfully opened folder: ${folderPath}`);

@@ -22,7 +22,11 @@ function findChromePath() {
 
 const args = process.argv.slice(2);
 const sessionToken = args[0] || '';
-const promptText = args[1] || 'Beautiful cinematic shot';
+const promptText = args[1] || '';
+if (!promptText) {
+  console.error(JSON.stringify({ error: 'Missing promptText for production video generation.' }));
+  process.exit(1);
+}
 const duration = args[2] || '5';
 const outputPath = args[3] || path.join(process.cwd(), 'public', 'video', 'output.mp4');
 
@@ -90,10 +94,7 @@ const outputPath = args[3] || path.join(process.cwd(), 'public', 'video', 'outpu
       }
       console.log(JSON.stringify({ status: "Đã click Generate, đang đợi sinh video..." }));
 
-      // 4. Chờ sinh video xong (chờ 10s demo)
-      await new Promise(r => setTimeout(r, 10000)); 
-
-      console.log(JSON.stringify({ status: "Hoàn tất sinh Video thực tế!" }));
+      throw new Error('Google Flow worker does not have a verified output download path. Refusing to report success without a real MP4 file.');
 
     } catch (err) {
       console.error(JSON.stringify({ error: `Lỗi khi tự động hóa giao diện: ${err.message}` }));

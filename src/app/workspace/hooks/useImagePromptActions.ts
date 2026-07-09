@@ -8,6 +8,11 @@ import {
   generateImageAction
 } from '../modules/imageModule';
 import { generateVideoAction } from '../modules/videoModule';
+import {
+  applyShotScaleToPrompt,
+  checkImagePathReuse,
+  mergeYoutubeSafe,
+} from '@/lib/youtubeSafe';
 
 export function useImagePromptActions() {
   const store = useNovelStore();
@@ -15,6 +20,16 @@ export function useImagePromptActions() {
   const [regeneratingSinglePrompt, setRegeneratingSinglePrompt] = useState<{ [key: string]: boolean }>({});
   const [generatingImage, setGeneratingImage] = useState<Record<string, boolean>>({});
   const [generatingVideo, setGeneratingVideo] = useState<Record<string, boolean>>({});
+  const resolveMediaStyle = () => (
+    store.visualDnaPrompt?.trim() ||
+    store.mediaStylePreset?.trim() ||
+    'cinematic natural realism, grounded production design, expressive lighting, tactile materials'
+  );
+  const parsePromptDuration = (timestamp?: string) => {
+    const match = String(timestamp || '').match(/^(\d{1,2})-/);
+    const duration = match ? Number(match[1]) : 0;
+    return duration > 0 ? duration : (store.videoDuration || 6);
+  };
 
   // Gọi API backend phân tích kịch bản sinh prompt vẽ ảnh/video (theo từng câu + cảm xúc)
   const handleGenerateImagePrompt = async (sceneText: string, sceneIndex: number, duration: number) => {
@@ -24,13 +39,14 @@ export function useImagePromptActions() {
     store.addGeneratedPrompts(assetKey, []);
     try {
       const prompts = await generateImagePromptAction({
-        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         sceneText,
         duration,
-        style: store.visualDnaPrompt || 'Cinematic, cinematic lighting, highly detailed',
-        nhan_vat_prompts: store.nhan_vat_prompts
+        style: resolveMediaStyle(),
+        nhan_vat_prompts: store.nhan_vat_prompts,
+        wpm: store.wpm || 140,
+        secondsPerBeat: store.secondsPerBeat || 6
       });
 
       // Ghi nhận API key nếu có trả về
@@ -40,8 +56,23 @@ export function useImagePromptActions() {
       }
 
       const assetKey = `${store.chuong_dang_chon}_${sceneIndex}`;
-      store.addGeneratedPrompts(assetKey, prompts);
-      alert(`🎉 Đã sinh ${prompts.length} Prompt phân cảnh theo từng câu thành công!`);
+      const yt = mergeYoutubeSafe(useNovelStore.getState().youtubeSafe);
+      const withShots = yt.enforceShotGraph
+        ? prompts.map((p, i) => {
+            const img =
+              (p as { image_prompt?: string; prompt?: string }).image_prompt ||
+              (p as { prompt?: string }).prompt ||
+              '';
+            const next = applyShotScaleToPrompt(img, i);
+            return {
+              ...p,
+              prompt: next,
+              image_prompt: next,
+            };
+          })
+        : prompts;
+      store.addGeneratedPrompts(assetKey, withShots);
+      alert(`🎉 Đã sinh ${withShots.length} Prompt (shot graph) thành công!`);
     } catch (err: unknown) {
       alert(`❌ Lỗi sinh Prompt: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -62,14 +93,13 @@ export function useImagePromptActions() {
     setRegeneratingSinglePrompt(prev => ({ ...prev, [key]: true }));
     try {
       const newPromptStr = await regenPromptAction({
-        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         sceneIndex,
         promptIndex,
         sentence,
         currentPrompt,
-        style: store.visualDnaPrompt || 'Cinematic, cinematic lighting, highly detailed',
+        style: resolveMediaStyle(),
         nhan_vat_prompts: store.nhan_vat_prompts
       });
 
@@ -77,7 +107,12 @@ export function useImagePromptActions() {
         const currentPrompts = store.generatedPrompts[assetKey] || [];
         const updated = [...currentPrompts];
         if (updated[promptIndex]) {
-          updated[promptIndex] = { ...updated[promptIndex], prompt: newPromptStr };
+          updated[promptIndex] = {
+            ...updated[promptIndex],
+            prompt: newPromptStr,
+            image_prompt: newPromptStr,
+            video_prompt: `Image-to-video motion direction: preserve the composition and character identity from the still image, introduce subtle camera movement, natural environmental motion, and restrained character micro-movements. Visual prompt: ${newPromptStr}`
+          };
           store.addGeneratedPrompts(assetKey, updated);
         }
       }
@@ -98,6 +133,7 @@ export function useImagePromptActions() {
     
     // Xóa ảnh cũ ngay lập tức để UI chuyển sang trạng thái Loading, đảm bảo 1 trạng thái duy nhất
     store.addGeneratedImage(key, '');
+    store.addGeneratedImageVariants(key, []);
     setGeneratingImage(prev => ({ ...prev, [key]: true }));
 
     try {
@@ -108,10 +144,10 @@ export function useImagePromptActions() {
       let resolvedImageApiKey = '';
       if (store.imageProvider === 'openai') {
         resolvedImageApiKey = store.openaiApiKey || (store.openaiApiKeys && store.openaiApiKeys[0]) || '';
-      } else if (store.imageProvider === 'falai') {
-        resolvedImageApiKey = store.falaiApiKey || (store.falaiApiKeys && store.falaiApiKeys[0]) || '';
       } else if (store.imageProvider === 'gemini') {
         resolvedImageApiKey = store.apiKey || (store.apiKeys && store.apiKeys[0]) || '';
+      } else if (store.imageProvider === 'grok') {
+        resolvedImageApiKey = store.grokApiKey || (store.grokApiKeys && store.grokApiKeys[0]) || '';
       }
 
       const data = await generateImageAction({
@@ -126,13 +162,13 @@ export function useImagePromptActions() {
         selectedCookie,
         nhan_vat: store.nhan_vat || [],
         nhan_vat_prompts: store.nhan_vat_prompts,
-        useMock: false,
         apiKey: store.apiKey,
         apiKeys: store.apiKeys || [],
         model: store.imageModel,
         imageProvider: store.imageProvider,
         imageApiKey: resolvedImageApiKey,
         imageAspectRatio: store.imageAspectRatio || '16:9',
+        imageCount: store.imageCount || 1,
         aiMasterApiKey: store.aiMasterApiKey,
       });
 
@@ -141,13 +177,30 @@ export function useImagePromptActions() {
         store.prioritizeApiKey(data.usedApiKey);
       }
 
-      store.addGeneratedImage(key, data.imagePath + '?t=' + Date.now());
+      const cacheBust = Date.now();
+      const imagePaths = data.imagePaths && data.imagePaths.length > 0 ? data.imagePaths : [data.imagePath];
+      const cacheBustedImagePaths = imagePaths.filter(Boolean).map((path) => `${path}?t=${cacheBust}`);
+      const primary = cacheBustedImagePaths[0] || `${data.imagePath}?t=${cacheBust}`;
+      const yt = mergeYoutubeSafe(useNovelStore.getState().youtubeSafe);
+      if (yt.enforceAntiReuse) {
+        const reuse = checkImagePathReuse(primary, useNovelStore.getState().generatedImages, key);
+        if (reuse.reused) {
+          console.warn(`[Anti-Reuse] Image path reused from ${reuse.otherKey}`);
+          if (!silentError) {
+            alert(
+              `⚠️ YouTube anti-reuse: file ảnh trùng slot ${reuse.otherKey}. Nên "Tạo lại ảnh" để tránh slideshow lặp.`,
+            );
+          }
+        }
+      }
+      store.addGeneratedImage(key, primary);
+      store.addGeneratedImageVariants(key, cacheBustedImagePaths);
       if (data.projectUrl) {
         store.addProjectUrl(key, data.projectUrl);
       }
       console.log(`[Image Builder] Successfully generated image for c${sceneIndex+1}-${promptIndex+1} using ${data.method || 'unknown'}: ${data.imagePath}`);
     } catch (err: unknown) {
-      if (!silentError) alert(`❌ Lỗi sinh ảnh: ${err instanceof Error ? err.message : String(err)}\n\n💡 Hãy chắc chắn rằng bạn đã cấu hình API Key Google (ở Header) để sinh ảnh bằng Google Imagen 3 siêu tốc, hoặc cấu hình Cookie Google Studio đầy đủ nếu muốn tự động hóa qua Google Labs Whisk.`);
+      if (!silentError) alert(`Loi sinh anh: ${err instanceof Error ? err.message : String(err)}`);
       throw err;
     } finally {
       setGeneratingImage(prev => ({ ...prev, [key]: false }));
@@ -165,8 +218,15 @@ export function useImagePromptActions() {
 
     const hasApiKey = !!store.apiKey || (store.apiKeys && store.apiKeys.length > 0);
     const hasCookie = !!store.googleStudioCookie || (store.googleStudioCookies && store.googleStudioCookies.length > 0);
-    if (!hasApiKey && !hasCookie) {
-      alert('⚠️ Chưa cấu hình API Key Google hoặc Cookie Google Studio để sinh ảnh.');
+    const hasOpenAiKey = !!store.openaiApiKey || (store.openaiApiKeys && store.openaiApiKeys.length > 0);
+    const hasGrokKey = !!store.grokApiKey || (store.grokApiKeys && store.grokApiKeys.length > 0);
+    const hasCredential = store.imageProvider === 'openai'
+      ? hasOpenAiKey
+      : store.imageProvider === 'grok'
+        ? hasGrokKey
+        : hasApiKey || hasCookie;
+    if (!hasCredential) {
+      alert('Chua cau hinh credential cho engine sinh anh da chon.');
       return;
     }
 
@@ -180,13 +240,14 @@ export function useImagePromptActions() {
     const promises = promptsAsset.map(async (promptItem, pIdx) => {
       if (outOfCredits) return; // Nếu đã hết tín dụng thì không gọi API nữa
       try {
-        await handleGenerateImage(sceneIndex, pIdx, promptItem.prompt, promptItem.sentence || '', true);
-      } catch (err: any) {
-        if (err.message === 'HẾT_TÍN_DỤNG') {
+        await handleGenerateImage(sceneIndex, pIdx, promptItem.image_prompt || promptItem.prompt, promptItem.sentence || promptItem.script_prompt || '', true);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (errorMessage === 'HẾT_TÍN_DỤNG') {
           outOfCredits = true;
         } else {
           errorCount++;
-          lastErrorMsg = err.message || String(err);
+          lastErrorMsg = errorMessage;
         }
       }
     });
@@ -196,7 +257,7 @@ export function useImagePromptActions() {
     if (outOfCredits) {
       alert('⚠️ Quá trình đã dừng lại vì bạn đã hết Tín dụng. Vui lòng nạp thêm để tiếp tục!');
     } else if (errorCount > 0) {
-      alert(`❌ Đã xảy ra lỗi với ${errorCount} ảnh. Lỗi tiêu biểu: ${lastErrorMsg}\n\n💡 Hãy chắc chắn rằng API Key Google hoặc Cookie Google Studio vẫn còn hoạt động tốt.`);
+      alert(`Da xay ra loi voi ${errorCount} anh. Loi tieu bieu: ${lastErrorMsg}`);
     } else {
       alert('🎉 Đã hoàn tất luồng sinh tất cả ảnh cho phân cảnh này!');
     }
@@ -220,6 +281,10 @@ export function useImagePromptActions() {
       const startImage = store.generatedImages?.[startKey];
       const endImage = store.generatedImages?.[endKey];
 
+      const promptsAsset = store.generatedPrompts[assetKey] || [];
+      const endPromptItem = promptsAsset[endPromptIndex];
+      const finalPrompt = endPromptItem?.video_prompt || prompt;
+
       if (!startImage || !endImage) {
         throw new Error('Cần phải sinh ảnh cho cả 2 Prompt trước khi tạo Video nội suy giữa chúng!');
       }
@@ -233,27 +298,30 @@ export function useImagePromptActions() {
         resolvedVideoApiKey = store.openaiApiKey || (store.openaiApiKeys && store.openaiApiKeys[0]) || '';
       } else if (store.videoProvider === 'veo') {
         resolvedVideoApiKey = store.apiKey || (store.apiKeys && store.apiKeys[0]) || '';
+      } else if (store.videoProvider === 'grok') {
+        resolvedVideoApiKey = store.grokApiKey || (store.grokApiKeys && store.grokApiKeys[0]) || '';
       }
+      const promptDuration = parsePromptDuration(endPromptItem?.timestamp);
 
       const data = await generateVideoAction({
         chapterNum: store.chuong_dang_chon,
         sceneIndex,
         promptIndex: endPromptIndex,
-        prompt,
-        duration: 5,
+        prompt: finalPrompt,
+        duration: promptDuration,
         startImage,
         endImage,
         model: store.videoModel,
         videoProvider: store.videoProvider,
         videoApiKey: resolvedVideoApiKey,
         videoAspectRatio: store.videoAspectRatio || '16:9',
+        useGpuAcceleration: store.useGpuAcceleration,
       });
 
       console.log(`[Video Builder] Successfully generated video: ${data.videoPath}`);
       if (data.videoPath) {
         store.addGeneratedVideo(key, data.videoPath);
       }
-      // Lệnh này hiện tại mô phỏng việc lưu vào store, nhưng ta có thể báo alert thành công
       if (!silentError) alert(`🎉 Đã sinh thành công Video cho đoạn c${sceneIndex+1}-${String(endPromptIndex+1).padStart(2, '0')}!`);
     } catch (err: unknown) {
       if (!silentError) alert(`❌ Lỗi sinh video: ${err instanceof Error ? err.message : String(err)}`);
@@ -283,13 +351,15 @@ export function useImagePromptActions() {
       const startIdx = i - 1;
       const endIdx = i;
       try {
-        await handleGenerateVideo(sceneIndex, startIdx, endIdx, promptsAsset[i].prompt, true);
-      } catch (err: any) {
-        if (err.message === 'HẾT_TÍN_DỤNG') {
+        const promptToUse = promptsAsset[i].video_prompt || promptsAsset[i].prompt;
+        await handleGenerateVideo(sceneIndex, startIdx, endIdx, promptToUse, true);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (errorMessage === 'HẾT_TÍN_DỤNG') {
           outOfCredits = true;
         } else {
           errorCount++;
-          lastErrorMsg = err.message || String(err);
+          lastErrorMsg = errorMessage;
         }
       }
     }
