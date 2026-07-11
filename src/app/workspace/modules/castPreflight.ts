@@ -225,6 +225,8 @@ export type ChapterPreflightResult = {
   totalSegments: number;
   resumeScenes: number;
   resumeParts: number;
+  /** 1 credit / runnable scene (batch accounting) */
+  estimatedCredits: number;
 };
 
 /**
@@ -278,6 +280,7 @@ export function runChapterCastPreflight(params: {
     totalSegments,
     resumeScenes,
     resumeParts,
+    estimatedCredits: runnable.length,
   };
 }
 
@@ -285,10 +288,18 @@ export function formatChapterPreflightConfirm(
   ch: ChapterPreflightResult,
   opts?: { onlyFailed?: boolean },
 ): string {
+  // Rough ETA: ~4s/seg multi + 8s single overhead per scene
+  const etaSec = Math.max(
+    15,
+    ch.totalSegments * 4 + ch.runnable.length * 3 - ch.resumeParts * 3,
+  );
+  const etaMin = Math.ceil(etaSec / 60);
+
   const lines: string[] = [
     opts?.onlyFailed ? 'Gen lại cảnh lỗi — preflight:' : 'Gen TTS cả chương — preflight:',
     `• Chạy được: ${ch.runnable.length}/${ch.scenes.length} cảnh`,
     `• Multi: ${ch.multiScenes} cảnh · ~${ch.totalSegments} đoạn`,
+    `• Ước tính: ~${ch.estimatedCredits} credit · ~${etaMin} phút`,
     ch.resumeScenes
       ? `• Resume cache: ${ch.resumeScenes} cảnh (${ch.resumeParts} đoạn partial)`
       : null,

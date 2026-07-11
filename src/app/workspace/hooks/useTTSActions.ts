@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import { playTTSAction, generateTTSAction } from '../modules/ttsModule';
 import { recordEngineCheckpoint, recordEngineSnapshot } from '../modules/engineModule';
@@ -13,6 +13,7 @@ import { parseScenes } from '../utils/stringUtils';
 import {
   clearChapterFailLog,
   loadChapterFailLog,
+  pruneDeadPartialParts,
   saveChapterFailLog,
 } from '@/lib/multiTtsPartialCache';
 import {
@@ -21,6 +22,15 @@ import {
   runCastPreflight,
   runChapterCastPreflight,
 } from '../modules/castPreflight';
+import { persistTextReport } from '@/lib/downloadText';
+import {
+  cancelChapterQueue,
+  getChapterQueueState,
+  hydrateChapterQueueFromDisk,
+  startChapterQueue,
+  subscribeChapterQueue,
+  type ChapterQueueSnapshot,
+} from '@/lib/ttsChapterQueue';
 
 
 interface SceneAutomationOptions {
@@ -65,10 +75,14 @@ export function useTTSActions() {
   const [generatingTTS, setGeneratingTTS] = useState<{ [sceneIndex: number]: boolean }>({});
   const [ttsProgress, setTtsProgress] = useState<{ [sceneIndex: number]: number }>({});
   const [ttsStatus, setTtsStatus] = useState<{ [sceneIndex: number]: string }>({});
-  const [chapterTtsRunning, setChapterTtsRunning] = useState(false);
-  const [chapterTtsProgress, setChapterTtsProgress] = useState(0);
-  const [chapterTtsStatus, setChapterTtsStatus] = useState('');
-  const chapterAbortRef = useRef(false);
+  const [chapterQueue, setChapterQueue] = useState<ChapterQueueSnapshot>(() =>
+    getChapterQueueState(),
+  );
+
+  useEffect(() => {
+    void hydrateChapterQueueFromDisk();
+    return subscribeChapterQueue(setChapterQueue);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -300,13 +314,11 @@ export function useTTSActions() {
   };
 
   const handleStopChapterTTS = () => {
-    chapterAbortRef.current = true;
-    setChapterTtsStatus('Đang dừng…');
+    cancelChapterQueue();
   };
 
   /**
-   * Gen TTS tuần tự cho mọi cảnh (và tùy chọn Hook) của chương hiện tại.
-   * Cast multi + retry per-seg đã nằm trong generateTTSAction.
+   * Gen TTS chương qua queue nền (sống sót remount React / đổi tab).
    */
   const handleGenerateChapterTTS = async (
     chapterOpts: ChapterTTSOptions = {},
@@ -317,6 +329,11 @@ export function useTTSActions() {
       onlyFailed = false,
       silent = false,
     } = chapterOpts;
+
+    if (getChapterQueueState().running) {
+      if (!silent) alert('Đang có job TTS chương chạy nền. Bấm Dừng trước.');
+      return { ok: 0, fail: 0, skipped: 0 };
+    }
 
     const state = useNovelStore.getState();
     const chapterNumber = state.chuong_dang_chon;
@@ -366,7 +383,6 @@ export function useTTSActions() {
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
-    // YouTube gate once for chapter
     const yt = mergeYoutubeSafe(state.youtubeSafe);
     const gate = evaluateYoutubeTtsGate({
       enforceEditorGate: yt.enforceEditorGate !== false,
@@ -391,7 +407,6 @@ export function useTTSActions() {
       if (!proceed) return { ok: 0, fail: 0, skipped: 0 };
     }
 
-    // Chapter cast preflight (aggregate)
     const chPf = runChapterCastPreflight({
       jobs,
       chapter: chapterNumber,
@@ -418,124 +433,91 @@ export function useTTSActions() {
     if (!silent) {
       const proceed = confirm(
         formatChapterPreflightConfirm(chPf, { onlyFailed }) +
-          (skipExisting && !onlyFailed
-            ? '\n(Đã có audio sẽ bỏ qua)'
-            : ''),
+          (skipExisting && !onlyFailed ? '\n(Đã có audio sẽ bỏ qua)' : '') +
+          '\n\n⏱ Job chạy NỀN — đổi tab/cảnh vẫn tiếp tục gen.',
       );
       if (!proceed) return { ok: 0, fail: 0, skipped: 0 };
     }
 
-    // Only process runnable jobs; blocked counted as skipped-block
     const blockedSet = new Set(chPf.blocked.map((b) => b.job.sceneIndex));
     jobs = jobs.filter((j) => !blockedSet.has(j.sceneIndex));
-
-    chapterAbortRef.current = false;
-    setChapterTtsRunning(true);
-    setChapterTtsProgress(0);
-    setChapterTtsStatus(
-      `Preflight OK · ${jobs.length} cảnh · multi ${chPf.multiScenes}`,
-    );
-
-    let ok = 0;
-    let fail = 0;
-    let skipped = chPf.blocked.length; // blocked scenes
-    const errors: string[] = chPf.blocked.map(
+    const initialErrors = chPf.blocked.map(
       (b) =>
         `${b.job.title}: block — ${
           b.result.issues.find((i) => i.level === 'block')?.message || 'preflight'
         }`,
     );
-    const failedIndexes: number[] = [];
 
-    try {
-      for (let j = 0; j < jobs.length; j++) {
-        if (chapterAbortRef.current) {
-          setChapterTtsStatus('Đã dừng bởi người dùng');
-          break;
-        }
-        const job = jobs[j];
-        const assetKey = `${chapterNumber}_${job.sceneIndex}`;
-        const livePaths = useNovelStore.getState().generatedAudioPaths;
-        const existing = livePaths?.[assetKey];
-        if (
-          !onlyFailed &&
-          skipExisting &&
-          existing?.path &&
-          Number(existing.duration) > 0
-        ) {
-          skipped += 1;
-          setChapterTtsProgress(Math.round(((j + 1) / jobs.length) * 100));
-          setChapterTtsStatus(`Bỏ qua ${job.title} (đã có audio)`);
-          continue;
-        }
-
+    const result = await startChapterQueue({
+      chapterNumber,
+      jobs,
+      skipExisting: !onlyFailed && skipExisting,
+      initialSkipped: chPf.blocked.length,
+      initialErrors,
+      hasExistingAudio: (sceneIndex) => {
+        const assetKey = `${chapterNumber}_${sceneIndex}`;
+        const existing = useNovelStore.getState().generatedAudioPaths?.[assetKey];
+        return !!(existing?.path && Number(existing.duration) > 0);
+      },
+      deductCredit: () => useNovelStore.getState().deductCredits(1),
+      generateOne: async (job) => {
         const st = useNovelStore.getState();
-        if (!st.deductCredits(1)) {
-          errors.push(`${job.title}: hết tín dụng`);
-          fail += 1;
-          failedIndexes.push(job.sceneIndex);
-          break;
+        const creds = getTTSApiCredentials(st);
+        const { audioPath, duration, multi, segmentCount } = await generateTTSAction({
+          apiKey: creds.apiKey,
+          apiKeys: creds.apiKeys,
+          sceneText: job.text,
+          chuong_dang_chon: chapterNumber,
+          sceneIndex: job.sceneIndex,
+          savePathTTS: st.savePathTTS || '',
+          googleDrivePath: st.googleDrivePath || '',
+          voice: st.ttsConfig.voice || '',
+          ten_tac_pham: st.ten_tac_pham || 'Kịch Bản Vô Danh',
+          ttsConfig: st.ttsConfig,
+          syncMode: st.ttsConfig.syncMode,
+          forceFullMulti: false,
+        });
+        const assetKey = `${chapterNumber}_${job.sceneIndex}`;
+        useNovelStore.getState().addGeneratedAudio(assetKey, audioPath, duration);
+        void recordEngineCheckpoint({
+          step: 'tts_audio',
+          scope: { kind: 'scene', chapter: chapterNumber, scene: job.sceneIndex },
+          projectName: st.ten_tac_pham,
+          payload: {
+            assetKey,
+            audioPath,
+            duration,
+            multi: !!multi,
+            segmentCount: segmentCount || 1,
+            backgroundQueue: true,
+          },
+        });
+      },
+      onComplete: (r) => {
+        if (r.failedIndexes.length) {
+          saveChapterFailLog(chapterNumber, r.failedIndexes);
+        } else if (!r.cancelled) {
+          clearChapterFailLog(chapterNumber);
         }
-
-        setChapterTtsStatus(`Đang gen ${j + 1}/${jobs.length}: ${job.title}`);
-        setChapterTtsProgress(Math.round((j / jobs.length) * 100));
-
-        try {
-          await handleGenerateTTS(job.text, job.sceneIndex, '', undefined, {
-            chapterNumber,
-            silent: true,
-            bypassYoutubeGate: true,
-            skipCredit: true,
-            skipPreflight: true,
-          });
-          ok += 1;
-        } catch (e) {
-          fail += 1;
-          failedIndexes.push(job.sceneIndex);
-          errors.push(
-            `${job.title}: ${e instanceof Error ? e.message : String(e)}`,
-          );
+        if (!silent) {
+          let msg = `TTS chương ${chapterNumber} (nền):\n• Thành công: ${r.ok}\n• Lỗi: ${r.fail}\n• Bỏ qua: ${r.skipped}`;
+          if (r.cancelled) msg += '\n• (Đã dừng sớm)';
+          if (r.failedIndexes.length) msg += `\n• Bấm 「Gen lại cảnh lỗi」 để retry`;
+          if (r.errors.length) {
+            msg += `\n\nChi tiết:\n• ${r.errors.slice(0, 5).join('\n• ')}`;
+          }
+          alert(msg);
         }
+      },
+    });
 
-        setChapterTtsProgress(Math.round(((j + 1) / jobs.length) * 100));
-      }
-
-      if (failedIndexes.length) {
-        saveChapterFailLog(chapterNumber, failedIndexes);
-      } else if (!chapterAbortRef.current) {
-        clearChapterFailLog(chapterNumber);
-      }
-
-      setChapterTtsStatus(
-        `Xong · OK ${ok} · lỗi ${fail} · bỏ qua ${skipped}` +
-          (chapterAbortRef.current ? ' · (dừng sớm)' : '') +
-          (failedIndexes.length ? ` · lưu ${failedIndexes.length} cảnh lỗi` : ''),
-      );
-
-      if (!silent) {
-        let msg = `TTS chương ${chapterNumber}:\n• Thành công: ${ok}\n• Lỗi: ${fail}\n• Bỏ qua: ${skipped}`;
-        if (failedIndexes.length) {
-          msg += `\n• Có thể bấm 「Gen lại cảnh lỗi」`;
-        }
-        if (errors.length) {
-          msg += `\n\nChi tiết:\n• ${errors.slice(0, 5).join('\n• ')}`;
-          if (errors.length > 5) msg += `\n… (+${errors.length - 5})`;
-        }
-        alert(msg);
-      }
-
-      return { ok, fail, skipped };
-    } finally {
-      setChapterTtsRunning(false);
-      setTimeout(() => {
-        setChapterTtsProgress(0);
-        setChapterTtsStatus('');
-      }, 4000);
-    }
+    return result;
   };
 
-  /** Dry-run: chapter cast preflight report without generating */
-  const handleChapterCastPreflight = (): string | null => {
+  /** Dry-run preflight + export report file */
+  const handleChapterCastPreflight = async (
+    opts?: { exportFile?: boolean },
+  ): Promise<string | null> => {
     const state = useNovelStore.getState();
     const chapterNumber = state.chuong_dang_chon;
     const chapter = state.danh_sach_chuong.find((c) => c.so_chuong === chapterNumber);
@@ -562,6 +544,16 @@ export function useTTSActions() {
       alert('Chương chưa có nội dung để kiểm tra.');
       return null;
     }
+
+    let pruned = 0;
+    for (const j of jobs) {
+      try {
+        pruned += await pruneDeadPartialParts(chapterNumber, j.sceneIndex);
+      } catch {
+        /* ignore */
+      }
+    }
+
     const chPf = runChapterCastPreflight({
       jobs,
       chapter: chapterNumber,
@@ -574,11 +566,33 @@ export function useTTSActions() {
       globalSpeed: state.ttsConfig.speed ?? 1,
       globalPitch: state.ttsConfig.pitch ?? 0,
     });
-    const report = formatChapterPreflightConfirm(chPf).replace(
+    let report = formatChapterPreflightConfirm(chPf).replace(
       '\n\nTiếp tục?',
       '',
     );
-    alert(report);
+    report =
+      `# AI Novel — Cast Preflight Report\n` +
+      `# Chương ${chapterNumber} · ${new Date().toISOString()}\n` +
+      `# Tác phẩm: ${state.ten_tac_pham || '(chưa đặt)'}\n\n` +
+      report;
+    if (pruned > 0) {
+      report += `\n\n🧹 Đã dọn ${pruned} partial path chết (file không còn).`;
+    }
+
+    // Always download/persist report when exportFile (default true for dry-run button)
+    const shouldExport = opts?.exportFile !== false;
+    let saveNote = '';
+    if (shouldExport) {
+      const fname = `cast-preflight-ch${chapterNumber}-${Date.now()}.txt`;
+      const saved = await persistTextReport(fname, report);
+      if (saved.via === 'electron' && saved.path) {
+        saveNote = `\n\n📁 Đã lưu: ${saved.path}`;
+      } else {
+        saveNote = `\n\n📥 Đã tải file: ${fname}`;
+      }
+    }
+
+    alert(report + saveNote);
     return report;
   };
 
@@ -587,9 +601,10 @@ export function useTTSActions() {
     generatingTTS,
     ttsProgress,
     ttsStatus,
-    chapterTtsRunning,
-    chapterTtsProgress,
-    chapterTtsStatus,
+    chapterTtsRunning: chapterQueue.running,
+    chapterTtsProgress: chapterQueue.progress,
+    chapterTtsStatus: chapterQueue.status,
+    chapterQueue,
     handlePlayTTS,
     handleStopTTS,
     handleGenerateTTS,

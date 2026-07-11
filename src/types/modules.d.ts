@@ -18,6 +18,19 @@ interface AinovelPersistApi {
   isElectron: boolean;
 }
 
+interface AinovelToolsApi {
+  isElectron: boolean;
+  writeTextFile: (payload: {
+    relativePath: string;
+    content: string;
+    subdir?: string;
+  }) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  setTtsQueue: (snapshot: unknown) => Promise<{ ok?: boolean; path?: string; error?: string }>;
+  getTtsQueue: () => Promise<Record<string, unknown> | null>;
+  openPath?: (targetPath: string) => Promise<{ ok?: boolean; error?: string }>;
+}
+
 interface Window {
   ainovelPersist?: AinovelPersistApi;
+  ainovelTools?: AinovelToolsApi;
 }

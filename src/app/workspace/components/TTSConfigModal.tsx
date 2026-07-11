@@ -787,33 +787,16 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   <span
-                    className={`rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ${
-                      engineHealth.online
-                        ? engineHealth.xtts
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'bg-amber-500/20 text-amber-300'
-                        : 'bg-zinc-800 text-zinc-500'
-                    }`}
+                    className="rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-300"
                   >
-                    {engineHealth.loading
-                      ? '… engine'
-                      : engineHealth.online
-                        ? engineHealth.xtts
-                          ? '● Engine + XTTS'
-                          : '● Engine (Edge match)'
-                        : '○ Engine offline'}
+                    ● AI Novel Native Engine (Độc lập 100%)
                   </span>
                   <button
                     type="button"
-                    onClick={() => void startCloneEngine()}
-                    disabled={engineStarting || engineHealth.online}
-                    className="rounded border border-emerald-800/60 px-2 py-1 text-[9px] font-bold uppercase text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40"
+                    disabled={true}
+                    className="rounded border border-emerald-800/60 px-2 py-1 text-[9px] font-bold uppercase text-emerald-400 opacity-70"
                   >
-                    {engineStarting
-                      ? 'Đang bật…'
-                      : engineHealth.online
-                        ? 'Engine đã chạy'
-                        : 'Khởi động Engine Clone'}
+                    Không cần khởi động phụ thuộc
                   </button>
                 </div>
               </div>
@@ -827,6 +810,16 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   const f = e.target.files?.[0] || null;
                   setCloneSampleFile(f);
                   setCloneSampleLabel(f ? f.name : '');
+                  if (f) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const b64 = (reader.result as string).split(',')[1];
+                      store.updateTTSConfig({ vinaReferenceAudioB64: b64, vinaReferenceAudio: f.name, vinaUseClone: true });
+                    };
+                    reader.readAsDataURL(f);
+                  } else {
+                    store.updateTTSConfig({ vinaReferenceAudioB64: undefined, vinaReferenceAudio: '' });
+                  }
                 }}
               />
 
@@ -867,8 +860,11 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                 </label>
                 <input
                   type="text"
-                  value={cloneRefText}
-                  onChange={(e) => setCloneRefText(e.target.value)}
+                  value={config.vinaReferenceText ?? cloneRefText}
+                  onChange={(e) => {
+                    setCloneRefText(e.target.value);
+                    store.updateTTSConfig({ vinaReferenceText: e.target.value });
+                  }}
                   placeholder="Câu đang được nói trong file mẫu — giúp clone chuẩn hơn"
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-emerald-500"
                 />
@@ -1263,57 +1259,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
               </div>
 
 
-              {/* Tùy Chỉnh Giọng Đọc (Clone Voice Mới) */}
-              <div className="mt-6 border-t border-zinc-800/80 pt-4 space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-400">🎙️</span>
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">
-                    Tùy Chỉnh Giọng Đọc (Clone Voice Mới)
-                  </label>
-                </div>
-                <p className="text-[10px] text-zinc-500 leading-snug">
-                  Tải lên file âm thanh mẫu (.mp3 / .wav) để Vina-Voice tạo giọng mới. Hành động này sẽ ưu tiên ghi đè giọng được chọn ở trên.
-                </p>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase text-zinc-500">
-                      File Âm Thanh Mẫu
-                    </label>
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            const b64 = (reader.result as string).split(',')[1];
-                            store.updateTTSConfig({ vinaReferenceAudioB64: b64, vinaReferenceAudio: file.name, vinaUseClone: true });
-                          };
-                          reader.readAsDataURL(file);
-                        } else {
-                          store.updateTTSConfig({ vinaReferenceAudioB64: undefined, vinaReferenceAudio: '' });
-                        }
-                      }}
-                      className="w-full text-[11px] text-zinc-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500/20 file:text-emerald-400 hover:file:bg-emerald-500/30 cursor-pointer"
-                    />
-                    {config.vinaReferenceAudio && config.vinaReferenceAudioB64 && (
-                      <p className="text-[10px] text-emerald-400 mt-1 font-medium">✓ Đã nạp: {config.vinaReferenceAudio}</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase text-zinc-500">
-                      Văn Bản Mẫu (Khớp với Âm Thanh)
-                    </label>
-                    <textarea
-                      value={config.vinaReferenceText || ''}
-                      onChange={(e) => store.updateTTSConfig({ vinaReferenceText: e.target.value })}
-                      placeholder="Nhập chính xác nội dung câu nói trong file âm thanh (giúp Vina-Voice clone chuẩn hơn)..."
-                      className="w-full h-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-              </div>
+
 
             </div>
           ) : (
@@ -1343,6 +1289,10 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                         voice: nextVoiceConfig.voice,
                         vinaUseClone: false,
                       });
+                      // Warm-start OmniVoice Local (port 8880) khi chọn platform
+                      if (newPlatform === 'omnivoice_local') {
+                        void fetch('/api/omnivoice/status', { method: 'POST' }).catch(() => {});
+                      }
                     }}
                     className={SELECT_DARK}
                   >

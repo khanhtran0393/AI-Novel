@@ -70,7 +70,7 @@ interface ContentTabProps {
     silent?: boolean;
   }) => Promise<{ ok: number; fail: number; skipped: number }>;
   handleStopChapterTTS?: () => void;
-  handleChapterCastPreflight?: () => string | null;
+  handleChapterCastPreflight?: () => Promise<string | null> | string | null;
   generatingPrompt: { [sceneIndex: number]: boolean };
   regeneratingSinglePrompt: Record<string, boolean>;
   generatingImage: Record<string, boolean>;
@@ -181,9 +181,9 @@ export default function ContentTab({
               <button
                 type="button"
                 disabled={chapterTtsRunning}
-                onClick={() => handleChapterCastPreflight()}
+                onClick={() => void handleChapterCastPreflight()}
                 className="h-8 rounded-lg border border-sky-800/50 bg-sky-950/20 px-3 text-[10px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-950/40 disabled:opacity-40"
-                title="Dry-run: kiểm tra cast/multi/resume toàn chương, không gen"
+                title="Dry-run: kiểm tra cast/multi/resume + dọn partial chết, không gen"
               >
                 🔎 Kiểm tra cast
               </button>

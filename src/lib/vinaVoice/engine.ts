@@ -208,6 +208,51 @@ function concatWithCrossfade(
   void crossfadeSec;
 }
 
+async function tryNativeEngine(
+  text: string,
+  settings: VinaVoiceSettings,
+  outPath: string,
+  cwd: string,
+): Promise<{ ok: boolean; method?: string; error?: string }> {
+  try {
+    const pythonScript = path.join(cwd, 'src', 'python_core', 'vina_voice_infer.py');
+    if (!fs.existsSync(pythonScript)) {
+      return { ok: false, error: 'Python inference script not found' };
+    }
+    if (!settings.reference_audio) {
+      return { ok: false, error: 'No reference audio for clone' };
+    }
+
+    const { spawn } = require('child_process');
+    return new Promise((resolve) => {
+      // Vina Voice often uses the same text as ref if not provided
+      const refText = settings.reference_text || 'Mình là Ngọc, mình đến từ Hà Nội.';
+      const args = [
+        pythonScript,
+        '--text', text,
+        '--ref_text', refText,
+        '--ref_audio', settings.reference_audio,
+        '--output', outPath
+      ];
+      
+      const child = spawn('python', args, { cwd });
+      let errLog = '';
+      child.stderr.on('data', (d: any) => { errLog += d.toString(); });
+      child.on('close', (code: number) => {
+        if (code === 0 && fs.existsSync(outPath)) {
+          resolve({ ok: true, method: 'VinaEngine Python Native (clone)' });
+        } else {
+          // If GPU crashed, it fails. We fallback.
+          resolve({ ok: false, error: `Python exit ${code}. Log: ${errLog.slice(-200)}` });
+        }
+      });
+      child.on('error', (e: Error) => resolve({ ok: false, error: e.message }));
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 async function tryExternalEngine(
   text: string,
   settings: VinaVoiceSettings,
@@ -245,7 +290,7 @@ async function tryExternalEngine(
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length) return { ok: false, error: 'engine empty body' };
     fs.writeFileSync(outPath, buf);
-    return { ok: true, method: 'VinaEngine Local (clone)' };
+    return { ok: true, method: 'VinaEngine HTTP (clone)' };
   } catch (e) {
     return {
       ok: false,
@@ -330,7 +375,18 @@ export async function synthesizeVinaVoice(
   // 1) Prefer independent local clone engine if up
   if (!req.forceBuiltin) {
     const engineRaw = path.join(outDir, 'engine_raw.bin');
-    const ext = await tryExternalEngine(cleaned, settings, engineRaw);
+    let ext: { ok: boolean; method?: string; error?: string } = { ok: false };
+    
+    // First try Python native direct invocation (independent)
+    if (settings.use_clone && settings.reference_audio) {
+      ext = await tryNativeEngine(cleaned, settings, engineRaw, cwd);
+    }
+    
+    // Fallback to HTTP (e.g. if Vina-Voice.exe is running on port 8765)
+    if (!ext.ok) {
+      ext = await tryExternalEngine(cleaned, settings, engineRaw);
+    }
+    
     if (ext.ok && fs.existsSync(engineRaw)) {
       try {
         finalizeWithProsody(engineRaw, finalPath, settings, outDir);

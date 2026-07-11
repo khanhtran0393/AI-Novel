@@ -112,3 +112,12 @@ contextBridge.exposeInMainWorld('ainovelPersist', {
   getBootInfo: () => boot,
   isElectron: true,
 });
+
+/** Tools: text reports + TTS chapter queue persistence */
+contextBridge.exposeInMainWorld('ainovelTools', {
+  isElectron: true,
+  writeTextFile: (payload) => ipcRenderer.invoke('ainovel-write-text-file', payload),
+  setTtsQueue: (snapshot) => ipcRenderer.invoke('ainovel-tts-queue-set', snapshot),
+  getTtsQueue: () => ipcRenderer.invoke('ainovel-tts-queue-get'),
+  openPath: (targetPath) => ipcRenderer.invoke('ainovel-open-path', targetPath),
+});

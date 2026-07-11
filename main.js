@@ -218,6 +218,59 @@ function registerIpc() {
     if (!paths) initPaths();
     return paths;
   });
+
+  // --- Text reports + TTS chapter queue snapshot (userData) ---
+  ipcMain.handle('ainovel-write-text-file', async (_event, payload) => {
+    try {
+      const userData = app.getPath('userData');
+      const subdir = String(payload?.subdir || 'reports').replace(/[^a-zA-Z0-9_-]/g, '') || 'reports';
+      const name = path.basename(String(payload?.relativePath || 'report.txt'));
+      const dir = path.join(userData, subdir);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const full = path.join(dir, name);
+      fs.writeFileSync(full, String(payload?.content ?? ''), 'utf8');
+      console.log('[ainovelTools] wrote', full);
+      return { ok: true, path: full };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('ainovel-tts-queue-set', async (_event, snapshot) => {
+    try {
+      const userData = app.getPath('userData');
+      const full = path.join(userData, 'tts-chapter-queue.json');
+      fs.writeFileSync(full, JSON.stringify(snapshot ?? {}, null, 2), 'utf8');
+      return { ok: true, path: full };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('ainovel-tts-queue-get', async () => {
+    try {
+      const userData = app.getPath('userData');
+      const full = path.join(userData, 'tts-chapter-queue.json');
+      if (!fs.existsSync(full)) return null;
+      const raw = fs.readFileSync(full, 'utf8');
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('ainovel-open-path', async (_event, targetPath) => {
+    try {
+      const { shell } = require('electron');
+      if (!targetPath || typeof targetPath !== 'string') {
+        return { ok: false, error: 'empty path' };
+      }
+      await shell.showItemInFolder(targetPath);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
 }
 
 async function snapshotFromRenderer() {

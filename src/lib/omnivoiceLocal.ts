@@ -263,7 +263,7 @@ function patchOmniServerConfigExtraIgnore(pythonExe: string): void {
     let t = fs.readFileSync(cfgPath, 'utf8');
     if (/extra\s*=\s*["']ignore["']/.test(t)) return;
     const next = t.replace(
-      /SettingsConfigDict\(\s*env_prefix=["']OMNIVOICE_["'],\s*env_file=["']\.env["'],\s*env_file_encoding=["']utf-8["'],\s*\)/s,
+      /SettingsConfigDict\(\s*env_prefix=["']OMNIVOICE_["'],\s*env_file=["']\.env["'],\s*env_file_encoding=["']utf-8["'],\s*\)/,
       `SettingsConfigDict(
         env_prefix="OMNIVOICE_",
         env_file=".env",
@@ -304,6 +304,7 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
     if (process.env.PATH) pathParts.push(process.env.PATH);
 
     const env: NodeJS.ProcessEnv = {
+      NODE_ENV: process.env.NODE_ENV || 'production',
       SystemRoot: process.env.SystemRoot,
       windir: process.env.windir,
       TEMP: process.env.TEMP,
