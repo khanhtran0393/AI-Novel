@@ -1,3 +1,4 @@
+import { API } from '@/contracts';
 import type { NavGatewayAction } from './navPythonBridge';
 
 export type { NavGatewayAction };
@@ -18,7 +19,7 @@ export async function callNavApi<T = unknown>(
   payload: Record<string, unknown> = {},
   timeoutMs?: number,
 ): Promise<NavGatewayClientResponse<T>> {
-  const res = await fetch('/api/navtools/gateway', {
+  const res = await fetch(API.navtools.gateway, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, payload, timeoutMs }),

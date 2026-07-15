@@ -9,6 +9,16 @@ export type ChapterQueueJob = {
   title: string;
 };
 
+/** Browser-safe: parallel scene count by TTS platform */
+export function resolveChapterTtsConcurrency(platform: string): number {
+  const p = (platform || '').toLowerCase();
+  // Omni + Vina share GPU/VRAM (4GB class) — always serial scenes
+  if (p === 'vina_voice' || p === 'omnivoice_local') return 1;
+  if (p === 'edge_tts' || p === 'piper' || p === 'vieneu_tts') return 3;
+  if (p === 'gemini_tts' || p === 'openai_tts' || p === 'tiktok_tts') return 2;
+  return 1;
+}
+
 export type ChapterQueueSnapshot = {
   running: boolean;
   cancelled: boolean;
@@ -94,16 +104,35 @@ export function cancelChapterQueue(): void {
   emit();
 }
 
+/** Show a notice on the chapter TTS status bar even when queue is idle. */
+export function setChapterQueueNotice(status: string, patch?: Partial<ChapterQueueSnapshot>): void {
+  state = {
+    ...state,
+    ...patch,
+    status: status || state.status,
+  };
+  emit();
+}
+
 export type StartChapterQueueParams = {
   chapterNumber: number;
   jobs: ChapterQueueJob[];
   skipExisting: boolean;
+  /**
+   * Parallel scenes (Edge/Piper benefit). Zero-Shot ONNX: keep 1 — warm daemon
+   * is single-GPU / single-process sequential.
+   */
+  concurrency?: number;
   /** Initial skipped count (e.g. preflight-blocked) */
   initialSkipped?: number;
   initialErrors?: string[];
   hasExistingAudio: (sceneIndex: number) => boolean;
   deductCredit: () => boolean;
   generateOne: (job: ChapterQueueJob) => Promise<void>;
+  onItemStart?: (job: ChapterQueueJob, index: number) => void;
+  onItemDone?: (job: ChapterQueueJob, index: number) => void;
+  onItemFail?: (job: ChapterQueueJob, index: number, error: string) => void;
+  onItemSkip?: (job: ChapterQueueJob, index: number) => void;
   onComplete?: (result: {
     ok: number;
     fail: number;
@@ -116,6 +145,7 @@ export type StartChapterQueueParams = {
 
 /**
  * Start chapter queue. If already running, rejects.
+ * Supports worker-pool concurrency (default 1).
  */
 export async function startChapterQueue(
   params: StartChapterQueueParams,
@@ -126,6 +156,10 @@ export async function startChapterQueue(
 
   const token = ++runToken;
   const total = params.jobs.length;
+  const concurrency = Math.max(
+    1,
+    Math.min(4, Number.isFinite(Number(params.concurrency)) ? Math.trunc(Number(params.concurrency)) : 1),
+  );
   state = {
     ...IDLE,
     running: true,
@@ -133,7 +167,7 @@ export async function startChapterQueue(
     chapter: params.chapterNumber,
     total,
     progress: 0,
-    status: `Bắt đầu ${total} cảnh…`,
+    status: `Bắt đầu ${total} cảnh${concurrency > 1 ? ` · song song ${concurrency}` : ''}…`,
     ok: 0,
     fail: 0,
     skipped: params.initialSkipped || 0,
@@ -144,36 +178,45 @@ export async function startChapterQueue(
   emit();
 
   try {
-    for (let j = 0; j < params.jobs.length; j++) {
-      if (token !== runToken) break;
-      if (state.cancelled) {
-        state = { ...state, status: 'Đã dừng bởi người dùng' };
-        emit();
-        break;
-      }
+    let nextIndex = 0;
+    let creditStop = false;
+    let finished = 0;
 
+    const bumpProgress = (title: string) => {
+      const progressed = Math.min(100, Math.round((finished / Math.max(1, total)) * 100));
+      state = {
+        ...state,
+        progress: progressed,
+        status: title,
+      };
+      emit();
+    };
+
+    const runOne = async (j: number) => {
+      if (token !== runToken || state.cancelled || creditStop) return;
       const job = params.jobs[j];
       state = {
         ...state,
         currentIndex: j,
         currentTitle: job.title,
-        progress: Math.round((j / Math.max(1, total)) * 100),
-        status: `Nền ${j + 1}/${total}: ${job.title}`,
+        status: `Nền ${j + 1}/${total}: ${job.title}${concurrency > 1 ? ` ·×${concurrency}` : ''}`,
       };
       emit();
+      params.onItemStart?.(job, j);
 
       if (params.skipExisting && params.hasExistingAudio(job.sceneIndex)) {
+        finished += 1;
         state = {
           ...state,
           skipped: state.skipped + 1,
-          progress: Math.round(((j + 1) / Math.max(1, total)) * 100),
-          status: `Bỏ qua ${job.title} (đã có audio)`,
         };
-        emit();
-        continue;
+        bumpProgress(`Bỏ qua ${job.title} (đã có audio)`);
+        params.onItemSkip?.(job, j);
+        return;
       }
 
       if (!params.deductCredit()) {
+        creditStop = true;
         state = {
           ...state,
           fail: state.fail + 1,
@@ -182,33 +225,45 @@ export async function startChapterQueue(
           status: 'Hết tín dụng — dừng queue',
         };
         emit();
-        break;
+        params.onItemFail?.(job, j, 'hết tín dụng');
+        return;
       }
 
       try {
         await params.generateOne(job);
-        if (token !== runToken) break;
+        if (token !== runToken) return;
+        finished += 1;
         state = {
           ...state,
           ok: state.ok + 1,
-          progress: Math.round(((j + 1) / Math.max(1, total)) * 100),
-          status: `Xong ${job.title}`,
         };
-        emit();
+        bumpProgress(`Xong ${job.title}`);
+        params.onItemDone?.(job, j);
       } catch (e) {
-        if (token !== runToken) break;
+        if (token !== runToken) return;
+        finished += 1;
         const msg = e instanceof Error ? e.message : String(e);
         state = {
           ...state,
           fail: state.fail + 1,
           failedIndexes: [...state.failedIndexes, job.sceneIndex],
           errors: [...state.errors, `${job.title}: ${msg}`],
-          progress: Math.round(((j + 1) / Math.max(1, total)) * 100),
-          status: `Lỗi ${job.title}`,
         };
-        emit();
+        bumpProgress(`Lỗi ${job.title}`);
+        params.onItemFail?.(job, j, msg);
       }
-    }
+    };
+
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (true) {
+        if (token !== runToken || state.cancelled || creditStop) break;
+        const j = nextIndex++;
+        if (j >= params.jobs.length) break;
+        await runOne(j);
+      }
+    });
+    await Promise.all(workers);
+    void finished;
 
     const cancelled = state.cancelled;
     const result = {
@@ -260,17 +315,33 @@ export async function hydrateChapterQueueFromDisk(): Promise<void> {
   const api = window.ainovelTools;
   if (!api?.getTtsQueue) return;
   try {
-    const snap = await api.getTtsQueue();
+    const snap = (await api.getTtsQueue()) as Partial<ChapterQueueSnapshot> | null;
     if (!snap || typeof snap !== 'object') return;
     // Never mark as running after reload (process was killed)
+    const wasRunning = snap.running === true;
+    const prevStatus = typeof snap.status === 'string' ? snap.status : '';
     state = {
       ...IDLE,
-      ...snap,
+      chapter: Number(snap.chapter) || 0,
+      progress: Number(snap.progress) || 0,
+      ok: Number(snap.ok) || 0,
+      fail: Number(snap.fail) || 0,
+      skipped: Number(snap.skipped) || 0,
+      total: Number(snap.total) || 0,
+      currentIndex: Number(snap.currentIndex) || 0,
+      currentTitle: typeof snap.currentTitle === 'string' ? snap.currentTitle : '',
+      errors: Array.isArray(snap.errors) ? snap.errors.map(String) : [],
+      failedIndexes: Array.isArray(snap.failedIndexes)
+        ? snap.failedIndexes.map(Number)
+        : [],
+      lastResult: snap.lastResult,
+      startedAt: snap.startedAt,
+      finishedAt: snap.finishedAt,
       running: false,
       cancelled: false,
-      status: snap.running
-        ? `(Phiên trước) ${snap.status || 'đã dừng khi tắt app'}`
-        : snap.status || '',
+      status: wasRunning
+        ? `(Phiên trước) ${prevStatus || 'đã dừng khi tắt app'}`
+        : prevStatus,
     };
     emit();
   } catch {

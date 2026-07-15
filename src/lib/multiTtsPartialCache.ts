@@ -2,6 +2,7 @@
  * Browser partial cache for multi-segment TTS.
  * Survives mid-scene failures so retry reuses completed segments.
  */
+import { sceneAssetKey } from '@/contracts';
 import { hash12 } from './voiceCast';
 
 export type MultiSegFingerprint = {
@@ -31,7 +32,7 @@ const PREFIX = 'ainovel_tts_multi_partial_v1:';
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 export function multiPartialStorageKey(chapter: number, sceneIndex: number): string {
-  return `${PREFIX}${chapter}_${sceneIndex}`;
+  return `${PREFIX}${sceneAssetKey(chapter, sceneIndex)}`;
 }
 
 export function fingerprintSeg(seg: MultiSegFingerprint): string {

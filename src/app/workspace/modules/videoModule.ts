@@ -1,11 +1,5 @@
-﻿import { useNovelStore } from '@/store/useNovelStore';
-import {
-  applyMediaSelfHealPatch,
-  collectVideoRepairRoutes,
-  diagnoseMediaSelfHeal,
-  resolveMediaSelfHealLog,
-  type VideoRepairRoute,
-} from '../utils/mediaSelfRepair';
+import { API } from '@/contracts';
+import { useNovelStore } from '@/store/useNovelStore';
 
 export interface CharacterJSON {
   id: string;
@@ -94,12 +88,41 @@ export interface GenerateVideoParams {
   videoApiKey?: string;
   videoAspectRatio?: string;
   useGpuAcceleration?: boolean;
+  /** Passed through to /api/generate-video (Seedance runs server-side) */
+  characterHints?: string[];
+  environmentHint?: string;
+  genre?: string;
 }
 
 async function postVideoGeneration(params: GenerateVideoParams) {
-  const { chapterNum, sceneIndex, promptIndex, prompt, duration, startImage, endImage, model, videoProvider, videoApiKey, videoAspectRatio, useGpuAcceleration } = params;
+  const {
+    chapterNum,
+    sceneIndex,
+    promptIndex,
+    prompt,
+    duration,
+    startImage,
+    endImage,
+    model,
+    videoProvider,
+    videoApiKey,
+    videoAspectRatio,
+    useGpuAcceleration,
+    characterHints,
+    environmentHint,
+    genre,
+  } = params;
 
-  const response = await fetch('/api/generate-video', {
+  let videoQuality = 'hd';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      videoQuality = localStorage.getItem('ainovel_flow_video_quality') || 'hd';
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const response = await fetch(API.generateVideo, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -114,7 +137,11 @@ async function postVideoGeneration(params: GenerateVideoParams) {
       videoProvider,
       videoApiKey,
       videoAspectRatio,
-      useGpuAcceleration
+      useGpuAcceleration,
+      characterHints,
+      environmentHint,
+      genre,
+      quality: videoQuality,
     })
   });
 
@@ -128,10 +155,14 @@ async function postVideoGeneration(params: GenerateVideoParams) {
 
 export async function generateVideoAction(params: GenerateVideoParams): Promise<{ videoPath: string; method?: string }> {
   const storeState = useNovelStore.getState();
-  const routeProvider = params.videoProvider || storeState.videoProvider || 'veo';
-  const routeModel = params.model || storeState.videoModel || 'veo';
+  const routeProvider = params.videoProvider || storeState.videoProvider || 'flow';
+  const routeModel =
+    params.model ||
+    storeState.videoModel ||
+    (routeProvider === 'flow' ? 'veo_3_1_t2v_fast_ultra' : 'veo');
   const routeKey = params.videoApiKey || storeState.videoApiKey || '';
 
+  // Seedance director runs inside /api/generate-video — client only routes params
   const baseParams: GenerateVideoParams = {
     ...params,
     videoProvider: routeProvider,
@@ -139,76 +170,7 @@ export async function generateVideoAction(params: GenerateVideoParams): Promise<
     videoApiKey: routeKey,
   };
 
-  try {
-    return await postVideoGeneration(baseParams);
-  } catch (firstError) {
-    const latestStore = useNovelStore.getState();
-    const diagnosis = await diagnoseMediaSelfHeal(latestStore, 'video', firstError, {
-      operation: 'generate_video',
-      routeProvider,
-      routeModel,
-      sceneIndex: params.sceneIndex,
-      promptIndex: params.promptIndex,
-    });
-
-    const routes = collectVideoRepairRoutes(
-      useNovelStore.getState(),
-      diagnosis,
-      routeProvider,
-    );
-
-    console.info(
-      `[Self-Heal Brain] Video orchestration: kind=${diagnosis.issue.kind}, routes=${routes.length}, log=${diagnosis.logId}`,
-    );
-
-    if (routes.length === 0) {
-      throw firstError instanceof Error ? firstError : new Error(String(firstError));
-    }
-
-    applyMediaSelfHealPatch(useNovelStore.getState(), diagnosis.patch);
-
-    const attempted: VideoRepairRoute[] = [];
-    let lastError: unknown = firstError;
-
-    for (const route of routes) {
-      attempted.push(route);
-      applyMediaSelfHealPatch(useNovelStore.getState(), {
-        videoProvider: route.provider,
-        videoModel: route.model,
-      });
-
-      console.info(
-        `[Self-Heal Brain] Trying video route ${attempted.length}/${routes.length}: ${route.provider}/${route.model} (${route.reason})`,
-      );
-
-      try {
-        const repaired = await postVideoGeneration({
-          ...baseParams,
-          videoProvider: route.provider,
-          model: route.model,
-          videoApiKey: route.videoApiKey || baseParams.videoApiKey,
-        });
-        await resolveMediaSelfHealLog(diagnosis.logId);
-        const summary = `Self-heal video: ${attempted.map((r) => `${r.provider}/${r.model}`).join(' -> ')}. OK: ${route.provider}/${route.model}`;
-        console.info(`[Self-Heal Brain] Video healed: ${summary}`);
-        return {
-          ...repaired,
-          method: summary,
-        };
-      } catch (retryError) {
-        lastError = retryError;
-        console.warn(
-          `[Self-Heal Brain] Video route failed ${route.provider}/${route.model}:`,
-          retryError instanceof Error ? retryError.message : retryError,
-        );
-      }
-    }
-
-    const lastMsg = lastError instanceof Error ? lastError.message : String(lastError);
-    const firstMsg = firstError instanceof Error ? firstError.message : String(firstError);
-    throw new Error(
-      `Self-heal that bai sau ${attempted.length} tuyen video. Goc: ${firstMsg}. Cuoi: ${lastMsg}. Log: ${diagnosis.logPath || diagnosis.logId}`,
-    );
-  }
+  // No provider swap fallback — only multi-key rotation inside API.
+  return await postVideoGeneration(baseParams);
 }
 

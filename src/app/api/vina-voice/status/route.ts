@@ -1,5 +1,5 @@
 /**
- * Trạng thái full stack Clone Voice (profiles + ffmpeg + engine 8765).
+ * Trạng thái full stack Universal Zero-Shot (ONNX brain + profiles + optional :8765).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { engineStatus, probeVinaEngine } from '@/lib/vinaVoice';
@@ -14,16 +14,23 @@ export async function GET(req: NextRequest) {
     'http://127.0.0.1:8765';
   const local = engineStatus();
   const remote = await probeVinaEngine(engineUrl);
+  const brain = local.onnxBrain;
+  const brainReady = !!brain?.ready;
   return NextResponse.json({
     ok: true,
     ...local,
     engine: remote,
-    cloneMode: remote.online
-      ? remote.xtts_available
-        ? 'xtts_zero_shot'
-        : 'engine_edge_match'
-      : 'builtin_edge_post',
-    readyForClone: local.ffmpeg === true,
-    readyForTrueTimbre: remote.online && !!remote.xtts_available,
+    /** Primary mode: local ONNX zero-shot when brain ready */
+    cloneMode: brainReady
+      ? 'universal_onnx_zero_shot'
+      : remote.online
+        ? remote.xtts_available
+          ? 'xtts_zero_shot'
+          : 'engine_edge_match'
+        : 'brain_missing',
+    readyForClone: brainReady || local.ffmpeg === true,
+    readyForTrueTimbre: brainReady || (remote.online && !!remote.xtts_available),
+    universalZeroShot: brainReady,
+    onnxBrain: brain,
   });
 }

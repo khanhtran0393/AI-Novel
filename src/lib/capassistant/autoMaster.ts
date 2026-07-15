@@ -215,6 +215,90 @@ ${srtText}`;
   throw lastError || new Error('Translate failed');
 }
 
+function extractSpokenFromSrt(srtText: string): string {
+  const lines = srtText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !/^\d+$/.test(l) && !l.includes('-->'));
+  return lines.join('. ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * VI voiceover: Universal Zero-Shot ONNX brain (default narrator / profile).
+ * Falls back to Edge only if UVE fails (logged as EMERGENCY).
+ */
+async function generateUniversalTtsFromSrt(
+  srtText: string,
+  outPath: string,
+  voice: string,
+  speed: number,
+  log: AutoMasterLogFn,
+): Promise<{ audioPath: string; duration: number } | null> {
+  const spoken = extractSpokenFromSrt(srtText);
+  if (!spoken) throw new Error('No spoken text extracted from SRT for TTS');
+  ensureDir(path.dirname(outPath));
+
+  try {
+    const { synthesizeVinaVoice } = await import('@/lib/vinaVoice/engine');
+    const { inspectVinaOnnxBrain } = await import('@/lib/vinaVoice/paths');
+    const brain = inspectVinaOnnxBrain(process.cwd());
+    if (!brain.ok) {
+      log(`[TTS] UVE brain not ready (${brain.totalGB}GB) — skip to Edge emergency`);
+      return null;
+    }
+    const isEdgeNeural = /Neural$/i.test(voice || '');
+    const profileName = !isEdgeNeural && voice ? voice : undefined;
+    log(
+      `[TTS] Universal Zero-Shot ONNX brain=${brain.totalGB}GB profile=${profileName || 'DEFAULT_NARRATOR'} speed=${speed}`,
+    );
+    const wavOut = outPath.replace(/\.[^.]+$/i, '') + '_uve.wav';
+    const result = await synthesizeVinaVoice(
+      {
+        text: spoken,
+        profileName,
+        universalBrainMode: true,
+        settings: {
+          speed: Number.isFinite(speed) ? speed : 1,
+          pitch_shift: 0,
+          use_clone: true,
+        },
+      },
+      {
+        cwd: process.cwd(),
+        outDir: path.join(path.dirname(outPath), `uve_${Date.now()}`),
+      },
+    );
+    if (!result.ok || !result.audioPath || !fs.existsSync(result.audioPath)) {
+      log(`[TTS] UVE failed: ${result.error || 'unknown'}`);
+      return null;
+    }
+    // Convert wav → target path (mp3) via ffmpeg when needed
+    if (outPath.toLowerCase().endsWith('.mp3') && !result.audioPath.toLowerCase().endsWith('.mp3')) {
+      const ff = resolveFfmpegPath();
+      const r = spawnSync(
+        ff,
+        ['-y', '-i', result.audioPath, '-codec:a', 'libmp3lame', '-q:a', '2', outPath],
+        { encoding: 'utf8', windowsHide: true, timeout: 120_000 },
+      );
+      if (r.status !== 0 || !fs.existsSync(outPath)) {
+        fs.copyFileSync(result.audioPath, wavOut);
+        // keep wav as deliverable
+        return {
+          audioPath: result.audioPath,
+          duration: 0,
+        };
+      }
+    } else {
+      fs.copyFileSync(result.audioPath, outPath);
+    }
+    log(`[TTS] UVE ok method=${result.method}`);
+    return { audioPath: outPath, duration: 0 };
+  } catch (e) {
+    log(`[TTS] UVE exception: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
+
 async function generateEdgeTtsFromSrt(
   srtText: string,
   outPath: string,
@@ -223,14 +307,22 @@ async function generateEdgeTtsFromSrt(
   log: AutoMasterLogFn,
 ): Promise<{ audioPath: string; duration: number }> {
   // Strip SRT to spoken text lines
-  const lines = srtText
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !/^\d+$/.test(l) && !l.includes('-->'));
-  const spoken = lines.join('. ').replace(/\s+/g, ' ').trim();
+  const spoken = extractSpokenFromSrt(srtText);
   if (!spoken) throw new Error('No spoken text extracted from SRT for TTS');
 
   ensureDir(path.dirname(outPath));
+
+  // Prefer Universal ONNX brain for Vietnamese pipeline
+  const tgtLooksVi =
+    !voice ||
+    /vi-VN|vi_|vietnamese|nữ|nam|lồng|truyện|tin tức/i.test(voice) ||
+    !/Neural$/i.test(voice);
+  if (tgtLooksVi) {
+    const uve = await generateUniversalTtsFromSrt(srtText, outPath, voice, speed, log);
+    if (uve) return uve;
+    log('[TTS] EMERGENCY_EDGE: UVE unavailable — falling back to Edge (labeled)');
+  }
+
   log(`[TTS] Edge TTS voice=${voice} speed=${speed}`);
 
   // Use node-edge-tts via dynamic import if available, else call generate-tts route logic inline

@@ -3,6 +3,7 @@
  * Word-Gate, scene parsing/normalization, continue-tail truncation.
  */
 
+import { assetKeyBelongsToChapter } from '@/contracts';
 import { formatProfileBibleLine, type NhanVatProfile } from './characterProfile';
 
 export const DEFAULT_WORD_GOAL = 4250;
@@ -224,10 +225,9 @@ export function formatWorldState(ws?: {
   ].join('\n');
 }
 
-/** Keys in store media maps are `${chapter}_${scene}...` or `char_*`. */
+/** Keys in store media maps — @see contracts/keys (scene/image/video/char). */
 export function isChapterAssetKey(key: string, chapterNum: number): boolean {
-  const prefix = `${chapterNum}_`;
-  return key === String(chapterNum) || key.startsWith(prefix);
+  return assetKeyBelongsToChapter(key, chapterNum);
 }
 
 export function filterOutChapterKeys<T>(

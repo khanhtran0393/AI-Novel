@@ -1,3 +1,4 @@
+import { API } from '@/contracts';
 /**
  * Hậu trường chuẩn bị catalog giọng (client).
  * Gọi /api/tts/voices để merge: static + Piper scan + OmniVoice library + Vina profiles.
@@ -71,8 +72,15 @@ export function mergeOmnivoiceIntoCatalog(
       previewUrl: voice.previewUrl,
     };
     const idx = next.omnivoice_local[lang].findIndex((x) => x.id === entry.id);
-    if (idx >= 0) next.omnivoice_local[lang][idx] = entry;
-    else next.omnivoice_local[lang].push(entry);
+    if (idx >= 0) {
+      const prev = next.omnivoice_local[lang][idx];
+      // Prefer longer display name when library has style variants under same id
+      if ((entry.name || '').length >= (prev.name || '').length) {
+        next.omnivoice_local[lang][idx] = entry;
+      }
+    } else {
+      next.omnivoice_local[lang].push(entry);
+    }
   }
   return next;
 }
@@ -92,7 +100,7 @@ export async function prepareVoiceCatalog(options?: {
   inflight = (async () => {
     try {
       const qs = options?.forceRefresh ? '?refresh=1' : '';
-      const res = await fetch(`/api/tts/voices${qs}`, {
+      const res = await fetch(`${API.ttsVoices}${qs}`, {
         method: 'GET',
         cache: options?.forceRefresh ? 'no-store' : 'default',
         signal: options?.signal,

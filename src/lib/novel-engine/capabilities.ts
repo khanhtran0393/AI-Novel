@@ -3,6 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { API } from '@/contracts';
 import { ALL_NAV_GATEWAY_ACTIONS } from '@/lib/nav/navPythonBridge';
 import { getEngineRoot } from './store/diskStore';
 import { getRunnerMeta } from './runner';
@@ -56,7 +57,7 @@ export function buildCapabilitiesReport() {
         available: capcut,
         note: capcut
           ? 'CapCut desktop detected'
-          : 'Missing — auto fallback Edge TTS',
+          : 'Missing — no auto fallback (chọn Edge TTS thủ công nếu cần)',
       },
       exportCapcutProject: {
         available: true,
@@ -69,17 +70,17 @@ export function buildCapabilitiesReport() {
       dependsOnNavToolsExe: false,
     },
     apis: {
-      generate: '/api/generate',
-      tts: '/api/generate-tts',
+      generate: API.generate,
+      tts: API.generateTts,
       ainovel: [
-        '/api/ainovel/status',
-        '/api/ainovel/start',
-        '/api/ainovel/stop',
-        '/api/ainovel/stream',
-        '/api/ainovel/config',
-        '/api/ainovel/chapters',
-        '/api/ainovel/diag',
-        '/api/ainovel/capabilities',
+        API.ainovel.status,
+        API.ainovel.start,
+        API.ainovel.stop,
+        API.ainovel.stream,
+        API.ainovel.config,
+        API.ainovel.chapters,
+        API.ainovel.diag,
+        API.ainovel.capabilities,
       ],
     },
   };

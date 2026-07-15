@@ -1,6 +1,7 @@
-import { Chuong, useNovelStore } from '@/store/useNovelStore';
+import { useNovelStore, type Chuong } from '@/store/useNovelStore';
 import { resolveUserRules } from '@/lib/youtubeSafe';
 import type { NhanVatProfile } from '@/lib/characterProfile';
+import { postGenerate } from './apiClient';
 
 export interface WriteChapterParams {
   apiKey: string;
@@ -48,66 +49,6 @@ export interface WriteChapterResult {
   scenesOk?: boolean;
 }
 
-function resolveKeysToUse(): { keysToUse: string[]; model: string } {
-  const storeState = useNovelStore.getState();
-  const model = storeState.aiMasterModel;
-  let keysToUse: string[] = [];
-  if (model === 'gpt4o') {
-    keysToUse =
-      storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0
-        ? storeState.openaiApiKeys
-        : storeState.openaiApiKey
-          ? [storeState.openaiApiKey]
-          : [];
-  } else if (model === 'llama') {
-    keysToUse =
-      storeState.grokApiKeys && storeState.grokApiKeys.length > 0
-        ? storeState.grokApiKeys
-        : storeState.grokApiKey
-          ? [storeState.grokApiKey]
-          : [];
-  } else {
-    keysToUse =
-      storeState.apiKeys && storeState.apiKeys.length > 0
-        ? storeState.apiKeys
-        : storeState.apiKey
-          ? [storeState.apiKey]
-          : [];
-  }
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  return { keysToUse, model };
-}
-
-async function postGenerate(
-  requestType: string,
-  payload: Record<string, unknown>,
-  signal?: AbortSignal,
-): Promise<Record<string, unknown>> {
-  const { keysToUse, model } = resolveKeysToUse();
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType,
-      apiKeys: keysToUse,
-      model,
-      payload,
-    }),
-    signal,
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || `Lỗi API ${requestType}.`);
-  }
-
-  return (await res.json()) as Record<string, unknown>;
-}
-
 export async function compressContextAction(params: {
   apiKeys: string[];
   apiKey: string;
@@ -121,7 +62,7 @@ export async function compressContextAction(params: {
       tom_tat_cuon_chieu: params.tom_tat_cuon_chieu,
       tri_nho_ngan_han: params.tri_nho_ngan_han,
     },
-    params.signal,
+    { signal: params.signal },
   );
   if (!data.compressedMemory) {
     throw new Error('API nén ngữ cảnh không trả về compressedMemory.');
@@ -187,7 +128,7 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
       force_word_gate_continue,
       humanize_script: storeYt?.humanizeScript !== false,
     },
-    signal,
+    { signal },
   );
 
   return {
@@ -237,7 +178,7 @@ export async function reviseChapterAction(params: {
       nhan_vat_prompts: params.nhan_vat_prompts,
       humanize_script: storeYt?.humanizeScript !== false,
     },
-    params.signal,
+    { signal: params.signal },
   );
 
   return {
@@ -266,7 +207,7 @@ export async function evaluateChapterAction(params: {
       noi_dung_kich_ban: params.noi_dung_kich_ban,
       userRules: resolveUserRules(params.userRules),
     },
-    params.signal,
+    { signal: params.signal },
   );
 }
 
@@ -283,7 +224,7 @@ export async function planArcAction(params: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<any> {
   const { signal, apiKey: _a, apiKeys: _b, ...payload } = params;
-  return postGenerate('PLAN_ARC', payload as unknown as Record<string, unknown>, signal);
+  return postGenerate('PLAN_ARC', payload as unknown as Record<string, unknown>, { signal });
 }
 
 export async function commitMemoryAction(params: {
@@ -308,6 +249,13 @@ export async function commitMemoryAction(params: {
   signal?: AbortSignal;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<any> {
+  // Always forward keys — do not rely solely on store auto-resolve
+  const keys =
+    Array.isArray(params.apiKeys) && params.apiKeys.length > 0
+      ? params.apiKeys.filter(Boolean)
+      : params.apiKey
+        ? [params.apiKey]
+        : undefined;
   return postGenerate(
     'COMMIT_MEMORY',
     {
@@ -320,6 +268,8 @@ export async function commitMemoryAction(params: {
       world_state: params.world_state,
       da_dien_ra_entities: params.da_dien_ra_entities,
     },
-    params.signal,
+    { signal: params.signal, apiKeys: keys, autoKeys: true },
   );
 }
+
+

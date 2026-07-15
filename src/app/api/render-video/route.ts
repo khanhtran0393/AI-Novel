@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { chapterAssetPrefix } from '@/contracts';
 
 export const runtime = 'nodejs';
 
@@ -73,7 +74,9 @@ export async function POST(req: Request) {
 
     // Lấy danh sách cảnh từ nội dung chương
     const scenes = chapterData?.noi_dung ? parseScenes(chapterData.noi_dung) : [];
-    const chapterImages = Object.keys(images || {}).filter(k => k.startsWith(`${chapterNum}_`));
+    const chapterImages = Object.keys(images || {}).filter((k) =>
+      k.startsWith(chapterAssetPrefix(chapterNum)),
+    );
 
     if (chapterImages.length > 0) {
       // Sắp xếp các key để render theo đúng thứ tự (sceneIndex, promptIndex)

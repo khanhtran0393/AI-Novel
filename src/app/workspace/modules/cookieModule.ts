@@ -1,10 +1,11 @@
+import { API } from '@/contracts';
 /**
  * Module quản lý Cookie Google AI Studio (Google Labs Whisk Cookie Manager)
  */
 
 export async function autoImportCookieAction(): Promise<string> {
   try {
-    const res = await fetch('/api/get-cookie', { method: 'POST' });
+    const res = await fetch(API.getCookie, { method: 'POST' });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Trích xuất Cookie thất bại hoặc hết hạn chờ.');

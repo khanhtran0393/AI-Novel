@@ -247,8 +247,12 @@ export function migrateRolesForPlatform(
 }
 
 /**
- * Ép gợi ý lại voice + speed/pitch/emotion từ quirk cho mọi NV (bỏ qua locked).
- * Dùng nút "Gợi ý tất cả" trong Studio.
+ * Ép gán lại voice + speed/pitch/emotion từ **toàn bộ hồ sơ NV**
+ * (giới tính, tuổi, giọng thoại, vai trò, động cơ, sở thích, dáng…)
+ * cho mọi role character chưa khóa.
+ *
+ * `preferProfileVoice=true`: luôn tính lại voice từ hồ sơ (không ưu tiên tts_voice cũ)
+ * trừ khi user đã gán tts_voice tường minh và opts.respectExplicitTtsVoice.
  */
 export function suggestAllRolesFromProfiles(
   roles: VoiceRole[],
@@ -257,16 +261,25 @@ export function suggestAllRolesFromProfiles(
   language: string,
   baseSpeed: number,
   basePitch: number,
+  opts?: { preferFreshSuggest?: boolean; respectExplicitTtsVoice?: boolean },
 ): { roles: VoiceRole[]; updated: number } {
+  const preferFresh = opts?.preferFreshSuggest !== false;
+  const respectExplicit = opts?.respectExplicitTtsVoice !== false;
   let updated = 0;
   const next = roles.map((r) => {
     if (r.kind === 'narrator' || r.locked) return r;
     if (r.kind !== 'character' || !r.characterName) return r;
     const profile = prompts[r.characterName];
+    const explicit = (profile?.tts_voice || '').trim();
+    const suggested =
+      suggestVoiceFromProfile(profile, platform, language) || r.voiceId || '';
+    // Ưu tiên: explicit (nếu respect) → fresh suggest từ giới tính/tính cách → giữ cũ
     const voiceId =
-      (profile?.tts_voice || '').trim() ||
-      suggestVoiceFromProfile(profile, platform, language) ||
-      r.voiceId;
+      (respectExplicit && explicit && !preferFresh
+        ? explicit
+        : preferFresh
+          ? suggested || explicit
+          : explicit || suggested) || r.voiceId;
     const prosody = suggestProsodyFromProfile(profile, { baseSpeed, basePitch });
     const changed =
       voiceId !== r.voiceId ||

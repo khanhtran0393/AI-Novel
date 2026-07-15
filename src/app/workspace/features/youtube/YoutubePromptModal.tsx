@@ -1,0 +1,130 @@
+import { API } from '@/contracts';
+import React, { useState } from 'react';
+import { X, PlaySquare, Copy, RefreshCw } from 'lucide-react';
+import { toast } from '@/lib/toastBus';
+
+export interface YoutubePromptModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  novelTitle?: string;
+  apiKey?: string;
+  apiKeys?: string[];
+}
+
+export default function YoutubePromptModal({
+  isOpen,
+  onClose,
+  novelTitle = '',
+  apiKey = '',
+  apiKeys = [],
+}: YoutubePromptModalProps) {
+  const [scriptText, setScriptText] = useState('');
+  const [result, setResult] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleGenerate = async () => {
+    if (!scriptText.trim()) {
+      toast.info('Notice', "Vui lòng dán kịch bản hoặc văn bản cần phân tích!");
+      return;
+    }
+    const keys = [apiKey, ...apiKeys].filter((k) => typeof k === 'string' && k.trim());
+    if (keys.length === 0) {
+      toast.info('Notice', '⚠️ Chưa có Gemini API Key. Nhập API Key ở Header.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(API.navtools.youtubeSeo, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: scriptText,
+          novelTitle,
+          apiKey: keys[0],
+          apiKeys: keys,
+          randomSeed: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          temperature: 1.0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Không thể tạo metadata YouTube (cần Gemini API Key)');
+      }
+      setResult(
+        typeof data.formatted === 'string' && data.formatted.trim()
+          ? data.formatted
+          : JSON.stringify(data.data ?? data, null, 2),
+      );
+    } catch (error) {
+      console.error(error);
+      toast.info('Notice', error instanceof Error ? error.message : 'Lỗi khi gọi NAV backend');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur p-4 font-sans text-white">
+      <div className="flex flex-col w-full max-w-2xl h-[80vh] bg-zinc-950 rounded-lg shadow-2xl border border-amber-900/40 overflow-hidden">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between bg-zinc-900/60 border-b border-zinc-800 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2">
+              <PlaySquare size={18} /> YOUTUBE PROMPT (NAVTools)
+            </h2>
+            <p className="text-zinc-400 text-xs mt-1">Tạo Tiêu đề, Mô tả và Hashtag chuẩn SEO từ kịch bản của bạn.</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-red-500 hover:text-white rounded-md text-zinc-400 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex flex-col flex-1 p-6 gap-4 overflow-y-auto">
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Kịch bản gốc</label>
+            <textarea
+              value={scriptText}
+              onChange={(e) => setScriptText(e.target.value)}
+              placeholder="Dán toàn bộ kịch bản hoặc phần giới thiệu vào đây..."
+              className="w-full h-32 bg-zinc-900/50 border border-zinc-800 rounded p-3 text-sm text-zinc-300 outline-none focus:border-amber-500 resize-none font-sans"
+            />
+          </div>
+          
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleGenerate}
+            className="w-full h-10 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase tracking-wider rounded transition-colors disabled:opacity-50"
+          >
+            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <PlaySquare className="h-4 w-4" />}
+            {loading ? 'Đang phân tích SEO...' : 'Tạo Metadata Youtube'}
+          </button>
+
+          {result && (
+            <div className="flex flex-col gap-2 mt-2 animate-in fade-in duration-300">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Kết quả SEO</label>
+                <button
+                  onClick={() => navigator.clipboard.writeText(result)}
+                  className="flex items-center gap-1 text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded text-zinc-300 transition-colors"
+                >
+                  <Copy size={12} /> Copy Toàn Bộ
+                </button>
+              </div>
+              <textarea
+                readOnly
+                value={result}
+                className="w-full h-48 bg-black/60 border border-emerald-900/50 rounded p-3 text-sm text-zinc-300 outline-none resize-none font-sans whitespace-pre-wrap"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

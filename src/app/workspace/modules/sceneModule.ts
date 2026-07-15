@@ -1,7 +1,8 @@
+import { postGenerate } from './apiClient';
 /**
  * Module quản lý các thao tác tương tác phân cảnh (Scene Card Interactivity Manager)
  */
-import { Chuong, useNovelStore } from '@/store/useNovelStore';
+import type { Chuong } from '@/store/useNovelStore';
 import { parseScenes } from '../utils/stringUtils';
 
 
@@ -58,51 +59,20 @@ export async function expandSceneAction(params: ExpandSceneParams): Promise<stri
   void apiKey;
   void apiKeys;
 
-  const storeState = useNovelStore.getState();
-  const model = storeState.aiMasterModel;
-  let keysToUse: string[] = [];
-  if (model === 'gpt4o') {
-    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
-  } else if (model === 'llama') {
-    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
-  } else {
-    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
-  }
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType: 'EXPAND_SCENE',
-      apiKeys: keysToUse,
-      model,
-      payload: {
-        ten_tac_pham,
-        chuong_hien_tai: currentChapter,
-        lorebook,
-        previous_scene_content: isHook ? '' : idx > 0 ? scenes[idx - 1].content : '',
-        current_scene_content: sceneToExpand.content,
-        next_scene_content: isHook
-          ? scenes[0]?.content || ''
-          : idx < scenes.length - 1
-            ? scenes[idx + 1].content
-            : '',
-        is_hook: !!isHook,
-      },
-    }),
+  const data = await postGenerate('EXPAND_SCENE', {
+    ten_tac_pham,
+    chuong_hien_tai: currentChapter,
+    lorebook,
+    previous_scene_content: isHook ? '' : idx > 0 ? scenes[idx - 1].content : '',
+    current_scene_content: sceneToExpand.content,
+    next_scene_content: isHook
+      ? scenes[0]?.content || ''
+      : idx < scenes.length - 1
+        ? scenes[idx + 1].content
+        : '',
+    is_hook: !!isHook,
   });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Lỗi khi kết nối với AI (Expart).');
-  }
-
-  const data = await res.json();
-  return (data.expanded_content || sceneToExpand.content).normalize('NFC');
+  return String(data.expanded_content || sceneToExpand.content).normalize('NFC');
 }
 
 interface RewriteSceneParams {
@@ -137,50 +107,19 @@ export async function rewriteSceneAction(params: RewriteSceneParams): Promise<st
   void apiKey;
   void apiKeys;
 
-  const storeState = useNovelStore.getState();
-  const model = storeState.aiMasterModel;
-  let keysToUse: string[] = [];
-  if (model === 'gpt4o') {
-    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
-  } else if (model === 'llama') {
-    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
-  } else {
-    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
-  }
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType: 'REWRITE_SCENE',
-      apiKeys: keysToUse,
-      model,
-      payload: {
-        ten_tac_pham,
-        chuong_hien_tai: currentChapter,
-        lorebook,
-        previous_scene_content: isHook ? '' : idx > 0 ? scenes[idx - 1].content : '',
-        current_scene_content: sceneToRewrite.content,
-        next_scene_content: isHook
-          ? scenes[0]?.content || ''
-          : idx < scenes.length - 1
-            ? scenes[idx + 1].content
-            : '',
-        is_hook: !!isHook,
-        humanize_script: humanize !== false,
-      },
-    }),
+  const data = await postGenerate('REWRITE_SCENE', {
+    ten_tac_pham,
+    chuong_hien_tai: currentChapter,
+    lorebook,
+    previous_scene_content: isHook ? '' : idx > 0 ? scenes[idx - 1].content : '',
+    current_scene_content: sceneToRewrite.content,
+    next_scene_content: isHook
+      ? scenes[0]?.content || ''
+      : idx < scenes.length - 1
+        ? scenes[idx + 1].content
+        : '',
+    is_hook: !!isHook,
+    humanize_script: humanize !== false,
   });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Lỗi khi kết nối với AI (Viết lại cảnh).');
-  }
-
-  const data = await res.json();
-  return (data.rewritten_content || sceneToRewrite.content).normalize('NFC');
+  return String(data.rewritten_content || sceneToRewrite.content).normalize('NFC');
 }

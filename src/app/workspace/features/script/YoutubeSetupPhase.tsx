@@ -1,0 +1,541 @@
+'use client';
+
+/**
+ * Setup riêng: Link YouTube · viết lại tương tự
+ *
+ * Luồng:
+ * 1. Dán link → bấm «Phân tích»
+ *    - Lấy captions → cache (đối chiếu % trùng)
+ *    - AI bóc cốt truyện → điền ô 3
+ * 2. Chỉnh % trùng / quy mô
+ * 3. Sinh kịch bản → dùng cache captions để canh %, rồi xóa cache
+ */
+import React, { useEffect } from 'react';
+import { useNovelStore } from '@/store/useNovelStore';
+import {
+  AlertCircle,
+  Link2,
+  Minus,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Video,
+  X,
+} from 'lucide-react';
+import { extractYoutubeVideoId } from '@/lib/youtubeSourceId';
+import {
+  chapterWordsMinutes,
+  resolveWpm,
+  totalScaleMinutes,
+} from './setupScaleDuration';
+
+interface YoutubeSetupPhaseProps {
+  promptError: string;
+  isGeneratingIdea: boolean;
+  isAnalyzingPlot: boolean;
+  /** Nút Phân tích: captions → cache + cốt truyện → ô 3 */
+  handlePhanTichYoutube: (url?: string) => Promise<void>;
+  handleGenerateOutline: () => Promise<void>;
+  onClose?: () => void;
+}
+
+export default function YoutubeSetupPhase({
+  promptError,
+  isGeneratingIdea,
+  isAnalyzingPlot,
+  handlePhanTichYoutube,
+  handleGenerateOutline,
+  onClose,
+}: YoutubeSetupPhaseProps) {
+  const store = useNovelStore();
+
+  const handleClose = () => {
+    if (onClose) onClose();
+    else store.setGiaiDoan(2);
+  };
+
+  const handleAdjustChapters = (amount: number) => {
+    const nextVal = Math.max(1, Math.min(1000, store.setup.so_chuong + amount));
+    store.setSetup({ so_chuong: nextVal });
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sim = store.youtubeSimilarityTarget ?? 80;
+  const busy = store.dang_tai || isGeneratingIdea || isAnalyzingPlot;
+  const captionCached = (store.youtubeSourceText || '').trim().length >= 40;
+  const captionWords = captionCached
+    ? (store.youtubeSourceText || '').trim().split(/\s+/).filter(Boolean).length
+    : 0;
+  const hasPlot =
+    (store.setup.mo_ta || '').trim().length > 40 &&
+    !(store.setup.mo_ta || '').trim().startsWith('[NGUỒN YOUTUBE') &&
+    !(store.setup.mo_ta || '').trim().startsWith('[RAW YOUTUBE');
+
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-[80] flex items-stretch justify-center p-2 sm:p-3 md:p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
+      style={{ top: 'var(--app-chrome-h, 32px)' }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="yt-setup-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Đóng"
+        onClick={handleClose}
+      />
+
+      <div
+        className="relative z-[1] flex h-full w-full max-w-[min(96rem,100%)] flex-col overflow-hidden rounded-[var(--app-radius-lg)] border border-zinc-800/90 bg-zinc-950/97 shadow-2xl shadow-red-500/10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/95 px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="min-w-0 flex-1">
+            <h2
+              id="yt-setup-title"
+              className="truncate text-[clamp(12px,1.5vw,15px)] font-bold leading-snug tracking-wide text-red-400 uppercase"
+            >
+              Link YouTube · viết lại tương tự
+            </h2>
+            <p className="text-[9px] leading-snug text-zinc-500 mt-0.5">
+              Phân tích link → cốt truyện · captions cache canh % trùng · xóa cache khi sinh kịch bản
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/60 text-zinc-400 transition-colors hover:border-red-900/50 hover:bg-red-950/30 hover:text-red-400"
+            title="Đóng"
+            aria-label="Đóng"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 space-y-4">
+          {/* 1. Link = Chủ đề + nút Phân tích */}
+          <div className="rounded-lg border border-red-900/40 bg-red-950/10 p-3">
+            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-400">
+              <Video className="h-3.5 w-3.5" />
+              1. Link YouTube (Chủ đề nguồn)
+            </label>
+            <p className="mb-2 text-[10px] text-zinc-500">
+              Dán link → bấm <strong className="text-zinc-300">Phân tích</strong>: lấy chép lời
+              (captions) vào <strong className="text-zinc-300">cache</strong> để đối chiếu % trùng,
+              đồng thời bóc <strong className="text-zinc-300">cốt truyện</strong> điền vào mục 3.
+              Video phải có captions.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative min-w-0 flex-1">
+                <Link2 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://www.youtube.com/watch?v=… / youtu.be/… / shorts/…"
+                  value={store.youtubeRewriteUrl || ''}
+                  onChange={(e) => store.setYoutubeRewrite({ url: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const u = (store.youtubeRewriteUrl || '').trim();
+                      if (u && extractYoutubeVideoId(u) && !busy) {
+                        void handlePhanTichYoutube(u);
+                      }
+                    }
+                  }}
+                  disabled={busy}
+                  className="w-full rounded-lg border border-zinc-800 bg-black py-2.5 pl-8 pr-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-red-500 disabled:opacity-50"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  !(store.youtubeRewriteUrl || '').trim() ||
+                  !extractYoutubeVideoId(store.youtubeRewriteUrl || '')
+                }
+                onClick={() => void handlePhanTichYoutube(store.youtubeRewriteUrl || '')}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-700/50 bg-sky-500/20 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/30 disabled:opacity-40"
+                title="Lấy captions (cache) + phân tích cốt truyện → ô 3"
+              >
+                {isAnalyzingPlot ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Đang phân tích…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Phân tích
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {captionCached ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800/50 bg-emerald-950/40 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-400">
+                  Captions cache · ~{captionWords} từ · canh % trùng
+                </span>
+              ) : (
+                <span className="text-[9px] text-zinc-600 font-medium">
+                  Chưa có captions cache — bấm Phân tích
+                </span>
+              )}
+              {hasPlot ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-400">
+                  Cốt truyện đã điền
+                </span>
+              ) : null}
+            </div>
+
+            {store.youtubeSourceTitle ? (
+              <p className="mt-1 text-[10px] text-zinc-500 truncate" title={store.youtubeSourceTitle}>
+                Video: {store.youtubeSourceTitle}
+              </p>
+            ) : null}
+          </div>
+
+          {/* 2. % ĐỘ TRÙNG LẶP mục tiêu */}
+          <div className="rounded-lg border border-amber-900/40 bg-amber-950/10 p-3">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-amber-400">
+              2. % Độ trùng lặp với ý tưởng mẫu
+            </label>
+            <p className="mb-2 text-[10px] text-zinc-500">
+              Mức bám cốt truyện / nhịp / ý tưởng nguồn khi viết lại (mặc định 80%). Đối chiếu với
+              captions cache lúc sinh kịch bản — tên NV, chi tiết, thoại phải gốc, không copy nguyên
+              văn. Captions cache sẽ <strong className="text-zinc-400">bị xóa</strong> sau khi sinh
+              xong.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="range"
+                min={10}
+                max={100}
+                step={5}
+                value={sim}
+                onChange={(e) =>
+                  store.setYoutubeRewrite({
+                    similarityTarget: parseInt(e.target.value, 10) || 80,
+                  })
+                }
+                className="min-w-[160px] flex-1 accent-amber-500"
+              />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    store.setYoutubeRewrite({ similarityTarget: Math.max(10, sim - 5) })
+                  }
+                  className="rounded border border-zinc-800 p-1 text-zinc-400 hover:text-white"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <input
+                  type="number"
+                  min={10}
+                  max={100}
+                  value={sim}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) store.setYoutubeRewrite({ similarityTarget: v });
+                  }}
+                  className="w-16 rounded border border-zinc-800 bg-black py-1.5 text-center text-lg font-black text-amber-400 outline-none focus:border-amber-500"
+                />
+                <span className="text-sm font-bold text-amber-500">%</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    store.setYoutubeRewrite({ similarityTarget: Math.min(100, sim + 5) })
+                  }
+                  className="rounded border border-zinc-800 p-1 text-zinc-400 hover:text-white"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {[60, 70, 80, 90].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => store.setYoutubeRewrite({ similarityTarget: p })}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                      sim === p
+                        ? 'border-amber-500 bg-amber-500/15 text-amber-300'
+                        : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'
+                    }`}
+                  >
+                    {p}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Cốt truyện — điền từ nút Phân tích */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">
+                3. Cốt truyện
+              </label>
+              <span className="text-[9px] text-zinc-600">
+                Tự điền khi bấm Phân tích · có thể chỉnh tay
+              </span>
+            </div>
+            <textarea
+              rows={6}
+              placeholder="Bấm «Phân tích» cạnh link — cốt truyện sẽ hiện ở đây (không dán chép lời thô)…"
+              value={store.setup.mo_ta}
+              onChange={(e) => store.setSetup({ mo_ta: e.target.value })}
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-amber-500 focus:bg-zinc-950 font-sans"
+            />
+            {promptError ? (
+              <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {promptError}
+              </p>
+            ) : null}
+          </div>
+
+          {/* 4. Quy mô */}
+          {(() => {
+            const wpm = resolveWpm(store.wpm);
+            const wordsPer = store.setup.so_tu_chuong || 4250;
+            const chapters =
+              Number(store.setup.so_chuong) > 0 ? Number(store.setup.so_chuong) : 0;
+            const perChapter = chapterWordsMinutes(wordsPer, wpm);
+            const total = totalScaleMinutes(chapters, wordsPer, wpm);
+            return (
+              <div className="rounded-lg border border-zinc-900 bg-zinc-900/20 p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    4. Quy mô
+                  </label>
+                  <span
+                    className="text-[9px] font-semibold text-zinc-500"
+                    title="Cài đặt Tốc độ đọc (WPM) — quy đổi từ → phút"
+                  >
+                    Tốc độ đọc: {wpm} WPM
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-amber-500">
+                      <span className="h-1 w-1 rounded-full bg-amber-500" /> Chương
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={store.setup.so_chuong}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val) && val > 0) store.setSetup({ so_chuong: val });
+                          else if (e.target.value === '') {
+                            store.setSetup({ so_chuong: '' as unknown as number });
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!store.setup.so_chuong || store.setup.so_chuong < 1) {
+                            store.setSetup({ so_chuong: 1 });
+                          }
+                        }}
+                        className="w-full rounded border border-zinc-800 bg-black p-2.5 pr-8 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-amber-500"
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustChapters(1)}
+                          className="text-zinc-500 hover:text-white"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustChapters(-1)}
+                          className="text-zinc-500 hover:text-white"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <p
+                      className="mt-1.5 text-center text-[10px] font-bold tabular-nums text-amber-400/90"
+                      title={`${chapters} chương × ${wordsPer} từ = ${total.totalWords} từ ÷ ${wpm} WPM`}
+                    >
+                      Tổng dự tính: {total.label}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500">
+                      <span className="h-1 w-1 rounded-full bg-emerald-500" /> Từ/chương
+                    </label>
+                    <input
+                      type="number"
+                      min={500}
+                      max={10000}
+                      step={500}
+                      value={store.setup.so_tu_chuong || 4250}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val > 0) store.setSetup({ so_tu_chuong: val });
+                        else if (e.target.value === '') {
+                          store.setSetup({ so_tu_chuong: '' as unknown as number });
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!store.setup.so_tu_chuong || store.setup.so_tu_chuong < 500) {
+                          store.setSetup({ so_tu_chuong: 4250 });
+                        }
+                      }}
+                      className="w-full rounded border border-zinc-800 bg-black p-2.5 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-emerald-500"
+                    />
+                    <p
+                      className="mt-1.5 text-center text-[10px] font-bold tabular-nums text-emerald-400/90"
+                      title={`${wordsPer} từ ÷ ${wpm} WPM = thời lượng đọc 1 chương`}
+                    >
+                      ≈ {perChapter.label}/chương
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-sky-500">
+                      <span className="h-1 w-1 rounded-full bg-sky-500" /> Ngôn ngữ
+                    </label>
+                    <select
+                      value={store.setup.ngon_ngu || 'Tiếng Việt'}
+                      onChange={(e) => store.setSetup({ ngon_ngu: e.target.value })}
+                      className="w-full rounded border border-zinc-800 bg-black p-2.5 text-sm font-bold text-zinc-100 outline-none focus:border-sky-500 cursor-pointer"
+                    >
+                      <option value="Tiếng Việt">Tiếng Việt</option>
+                      <option value="English">English</option>
+                      <option value="中文 (Chinese)">中文 · Chinese</option>
+                      <option value="Español (Spanish)">Español · Spanish</option>
+                      <option value="日本語 (Japanese)">日本語 · Japanese</option>
+                      <option value="한국어 (Korean)">한국어 · Korean</option>
+                      <option value="Français (French)">Français · French</option>
+                      <option value="Deutsch (German)">Deutsch · German</option>
+                      <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                      <option value="ไทย (Thai)">ไทย · Thai</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 5. YT-Safe */}
+          <div className="rounded-lg border border-red-900/50 bg-red-950/10 p-3">
+            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-500">
+              <AlertCircle className="h-3.5 w-3.5" />
+              5. Chống AI & YT-Safe
+            </label>
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-[9px] font-bold uppercase text-red-400">
+                    Từ cấm
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="đáng chú ý là, nhìn chung..."
+                    value={store.userRules.forbidden_words}
+                    onChange={(e) =>
+                      store.updateUserRules({ forbidden_words: e.target.value })
+                    }
+                    className="w-full rounded border border-red-900/50 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-red-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[9px] font-bold uppercase text-orange-400">
+                    Từ sáo
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="không khỏi, dường như..."
+                    value={store.userRules.fatigue_words}
+                    onChange={(e) =>
+                      store.updateUserRules({ fatigue_words: e.target.value })
+                    }
+                    className="w-full rounded border border-orange-900/50 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                {(
+                  [
+                    ['enforceEditorGate', 'Chặn TTS Editor'],
+                    ['requireHumanEdit', 'Human Pass'],
+                    ['humanizeScript', 'Humanize'],
+                    ['autoAudioReadability', 'Nhịp audio'],
+                    ['injectBreathPauses', 'Nghỉ thở'],
+                    ['roomTone', 'Room tone'],
+                    ['bgmMix', 'BGM bed'],
+                    ['emotionTts', 'Pitch emotion'],
+                    ['applyLoudnorm', 'Loudnorm'],
+                    ['lockSeriesVoice', 'Voice DNA'],
+                    ['enforceShotGraph', 'Shot graph'],
+                    ['enforceAntiReuse', 'Anti-reuse'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label
+                    key={key}
+                    className="flex items-center gap-1.5 rounded border border-zinc-800 bg-black/50 px-2 py-1.5 cursor-pointer hover:border-zinc-700"
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-emerald-500 shrink-0"
+                      checked={!!(store.youtubeSafe || {})[key as keyof typeof store.youtubeSafe]}
+                      onChange={(e) =>
+                        store.updateYoutubeSafe({ [key]: e.target.checked })
+                      }
+                    />
+                    <span className="text-[10px] text-zinc-300 leading-tight">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-zinc-800/80 bg-zinc-950/95 p-3 sm:px-4 space-y-2">
+          {promptError ? (
+            <p className="flex items-start gap-1.5 text-xs text-red-400 leading-snug">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span className="whitespace-pre-wrap">{promptError}</span>
+            </p>
+          ) : (
+            <p className="text-[10px] text-zinc-500 leading-snug">
+              1) Link → <span className="text-sky-400 font-semibold">Phân tích</span> → 2) % trùng
+              → 3) Sinh kịch bản (captions cache xóa sau khi xong). Cần API Key.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleGenerateOutline()}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {store.dang_tai ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Đang thiết lập dàn ý...
+              </>
+            ) : (
+              <>🚀 TIẾN HÀNH SINH KỊCH BẢN AI</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

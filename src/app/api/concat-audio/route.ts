@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { driveMediaFilename, localAudioFilename } from '@/contracts';
 import { applyAudioStudioMix } from '@/lib/audioStudio';
 
 export const runtime = 'nodejs';
@@ -20,6 +21,9 @@ function resolveFfmpegCmd(): string {
 function resolvePublicAudioPath(audioPath: string): string | null {
   if (!audioPath || typeof audioPath !== 'string') return null;
   let rel = audioPath.trim().replace(/\\/g, '/');
+  // Strip ?t= cache-buster from generate-tts URLs
+  const q = rel.indexOf('?');
+  if (q >= 0) rel = rel.slice(0, q);
   if (rel.startsWith('http://') || rel.startsWith('https://')) {
     try {
       const u = new URL(rel);
@@ -180,7 +184,7 @@ export async function POST(req: Request) {
 
     const publicAudioDir = path.join(process.cwd(), 'public', 'audio');
     if (!fs.existsSync(publicAudioDir)) fs.mkdirSync(publicAudioDir, { recursive: true });
-    const filename = `chapter_${chapterNum}_scene_${sceneIndex}.mp3`;
+    const filename = localAudioFilename(chapterNum, sceneIndex, 'mp3');
     const localSavePath = path.join(publicAudioDir, filename);
     fs.writeFileSync(localSavePath, buffer);
     const audioPathRet = `/audio/${filename}`;
@@ -197,7 +201,10 @@ export async function POST(req: Request) {
         const scriptTitle = ten_tac_pham
           ? ten_tac_pham.replace(/[/\\:*?"<>|]/g, '_').trim()
           : 'Kịch Bản';
-        const driveFilename = `${scriptTitle}_Chuong_${chapterNum}_Canh_${sceneIndex}.mp3`;
+        const driveFilename = driveMediaFilename(scriptTitle, chapterNum, sceneIndex, {
+          kind: 'audio',
+          ext: 'mp3',
+        });
         driveFilePath = path.join(driveFolder, driveFilename);
         fs.writeFileSync(driveFilePath, buffer);
         driveSaved = true;

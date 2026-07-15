@@ -2,37 +2,47 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request) {
-  try {
-    const { folderPath } = await req.json();
+const execFileAsync = promisify(execFile);
 
-    if (!folderPath) {
-      return NextResponse.json({ error: 'Đường dẫn thư mục trống.' }, { status: 400 });
+function resolveOpenTarget(folderPath: string): string {
+  const raw = (folderPath || '').trim();
+  const cwd = process.cwd();
+
+  // Aliases used by Header / UI
+  if (
+    !raw ||
+    raw === '.' ||
+    raw === 'project' ||
+    raw === 'cwd' ||
+    raw === 'root' ||
+    raw.toLowerCase() === 'project-root'
+  ) {
+    // Prefer project root; then common media/output dirs
+    const candidates = [
+      cwd,
+      path.join(cwd, 'public', 'generated'),
+      path.join(cwd, 'output'),
+      path.join(cwd, 'public'),
+      path.join(cwd, '.ainovel-app'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return path.resolve(c);
     }
+    return path.resolve(cwd);
+  }
 
-    const resolvedPath = path.resolve(folderPath.trim());
+  // Absolute or relative path
+  return path.resolve(raw);
+}
 
-    // Tự động tạo thư mục cục bộ nếu chưa tồn tại để nâng cao trải nghiệm người dùng
-    if (!fs.existsSync(resolvedPath)) {
-      try {
-        fs.mkdirSync(resolvedPath, { recursive: true });
-        console.log(`[Open Folder] Tự động tạo thành công thư mục: ${resolvedPath}`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
-        console.warn(`[Open Folder] Không thể tự động tạo thư mục: ${err.message}`);
-      }
-    }
-
-    if (!fs.existsSync(resolvedPath)) {
-      return NextResponse.json({
-        error: `Thư mục không tồn tại cục bộ: ${resolvedPath}`,
-        path: resolvedPath
-      }, { status: 404 });
-    }
-
+async function openWithExplorer(resolvedPath: string): Promise<void> {
+  // Windows: explorer.exe; also try shell.open via cmd start as fallback
+  if (process.platform === 'win32') {
     try {
       const child = spawn('explorer.exe', [resolvedPath], {
         detached: true,
@@ -40,16 +50,70 @@ export async function POST(req: Request) {
         windowsHide: true,
       });
       child.unref();
+      return;
+    } catch {
+      /* fall through */
+    }
+    // Fallback: cmd start
+    await execFileAsync('cmd.exe', ['/c', 'start', '', resolvedPath], {
+      windowsHide: true,
+    });
+    return;
+  }
+
+  if (process.platform === 'darwin') {
+    await execFileAsync('open', [resolvedPath]);
+    return;
+  }
+
+  await execFileAsync('xdg-open', [resolvedPath]);
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json().catch(() => ({}))) as {
+      folderPath?: string;
+      path?: string;
+    };
+    const folderPath = body.folderPath ?? body.path ?? 'project';
+
+    let resolvedPath = resolveOpenTarget(folderPath);
+
+    // Auto-create if missing (absolute user path)
+    if (!fs.existsSync(resolvedPath)) {
+      try {
+        fs.mkdirSync(resolvedPath, { recursive: true });
+        console.log(`[Open Folder] Created: ${resolvedPath}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Open Folder] Cannot create: ${msg}`);
+      }
+    }
+
+    // If still missing, fall back to cwd
+    if (!fs.existsSync(resolvedPath)) {
+      resolvedPath = path.resolve(process.cwd());
+    }
+
+    try {
+      await openWithExplorer(resolvedPath);
     } catch (openError: unknown) {
-      return NextResponse.json({
-        error: openError instanceof Error ? openError.message : String(openError),
-        path: resolvedPath
-      }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: openError instanceof Error ? openError.message : String(openError),
+          path: resolvedPath,
+        },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ success: true, opened: resolvedPath });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Lỗi khi mở thư mục.' }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : 'Lỗi khi mở thư mục.',
+      },
+      { status: 500 },
+    );
   }
 }

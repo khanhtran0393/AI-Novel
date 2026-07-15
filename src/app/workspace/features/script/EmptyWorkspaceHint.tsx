@@ -1,0 +1,68 @@
+'use client';
+
+/**
+ * Smart empty state when project has no outline / empty chapter content.
+ * Single CTA only — do not duplicate write-chapter buttons in ContentTab.
+ */
+import React from 'react';
+import { useNovelStore } from '@/store/useNovelStore';
+import { FileText, Mic2, ImageIcon, Sparkles } from 'lucide-react';
+
+type Props = {
+  onWriteChapter?: () => void;
+};
+
+export default function EmptyWorkspaceHint({ onWriteChapter }: Props) {
+  const store = useNovelStore();
+  const chapter = store.danh_sach_chuong.find(
+    (c) => c.so_chuong === store.chuong_dang_chon,
+  );
+  const hasOutline = !!(store.dan_y_tong_the || '').trim();
+  const hasContent = !!(chapter?.noi_dung || '').trim();
+
+  if (hasContent) return null;
+
+  return (
+    <div className="mx-3 my-4 max-w-md rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 p-6 text-center sm:mx-4">
+      <FileText className="mx-auto h-8 w-8 text-zinc-600" />
+      <h3 className="mt-3 text-sm font-bold text-zinc-200">
+        {!hasOutline ? 'Chưa có dàn ý' : 'Chương này chưa có nội dung'}
+      </h3>
+      <p className="mx-auto mt-1.5 max-w-md text-[11px] leading-relaxed text-zinc-500">
+        {!hasOutline
+          ? 'Core loop: Setup → sinh outline trước khi gen TTS/ảnh. Tránh bấm 20 nút gen khi chưa có kịch bản.'
+          : 'Bấm «Sinh Chi Tiết Chương» — AI soạn phân cảnh, tự bù Cổng Từ, commit bộ nhớ, chấm Editor 7 chiều, auto rewrite/polish (YouTube-safe), rồi checklist trước khi TTS.'}
+      </p>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {!hasOutline && store.giai_doan === 2 && (
+          <button
+            type="button"
+            onClick={() => store.setGiaiDoan(1)}
+            className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-1.5 text-[10px] font-bold uppercase text-amber-400 hover:bg-amber-900/40 cursor-pointer"
+          >
+            Về Setup / Outline
+          </button>
+        )}
+        {hasOutline && onWriteChapter && (
+          <button
+            type="button"
+            disabled={store.dang_tai}
+            onClick={() => void onWriteChapter()}
+            className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-black shadow hover:bg-amber-400 transition-colors cursor-pointer disabled:opacity-40 animate-pulse"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Sinh Chi Tiết Chương {store.chuong_dang_chon}
+          </button>
+        )}
+      </div>
+      <div className="mt-4 flex justify-center gap-4 text-[10px] text-zinc-600">
+        <span className="inline-flex items-center gap-1 opacity-60">
+          <Mic2 className="h-3 w-3" /> TTS sau khi có chữ
+        </span>
+        <span className="inline-flex items-center gap-1 opacity-60">
+          <ImageIcon className="h-3 w-3" /> Ảnh sau khi có prompt
+        </span>
+      </div>
+    </div>
+  );
+}

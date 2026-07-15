@@ -63,7 +63,7 @@ export async function GET() {
       '## Independence',
       '- dependsOnAinovelGui: false',
       '- dependsOnPort8080: false',
-      `- capcutTts: ${report.capabilities.media.capcutTts.available ? 'installed' : 'fallback Edge'}`,
+      `- capcutTts: ${report.capabilities.media.capcutTts.available ? 'installed' : 'unavailable (no auto Edge fallback)'}`,
       `- pythonCore: ${report.capabilities.nav.pythonCoreGateway}`,
     ].join('\n');
 

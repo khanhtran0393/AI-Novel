@@ -100,10 +100,22 @@ export interface VinaChunk {
 export interface VinaSynthesizeRequest {
   text: string;
   settings?: Partial<VinaVoiceSettings>;
-  /** profile name from profiles_goc */
+  /** profile name from profiles_goc / profiles_user */
   profileName?: string;
-  /** force edge/piper backend instead of external engine */
+  /**
+   * Escape hatch: force Edge builtin (NOT ONNX brain).
+   * Universal mode ignores silent Edge unless this is true or VINA_EMERGENCY_EDGE=1.
+   */
   forceBuiltin?: boolean;
+  /**
+   * Universal Zero-Shot mode (default true when brain ready).
+   * Catalog + clone share the same ONNX path; no silent Edge.
+   */
+  universalBrainMode?: boolean;
+  /** Preview path: lower nfe_step for faster first listen */
+  isPreview?: boolean;
+  /** Chapter/script batch: mid NFE (between preview and full) */
+  isChapter?: boolean;
 }
 
 export interface VinaSynthesizeResult {
@@ -116,7 +128,35 @@ export interface VinaSynthesizeResult {
   chunks: number;
   warnings: string[];
   error?: string;
+  /** Structured error for UVE */
+  errorCode?: VinaUveErrorCode;
+  /** Speaker used for zero-shot (when resolved) */
+  speakerId?: string;
 }
+
+/** Zero-shot speaker = ref audio + transcript + seeds (not a separate neural engine). */
+export interface SpeakerRef {
+  id: string;
+  kind: 'catalog' | 'user_clone' | 'role_override' | 'ad_hoc' | 'default_narrator';
+  reference_audio: string;
+  reference_text: string;
+  speaker_seed: number;
+  style_seed: number;
+  speed: number;
+  pitch_shift: number;
+  formant: number;
+  treble_boost: number;
+  displayName: string;
+}
+
+export type VinaUveErrorCode =
+  | 'CODE_BRAIN_MISSING'
+  | 'CODE_REF_MISSING'
+  | 'CODE_REF_TEXT_EMPTY'
+  | 'CODE_PROFILE_NOT_FOUND'
+  | 'CODE_INFER_FAILED'
+  | 'CODE_EMPTY_TEXT'
+  | 'CODE_EMERGENCY_EDGE';
 
 export const DEFAULT_VINA_SETTINGS: VinaVoiceSettings = {
   gender: 'male',
@@ -129,7 +169,8 @@ export const DEFAULT_VINA_SETTINGS: VinaVoiceSettings = {
   style_seed: 4125,
   reference_audio: '',
   reference_text: '',
-  use_clone: false,
+  /** Universal Zero-Shot: catalog + clone share ONNX brain */
+  use_clone: true,
   chunking_strategy: 'automatic',
   max_chars_per_chunk: 125,
   chunk_length_buffer: 50,

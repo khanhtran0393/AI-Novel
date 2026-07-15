@@ -3,35 +3,7 @@ import {
   composeCharacterReferenceSheetPrompt,
   type NhanVatProfile,
 } from '@/lib/characterProfile';
-
-function resolveKeysForModel() {
-  const storeState = useNovelStore.getState();
-  const model = storeState.aiMasterModel;
-  let keysToUse: string[] = [];
-  if (model === 'gpt4o') {
-    keysToUse =
-      storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0
-        ? storeState.openaiApiKeys
-        : storeState.openaiApiKey
-          ? [storeState.openaiApiKey]
-          : [];
-  } else if (model === 'llama') {
-    keysToUse =
-      storeState.grokApiKeys && storeState.grokApiKeys.length > 0
-        ? storeState.grokApiKeys
-        : storeState.grokApiKey
-          ? [storeState.grokApiKey]
-          : [];
-  } else {
-    keysToUse =
-      storeState.apiKeys && storeState.apiKeys.length > 0
-        ? storeState.apiKeys
-        : storeState.apiKey
-          ? [storeState.apiKey]
-          : [];
-  }
-  return { model, keysToUse };
-}
+import { API, postGenerate } from './apiClient';
 
 export interface GenCharPromptParams {
   char: string;
@@ -44,20 +16,9 @@ export async function generateCharPromptAction(
   params: GenCharPromptParams,
 ): Promise<Partial<NhanVatProfile>> {
   const { char, dan_y_tong_the, lorebook, profile } = params;
-  const { model, keysToUse } = resolveKeysForModel();
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType: 'GENERATE_CHARACTER_PROMPT',
-      apiKeys: keysToUse,
-      model,
-      payload: {
+  const data = await postGenerate(
+    'GENERATE_CHARACTER_PROMPT',
+    {
         name: char,
         dan_y_tong_the,
         lorebook,
@@ -74,35 +35,17 @@ export async function generateCharPromptAction(
         dac_diem_nhan_dang: profile.dac_diem_nhan_dang || '',
         khuet_tat: profile.khuet_tat || '',
       },
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Lỗi sinh hồ sơ nhân vật.');
-  }
-
-  return await res.json();
+  );
+  return data as Partial<NhanVatProfile>;
 }
 
 export async function regenerateCharPromptOnlyAction(
   params: { char: string; profile: Partial<NhanVatProfile> },
 ): Promise<string> {
   const { char, profile } = params;
-  const { model, keysToUse } = resolveKeysForModel();
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType: 'GENERATE_CHARACTER_PROMPT_ONLY',
-      apiKeys: keysToUse,
-      model,
-      payload: {
+  const data = await postGenerate(
+    'GENERATE_CHARACTER_PROMPT_ONLY',
+    {
         name: char,
         gioi_tinh: profile.gioi_tinh || '',
         tuoi: profile.tuoi || '',
@@ -114,77 +57,8 @@ export async function regenerateCharPromptOnlyAction(
         dac_diem_nhan_dang: profile.dac_diem_nhan_dang || '',
         khuet_tat: profile.khuet_tat || '',
       },
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Lỗi tạo lại prompt.');
-  }
-
-  const data = await res.json();
-  return data.prompt || '';
-}
-
-interface GenCharImageCoreParams {
-  prompt: string;
-  savePathCharacter: string;
-  googleDrivePath: string;
-  ten_tac_pham: string;
-  googleStudioCookies: string[];
-  googleStudioCookie: string;
-  /** Optional scene/prompt index override for unique file names */
-  sceneIndex?: number;
-  promptIndex?: number;
-}
-
-export async function generateCharImageCore(
-  params: GenCharImageCoreParams,
-): Promise<{ imagePath: string; projectUrl?: string }> {
-  const {
-    prompt,
-    savePathCharacter,
-    googleDrivePath,
-    ten_tac_pham,
-    googleStudioCookies,
-    googleStudioCookie,
-    sceneIndex = 999,
-    promptIndex = 999,
-  } = params;
-
-  if (!prompt?.trim()) {
-    throw new Error('⚠️ Vui lòng soạn thảo hoặc bấm "Gen Prompt AI" cho nhân vật trước khi sinh ảnh.');
-  }
-
-  const selectedCookie = googleStudioCookies?.[0] || googleStudioCookie;
-  const drivePath =
-    savePathCharacter ||
-    (googleDrivePath
-      ? `${googleDrivePath.trim()}${googleDrivePath.trim().includes('/') ? '/' : '\\'}Hồ Sơ Nhân Vật`
-      : '');
-
-  const res = await fetch('/api/generate-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      chapterNum: 0,
-      sceneIndex,
-      promptIndex,
-      drivePath,
-      ten_tac_pham,
-      cookie: selectedCookie,
-      imageProvider: 'gemini',
-      model: 'whisk',
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Lỗi không xác định từ máy chủ Google Labs Whisk.');
-  }
-
-  return await res.json();
+  );
+  return String((data as { prompt?: string }).prompt || '');
 }
 
 interface GenCharImageParams {
@@ -223,6 +97,52 @@ export async function generateCharImageAction(
   });
 
   return { ...data, promptUsed: sheetPrompt };
+}
+
+
+async function generateCharImageCore(params: {
+  prompt: string;
+  savePathCharacter: string;
+  googleDrivePath: string;
+  ten_tac_pham: string;
+  googleStudioCookies: string[];
+  googleStudioCookie: string;
+  sceneIndex: number;
+  promptIndex: number;
+}): Promise<{ imagePath: string; projectUrl?: string }> {
+  const store = useNovelStore.getState();
+  const cookie =
+    (params.googleStudioCookies && params.googleStudioCookies[0]) ||
+    params.googleStudioCookie ||
+    store.googleStudioCookie ||
+    '';
+  const res = await fetch(API.generateImage, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: params.prompt,
+      chapterNum: 0,
+      sceneIndex: params.sceneIndex,
+      promptIndex: params.promptIndex,
+      drivePath: params.savePathCharacter || params.googleDrivePath || '',
+      ten_tac_pham: params.ten_tac_pham,
+      cookie,
+      imageProvider: store.imageProvider || 'gemini',
+      model: store.imageModel || 'whisk',
+      imageApiKey: store.imageApiKey || '',
+      imageAspectRatio: store.imageAspectRatio || '1:1',
+      imageCount: 1,
+      aiMasterApiKey: store.aiMasterApiKey || '',
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error || 'Lỗi gen ảnh nhân vật.',
+    );
+  }
+  const data = (await res.json()) as { imagePath?: string; projectUrl?: string };
+  return { imagePath: data.imagePath || '', projectUrl: data.projectUrl };
 }
 
 /** @deprecated multi-image path removed — use generateCharImageAction (1 sheet) */

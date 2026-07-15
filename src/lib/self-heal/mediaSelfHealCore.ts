@@ -48,6 +48,8 @@ export interface MediaSelfHealPatch {
     platform?: string;
     voice?: string;
     api_url_vieneu?: string;
+    /** VinaVoice clone / universal brain flag used by self-heal patches */
+    vinaUseClone?: boolean;
   };
 }
 
@@ -434,11 +436,25 @@ function buildVideoPatch(request: MediaSelfHealRequest, checks: ProviderProbeRes
 function buildAudioPatch(request: MediaSelfHealRequest, checks: ProviderProbeResult[], issueKind: MediaSelfHealIssueKind): MediaSelfHealPatch {
   const currentPlatform = request.config.ttsPlatform || '';
 
-  // Prefer switching away from the broken platform first.
+  // Cloud key/quota issues → switch to local Universal ONNX brain (not silent Edge).
   if (issueKind === 'quota' || issueKind === 'invalid_key' || issueKind === 'missing_key' || issueKind === 'missing_module') {
-    if (currentPlatform !== 'edge_tts') {
-      return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };
+    if (currentPlatform !== 'vina_voice') {
+      return {
+        ttsConfig: {
+          platform: 'vina_voice',
+          voice: request.config.ttsVoice || '',
+          vinaUseClone: true,
+        },
+      };
     }
+  }
+
+  if (currentPlatform === 'vina_voice') {
+    // Already on UVE — only then allow Advanced / emergency routes
+    if (providerOk(checks, 'gemini') && issueKind !== 'quota') {
+      return { ttsConfig: { platform: 'gemini_tts', voice: request.config.ttsVoice || 'Kore' } };
+    }
+    return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };
   }
 
   if (currentPlatform === 'gemini_tts' && providerOk(checks, 'gemini') && issueKind !== 'model_mismatch' && issueKind !== 'quota') {
@@ -448,11 +464,15 @@ function buildAudioPatch(request: MediaSelfHealRequest, checks: ProviderProbeRes
     return { ttsConfig: { platform: 'openai_tts', voice: request.config.ttsVoice || 'alloy' } };
   }
 
-  if (providerOk(checks, 'gemini') && currentPlatform !== 'gemini_tts') {
-    return { ttsConfig: { platform: 'gemini_tts', voice: request.config.ttsVoice || 'Kore' } };
-  }
-  if (providerOk(checks, 'openai') && currentPlatform !== 'openai_tts') {
-    return { ttsConfig: { platform: 'openai_tts', voice: 'alloy' } };
+  // Default self-heal target: Universal Zero-Shot ONNX
+  if (currentPlatform !== 'vina_voice') {
+    return {
+      ttsConfig: {
+        platform: 'vina_voice',
+        voice: request.config.ttsVoice || '',
+        vinaUseClone: true,
+      },
+    };
   }
 
   return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };

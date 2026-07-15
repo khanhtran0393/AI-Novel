@@ -89,6 +89,148 @@ export function loadVinaProfiles(cwd = process.cwd()): VinaProfileEntry[] {
   ];
 }
 
+function isUserCloneProfile(p: VinaProfileEntry): boolean {
+  return (
+    p._source === 'user_upload' ||
+    p._source === 'user_scan' ||
+    /^USER/i.test(p.name || '')
+  );
+}
+
+function safeUnlink(filePath: string, deleted: string[]): void {
+  try {
+    if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      fs.unlinkSync(filePath);
+      deleted.push(filePath);
+    }
+  } catch {
+    /* ignore locked / missing */
+  }
+}
+
+/**
+ * Xóa 1 giọng clone USER khỏi app (profiles_user.json + file mẫu user-clones).
+ * Không cho xóa catalog gốc (profiles_goc).
+ */
+export function deleteVinaProfile(
+  profileName: string,
+  cwd = process.cwd(),
+): { ok: boolean; error?: string; deletedFiles: string[]; profileName: string } {
+  const name = String(profileName || '').trim();
+  if (!name) {
+    return { ok: false, error: 'Thiếu tên profile.', deletedFiles: [], profileName: '' };
+  }
+
+  const all = loadVinaProfiles(cwd);
+  const profile = all.find((p) => p.name === name);
+  if (!profile) {
+    return {
+      ok: false,
+      error: `Không tìm thấy profile «${name}».`,
+      deletedFiles: [],
+      profileName: name,
+    };
+  }
+  if (!isUserCloneProfile(profile)) {
+    return {
+      ok: false,
+      error: `«${name}» là giọng catalog — chỉ xóa được giọng USER clone.`,
+      deletedFiles: [],
+      profileName: name,
+    };
+  }
+
+  const dataDir = getVinaDataDir(cwd);
+  const userDir = path.join(dataDir, 'user-clones');
+  const samplesDir = path.join(dataDir, 'samples');
+  const profilesUserPath = path.join(dataDir, 'profiles_user.json');
+  const deletedFiles: string[] = [];
+
+  // 1) Gỡ entry profiles_user.json
+  try {
+    if (fs.existsSync(profilesUserPath)) {
+      const raw = JSON.parse(fs.readFileSync(profilesUserPath, 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      if (raw && typeof raw === 'object' && name in raw) {
+        delete raw[name];
+        fs.writeFileSync(profilesUserPath, JSON.stringify(raw, null, 2), 'utf8');
+      }
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Không ghi được profiles_user.json: ${e instanceof Error ? e.message : String(e)}`,
+      deletedFiles,
+      profileName: name,
+    };
+  }
+
+  // 2) Xóa file mẫu + raw + alias samples
+  const baseName = path.basename(profile.filename || '');
+  const stem = baseName.replace(/\.[^.]+$/, '').replace(/_ref$/i, '').replace(/_raw$/i, '');
+  const dirs = [
+    profile._dir && path.isAbsolute(profile._dir) ? profile._dir : userDir,
+    userDir,
+    samplesDir,
+  ].filter(Boolean) as string[];
+
+  const candidates = new Set<string>();
+  for (const d of dirs) {
+    if (!baseName) break;
+    candidates.add(path.join(d, baseName));
+    if (stem) {
+      for (const ext of ['.wav', '.mp3', '.m4a', '.flac', '.ogg']) {
+        candidates.add(path.join(d, `${stem}_ref${ext}`));
+        candidates.add(path.join(d, `${stem}_raw${ext}`));
+        candidates.add(path.join(d, `${stem}${ext}`));
+      }
+    }
+  }
+  // Absolute path stored as filename
+  if (profile.filename && (profile.filename.includes('\\') || profile.filename.includes('/'))) {
+    candidates.add(profile.filename);
+  }
+
+  for (const f of candidates) safeUnlink(f, deletedFiles);
+
+  // 3) Public preview clones (clone_<id>.wav) — best effort by stem id
+  try {
+    const publicDir = path.join(cwd, 'public', 'audio', 'clones');
+    if (stem && fs.existsSync(publicDir)) {
+      for (const f of fs.readdirSync(publicDir)) {
+        if (f.includes(stem) || (stem.length >= 6 && f.includes(stem.slice(-6)))) {
+          safeUnlink(path.join(publicDir, f), deletedFiles);
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return { ok: true, deletedFiles, profileName: name };
+}
+
+/** Xóa toàn bộ USER clone (profiles_user + orphan user-clones). */
+export function deleteAllUserVinaProfiles(cwd = process.cwd()): {
+  ok: boolean;
+  deleted: string[];
+  errors: string[];
+} {
+  const userNames = loadVinaProfiles(cwd)
+    .filter(isUserCloneProfile)
+    .map((p) => p.name);
+  const deleted: string[] = [];
+  const errors: string[] = [];
+  for (const n of userNames) {
+    const r = deleteVinaProfile(n, cwd);
+    if (r.ok) deleted.push(n);
+    else if (r.error) errors.push(r.error);
+  }
+  return { ok: errors.length === 0, deleted, errors };
+}
+
 export function loadDefaultRules(cwd = process.cwd()): VinaVoiceSettings['custom_rules'] {
   const file = path.join(getVinaDataDir(cwd), 'session_state.json');
   if (!fs.existsSync(file)) return [];

@@ -1,6 +1,8 @@
 'use client';
+import { API } from '@/contracts';
 
 import { useNovelStore } from '@/store/useNovelStore';
+import { toast } from '@/lib/toastBus';
 
 export function useFileActions(streamText: string) {
   const store = useNovelStore();
@@ -28,11 +30,11 @@ export function useFileActions(streamText: string) {
   // Mở thư mục lưu trữ cục bộ bằng explorer.exe
   const handleOpenLocalFolder = async (folderPath: string) => {
     if (!folderPath || folderPath.trim() === '') {
-      alert('⚠️ Chưa cấu hình đường dẫn thư mục lưu trữ.');
+      toast.info('Notice', '⚠️ Chưa cấu hình đường dẫn thư mục lưu trữ.');
       return;
     }
     try {
-      const res = await fetch('/api/open-folder', {
+      const res = await fetch(API.openFolder, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderPath: folderPath.trim() })
@@ -43,7 +45,7 @@ export function useFileActions(streamText: string) {
       }
       console.log(`[Folder Opener] Successfully opened folder: ${folderPath}`);
     } catch (err: unknown) {
-      alert(`❌ Không thể mở thư mục: ${err instanceof Error ? err.message : String(err)}`);
+      toast.info('Notice', `❌ Không thể mở thư mục: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 

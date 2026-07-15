@@ -13,6 +13,7 @@ import {
   injectHumanJokeAsides,
   isHookSceneIndex,
 } from '@/lib/youtubeSafe';
+import { toast } from '@/lib/toastBus';
 
 export function useSceneActions(streamText: string) {
   const store = useNovelStore();
@@ -36,10 +37,10 @@ export function useSceneActions(streamText: string) {
   const handleCopyScene = async (text: string) => {
     try {
       await copySceneAction(text);
-      alert('📋 Đã sao chép nội dung phân cảnh thành công!');
+      toast.info('Notice', '📋 Đã sao chép nội dung phân cảnh thành công!');
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
-      alert('❌ Lỗi không thể sao chép văn bản.');
+      toast.info('Notice', '❌ Lỗi không thể sao chép văn bản.');
     }
   };
 
@@ -59,7 +60,7 @@ export function useSceneActions(streamText: string) {
         hookContent = (extracted.hook || '').trim();
       }
       if (!hookContent) {
-        alert('⚠️ Chưa có nội dung Hook — viết kịch bản chương hoặc dán cold-open vào ô MỞ ĐẦU trước.');
+        toast.info('Notice', '⚠️ Chưa có nội dung Hook — viết kịch bản chương hoặc dán cold-open vào ô MỞ ĐẦU trước.');
         return;
       }
 
@@ -88,7 +89,7 @@ export function useSceneActions(streamText: string) {
           note: 'author human pass after hook expand',
         });
       } catch (err: unknown) {
-        alert(`❌ Lỗi Mở rộng Hook: ${err instanceof Error ? err.message : String(err)}`);
+        toast.info('Notice', `❌ Lỗi Mở rộng Hook: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         store.setDangTai(false);
       }
@@ -113,7 +114,7 @@ export function useSceneActions(streamText: string) {
 
       handleSceneChange(idx, expandedContent);
     } catch (err: unknown) {
-      alert(`❌ Lỗi Mở rộng: ${err instanceof Error ? err.message : String(err)}`);
+      toast.info('Notice', `❌ Lỗi Mở rộng: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       store.setDangTai(false);
     }
@@ -135,7 +136,7 @@ export function useSceneActions(streamText: string) {
         hookContent = (extracted.hook || '').trim();
       }
       if (!hookContent) {
-        alert('⚠️ Chưa có nội dung Hook — viết kịch bản chương hoặc dán cold-open vào ô MỞ ĐẦU trước.');
+        toast.info('Notice', '⚠️ Chưa có nội dung Hook — viết kịch bản chương hoặc dán cold-open vào ô MỞ ĐẦU trước.');
         return;
       }
 
@@ -167,7 +168,7 @@ export function useSceneActions(streamText: string) {
           note: 'author human pass after hook rewrite',
         });
       } catch (err: unknown) {
-        alert(`❌ Lỗi Viết lại Hook: ${err instanceof Error ? err.message : String(err)}`);
+        toast.info('Notice', `❌ Lỗi Viết lại Hook: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         store.setDangTai(false);
       }
@@ -193,7 +194,7 @@ export function useSceneActions(streamText: string) {
 
       handleSceneChange(idx, rewrittenContent);
     } catch (err: unknown) {
-      alert(`❌ Lỗi Viết lại: ${err instanceof Error ? err.message : String(err)}`);
+      toast.info('Notice', `❌ Lỗi Viết lại: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       store.setDangTai(false);
     }

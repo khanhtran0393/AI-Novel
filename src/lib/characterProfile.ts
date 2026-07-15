@@ -5,6 +5,12 @@
  * - Biểu cảm khuôn mặt nhất quán theo cảm xúc
  */
 
+import {
+  characterAngleImageKey,
+  characterExprImageKey,
+  characterImageKey,
+} from '@/contracts';
+
 export const CHAR_ANGLES = ['front', 'three_quarter', 'side', 'back'] as const;
 export type CharAngle = (typeof CHAR_ANGLES)[number];
 
@@ -97,6 +103,10 @@ export interface NhanVatProfile {
    * Legacy field: vẫn dùng làm ảnh front / base.
    */
   prompt: string;
+  /** Local path of concept sheet — face identity lock for scene image gen */
+  face_ref?: string;
+  /** Short identity lock token / note (e.g. sheet:Name) */
+  identity_lock?: string;
   /** Prompt tiếng Anh cho từng góc quay (4 chiều) */
   angle_prompts?: Partial<Record<CharAngle, string>>;
   /** Prompt tiếng Anh cho từng biểu cảm khuôn mặt */
@@ -212,17 +222,17 @@ export function isCharacterProfileSetupComplete(
   return getCharacterProfileSetupStatus(raw, opts).complete;
 }
 
-/** Image map keys for generatedImages / projectUrls */
+/** Image map keys for generatedImages / projectUrls — delegates to @/contracts/keys */
 export function charImageKey(charName: string): string {
-  return `char_${charName}`;
+  return characterImageKey(charName);
 }
 
 export function charAngleImageKey(charName: string, angle: CharAngle): string {
-  return `char_${charName}_angle_${angle}`;
+  return characterAngleImageKey(charName, angle);
 }
 
 export function charExprImageKey(charName: string, emotion: CharEmotion): string {
-  return `char_${charName}_expr_${emotion}`;
+  return characterExprImageKey(charName, emotion);
 }
 
 /** Build identity lock block (English) from profile fields for image/video prompts */

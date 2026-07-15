@@ -46,6 +46,10 @@ function profileQuirkBlob(profile: Partial<NhanVatProfile> | undefined): string 
     profile.tuoi,
     profile.dang_nguoi,
     profile.gioi_tinh,
+    profile.dong_co,
+    profile.so_thich,
+    // personality / identity extras when present
+    (profile as { tinh_cach?: string }).tinh_cach,
   ]
     .filter(Boolean)
     .join(' ')
@@ -84,6 +88,26 @@ export function suggestVoiceFromProfile(
     /(cộc|khàn|trầm|thô|lạnh|cộc lốc|đàn ông|nam|gằn|cứng)/i.test(quirk);
 
   // Platform-specific classic picks (stable defaults)
+  // vina_voice: profile names are zero-shot speakers (catalog WAV mồi)
+  if (platform === 'vina_voice') {
+    if (femaleBias && !maleBias) {
+      const f = pool.find(
+        (o) =>
+          o.gender === 'female' ||
+          /nữ|nu |female|cô |chị /i.test(o.name || o.id),
+      );
+      if (f) return f.id;
+    }
+    if (maleBias && !femaleBias) {
+      const m = pool.find(
+        (o) =>
+          o.gender === 'male' ||
+          /nam |già|male|ông |chú /i.test(o.name || o.id),
+      );
+      if (m) return m.id;
+    }
+    return pool[0]?.id || '';
+  }
   if (platform === 'edge_tts') {
     if (maleBias && !femaleBias) return 'vi-VN-NamMinhNeural';
     if (femaleBias) return 'vi-VN-HoaiMyNeural';
@@ -261,7 +285,7 @@ export function suggestProsodyFromProfile(
 
   // —— Vai trò ——
   const vai = (profile?.vai_tro || '').toLowerCase();
-  if (/(phản\s*diện|trùm|ác)/i.test(vai)) {
+  if (/(phản\s*diện|trùm|ác|villain)/i.test(vai)) {
     pitchDelta -= 1;
     emotion = emotion || 'determined';
     notes.push('phản diện');
@@ -269,6 +293,54 @@ export function suggestProsodyFromProfile(
   if (/(hài|comic|trickster)/i.test(vai)) {
     emotion = emotion || 'happy';
     pitchDelta += 1;
+  }
+  if (/(chính|protagonist|hero)/i.test(vai)) {
+    emotion = emotion || 'determined';
+    notes.push('chính');
+  }
+
+  // —— Tính cách / động cơ / sở thích (chất giọng) ——
+  const dongCo = (profile?.dong_co || '').toLowerCase().normalize('NFC');
+  const soThich = (profile?.so_thich || '').toLowerCase().normalize('NFC');
+  const personalityBlob = `${dongCo} ${soThich} ${quirk}`;
+  if (/(báo\s*thù|hận|tàn|máu\s*lạnh|thù\s*hằn)/i.test(personalityBlob)) {
+    pitchDelta -= 1.5;
+    speedDelta -= 0.04;
+    emotion = emotion || 'determined';
+    notes.push('tính cứng');
+  }
+  if (/(bảo\s*vệ|che\s*chở|hy\s*sinh|nhân\s*hậu|hiền)/i.test(personalityBlob)) {
+    pitchDelta += 0.5;
+    speedDelta -= 0.05;
+    emotion = emotion || 'neutral';
+    notes.push('hiền');
+  }
+  if (/(tham\s*vọng|thống\s*trị|quyền\s*lực|lãnh\s*đạo)/i.test(personalityBlob)) {
+    pitchDelta -= 1;
+    emotion = emotion || 'determined';
+    notes.push('tham vọng');
+  }
+  if (/(nhút\s*nhát|rụt\s*rè|yếu\s*đuối|nhạy\s*cảm)/i.test(personalityBlob)) {
+    pitchDelta += 1.5;
+    speedDelta -= 0.04;
+    emotion = emotion || 'fear';
+    notes.push('nhút nhát');
+  }
+  if (/(lạnh\s*lùng|vô\s*cảm|xa\s*cách)/i.test(personalityBlob)) {
+    pitchDelta -= 1;
+    speedDelta -= 0.02;
+    notes.push('lạnh');
+  }
+
+  // —— Dáng người (gợi ý pitch nhẹ) ——
+  const dang = (profile?.dang_nguoi || '').toLowerCase();
+  if (/(vạm\s*vỡ|to\s*lớn|cao\s*to|cơ\s*bắp)/i.test(dang)) {
+    pitchDelta -= 1;
+    notes.push('vạm vỡ');
+  }
+  if (/(mảnh|gầy|nhỏ\s*nhắn|yểu)/i.test(dang)) {
+    pitchDelta += 1;
+    notes.push('mảnh');
   }
 
   // Không có tín hiệu → lệch nhẹ theo base (vẫn gán số để Studio không trống)

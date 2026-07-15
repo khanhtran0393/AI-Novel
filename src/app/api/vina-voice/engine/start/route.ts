@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       message: engine.online
         ? engine.xtts_available
           ? 'Engine online · XTTS sẵn sàng (clone tembre).'
-          : 'Engine online · chưa có XTTS (fallback Edge+match). Cài TTS[coqui] để clone thật.'
+          : 'Engine online · chưa có XTTS. Cài TTS[coqui] để clone HTTP; Zero-Shot ONNX vẫn hard-fail nếu não lỗi (không Edge ngầm).'
         : `Đã spawn python nhưng chưa thấy /health. Chạy tay: ${py} "${script}"`,
       script,
       python: py,

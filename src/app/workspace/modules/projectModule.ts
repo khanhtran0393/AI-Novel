@@ -1,3 +1,4 @@
+import { API } from '@/contracts';
 /**
  * Module quản lý toàn cục Dự án kịch bản (Project-wide Export & Assets Cleanup Manager)
  */
@@ -33,7 +34,7 @@ export function exportTxtAction(params: ExportTxtParams): void {
 
 export async function resetProjectAction(googleDrivePath: string): Promise<void> {
   try {
-    await fetch('/api/cleanup-assets', {
+    await fetch(API.cleanupAssets, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ drivePath: googleDrivePath })

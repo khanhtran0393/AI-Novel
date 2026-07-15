@@ -1,156 +1,28 @@
-import type { NovelStore, TTSConfig } from '@/store/useNovelStore';
+import { API } from '@/contracts';
+import type { NovelStore } from '@/store/useNovelStore';
+import { toast } from '@/lib/toastBus';
+import { classifyMediaError, firstKey } from './media-self-heal/issue';
+import type {
+  AudioRepairRoute,
+  ImageRepairRoute,
+  MediaIssue,
+  MediaSelfHealDiagnosis,
+  MediaSelfHealDomain,
+  MediaSelfHealPatch,
+  VideoRepairRoute,
+} from './media-self-heal/types';
 
-export type MediaIssueKind =
-  | 'invalid_key'
-  | 'missing_key'
-  | 'quota'
-  | 'model_mismatch'
-  | 'missing_module'
-  | 'missing_field'
-  | 'cookie_auth'
-  | 'network'
-  | 'unknown';
-
-export interface ImageRepairRoute {
-  provider: string;
-  model: string;
-  imageApiKey: string;
-  selectedCookie: string;
-  reason: string;
-}
-export interface MediaIssue {
-  kind: MediaIssueKind;
-  message: string;
-}
-
-export type MediaSelfHealDomain = 'image' | 'video' | 'audio' | 'ui_click';
-
-export interface MediaSelfHealPatch {
-  imageProvider?: string;
-  imageModel?: string;
-  videoProvider?: string;
-  videoModel?: string;
-  pickerStrategy?: 'windows_dialog' | 'compat_dialog';
-  ttsConfig?: Partial<TTSConfig>;
-}
-
-export interface MediaSelfHealDiagnosis {
-  logId: string;
-  logPath?: string;
-  issue: {
-    kind: string;
-    message: string;
-  };
-  patch: MediaSelfHealPatch;
-  shouldRetry: boolean;
-  summary: string;
-  checkedProviders?: {
-    provider: string;
-    ok: boolean;
-    status?: number;
-    reason: string;
-    models?: string[];
-  }[];
-}
-
-function firstKey(mainKey?: string, keys?: string[]) {
-  return mainKey || (keys && keys.length > 0 ? keys[0] : '') || '';
-}
-
-export function classifyMediaError(error: unknown): MediaIssue {
-  const message = error instanceof Error ? error.message : String(error || '');
-  const normalized = message.toLowerCase();
-
-  if (
-    normalized.includes('incorrect api key') ||
-    normalized.includes('invalid api key') ||
-    normalized.includes('api key not valid') ||
-    normalized.includes('unauthorized') ||
-    normalized.includes('forbidden') ||
-    normalized.includes('401') ||
-    normalized.includes('403')
-  ) {
-    return { kind: 'invalid_key', message };
-  }
-
-  if (
-    normalized.includes('vui long cau hinh') ||
-    normalized.includes('vui lòng cấu hình') ||
-    normalized.includes('missing api key') ||
-    normalized.includes('khong co api key') ||
-    normalized.includes('không có api key') ||
-    normalized.includes('chua cau hinh')
-  ) {
-    return { kind: 'missing_key', message };
-  }
-
-  if (
-    normalized.includes('quota') ||
-    normalized.includes('rate limit') ||
-    normalized.includes('too many requests') ||
-    normalized.includes('429') ||
-    normalized.includes('limit') ||
-    normalized.includes('no credits') ||
-    normalized.includes('credits or licenses') ||
-    normalized.includes('licenses yet') ||
-    normalized.includes('purchase those') ||
-    normalized.includes('billing') ||
-    normalized.includes('payment required') ||
-    normalized.includes('insufficient balance')
-  ) {
-    return { kind: 'quota', message };
-  }
-
-  if (
-    normalized.includes('module') ||
-    normalized.includes('cannot find') ||
-    normalized.includes('khong tim thay') ||
-    normalized.includes('khÃ´ng tÃ¬m tháº¥y') ||
-    normalized.includes('sscronet') ||
-    normalized.includes('capcut') ||
-    normalized.includes('piper')
-  ) {
-    return { kind: 'missing_module', message };
-  }
-
-  if (
-    normalized.includes('model') ||
-    normalized.includes('not found') ||
-    normalized.includes('unsupported') ||
-    normalized.includes('404')
-  ) {
-    return { kind: 'model_mismatch', message };
-  }
-
-  if (
-    normalized.includes('missing field') ||
-    normalized.includes('invalid request') ||
-    normalized.includes('bad request') ||
-    normalized.includes('400')
-  ) {
-    return { kind: 'missing_field', message };
-  }
-
-  if (
-    normalized.includes('cookie') ||
-    normalized.includes('signin') ||
-    normalized.includes('accounts.google.com') ||
-    normalized.includes('whisk')
-  ) {
-    return { kind: 'cookie_auth', message };
-  }
-
-  if (
-    normalized.includes('timeout') ||
-    normalized.includes('network') ||
-    normalized.includes('fetch failed') ||
-    normalized.includes('econnreset')
-  ) {
-    return { kind: 'network', message };
-  }
-
-  return { kind: 'unknown', message };
-}
+export { classifyMediaError } from './media-self-heal/issue';
+export type {
+  AudioRepairRoute,
+  ImageRepairRoute,
+  MediaIssue,
+  MediaIssueKind,
+  MediaSelfHealDiagnosis,
+  MediaSelfHealDomain,
+  MediaSelfHealPatch,
+  VideoRepairRoute,
+} from './media-self-heal/types';
 
 export function getGoogleCookieForPrompt(store: NovelStore, promptIndex: number) {
   const cookiesList = store.googleStudioCookies || [];
@@ -168,25 +40,32 @@ export function buildImageRepairPlan(store: NovelStore, promptIndex: number): Im
   const selectedCookie = getGoogleCookieForPrompt(store, promptIndex);
   const candidates: ImageRepairRoute[] = [
     {
-      provider: store.imageProvider || 'gemini',
-      model: store.imageModel || 'banana',
+      provider: store.imageProvider || 'flow',
+      model: store.imageModel || 'GEM_PIX_2',
       imageApiKey: getImageProviderApiKey(store, store.imageProvider),
       selectedCookie,
       reason: 'Tuyen dang chon trong cau hinh media.',
+    },
+    {
+      provider: 'flow',
+      model: 'GEM_PIX_2',
+      imageApiKey: '',
+      selectedCookie: '',
+      reason: 'Tu sua: doi sang Google Flow (extension bridge).',
     },
     {
       provider: 'gemini',
       model: 'banana',
       imageApiKey: getImageProviderApiKey(store, 'gemini'),
       selectedCookie,
-      reason: 'Tu sua: doi sang Google Studio Banana khi provider hien tai loi key/model.',
+      reason: 'Tu sua: doi sang Google Studio Banana (legacy).',
     },
     {
       provider: 'gemini',
       model: 'whisk',
       imageApiKey: '',
       selectedCookie,
-      reason: 'Tu sua: doi sang Google Studio Whisk Cookie khi co cookie hop le.',
+      reason: 'Tu sua: doi sang Google Studio Whisk Cookie (legacy).',
     },
     {
       provider: 'openai',
@@ -207,13 +86,15 @@ export function buildImageRepairPlan(store: NovelStore, promptIndex: number): Im
   const seen = new Set<string>();
   return candidates.filter((route) => {
     const hasCredential =
-      route.provider === 'openai'
-        ? !!route.imageApiKey
-        : route.provider === 'grok'
+      route.provider === 'flow'
+        ? true // session checked server-side via bridge
+        : route.provider === 'openai'
           ? !!route.imageApiKey
-          : route.model === 'whisk'
-            ? !!route.selectedCookie
-            : !!route.imageApiKey || !!route.selectedCookie;
+          : route.provider === 'grok'
+            ? !!route.imageApiKey
+            : route.model === 'whisk'
+              ? !!route.selectedCookie
+              : !!route.imageApiKey || !!route.selectedCookie;
 
     if (!hasCredential) return false;
     const id = `${route.provider}:${route.model}:${route.imageApiKey ? 'key' : 'cookie'}`;
@@ -326,6 +207,7 @@ export function buildLocalMediaPatch(
       return { imageProvider: next.provider, imageModel: next.model };
     }
     // Hard fallbacks when plan empty but credentials exist later
+    if (failedProvider !== 'flow') return { imageProvider: 'flow', imageModel: 'GEM_PIX_2' };
     if (getImageProviderApiKey(store, 'gemini')) return { imageProvider: 'gemini', imageModel: 'banana' };
     if (getGoogleCookieForPrompt(store, promptIndex)) return { imageProvider: 'gemini', imageModel: 'whisk' };
     if (getImageProviderApiKey(store, 'openai')) return { imageProvider: 'openai', imageModel: 'gpt-image-1' };
@@ -344,28 +226,13 @@ export function buildLocalMediaPatch(
   }
 
   if (domain === 'audio') {
-    const failedPlatform = String(config.ttsPlatform || store.ttsConfig?.platform || '');
-    // Prefer offline Edge when cloud TTS breaks; otherwise try other cloud routes.
-    if (failedPlatform !== 'edge_tts') {
-      return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };
-    }
-    if (getImageProviderApiKey(store, 'gemini')) {
-      return { ttsConfig: { platform: 'gemini_tts', voice: store.ttsConfig?.voice || 'Kore' } };
-    }
-    if (getImageProviderApiKey(store, 'openai')) {
-      return { ttsConfig: { platform: 'openai_tts', voice: 'alloy' } };
-    }
-    return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };
+    // No silent platform hop (Edge/Gemini/…). Fail loudly so user fixes the chosen engine.
+    void config.ttsPlatform;
+    void store.ttsConfig;
+    return {};
   }
 
   return { pickerStrategy: 'compat_dialog' };
-}
-
-export interface VideoRepairRoute {
-  provider: string;
-  model: string;
-  videoApiKey: string;
-  reason: string;
 }
 
 export function buildVideoRepairPlan(store: NovelStore): VideoRepairRoute[] {
@@ -375,17 +242,23 @@ export function buildVideoRepairPlan(store: NovelStore): VideoRepairRoute[] {
 
   const candidates: VideoRepairRoute[] = [
     {
-      provider: store.videoProvider || 'veo',
-      model: store.videoModel || 'veo',
+      provider: store.videoProvider || 'flow',
+      model: store.videoModel || 'veo_3_1_t2v_fast_ultra',
       videoApiKey:
         store.videoProvider === 'sora'
           ? openaiKey
           : store.videoProvider === 'grok'
             ? grokKey
-            : store.videoProvider === 'ffmpeg'
+            : store.videoProvider === 'flow' || store.videoProvider === 'ffmpeg'
               ? ''
               : geminiKey,
       reason: 'Tuyen dang chon trong cau hinh media.',
+    },
+    {
+      provider: 'flow',
+      model: 'veo_3_1_t2v_fast_ultra',
+      videoApiKey: '',
+      reason: 'Tu sua: doi sang Google Flow (extension bridge).',
     },
     {
       provider: 'veo',
@@ -415,7 +288,8 @@ export function buildVideoRepairPlan(store: NovelStore): VideoRepairRoute[] {
 
   const seen = new Set<string>();
   return candidates.filter((route) => {
-    const needsKey = route.provider !== 'ffmpeg';
+    const needsKey =
+      route.provider !== 'ffmpeg' && route.provider !== 'flow';
     if (needsKey && !route.videoApiKey) return false;
     const id = `${route.provider}:${route.model}`;
     if (seen.has(id)) return false;
@@ -424,41 +298,17 @@ export function buildVideoRepairPlan(store: NovelStore): VideoRepairRoute[] {
   });
 }
 
-export interface AudioRepairRoute {
-  platform: NonNullable<Partial<TTSConfig>['platform']> | string;
-  voice: string;
-  reason: string;
-}
-
 export function buildAudioRepairPlan(store: NovelStore, preferredVoice?: string): AudioRepairRoute[] {
-  const current = store.ttsConfig?.platform || 'edge_tts';
-  const voice = preferredVoice || store.ttsConfig?.voice || 'vi-VN-HoaiMyNeural';
-  const candidates: AudioRepairRoute[] = [
-    { platform: current, voice, reason: 'Tuyen TTS dang chon.' },
-    { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural', reason: 'Tu sua: fallback Edge TTS offline.' },
+  // Only retry the platform the user configured — never hop Edge/Gemini as silent backup.
+  const current = store.ttsConfig?.platform || 'vina_voice';
+  const voice = preferredVoice || store.ttsConfig?.voice || '';
+  return [
+    {
+      platform: current,
+      voice,
+      reason: 'Retry đúng platform TTS đã cấu hình (không fallback Edge ngầm).',
+    },
   ];
-
-  if (getImageProviderApiKey(store, 'gemini')) {
-    candidates.push({
-      platform: 'gemini_tts',
-      voice: voice || 'Kore',
-      reason: 'Tu sua: doi sang Gemini TTS.',
-    });
-  }
-  if (getImageProviderApiKey(store, 'openai')) {
-    candidates.push({
-      platform: 'openai_tts',
-      voice: 'alloy',
-      reason: 'Tu sua: doi sang OpenAI TTS.',
-    });
-  }
-
-  const seen = new Set<string>();
-  return candidates.filter((route) => {
-    if (seen.has(route.platform)) return false;
-    seen.add(route.platform);
-    return true;
-  });
 }
 
 function enrichDiagnosis(
@@ -530,7 +380,7 @@ export async function diagnoseMediaSelfHeal(
   );
 
   try {
-    const res = await fetch('/api/self-heal/media', {
+    const res = await fetch(API.selfHealMedia, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
@@ -651,7 +501,16 @@ export function collectAudioRepairRoutes(
 
   const push = (route: AudioRepairRoute | null | undefined) => {
     if (!route) return;
-    if (failedPlatform && route.platform === failedPlatform && route.platform !== 'edge_tts') return;
+    // Skip failed platform unless it is last-resort edge (still allow after vina retry)
+    if (
+      failedPlatform &&
+      route.platform === failedPlatform &&
+      route.platform !== 'edge_tts' &&
+      route.platform !== 'vina_voice'
+    ) {
+      return;
+    }
+    if (failedPlatform && route.platform === failedPlatform) return;
     if (seen.has(route.platform)) return;
     seen.add(route.platform);
     routes.push(route);
@@ -660,7 +519,11 @@ export function collectAudioRepairRoutes(
   if (diagnosis.patch?.ttsConfig?.platform) {
     push({
       platform: diagnosis.patch.ttsConfig.platform,
-      voice: diagnosis.patch.ttsConfig.voice || preferredVoice || 'vi-VN-HoaiMyNeural',
+      voice:
+        diagnosis.patch.ttsConfig.voice ||
+        preferredVoice ||
+        store.ttsConfig?.voice ||
+        '',
       reason: 'Tuyen tu patch cua Self-Healing Media Router.',
     });
   }
@@ -669,13 +532,7 @@ export function collectAudioRepairRoutes(
     push(route);
   }
 
-  if (!seen.has('edge_tts')) {
-    push({
-      platform: 'edge_tts',
-      voice: 'vi-VN-HoaiMyNeural',
-      reason: 'Last-resort Edge TTS offline fallback.',
-    });
-  }
+  // No auto-push of vina_voice / edge_tts — only diagnosis patch + explicit plan (same platform).
 
   return routes;
 }
@@ -683,7 +540,7 @@ export function collectAudioRepairRoutes(
 export async function resolveMediaSelfHealLog(logId?: string) {
   if (!logId) return;
   try {
-    await fetch('/api/self-heal/media', {
+    await fetch(API.selfHealMedia, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'resolve', logId }),
@@ -696,26 +553,41 @@ export async function resolveMediaSelfHealLog(logId?: string) {
 export function applyMediaSelfHealPatch(store: NovelStore, patch?: MediaSelfHealPatch) {
   if (!patch) return false;
   let changed = false;
+  // Ephemeral runtime repair only — do NOT mirror onto channel DNA
+  // (Cấu hình đầu ra / Giọng đọc toàn cục per-channel stay intact)
+  const noMirror = { mirrorChannel: false as const };
+  const notes: string[] = [];
 
   if (patch.imageProvider && patch.imageProvider !== store.imageProvider) {
-    store.setImageProvider(patch.imageProvider);
+    notes.push(`Ảnh: ${store.imageProvider} → ${patch.imageProvider} (tạm)`);
+    store.setImageProvider(patch.imageProvider, noMirror);
     changed = true;
   }
   if (patch.imageModel && patch.imageModel !== store.imageModel) {
-    store.setImageModel(patch.imageModel);
+    notes.push(`Model ảnh: ${store.imageModel} → ${patch.imageModel} (tạm)`);
+    store.setImageModel(patch.imageModel, noMirror);
     changed = true;
   }
   if (patch.videoProvider && patch.videoProvider !== store.videoProvider) {
-    store.setVideoProvider(patch.videoProvider);
+    notes.push(`Video: ${store.videoProvider} → ${patch.videoProvider} (tạm)`);
+    store.setVideoProvider(patch.videoProvider, noMirror);
     changed = true;
   }
   if (patch.videoModel && patch.videoModel !== store.videoModel) {
-    store.setVideoModel(patch.videoModel);
+    notes.push(`Model video: ${store.videoModel} → ${patch.videoModel} (tạm)`);
+    store.setVideoModel(patch.videoModel, noMirror);
     changed = true;
   }
   if (patch.ttsConfig) {
-    store.updateTTSConfig(patch.ttsConfig);
+    const from = store.ttsConfig?.platform || '?';
+    const to = patch.ttsConfig.platform || from;
+    notes.push(`TTS: ${from} → ${to} (tạm · DNA kênh giữ nguyên)`);
+    store.updateTTSConfig(patch.ttsConfig, noMirror);
     changed = true;
+  }
+
+  if (changed && notes.length) {
+    toast.warn('Self-heal (tạm thời)', notes.join('\n'));
   }
 
   return changed;
@@ -774,11 +646,20 @@ export function imageRouteFromSelfHealPatch(
 ): ImageRepairRoute | null {
   if (!patch?.imageProvider && !patch?.imageModel) return null;
 
-  const provider = patch.imageProvider || store.imageProvider || 'gemini';
-  const model = patch.imageModel || store.imageModel || 'banana';
+  const provider = patch.imageProvider || store.imageProvider || 'flow';
+  const model = patch.imageModel || store.imageModel || 'GEM_PIX_2';
   const selectedCookie = provider === 'gemini' ? getGoogleCookieForPrompt(store, promptIndex) : '';
-  const imageApiKey = model === 'whisk' ? '' : getImageProviderApiKey(store, provider);
+  const imageApiKey = model === 'whisk' || provider === 'flow' ? '' : getImageProviderApiKey(store, provider);
 
+  if (provider === 'flow') {
+    return {
+      provider,
+      model,
+      imageApiKey: '',
+      selectedCookie: '',
+      reason: 'Tuyen tu patch cua Self-Healing Media Router.',
+    };
+  }
   if (provider === 'gemini' && model === 'whisk' && !selectedCookie) return null;
   if (provider !== 'gemini' && !imageApiKey) return null;
   if (provider === 'gemini' && model !== 'whisk' && !imageApiKey && !selectedCookie) return null;

@@ -19,14 +19,28 @@ export type SampleOptimizeResult = {
 };
 
 function findFfmpeg(): string {
-  const local = path.join(process.cwd(), 'bin', 'ffmpeg', 'ffmpeg.exe');
-  if (fs.existsSync(local)) return local;
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, 'bin', 'ffmpeg.exe'),
+    path.join(cwd, 'bin', 'ffmpeg', 'ffmpeg.exe'),
+    path.join(cwd, 'python_core', 'ffmpeg', 'ffmpeg.exe'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
   return 'ffmpeg';
 }
 
 function findFfprobe(): string {
-  const local = path.join(process.cwd(), 'bin', 'ffmpeg', 'ffprobe.exe');
-  if (fs.existsSync(local)) return local;
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, 'bin', 'ffprobe.exe'),
+    path.join(cwd, 'bin', 'ffmpeg', 'ffprobe.exe'),
+    path.join(cwd, 'python_core', 'ffmpeg', 'ffprobe.exe'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
   return 'ffprobe';
 }
 

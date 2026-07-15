@@ -207,11 +207,13 @@ export async function POST(req: Request) {
       /* ignore */
     }
 
+    // isPreview: NFE 16 — đủ nghe thử "Tạo giọng đọc", nhanh hơn full chapter (NFE 32).
     const result = await synthesizeVinaVoice(
       {
         text,
         profileName,
         forceBuiltin: false,
+        isPreview: true,
         settings: {
           gender: gender === 'female' ? 'female' : 'male',
           speed,

@@ -22,6 +22,7 @@ const SECRET_KEYS = [
   'aiMasterApiKey',
   'googleStudioCookie',
   'googleStudioCookies',
+  'tiktokSessionIds',
   'ttsConfig',
 ] as const;
 
@@ -111,6 +112,7 @@ export function scorePersistedStore(raw: string | null | undefined): {
       ...(Array.isArray(state?.runwayApiKeys) ? state.runwayApiKeys : []),
       ...(Array.isArray(state?.falaiApiKeys) ? state.falaiApiKeys : []),
       ...(Array.isArray(state?.googleStudioCookies) ? state.googleStudioCookies : []),
+      ...(Array.isArray(state?.tiktokSessionIds) ? state.tiktokSessionIds : []),
     ].filter(Boolean).length;
     const generatedAssets =
       Object.keys(state?.generatedAudioPaths || {}).length +
@@ -119,6 +121,19 @@ export function scorePersistedStore(raw: string | null | undefined): {
       Object.keys(state?.generatedVideos || {}).length;
     const loreLen = String(state?.lorebook || '').trim().length;
     const outlineLen = String(state?.dan_y_tong_the || '').trim().length;
+    // Media/DNA settings richness — prevents wipe when chapter-heavy snapshot lacks DNA
+    const dnaLen = String(state?.visualDnaPrompt || '').trim().length;
+    const styleLen = String(state?.mediaStylePreset || '').trim().length;
+    const mediaFlags = [
+      state?.imageProvider,
+      state?.videoProvider,
+      state?.imageAspectRatio,
+      state?.videoAspectRatio,
+      state?.imageModel,
+      state?.videoModel,
+      state?.ttsConfig,
+    ].filter(Boolean).length;
+    const settingsScore = Math.min(dnaLen, 3000) + Math.min(styleLen, 500) + mediaFlags * 40;
 
     return {
       score:
@@ -129,7 +144,8 @@ export function scorePersistedStore(raw: string | null | undefined): {
         (state?.giai_doan === 2 ? 2000 : 0) +
         (String(state?.ten_tac_pham || '').trim() ? 50 : 0) +
         Math.min(loreLen, 2000) +
-        Math.min(outlineLen, 2000),
+        Math.min(outlineLen, 2000) +
+        settingsScore,
       chapterContentChars,
       keyCount,
     };

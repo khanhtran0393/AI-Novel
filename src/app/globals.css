@@ -3,18 +3,190 @@
 :root {
   --background: #000000;
   --foreground: #f4f4f5;
+  /* Radius scale — bo tròn hiện đại, scale theo viewport */
+  --app-radius: clamp(1rem, 1.5vw, 1.75rem);
+  --app-radius-sm: clamp(0.65rem, 1vw, 1rem);
+  --app-radius-lg: clamp(1.25rem, 2vw, 2.25rem);
+  --app-pad: clamp(0.4rem, 1.1vw, 1rem);
+  --app-gap: clamp(0.35rem, 0.8vw, 0.75rem);
+  --app-sidebar: clamp(15rem, 28vw, 20rem);
+  --app-header-h: clamp(3.25rem, 6vh, 3.75rem);
+  /* Thanh khung chính (kéo + 3 nút OS) — tách khỏi cửa sổ làm việc */
+  --app-chrome-h: 32px;
+  --app-font: clamp(0.8125rem, 0.75rem + 0.25vw, 0.9375rem);
+  --app-border: rgba(255, 255, 255, 0.07);
+  --app-border-soft: rgba(63, 63, 70, 0.55);
+  --app-surface: #09090b;
+  --app-surface-2: #0c0c0e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --radius-sm: var(--app-radius-sm);
+  --radius-md: var(--app-radius);
+  --radius-lg: var(--app-radius-lg);
+  --radius-xl: clamp(1.5rem, 2.5vw, 2.75rem);
+  --radius-2xl: clamp(1.75rem, 3vw, 3.25rem);
+  --radius-3xl: clamp(2rem, 3.5vw, 4rem);
+}
+
+html {
+  height: 100%;
+  font-size: 16px;
+}
+
+html,
+body {
+  /* Nền đặc — Electron transparent: alpha=0 sẽ click-through, làm nút “chết” */
+  background-color: #050505;
 }
 
 body {
-  background-color: #000000;
   color: #f4f4f5;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
+  font-size: var(--app-font);
+  overflow: hidden;
+  height: 100%;
+  min-height: 100dvh;
+}
+
+/* ─── App frame: full sát mép cửa sổ — không đệm đen vuông quanh ─── */
+.app-viewport {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: #050505;
+  /* Toàn viewport nhận click (trừ vùng drag chrome) */
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.app-frame {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Sát mép cửa sổ — bỏ bo tròn + shadow card tạo viền đen vuông */
+  border-radius: 0;
+  border: none;
+  background: #0a0a0b;
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+/* Khung chính: title bar OS (kéo cửa sổ + min/max/close) */
+.app-chrome {
+  box-sizing: border-box;
+  height: var(--app-chrome-h);
+  min-height: var(--app-chrome-h);
+  max-height: var(--app-chrome-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #18181b;
+  z-index: 20;
+  position: relative;
+}
+
+.app-chrome-drag {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  cursor: default;
+  /* Chỉ dải này được kéo cửa sổ */
+  -webkit-app-region: drag;
+}
+
+.app-window-controls {
+  height: 100%;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+/* Cửa sổ làm việc: Header tool + sidebar + content — luôn click được */
+.app-work-surface {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  background: #0a0a0b;
+}
+
+/* Mọi control tương tác trong app không bao giờ bị drag region nuốt click */
+.app-work-surface button,
+.app-work-surface a,
+.app-work-surface input,
+.app-work-surface select,
+.app-work-surface textarea,
+.app-work-surface [role='button'],
+.app-window-controls button {
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+/* Fluid helpers */
+.app-frame .app-sidebar {
+  width: var(--app-sidebar);
+  min-width: min(15rem, 100%);
+  max-width: min(22rem, 40vw);
+  flex-shrink: 0;
+}
+
+/* Setup form ở cột trái — rộng hơn một chút để chọn theme/style */
+.app-frame .app-sidebar.app-sidebar--setup {
+  width: clamp(18rem, 34vw, 26rem);
+  max-width: min(28rem, 46vw);
+}
+
+@media (max-width: 900px) {
+  .app-frame .app-sidebar {
+    width: min(16rem, 38vw);
+    max-width: 40vw;
+  }
+  .app-frame .app-sidebar.app-sidebar--setup {
+    width: min(18rem, 44vw);
+    max-width: 48vw;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-frame .app-sidebar {
+    width: min(14rem, 42vw);
+  }
+  .app-frame .app-sidebar.app-sidebar--setup {
+    width: min(16rem, 48vw);
+  }
+}
+
+/* Rounded surface primitives */
+.rounded-app {
+  border-radius: var(--app-radius);
+}
+.rounded-app-sm {
+  border-radius: var(--app-radius-sm);
+}
+.rounded-app-lg {
+  border-radius: var(--app-radius-lg);
 }
 
 /* Tùy chỉnh thanh cuộn siêu mỏng cao cấp */
@@ -29,7 +201,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: #27272a;
-  border-radius: 3px;
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {

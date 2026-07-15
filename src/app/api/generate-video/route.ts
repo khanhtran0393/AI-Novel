@@ -5,7 +5,11 @@ import { spawn } from 'child_process';
 import { addExtra } from 'puppeteer-extra';
 import puppeteerCore from 'puppeteer';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { localVideoFilename } from '@/contracts';
 import { BrowserAgent } from '@/lib/agents/BrowserAgent';
+import { assertProAccess } from '@/lib/entitlement';
+import { correlationIdFromRequest, slog } from '@/lib/requestContext';
+import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 
 // Hàm tìm kiếm đường dẫn Chrome
 function findChromePath(): string | null {
@@ -22,6 +26,8 @@ function findChromePath(): string | null {
 }
 
 export const runtime = 'nodejs';
+/** Flow Veo can take several minutes (upload + captcha + poll). */
+export const maxDuration = 600;
 
 function getApiKeyPath(): string {
   return path.join(process.cwd(), 'apikey.txt');
@@ -168,6 +174,22 @@ async function runFfmpegProcess(executable: string, args: string[], timeoutMs: n
 }
 
 export async function POST(req: Request) {
+  const correlationId = correlationIdFromRequest(req);
+  // Pro gate (open mode = desktop allow-all)
+  try {
+    assertProAccess(req);
+  } catch (err) {
+    return NextResponse.json(toErrorJson(err, correlationId), {
+      status: httpStatusFromError(err),
+      headers: { 'x-correlation-id': correlationId },
+    });
+  }
+  slog({
+    level: 'info',
+    msg: 'video_start',
+    correlationId,
+    route: '/api/generate-video',
+  });
   try {
     const body = await req.json();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -177,9 +199,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Thiếu thông tin chương hoặc phân cảnh.' }, { status: 400 });
     }
 
-    const promptText = typeof prompt === 'string' ? prompt.trim() : '';
+    let promptText = typeof prompt === 'string' ? prompt.trim() : '';
     if (!promptText) {
       return NextResponse.json({ error: '[Video API] Thieu prompt video thuc te. He thong khong tu chen prompt mau.' }, { status: 400 });
+    }
+
+    // Seedance director — always applied at generation core (I2V-aware)
+    try {
+      const { compileSeedancePrompt } = await import('@/lib/integrations/seedance');
+      const directed = compileSeedancePrompt({
+        sceneText: promptText,
+        characterHints: Array.isArray(body.characterHints) ? body.characterHints : undefined,
+        environmentHint: typeof body.environmentHint === 'string' ? body.environmentHint : undefined,
+        genre: typeof body.genre === 'string' ? body.genre : 'dark survival / mạt thế',
+        hasStartImage: Boolean(startImage),
+        hasEndImage: Boolean(endImage),
+        durationSec: Number(duration) > 0 ? Number(duration) : 5,
+      });
+      promptText = directed.prompt;
+      console.log(`[Video API] Seedance mode=${directed.mode} fn=${directed.function}`);
+    } catch (e) {
+      console.warn('[Video API] Seedance compile skipped:', e);
     }
 
     const videoDuration = Number(duration);
@@ -187,9 +227,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '[Video API] Thieu thoi luong video hop le.' }, { status: 400 });
     }
 
-    const filename = `chapter_${chapterNum}_scene_${sceneIndex}_animatic.mp4`;
+    const filename = localVideoFilename(chapterNum, sceneIndex);
     const videoProvider = typeof body.videoProvider === 'string' ? body.videoProvider.trim() : '';
-    const supportedVideoProviders = ['sora', 'veo', 'grok', 'luma', 'runway', 'ffmpeg'];
+    const supportedVideoProviders = ['flow', 'sora', 'veo', 'grok', 'luma', 'runway', 'ffmpeg'];
     if (!videoProvider) {
       return NextResponse.json({ error: '[Video API] Thieu videoProvider. He thong khong tu chay provider mac dinh.' }, { status: 400 });
     }
@@ -220,6 +260,88 @@ export async function POST(req: Request) {
     }
 
     // --- MULTI-PROVIDER ROUTING (NO FALLBACK) ---
+
+    // 0. GOOGLE FLOW (extension bridge — Imagen/Veo via labs.google)
+    if (videoProvider === 'flow') {
+      try {
+        const {
+          ensureBridgeStarted,
+          getBridgeSnapshotAsync,
+          bootstrapFlow,
+          runGenerateOne,
+        } = await import('@/lib/flow-bridge');
+        await ensureBridgeStarted();
+        let snap = await getBridgeSnapshotAsync();
+        if (!snap.flowKeyPresent || !snap.extensionConnected) {
+          console.log('[Flow Video] Session incomplete — auto bootstrap…');
+          await bootstrapFlow({
+            forceChrome: !snap.extensionConnected,
+            engine: 'auto',
+            waitExtensionMs: 35000,
+            waitLoginMs: 15000,
+          });
+          snap = await getBridgeSnapshotAsync();
+        }
+        if (!snap.flowKeyPresent) {
+          return NextResponse.json(
+            {
+              error:
+                '[Google Flow Video] Chưa có token. Ảnh/Video → Engine Auto → Đăng nhập Google.',
+            },
+            { status: 503 },
+          );
+        }
+        const result = await runGenerateOne({
+          kind: 'video',
+          prompt: promptText,
+          chapterNum,
+          sceneIndex,
+          promptIndex: body.promptIndex != null ? Number(body.promptIndex) : 0,
+          aspectRatio: videoAspectRatio,
+          durationSec: videoDuration,
+          videoModel: typeof body.model === 'string' ? body.model : undefined,
+          startImagePath: sourceImagePath || undefined,
+          endImagePath: resolveLocalImagePath(endImage) || undefined,
+          referenceImagePath: sourceImagePath || undefined,
+          quality:
+            typeof body.quality === 'string'
+              ? body.quality
+              : typeof body.videoQuality === 'string'
+                ? body.videoQuality
+                : 'hd',
+        });
+        if (!result.ok || !result.resultPaths?.length) {
+          return NextResponse.json(
+            {
+              error: `[Google Flow Video] ${result.error || 'Sinh video thất bại. Kiểm tra extension + đăng nhập Flow.'}`,
+            },
+            { status: 500 },
+          );
+        }
+        const src = result.resultPaths[0];
+        try {
+          fs.mkdirSync(path.dirname(localSavePath), { recursive: true });
+          if (src !== localSavePath) fs.copyFileSync(src, localSavePath);
+        } catch {
+          /* ignore */
+        }
+        return createSuccessResponse(
+          localSavePath,
+          filename,
+          videoDuration,
+          drivePath,
+          chapterNum,
+          'flow',
+        );
+      } catch (e: unknown) {
+        return NextResponse.json(
+          {
+            error: `[Google Flow Video] ${e instanceof Error ? e.message : String(e)}`,
+          },
+          { status: 500 },
+        );
+      }
+    }
 
     // 1. LUMA DREAM MACHINE
     if (videoProvider === 'luma') {

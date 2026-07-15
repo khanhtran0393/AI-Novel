@@ -1,4 +1,5 @@
 import type { Chuong, NovelState } from '@/store/useNovelStore';
+import { API } from '@/contracts';
 
 type EngineScope =
   | { kind: 'global' }
@@ -38,7 +39,7 @@ export async function recordEngineCheckpoint(params: {
   projectName?: string;
 }): Promise<void> {
   try {
-    await fetch('/api/engine', {
+    await fetch(API.engine, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -56,7 +57,7 @@ export async function recordEngineCheckpoint(params: {
 
 export async function recordEngineSnapshot(input: SnapshotInput): Promise<void> {
   try {
-    await fetch('/api/engine', {
+    await fetch(API.engine, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -86,7 +87,7 @@ export async function recordEngineSnapshot(input: SnapshotInput): Promise<void> 
 
 export async function resetEngineAction(): Promise<void> {
   try {
-    await fetch('/api/engine', {
+    await fetch(API.engine, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'reset' }),
@@ -98,7 +99,7 @@ export async function resetEngineAction(): Promise<void> {
 
 export async function getEngineStatus(): Promise<EngineStatusResponse | null> {
   try {
-    const res = await fetch('/api/engine', { cache: 'no-store' });
+    const res = await fetch(API.engine, { cache: 'no-store' });
     if (!res.ok) return null;
     return await res.json();
   } catch (error) {

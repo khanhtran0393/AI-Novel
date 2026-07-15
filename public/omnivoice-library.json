@@ -857,18 +857,6 @@
   },
   {
     "id": "omnivoice_preset_ref_kr_harry",
-    "name": "Harry Hàn Quốc",
-    "gender": "female",
-    "language": "Korean",
-    "location": "Hàn Quốc",
-    "style": "Inviting, Soft and Steady",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_kr_harry.wav",
-    "refText": "슬픈 음악을 듣지 않으려는 순간부터 모든 문제가 시작된다. 그건 현실을 받아들이지 않겠다는 뜻이니까. 그 순간부터 마음을 닫아버리는 거다.",
-    "previewUrl": "/omnivoice-refs/ref_kr_harry.wav",
-    "createdAt": "2026-06-12T03:19:25.527Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_kr_harry",
     "name": "Harry - Sassy, Rich and Guttural Hàn Quốc",
     "gender": "female",
     "language": "Korean",
@@ -878,18 +866,6 @@
     "refText": "안녕하세요, 한국어 음성입니다.",
     "previewUrl": "/omnivoice-refs/ref_kr_harry.wav",
     "createdAt": "2026-06-12T03:19:25.628Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_kr_harry",
-    "name": "Harry - Stoic and Balanced Hàn Quốc",
-    "gender": "female",
-    "language": "Korean",
-    "location": "Hàn Quốc",
-    "style": "Stoic and Balanced",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_kr_harry.wav",
-    "refText": "안녕하세요, 한국어 음성입니다.",
-    "previewUrl": "/omnivoice-refs/ref_kr_harry.wav",
-    "createdAt": "2026-06-12T03:19:25.742Z"
   },
   {
     "id": "omnivoice_preset_ref_kr_hyuk",
@@ -1742,18 +1718,6 @@
     "refText": "Xin chào tôi là giọng đọc Việt Nam.",
     "previewUrl": "/omnivoice-refs/ref_vn_tony_nguy_n.wav",
     "createdAt": "2026-06-12T03:19:51.540Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_vn_trang",
-    "name": "Trang Việt Nam",
-    "gender": "female",
-    "language": "Vietnamese",
-    "location": "Việt Nam",
-    "style": "Soft, Whispery and Peaceful",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_vn_trang.wav",
-    "refText": "Chào bạn. Nếu bạn đang tìm một giọng đọc ấm áp, rõ ràng và đầy sức hút cho audio book hay nội dung truyền cảm hứng, hãy thử nghe giọng tôi nhé.",
-    "previewUrl": "/omnivoice-refs/ref_vn_trang.wav",
-    "createdAt": "2026-06-12T03:19:51.657Z"
   },
   {
     "id": "omnivoice_preset_ref_vn_trang",
@@ -3233,7 +3197,7 @@
   },
   {
     "id": "omnivoice_preset_ref_en_elizabeth",
-    "name": "Elizabeth Anh-Mỹ",
+    "name": "Elizabeth - Precise, Clear and Natural Anh-Mỹ",
     "gender": "female",
     "language": "English",
     "location": "Anh-Mỹ",
@@ -3241,7 +3205,7 @@
     "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_elizabeth.wav",
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_elizabeth.wav",
-    "createdAt": "2026-06-23T13:44:51.982Z"
+    "createdAt": "2026-06-23T13:44:58.415Z"
   },
   {
     "id": "omnivoice_preset_ref_en_eddie_stirling",
@@ -3290,18 +3254,6 @@
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_george.wav",
     "createdAt": "2026-06-23T13:44:52.440Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_en_james",
-    "name": "James Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "English",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_james.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_james.wav",
-    "createdAt": "2026-06-23T13:44:52.581Z"
   },
   {
     "id": "omnivoice_preset_ref_en_james",
@@ -3389,15 +3341,15 @@
   },
   {
     "id": "omnivoice_preset_ref_en_mark",
-    "name": "Mark Anh-Mỹ",
+    "name": "Mark - Casual, Relaxed and Light Anh-Mỹ",
     "gender": "female",
     "language": "English",
     "location": "Anh-Mỹ",
-    "style": "Solid, Clear and Professional",
+    "style": "Casual, Relaxed and Light",
     "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_mark.wav",
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_mark.wav",
-    "createdAt": "2026-06-23T13:44:53.659Z"
+    "createdAt": "2026-06-23T13:45:02.445Z"
   },
   {
     "id": "omnivoice_preset_ref_en_conversational_joe",
@@ -3473,7 +3425,7 @@
   },
   {
     "id": "omnivoice_preset_ref_en_priyanka",
-    "name": "Priyanka Anh-Mỹ",
+    "name": "Priyanka - Calm, Neutral and Relaxed Anh-Mỹ",
     "gender": "female",
     "language": "English",
     "location": "Anh-Mỹ",
@@ -3481,7 +3433,7 @@
     "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_priyanka.wav",
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_priyanka.wav",
-    "createdAt": "2026-06-23T13:44:54.651Z"
+    "createdAt": "2026-06-23T13:45:02.577Z"
   },
   {
     "id": "omnivoice_preset_ref_en_rainbird",
@@ -3497,15 +3449,15 @@
   },
   {
     "id": "omnivoice_preset_ref_en_rachel",
-    "name": "Rachel Anh-Mỹ",
+    "name": "Rachel - Social Media Narrator Anh-Mỹ",
     "gender": "female",
     "language": "English",
     "location": "Anh-Mỹ",
-    "style": "Confident & Friendly",
+    "style": "Social Media Narrator",
     "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_rachel.wav",
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_rachel.wav",
-    "createdAt": "2026-06-23T13:44:54.877Z"
+    "createdAt": "2026-06-23T13:45:02.576Z"
   },
   {
     "id": "omnivoice_preset_ref_en_sarah",
@@ -3700,18 +3652,6 @@
     "createdAt": "2026-06-23T13:44:56.835Z"
   },
   {
-    "id": "omnivoice_preset_ref_en_adam",
-    "name": "Adam Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Deep English Story Voice",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_adam.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_adam.wav",
-    "createdAt": "2026-06-23T13:44:56.950Z"
-  },
-  {
     "id": "omnivoice_preset_ref_en_benjamin",
     "name": "Benjamin Anh-Mỹ",
     "gender": "female",
@@ -3844,18 +3784,6 @@
     "createdAt": "2026-06-23T13:44:58.273Z"
   },
   {
-    "id": "omnivoice_preset_ref_en_elizabeth",
-    "name": "Elizabeth - Precise, Clear and Natural Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Precise, Clear and Natural",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_elizabeth.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_elizabeth.wav",
-    "createdAt": "2026-06-23T13:44:58.415Z"
-  },
-  {
     "id": "omnivoice_preset_ref_en_christina",
     "name": "Christina Anh-Mỹ",
     "gender": "female",
@@ -3916,18 +3844,6 @@
     "createdAt": "2026-06-23T13:44:59.040Z"
   },
   {
-    "id": "omnivoice_preset_ref_en_eryn",
-    "name": "Eryn Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Friendly, AI Assistant, Customer Service, American Female Voice",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_eryn.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_eryn.wav",
-    "createdAt": "2026-06-23T13:44:59.169Z"
-  },
-  {
     "id": "omnivoice_preset_ref_en_hale",
     "name": "Hale Anh-Mỹ",
     "gender": "female",
@@ -3976,18 +3892,6 @@
     "createdAt": "2026-06-23T13:44:59.710Z"
   },
   {
-    "id": "omnivoice_preset_ref_en_hope",
-    "name": "Hope Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Bubbly, Gossipy and Girly",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_hope.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_hope.wav",
-    "createdAt": "2026-06-23T13:44:59.846Z"
-  },
-  {
     "id": "omnivoice_preset_ref_en_jarnathan",
     "name": "Jarnathan Anh-Mỹ",
     "gender": "female",
@@ -4022,18 +3926,6 @@
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_jessica.wav",
     "createdAt": "2026-06-23T13:45:00.229Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_en_jerry_b_",
-    "name": "Jerry B. Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Classic Radio DJ & Energetic",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_jerry_b_.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_jerry_b_.wav",
-    "createdAt": "2026-06-23T13:45:00.384Z"
   },
   {
     "id": "omnivoice_preset_ref_en_jerry_b_",
@@ -4192,30 +4084,6 @@
     "createdAt": "2026-06-23T13:45:02.274Z"
   },
   {
-    "id": "omnivoice_preset_ref_en_mark",
-    "name": "Mark - Casual, Relaxed and Light Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Casual, Relaxed and Light",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_mark.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_mark.wav",
-    "createdAt": "2026-06-23T13:45:02.445Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_en_rachel",
-    "name": "Rachel - Social Media Narrator Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Social Media Narrator",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_rachel.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_rachel.wav",
-    "createdAt": "2026-06-23T13:45:02.576Z"
-  },
-  {
     "id": "omnivoice_preset_ref_en_siren",
     "name": "Siren Anh-Mỹ",
     "gender": "female",
@@ -4226,18 +4094,6 @@
     "refText": "Hello, this is an English voice.",
     "previewUrl": "/omnivoice-refs/ref_en_siren.wav",
     "createdAt": "2026-06-23T13:45:02.576Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_en_priyanka",
-    "name": "Priyanka - Calm, Neutral and Relaxed Anh-Mỹ",
-    "gender": "female",
-    "language": "English",
-    "location": "Anh-Mỹ",
-    "style": "Calm, Neutral and Relaxed",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_en_priyanka.wav",
-    "refText": "Hello, this is an English voice.",
-    "previewUrl": "/omnivoice-refs/ref_en_priyanka.wav",
-    "createdAt": "2026-06-23T13:45:02.577Z"
   },
   {
     "id": "omnivoice_preset_ref_en_thomas",
@@ -4394,18 +4250,6 @@
     "refText": "สวัสดี นี่คือเสียงพากย์ภาษาไทย",
     "previewUrl": "/omnivoice-refs/ref_th_charles.wav",
     "createdAt": "2026-06-23T13:45:53.470Z"
-  },
-  {
-    "id": "omnivoice_preset_ref_th_bunty",
-    "name": "Bunty Thái Lan",
-    "gender": "female",
-    "language": "Thai",
-    "location": "Thái Lan",
-    "style": "Fun Podcast Host",
-    "voiceId": "E:\\SuperFreeVoice\\SuperAudioTools\\omnivoice-refs\\ref_th_bunty.wav",
-    "refText": "สวัสดี นี่คือเสียงพากย์ภาษาไทย",
-    "previewUrl": "/omnivoice-refs/ref_th_bunty.wav",
-    "createdAt": "2026-06-23T13:45:53.584Z"
   },
   {
     "id": "omnivoice_preset_ref_th_bunty",

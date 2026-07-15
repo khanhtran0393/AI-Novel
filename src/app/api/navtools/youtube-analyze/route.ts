@@ -20,8 +20,30 @@ export async function POST(req: NextRequest) {
       timeoutMs: 900_000,
     });
 
+    // Optional visual watch layer (claude-video) — non-blocking enrichment
+    let watch: { success?: boolean; frameCount?: number; reportPreview?: string } | undefined;
+    try {
+      const { watchRepoReady, runWatch } = await import('@/lib/integrations/watchVideo');
+      if (watchRepoReady() && (body.includeWatch !== false)) {
+        const w = await runWatch({
+          source: url,
+          detail: 'efficient',
+          maxFrames: 16,
+          noWhisper: true,
+          timeoutMs: 120_000,
+        });
+        watch = {
+          success: w.success,
+          frameCount: w.framePaths?.length ?? 0,
+          reportPreview: (w.report || '').slice(0, 2500),
+        };
+      }
+    } catch (e) {
+      watch = { success: false, reportPreview: (e as Error).message };
+    }
+
     const status = result.success ? 200 : 500;
-    return NextResponse.json(result, { status });
+    return NextResponse.json({ ...result, watch }, { status });
   } catch (error: unknown) {
     const err = error as Error;
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

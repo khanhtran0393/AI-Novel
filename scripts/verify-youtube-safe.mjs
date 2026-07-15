@@ -1,8 +1,11 @@
 /**
  * Empirical checks for YouTube-safe + advanced studio helpers.
+ * Dynamic import avoids Node 24 native type-strip issues with static .ts re-exports.
+ * Run: npx tsx scripts/verify-youtube-safe.mjs
  */
 import assert from 'node:assert/strict';
-import {
+
+const {
   resolveUserRules,
   evaluateYoutubeTtsGate,
   buildYoutubeChecklist,
@@ -26,7 +29,7 @@ import {
   buildSeoTitleFromHook,
   buildClickThumbnailLine,
   DEFAULT_FORBIDDEN_WORDS,
-} from '../src/lib/youtubeSafe.ts';
+} = await import('../src/lib/youtubeSafe.ts');
 
 // resolveUserRules
 assert.equal(resolveUserRules({}).forbidden_words, DEFAULT_FORBIDDEN_WORDS);

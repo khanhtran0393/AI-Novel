@@ -12,7 +12,13 @@
 
 import fs from 'fs';
 import path from 'path';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, execSync, type ChildProcess } from 'child_process';
+import {
+  omniRssMinUptimeS,
+  omniRssSoftMb,
+  noteOmniRestart,
+  withGpuTtsSlot,
+} from '@/lib/tts/gpuTtsGuard';
 
 export type OmniLibraryEntry = {
   id: string;
@@ -54,6 +60,7 @@ const OPENAI_PRESETS = new Set([
 
 let spawnInflight: Promise<string | null> | null = null;
 let lastSpawned: ChildProcess | null = null;
+let lastSpawnError = '';
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -72,6 +79,57 @@ export function resolveOmniPython(): string {
   }
   return 'python';
 }
+
+/** Prefer packaged omnivoice-server.exe (SuperAudioTools), else python -m. */
+export function resolveOmniServerLauncher(): {
+  cmd: string;
+  args: string[];
+  cwd: string;
+  kind: 'exe' | 'module';
+} {
+  const py = resolveOmniPython();
+  const pyDir = path.dirname(py);
+  const exeCandidates = [
+    process.env.OMNIVOICE_SERVER_EXE,
+    path.join(pyDir, 'Scripts', 'omnivoice-server.exe'),
+    path.join('D:', 'SuperAudioTools', 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
+    path.join(process.cwd(), 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
+  ].filter(Boolean) as string[];
+
+  const superTools = path.join('D:', 'SuperAudioTools');
+  const runCwd = fs.existsSync(superTools) ? superTools : process.cwd();
+
+  for (const exe of exeCandidates) {
+    if (fs.existsSync(exe)) {
+      return { cmd: exe, args: [], cwd: runCwd, kind: 'exe' };
+    }
+  }
+  return {
+    cmd: py,
+    args: ['-m', 'omnivoice_server'],
+    cwd: runCwd,
+    kind: 'module',
+  };
+}
+
+export function getOmniLogPath(cwd = process.cwd()): string {
+  const dir = path.join(cwd, 'data', 'logs');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'omnivoice-server.log');
+}
+
+export function getLastOmniSpawnError(): string {
+  return lastSpawnError;
+}
+
+export type OmniHealth = {
+  online: boolean;
+  baseUrl: string | null;
+  ready?: boolean;
+  modelLoaded?: boolean;
+  uptimeS?: number;
+  memoryRssMb?: number;
+};
 
 export function resolveOmniProfileDir(cwd = process.cwd()): string {
   if (process.env.OMNIVOICE_PROFILE_DIR && fs.existsSync(process.env.OMNIVOICE_PROFILE_DIR)) {
@@ -213,10 +271,22 @@ export function hasOmniProfile(profileId: string, cwd = process.cwd()): boolean 
   return fs.existsSync(audio);
 }
 
-export async function probeOmniBaseUrl(
-  preferred?: string,
-  timeoutMs = 1500,
-): Promise<string | null> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+): Promise<Response | null> {
+  try {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), timeoutMs);
+    const res = await fetch(url, { signal: ac.signal });
+    clearTimeout(t);
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+function collectOmniBases(preferred?: string): string[] {
   const bases: string[] = [];
   if (preferred) bases.push(preferred.replace(/\/$/, ''));
   if (process.env.OMNIVOICE_API_URL) {
@@ -226,27 +296,65 @@ export async function probeOmniBaseUrl(
     bases.push(`http://127.0.0.1:${port}`);
   }
   const seen = new Set<string>();
+  const out: string[] = [];
   for (const base of bases) {
     const b = base.replace(/\/v1\/?$/, '').replace(/\/$/, '');
     if (!b || seen.has(b)) continue;
     seen.add(b);
-    try {
-      const ac = new AbortController();
-      const t = setTimeout(() => ac.abort(), timeoutMs);
-      const res = await fetch(`${b}/health`, { signal: ac.signal });
-      clearTimeout(t);
-      if (res.ok) return b;
-      // some builds only expose /v1/models
-      const ac2 = new AbortController();
-      const t2 = setTimeout(() => ac2.abort(), timeoutMs);
-      const res2 = await fetch(`${b}/v1/models`, { signal: ac2.signal });
-      clearTimeout(t2);
-      if (res2.ok) return b;
-    } catch {
-      /* next */
-    }
+    out.push(b);
+  }
+  return out;
+}
+
+export async function probeOmniBaseUrl(
+  preferred?: string,
+  timeoutMs = 1500,
+): Promise<string | null> {
+  for (const b of collectOmniBases(preferred)) {
+    const health = await fetchWithTimeout(`${b}/health`, timeoutMs);
+    if (health?.ok) return b;
+    // some builds only expose /v1/models
+    const models = await fetchWithTimeout(`${b}/v1/models`, timeoutMs);
+    if (models?.ok) return b;
   }
   return null;
+}
+
+/** Probe + parse /health for UI (ready / model_loaded). */
+export async function probeOmniHealth(
+  preferred?: string,
+  timeoutMs = 1500,
+): Promise<OmniHealth> {
+  for (const b of collectOmniBases(preferred)) {
+    const res = await fetchWithTimeout(`${b}/health`, timeoutMs);
+    if (res?.ok) {
+      try {
+        const j = (await res.json()) as {
+          status?: string;
+          ready?: boolean;
+          model_loaded?: boolean;
+          uptime_s?: number;
+          memory_rss_mb?: number;
+        };
+        return {
+          online: true,
+          baseUrl: b,
+          ready: j.ready !== false && (j.status === 'healthy' || j.model_loaded !== false),
+          modelLoaded: j.model_loaded !== false,
+          uptimeS: typeof j.uptime_s === 'number' ? j.uptime_s : undefined,
+          memoryRssMb:
+            typeof j.memory_rss_mb === 'number' ? j.memory_rss_mb : undefined,
+        };
+      } catch {
+        return { online: true, baseUrl: b, ready: true, modelLoaded: true };
+      }
+    }
+    const models = await fetchWithTimeout(`${b}/v1/models`, timeoutMs);
+    if (models?.ok) {
+      return { online: true, baseUrl: b, ready: true, modelLoaded: true };
+    }
+  }
+  return { online: false, baseUrl: null };
 }
 
 /** pydantic Settings crash on unrelated .env keys — ensure extra=ignore. */
@@ -283,17 +391,24 @@ function patchOmniServerConfigExtraIgnore(pythonExe: string): void {
 async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
   if (spawnInflight) return spawnInflight;
   spawnInflight = (async () => {
+    lastSpawnError = '';
+    // Race: another process may have started while we waited
+    const already = await probeOmniBaseUrl(process.env.OMNIVOICE_API_URL, 1200);
+    if (already) return already;
+
     const py = resolveOmniPython();
     patchOmniServerConfigExtraIgnore(py);
+    const launcher = resolveOmniServerLauncher();
     const port = Number(process.env.OMNIVOICE_PORT || 8880);
     const profileDir = resolveOmniProfileDir(cwd);
     const host = '127.0.0.1';
     const base = `http://${host}:${port}`;
+    const logPath = getOmniLogPath(cwd);
 
     const superTools = path.join('D:', 'SuperAudioTools');
     const cacheRoot = path.join(superTools, '.cache');
     /**
-     * omnivoice_server Settings(extra=forbid) crash nếu process env / .env
+     * omnivoice_server Settings crash nếu process env / .env
      * chứa GEMINI_KEY_*, API keys lạ… → chỉ truyền env tối thiểu + PATH.
      */
     const pathParts: string[] = [];
@@ -301,8 +416,12 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
     if (fs.existsSync(path.join(pyDir, 'ffmpeg.exe'))) pathParts.push(pyDir);
     const projectFfmpeg = path.join(cwd, 'bin');
     if (fs.existsSync(path.join(projectFfmpeg, 'ffmpeg.exe'))) pathParts.push(projectFfmpeg);
+    const scriptsDir = path.join(pyDir, 'Scripts');
+    if (fs.existsSync(scriptsDir)) pathParts.push(scriptsDir);
+    pathParts.push(pyDir);
     if (process.env.PATH) pathParts.push(process.env.PATH);
 
+    const device = process.env.OMNIVOICE_DEVICE || 'auto';
     const env: NodeJS.ProcessEnv = {
       NODE_ENV: process.env.NODE_ENV || 'production',
       SystemRoot: process.env.SystemRoot,
@@ -313,12 +432,13 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
       HOME: process.env.HOME,
       APPDATA: process.env.APPDATA,
       LOCALAPPDATA: process.env.LOCALAPPDATA,
-      PATH: pathParts.join(';'),
+      PATH: pathParts.join(path.delimiter),
       PYTHONNOUSERSITE: '1',
+      PYTHONUTF8: '1',
       OMNIVOICE_HOST: host,
       OMNIVOICE_PORT: String(port),
       OMNIVOICE_PROFILE_DIR: profileDir,
-      OMNIVOICE_DEVICE: process.env.OMNIVOICE_DEVICE || 'auto',
+      OMNIVOICE_DEVICE: device,
       OMNIVOICE_LOG_LEVEL: process.env.OMNIVOICE_LOG_LEVEL || 'info',
       // Avoid loading project .env with Gemini keys (pydantic extra forbid)
       OMNIVOICE_ENV_FILE: '',
@@ -330,50 +450,97 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
       env.HUGGINGFACE_HUB_CACHE = path.join(cacheRoot, 'huggingface', 'hub');
     }
 
-    console.log(
-      `[OmniVoice] spawning: "${py}" -m omnivoice_server --host ${host} --port ${port} --profile-dir "${profileDir}"`,
-    );
-
+    const cliArgs = [
+      ...launcher.args,
+      '--host',
+      host,
+      '--port',
+      String(port),
+      '--profile-dir',
+      profileDir,
+      '--device',
+      device,
+    ];
+    const cmdLine = `"${launcher.cmd}" ${cliArgs.join(' ')}`;
+    console.log(`[OmniVoice] spawning (${launcher.kind}): ${cmdLine}`);
     try {
-      const child = spawn(
-        py,
-        [
-          '-m',
-          'omnivoice_server',
-          '--host',
-          host,
-          '--port',
-          String(port),
-          '--profile-dir',
-          profileDir,
-          '--device',
-          env.OMNIVOICE_DEVICE || 'auto',
-        ],
-        {
-          cwd: fs.existsSync(superTools) ? superTools : cwd,
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true,
-          env,
-        },
+      fs.appendFileSync(
+        logPath,
+        `\n==== spawn ${new Date().toISOString()} ====\n${cmdLine}\ncwd=${launcher.cwd}\n`,
+        'utf8',
       );
+    } catch {
+      /* ignore log write */
+    }
+
+    let exitedEarly = false;
+    let exitCode: number | null = null;
+    try {
+      const logFd = fs.openSync(logPath, 'a');
+      const child = spawn(launcher.cmd, cliArgs, {
+        cwd: launcher.cwd,
+        detached: true,
+        stdio: ['ignore', logFd, logFd],
+        windowsHide: true,
+        env,
+      });
       lastSpawned = child;
+      child.on('error', (err) => {
+        lastSpawnError = `spawn error: ${err.message}`;
+        console.error('[OmniVoice]', lastSpawnError);
+        try {
+          fs.appendFileSync(logPath, `ERROR ${err.message}\n`, 'utf8');
+        } catch {
+          /* ignore */
+        }
+      });
+      child.on('exit', (code) => {
+        exitedEarly = true;
+        exitCode = code;
+        lastSpawnError = `process exited early code=${code}`;
+        console.error(`[OmniVoice] child exit code=${code}`);
+        try {
+          fs.appendFileSync(logPath, `EXIT code=${code}\n`, 'utf8');
+        } catch {
+          /* ignore */
+        }
+      });
       child.unref();
+      // Do not close logFd immediately — child inherits it on Windows
     } catch (err) {
-      console.error('[OmniVoice] spawn failed:', err);
+      lastSpawnError = err instanceof Error ? err.message : String(err);
+      console.error('[OmniVoice] spawn failed:', lastSpawnError);
       return null;
     }
 
-    // Model load can take 30–90s first time; poll up to ~90s
-    for (let i = 0; i < 45; i++) {
+    // Model load can take 30–120s first time; poll up to ~120s
+    for (let i = 0; i < 60; i++) {
       await sleep(2000);
       const online = await probeOmniBaseUrl(base, 2000);
       if (online) {
-        console.log(`[OmniVoice] online at ${online}`);
-        return online;
+        const h = await probeOmniHealth(online, 2000);
+        if (h.online && h.modelLoaded !== false) {
+          console.log(`[OmniVoice] online at ${online} ready=${h.ready}`);
+          lastSpawnError = '';
+          return online;
+        }
+        // Accept HTTP up even if model still warming after ~20s
+        if (i >= 10) {
+          console.log(`[OmniVoice] HTTP up at ${online} (model may still warm)`);
+          return online;
+        }
+      }
+      if (exitedEarly && i >= 2) {
+        lastSpawnError =
+          lastSpawnError ||
+          `OmniVoice process exited (code=${exitCode}). Xem log: ${logPath}`;
+        console.error('[OmniVoice]', lastSpawnError);
+        return null;
       }
     }
-    console.error('[OmniVoice] spawn timeout — server not healthy yet');
+    lastSpawnError =
+      lastSpawnError || `Timeout 120s chờ model load. Log: ${logPath}`;
+    console.error('[OmniVoice] spawn timeout —', lastSpawnError);
     return null;
   })().finally(() => {
     spawnInflight = null;
@@ -390,11 +557,18 @@ export async function ensureOmniServer(cwd = process.cwd()): Promise<string> {
   const started = await spawnOmniServer(cwd);
   if (started) return started;
 
+  // Last chance: another instance came online during spawn wait
+  const again = await probeOmniBaseUrl(preferred, 2000);
+  if (again) return again;
+
+  const launcher = resolveOmniServerLauncher();
+  const logPath = getOmniLogPath(cwd);
+  const detail = lastSpawnError ? ` Chi tiết: ${lastSpawnError}` : '';
   throw new Error(
-    'OmniVoice Local server không chạy (mặc định :8880). ' +
-      'Đã thử tự khởi động qua D:\\SuperAudioTools\\omnivoice-python nhưng chưa sẵn sàng. ' +
-      'Chạy SuperAudioTools.exe hoặc: ' +
-      `"${resolveOmniPython()}" -m omnivoice_server --port 8880 --profile-dir "${resolveOmniProfileDir(cwd)}"`,
+    'OmniVoice engine chưa sẵn sàng (:8880). ' +
+      'App đã thử tự khởi động từ SuperAudioTools/omnivoice-python nhưng chưa lên. ' +
+      `Thử: "${launcher.cmd}" --port 8880 --profile-dir "${resolveOmniProfileDir(cwd)}". ` +
+      `Log: ${logPath}.${detail}`,
   );
 }
 
@@ -542,10 +716,44 @@ function guessLanguage(entry: OmniLibraryEntry | null, voiceKey: string): string
   return 'vi';
 }
 
+/** Giọng từ engine khác (Edge/Piper/TikTok…) — không phải Omni profile/design */
+export function isForeignOmniVoiceId(voiceKey: string): boolean {
+  const v = (voiceKey || '').trim();
+  if (!v) return true;
+  if (OPENAI_PRESETS.has(v.toLowerCase())) return false;
+  if (v.toLowerCase().startsWith('clone:')) return false;
+  if (v.startsWith('omnivoice_') || v.startsWith('omni_')) return false;
+  // Edge neural, Piper onnx, TikTok BV*, CapCut-style, Google Cloud ids
+  if (/Neural$/i.test(v)) return true;
+  if (/\.onnx$/i.test(v)) return true;
+  if (/^BV\d/i.test(v)) return true;
+  if (/^(vi|en|zh|ja|ko|fr|de|es)-[A-Z]{2}/i.test(v)) return true;
+  if (/^(hn_|VBEE_|en_us_|en_uk_|vi_female)/i.test(v)) return true;
+  return false;
+}
+
 /**
  * Main entry: synthesize text with OmniVoice Local using library voice key.
+ * Fail-fast for foreign voice ids (no multi-step 404 spam).
+ * Serialized with Vina via GPU slot; may recycle engine when RSS high.
  */
 export async function synthesizeOmniVoiceLocal(params: {
+  text: string;
+  voice: string;
+  speed?: number;
+  pitch?: number;
+  cwd?: string;
+  /** Timeout inside GPU slot (always releases exclusive lock). */
+  timeoutMs?: number;
+}): Promise<OmniSynthResult> {
+  return withGpuTtsSlot(
+    'omnivoice',
+    () => synthesizeOmniVoiceLocalInner(params),
+    { timeoutMs: params.timeoutMs },
+  );
+}
+
+async function synthesizeOmniVoiceLocalInner(params: {
   text: string;
   voice: string;
   speed?: number;
@@ -562,27 +770,57 @@ export async function synthesizeOmniVoiceLocal(params: {
   }
   if (!voiceKey) throw new Error('OmniVoice: chưa chọn giọng (voice).');
 
-  const speed = typeof params.speed === 'number' && Number.isFinite(params.speed) ? params.speed : 1;
-  const baseUrl = await ensureOmniServer(cwd);
+  const speed =
+    typeof params.speed === 'number' && Number.isFinite(params.speed) ? params.speed : 1;
   const entry = findOmniLibraryEntry(voiceKey, cwd);
-  const language = guessLanguage(entry, voiceKey);
+  const isDesign = OPENAI_PRESETS.has(voiceKey.toLowerCase());
 
-  // OpenAI design presets
-  if (OPENAI_PRESETS.has(voiceKey.toLowerCase())) {
+  // Foreign voice kept from previous engine (Edge/Piper…) — skip clone spam
+  if (!isDesign && !entry && isForeignOmniVoiceId(voiceKey)) {
+    throw new Error(
+      `Giọng "${voiceKey}" không thuộc OmniVoice (đổi sang alloy/nova hoặc clone library).`,
+    );
+  }
+
+  let baseUrl: string;
+  let recycled = false;
+  try {
+    const mem = await ensureOmniServerMemorySafe(cwd);
+    baseUrl = mem.baseUrl;
+    recycled = mem.recycled;
+    if (typeof mem.memoryRssMb === 'number') {
+      console.log(
+        `[OmniVoice] synth ready rss=${mem.memoryRssMb.toFixed(0)}MB recycled=${recycled}`,
+      );
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      msg.startsWith('OmniVoice')
+        ? msg
+        : `OmniVoice engine offline — app sẽ tự bật khi gen; nếu fail: ${msg.slice(0, 160)}`,
+    );
+  }
+
+  const language = guessLanguage(entry, voiceKey);
+  const recycleTag = recycled ? ' +rss-recycle' : '';
+
+  // OpenAI-style design presets (alloy, nova…) — clean path
+  if (isDesign) {
     const buffer = await synthViaJson(baseUrl, text, voiceKey.toLowerCase(), speed, language);
     return {
       buffer,
-      method: `OmniVoice Local design (${voiceKey})`,
+      method: `OmniVoice Local design (${voiceKey})${recycleTag}`,
       baseUrl,
       mode: 'design-preset',
     };
   }
 
-  const profileId = entry?.id || voiceKey;
+  const profileId = (entry?.id || voiceKey).replace(/[^a-zA-Z0-9_-]/g, '') || voiceKey;
   const refPath = resolveOmniRefAudioPath(entry || voiceKey, cwd);
   const refText = resolveOmniRefText(entry, profileId, cwd);
 
-  // 1) Prefer registered profile (clone:id) if server already has it or we can register
+  // 1) Registered profile or create from ref
   if (hasOmniProfile(profileId, cwd) || refPath) {
     try {
       if (refPath) {
@@ -591,45 +829,159 @@ export async function synthesizeOmniVoiceLocal(params: {
       const buffer = await synthViaJson(baseUrl, text, `clone:${profileId}`, speed, language);
       return {
         buffer,
-        method: `OmniVoice Local clone (${profileId})`,
+        method: `OmniVoice Local clone (${profileId})${recycleTag}`,
         baseUrl,
         mode: 'clone-profile',
       };
     } catch (err) {
-      console.warn('[OmniVoice] clone-profile path failed, trying upload:', err);
+      const m = err instanceof Error ? err.message : String(err);
+      // Quiet single line (no stack dump)
+      console.warn(`[OmniVoice] clone-profile fail (${profileId}): ${m.slice(0, 100)}`);
+      // 2) One-shot upload if we still have ref
+      if (refPath) {
+        try {
+          const buffer = await synthViaCloneUpload(
+            baseUrl,
+            text,
+            refPath,
+            refText,
+            speed,
+            language,
+          );
+          return {
+            buffer,
+            method: `OmniVoice Local upload (${path.basename(refPath)})${recycleTag}`,
+            baseUrl,
+            mode: 'clone-upload',
+          };
+        } catch (err2) {
+          const m2 = err2 instanceof Error ? err2.message : String(err2);
+          throw new Error(
+            `OmniVoice clone/upload thất bại cho "${voiceKey}": ${m2.slice(0, 140)}`,
+          );
+        }
+      }
+      throw new Error(`OmniVoice clone thất bại cho "${voiceKey}": ${m.slice(0, 140)}`);
     }
   }
 
-  // 2) One-shot multipart clone with resolved ref file
-  if (refPath) {
-    const buffer = await synthViaCloneUpload(baseUrl, text, refPath, refText, speed, language);
-    return {
-      buffer,
-      method: `OmniVoice Local upload (${path.basename(refPath)})`,
-      baseUrl,
-      mode: 'clone-upload',
-    };
-  }
-
-  // 3) Last resort: try voice as profile id anyway
-  try {
-    const buffer = await synthViaJson(baseUrl, text, `clone:${profileId}`, speed, language);
-    return {
-      buffer,
-      method: `OmniVoice Local clone (${profileId})`,
-      baseUrl,
-      mode: 'clone-profile',
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `OmniVoice không resolve được giọng "${voiceKey}". ` +
-        `Không thấy profile/ref audio (library voiceId cũ trỏ E:\\SuperFreeVoice đã mất). ` +
-        `Chi tiết: ${msg}`,
-    );
-  }
+  throw new Error(
+    `OmniVoice không có profile/ref audio cho "${voiceKey}". ` +
+      `Kiểm tra public/omnivoice-library.json và file ref trong public/omnivoice-refs hoặc D:\\SuperAudioTools\\omnivoice-refs.`,
+  );
 }
 
 export function getLastSpawnedPid(): number | undefined {
   return lastSpawned?.pid;
+}
+
+/** PIDs listening on Omni default port (Windows netstat). */
+export function findOmniListenerPids(port = Number(process.env.OMNIVOICE_PORT || 8880)): number[] {
+  if (process.platform !== 'win32') return [];
+  try {
+    const out = execSync(`netstat -ano -p tcp`, {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5000,
+    });
+    const pids = new Set<number>();
+    const re = new RegExp(`127\\.0\\.0\\.1:${port}\\s+.*?LISTENING\\s+(\\d+)`, 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(out))) {
+      const pid = Number(m[1]);
+      if (pid > 0) pids.add(pid);
+    }
+    // also 0.0.0.0:port
+    const re2 = new RegExp(`0\\.0\\.0\\.0:${port}\\s+.*?LISTENING\\s+(\\d+)`, 'gi');
+    while ((m = re2.exec(out))) {
+      const pid = Number(m[1]);
+      if (pid > 0) pids.add(pid);
+    }
+    return [...pids];
+  } catch {
+    return [];
+  }
+}
+
+/** Stop OmniVoice server (our spawn and/or orphan on :8880). */
+export async function killOmniServerProcesses(): Promise<number[]> {
+  const killed: number[] = [];
+  const pids = new Set<number>();
+  if (lastSpawned?.pid) pids.add(lastSpawned.pid);
+  for (const p of findOmniListenerPids()) pids.add(p);
+
+  for (const pid of pids) {
+    try {
+      if (process.platform === 'win32') {
+        execSync(`taskkill /PID ${pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
+      } else {
+        process.kill(pid, 'SIGTERM');
+      }
+      killed.push(pid);
+    } catch {
+      /* already dead */
+    }
+  }
+  lastSpawned = null;
+  if (killed.length) {
+    console.log(`[OmniVoice] killed pids for recycle: ${killed.join(',')}`);
+    await sleep(1200);
+  }
+  return killed;
+}
+
+/**
+ * If RSS above soft/hard threshold, kill engine and re-spawn clean.
+ * Call under GPU slot so Vina is not mid-flight.
+ */
+export async function ensureOmniServerMemorySafe(cwd = process.cwd()): Promise<{
+  baseUrl: string;
+  recycled: boolean;
+  memoryRssMb?: number;
+}> {
+  const soft = omniRssSoftMb();
+  const minUp = omniRssMinUptimeS();
+  const health = await probeOmniHealth(undefined, 1500);
+  const rss = health.memoryRssMb;
+  const uptime = health.uptimeS ?? 0;
+
+  // Recycle only when bloated AND process has been warm long enough (no restart thrash)
+  if (
+    health.online &&
+    typeof rss === 'number' &&
+    rss >= soft &&
+    uptime >= minUp
+  ) {
+    console.warn(
+      `[OmniVoice] RSS ${rss.toFixed(0)}MB ≥ soft ${soft}MB (uptime ${uptime.toFixed(0)}s) — recycling engine`,
+    );
+    noteOmniRestart();
+    await killOmniServerProcesses();
+    for (let i = 0; i < 15; i++) {
+      const still = await probeOmniBaseUrl(undefined, 800);
+      if (!still) break;
+      await sleep(500);
+    }
+    const baseUrl = await ensureOmniServer(cwd);
+    const after = await probeOmniHealth(baseUrl, 2000);
+    return {
+      baseUrl,
+      recycled: true,
+      memoryRssMb: after.memoryRssMb ?? rss,
+    };
+  }
+
+  if (
+    health.online &&
+    typeof rss === 'number' &&
+    rss >= soft &&
+    uptime < minUp
+  ) {
+    console.log(
+      `[OmniVoice] RSS ${rss.toFixed(0)}MB ≥ soft but uptime ${uptime.toFixed(0)}s < ${minUp}s — skip recycle`,
+    );
+  }
+
+  const baseUrl = health.baseUrl || (await ensureOmniServer(cwd));
+  return { baseUrl, recycled: false, memoryRssMb: rss };
 }

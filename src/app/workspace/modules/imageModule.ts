@@ -1,17 +1,10 @@
+import { API, postGenerate } from './apiClient';
 /**
  * Module quản lý thiết kế mỹ thuật Phân cảnh & Vẽ tranh AI (Storyboarding & AI Whisk Art Generator)
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { parseScenes } from '../utils/stringUtils';
 import { useNovelStore, type PromptAsset } from '@/store/useNovelStore';
-import {
-  applyMediaSelfHealPatch,
-  collectImageRepairRoutes,
-  diagnoseMediaSelfHeal,
-  formatRepairSummary,
-  resolveMediaSelfHealLog,
-  type ImageRepairRoute,
-} from '../utils/mediaSelfRepair';
 
 import type { NhanVatProfile } from '@/lib/characterProfile';
 import { buildIdentityLockEnglish } from '@/lib/characterProfile';
@@ -31,66 +24,44 @@ interface GenImagePromptParams {
 
 export async function generateImagePromptAction(params: GenImagePromptParams): Promise<PromptAsset[]> {
   const { sceneText, duration, style, nhan_vat_prompts, wpm, secondsPerBeat } = params;
+  void params.apiKey;
+  void params.apiKeys;
 
-  let prompts: PromptAsset[] = [];
-
-
-
-  const storeState = useNovelStore.getState();
-  const model = storeState.aiMasterModel;
-  let keysToUse: string[] = [];
-  if (model === 'gpt4o') {
-    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
-  } else if (model === 'llama') {
-    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
-  } else {
-    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
-  }
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType: 'GENERATE_IMAGE_PROMPT',
-      apiKeys: keysToUse,
-      model,
-      payload: {
-        sceneText,
-        style,
-        voiceDuration: duration,
-        characterReferences: nhan_vat_prompts
-      }
-    })
+  const data = await postGenerate('GENERATE_IMAGE_PROMPT', {
+    sceneText,
+    style,
+    voiceDuration: duration,
+    characterReferences: nhan_vat_prompts,
+    wpm: wpm > 0 ? wpm : 140,
+    secondsPerBeat: secondsPerBeat > 0 ? secondsPerBeat : 6,
   });
 
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Lỗi sinh Image Prompt.');
-  }
-
-  const data = await res.json();
-  
+  let prompts: PromptAsset[] = [];
   if (data.prompts && Array.isArray(data.prompts)) {
-    prompts = data.prompts.map((p: PromptAsset) => ({
+    prompts = (data.prompts as PromptAsset[]).map((p) => ({
       timestamp: p.timestamp || '0s',
       sentence: p.sentence || p.script_prompt || '',
       script_prompt: p.script_prompt || p.sentence || '',
       emotion: p.emotion || '',
       prompt: p.image_prompt || p.prompt || '',
       image_prompt: p.image_prompt || p.prompt || '',
-      video_prompt: p.video_prompt || ''
+      video_prompt: p.video_prompt || '',
     }));
   } else if (data.imagePrompt) {
-    prompts = [{ timestamp: '0s', sentence: sceneText, script_prompt: sceneText, prompt: data.imagePrompt, image_prompt: data.imagePrompt, video_prompt: data.videoPrompt || '' }];
+    prompts = [
+      {
+        timestamp: '0s',
+        sentence: sceneText,
+        script_prompt: sceneText,
+        prompt: String(data.imagePrompt),
+        image_prompt: String(data.imagePrompt),
+        video_prompt: String(data.videoPrompt || ''),
+      },
+    ];
   }
 
-  // Nếu API trả về usedApiKey, có thể phản hồi lại để UI ghi nhận độ ưu tiên
   if (data.usedApiKey) {
-    (prompts as unknown as { usedApiKey?: string }).usedApiKey = data.usedApiKey;
+    (prompts as unknown as { usedApiKey?: string }).usedApiKey = String(data.usedApiKey);
   }
 
   return prompts;
@@ -109,47 +80,18 @@ interface RegenPromptParams {
 
 export async function regenPromptAction(params: RegenPromptParams): Promise<string> {
   const { sentence, currentPrompt, style, nhan_vat_prompts } = params;
+  void params.apiKey;
+  void params.apiKeys;
+  void params.sceneIndex;
+  void params.promptIndex;
 
-
-
-  const storeState = useNovelStore.getState();
-  const model = storeState.aiMasterModel;
-  let keysToUse: string[] = [];
-  if (model === 'gpt4o') {
-    keysToUse = storeState.openaiApiKeys && storeState.openaiApiKeys.length > 0 ? storeState.openaiApiKeys : (storeState.openaiApiKey ? [storeState.openaiApiKey] : []);
-  } else if (model === 'llama') {
-    keysToUse = storeState.grokApiKeys && storeState.grokApiKeys.length > 0 ? storeState.grokApiKeys : (storeState.grokApiKey ? [storeState.grokApiKey] : []);
-  } else {
-    keysToUse = storeState.apiKeys && storeState.apiKeys.length > 0 ? storeState.apiKeys : (storeState.apiKey ? [storeState.apiKey] : []);
-  }
-
-  if (keysToUse.length === 0 && model !== 'aistudio') {
-    throw new Error('Chưa cấu hình API Key cho mô hình đã chọn. Vui lòng cấu hình trong Cài đặt chung.');
-  }
-
-  const res = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requestType: 'REGENERATE_PROMPT',
-      apiKeys: keysToUse,
-      model,
-      payload: {
-        sentence: sentence || 'Mô tả bối cảnh hoặc hành động của nhân vật',
-        currentPrompt,
-        style,
-        characterReferences: nhan_vat_prompts
-      }
-    })
+  const data = await postGenerate('REGENERATE_PROMPT', {
+    sentence: sentence || 'Mô tả bối cảnh hoặc hành động của nhân vật',
+    currentPrompt,
+    style,
+    characterReferences: nhan_vat_prompts,
   });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Lỗi khi viết lại prompt.');
-  }
-
-  const data = await res.json();
-  return data.prompt || '';
+  return String(data.prompt || '');
 }
 
 interface GenerateImageParams {
@@ -172,6 +114,35 @@ interface GenerateImageParams {
   imageAspectRatio?: string;
   imageCount?: number;
   aiMasterApiKey?: string;
+  /** Absolute/local path of concept sheet for face identity lock */
+  referenceImagePath?: string;
+}
+
+/** Normalize face_ref / generated image URL → local path when possible */
+export function resolveLocalImagePath(raw?: string): string {
+  let s = String(raw || '').trim().split('?')[0] || '';
+  if (!s) return '';
+  try {
+    if (s.startsWith('file:')) {
+      s = decodeURIComponent(s.replace(/^file:\/\//, '').replace(/^\/([A-Za-z]:)/, '$1'));
+    }
+  } catch {
+    /* ignore */
+  }
+  // /images/xxx.png served from public
+  if (s.startsWith('/images/') || s.startsWith('images/')) {
+    return s.replace(/^\//, '');
+  }
+  // full URL to local serve-image?path=
+  try {
+    if (s.includes('serve-image') && s.includes('path=')) {
+      const u = new URL(s, 'http://local');
+      return decodeURIComponent(u.searchParams.get('path') || '');
+    }
+  } catch {
+    /* ignore */
+  }
+  return s;
 }
 
 export async function generateImageAction(params: GenerateImageParams): Promise<{
@@ -202,6 +173,8 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
   } = params;
 
   let characterPrompt = '';
+  let referenceImagePath =
+    resolveLocalImagePath(params.referenceImagePath) || '';
   if (nhan_vat && nhan_vat_prompts) {
     for (const char of nhan_vat) {
       const mentioned = prompt.toLowerCase().includes(char.toLowerCase())
@@ -209,7 +182,26 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
       if (mentioned) {
         const charRef = nhan_vat_prompts[char];
         if (charRef) {
-          characterPrompt = buildIdentityLockEnglish(charRef) || charRef.prompt || '';
+          // Identity lock: English sheet + optional face-lock phrase for providers
+          const lock = buildIdentityLockEnglish(charRef) || charRef.prompt || '';
+          const faceRefPath = resolveLocalImagePath(
+            (charRef as { face_ref?: string }).face_ref,
+          );
+          if (!referenceImagePath && faceRefPath) {
+            referenceImagePath = faceRefPath;
+          }
+          const faceHint =
+            (charRef as { identity_lock?: string }).identity_lock ||
+            faceRefPath ||
+            '';
+          characterPrompt = [
+            lock,
+            faceHint
+              ? `STRICT IDENTITY LOCK: preserve exact face/identity from reference sheet (${String(faceHint).slice(0, 200)}); same age, scars, hairline; no face swap.`
+              : 'STRICT IDENTITY LOCK: consistent character face, hair, scars across all shots; no redesign.',
+          ]
+            .filter(Boolean)
+            .join(' ');
           break;
         }
       }
@@ -239,9 +231,20 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
     const routeKey = activeImageApiKey || providerApiKeys[0] || apiKey || '';
     const apiKeysToSend = providerApiKeys.length ? providerApiKeys : (routeKey ? [routeKey] : []);
 
-    const res = await fetch('/api/generate-image', {
+    let imageQuality = '1k';
+    try {
+      if (typeof localStorage !== 'undefined') {
+        imageQuality =
+          localStorage.getItem('ainovel_flow_image_quality') || '1k';
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const { buildClientApiHeaders } = await import('./apiClient');
+    const res = await fetch(API.generateImage, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildClientApiHeaders(),
       body: JSON.stringify({
         prompt,
         chapterNum,
@@ -251,6 +254,7 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
         ten_tac_pham,
         cookie: activeCookie || '',
         characterPrompt,
+        referenceImagePath: referenceImagePath || undefined,
         apiKey: routeKey,
         apiKeys: apiKeysToSend,
         model: activeModel,
@@ -258,92 +262,29 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
         imageApiKey: routeKey,
         imageAspectRatio,
         imageCount,
+        quality: imageQuality,
+        imageQuality,
         aiMasterApiKey: params.aiMasterApiKey
       })
     });
 
     const data = await res.json().catch(() => ({}));
+    const correlationId =
+      res.headers.get('x-correlation-id') ||
+      (typeof data?.correlationId === 'string' ? data.correlationId : '') ||
+      '';
     if (!res.ok) {
-      throw new Error(data.error || 'Image generation failed.');
+      const msg = data.error || 'Image generation failed.';
+      const e = new Error(
+        correlationId ? `${msg} [cid=${correlationId}]` : msg,
+      ) as Error & { correlationId?: string };
+      e.correlationId = correlationId || undefined;
+      throw e;
     }
 
-    return data;
+    return { ...data, correlationId: correlationId || data.correlationId };
   };
 
-  try {
-    return await postImage(routeProvider, routeModel, selectedCookie || '', imageApiKey || '');
-  } catch (firstError) {
-    const latestStore = useNovelStore.getState();
-    const diagnosis = await diagnoseMediaSelfHeal(latestStore, 'image', firstError, {
-      operation: 'generate_image',
-      routeProvider,
-      routeModel,
-      sceneIndex,
-      promptIndex,
-    });
-
-    const routes = collectImageRepairRoutes(
-      useNovelStore.getState(),
-      diagnosis,
-      promptIndex,
-      routeProvider,
-      routeModel,
-    );
-
-    console.info(
-      `[Self-Heal Brain] Image orchestration: kind=${diagnosis.issue.kind}, routes=${routes.length}, log=${diagnosis.logId}`,
-    );
-
-    if (routes.length === 0) {
-      throw firstError instanceof Error
-        ? firstError
-        : new Error(String(firstError));
-    }
-
-    // Persist brain patch, then cascade every viable provider/model route.
-    applyMediaSelfHealPatch(useNovelStore.getState(), diagnosis.patch);
-
-    const attempted: ImageRepairRoute[] = [];
-    let lastError: unknown = firstError;
-
-    for (const route of routes) {
-      attempted.push(route);
-      applyMediaSelfHealPatch(useNovelStore.getState(), {
-        imageProvider: route.provider,
-        imageModel: route.model,
-      });
-
-      console.info(
-        `[Self-Heal Brain] Trying image route ${attempted.length}/${routes.length}: ${route.provider}/${route.model} (${route.reason})`,
-      );
-
-      try {
-        const repaired = await postImage(
-          route.provider,
-          route.model,
-          route.selectedCookie,
-          route.imageApiKey,
-        );
-        await resolveMediaSelfHealLog(diagnosis.logId);
-        const summary = formatRepairSummary(attempted, route);
-        console.info(`[Self-Heal Brain] Image healed: ${summary}`);
-        return {
-          ...repaired,
-          method: repaired.method ? `${repaired.method} | ${summary}` : summary,
-        };
-      } catch (retryError) {
-        lastError = retryError;
-        console.warn(
-          `[Self-Heal Brain] Image route failed ${route.provider}/${route.model}:`,
-          retryError instanceof Error ? retryError.message : retryError,
-        );
-      }
-    }
-
-    const lastMsg = lastError instanceof Error ? lastError.message : String(lastError);
-    const firstMsg = firstError instanceof Error ? firstError.message : String(firstError);
-    throw new Error(
-      `Self-heal that bai sau ${attempted.length} tuyen anh. Goc: ${firstMsg}. Cuoi: ${lastMsg}. Log: ${diagnosis.logPath || diagnosis.logId}`,
-    );
-  }
+  // No provider swap fallback — only multi-key/cookie rotation inside postImage / API.
+  return await postImage(routeProvider, routeModel, selectedCookie || '', imageApiKey || '');
 }

@@ -3,6 +3,11 @@
  * Elevate existing multi-voice TTS — does not replace single-voice path.
  */
 
+import {
+  characterRoleId as contractCharacterRoleId,
+  sceneAssetKey,
+} from '@/contracts';
+
 export type VoiceRoleKind = 'narrator' | 'character' | 'extra';
 
 export type CastSegmentSource =
@@ -89,8 +94,9 @@ export function normalizeSegText(text: string): string {
   return text.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
+/** @see contracts/keys.characterRoleId — same wire as characterImageKey */
 export function characterRoleId(name: string): string {
-  return `char_${name.normalize('NFC').trim()}`;
+  return contractCharacterRoleId(name);
 }
 
 export function makeSegmentId(params: {
@@ -261,6 +267,7 @@ export interface ResolvedSeg {
   locked?: boolean;
 }
 
+/** @see contracts/keys.sceneAssetKey */
 export function sceneKey(chapter: number, sceneIndex: number): string {
-  return `${chapter}_${sceneIndex}`;
+  return sceneAssetKey(chapter, sceneIndex);
 }

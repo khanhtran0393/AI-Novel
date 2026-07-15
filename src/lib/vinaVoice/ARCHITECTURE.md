@@ -20,31 +20,43 @@ Port **toàn bộ hành vi** app tham chiếu Vina-Voice vào AI Novel theo **c�
 | help tooltips | `help.json` |
 | Synth button | `runtime.runtimeSynthesize` / TTS platform `vina_voice` |
 
-## Luồng runtime
+## Luồng runtime — Universal Zero-Shot (Trái tim độc tôn)
 
 ```
 bootstrap env
-  → load session (rules, pauses, seeds)
-  → apply text rules
-  → chunk + pause schedule
-  → synth:
-       prefer tools/vina_voice_engine (:8765) [clone if ref]
-       else builtin Edge + postprocess
-  → concat pauses
-  → public/audio/clones
+  → inspect ONNX brain (src/python_core/models/vina_voice ~1.46GB)
+  → speakerRegistry.resolveSpeaker(profile | ad-hoc | DEFAULT_NARRATOR)
+       catalog studio WAV  ==  zero-shot mồi
+       user clone WAV      ==  zero-shot mồi
+  → apply text rules + chunk
+  → tryNativeEngine (vina_voice_infer.py, CORE_MODELS_DIR locked)
+       auto EP → cpu retry → optional HTTP :8765
+  → HARD-FAIL if fail (no silent Edge)
+  → finalizeWithProsody (ffmpeg speed/pitch)
+  → public/audio or scene path
+
+Escape hatch ONLY:
+  forceBuiltin=true  OR  VINA_EMERGENCY_EDGE=1  → labeled EMERGENCY_EDGE (not ONNX)
 ```
+
+## Nguyên lý
+
+- **Một não ONNX** cho catalog + clone + default narrator.
+- **Không có** “giọng neural riêng”: mọi giọng = `(reference_audio, reference_text, seeds)`.
+- Modules: `speakerRegistry.ts`, `paths.ts` (brain lock), `engine.ts` (UVE), `vina_voice_infer.py`.
 
 ## Không phụ thuộc
 
 - `Vina-Voice.exe`
-- `model-tts.onnx` (RAR đóng của Vina)
+- Silent Edge as identity substitute
 - pyarmor / license Vina
 
-## Phụ thuộc tùy chọn (nâng tembre)
+## Phụ thuộc runtime
 
-- `edge-tts` CLI
-- Coqui TTS / XTTS v2 (zero-shot clone)
-- `ffmpeg` (bắt buộc cho post + convert)
+- ONNX Runtime + librosa/soundfile (Python)
+- `ffmpeg` (prosody)
+- Optional: HTTP engine :8765 / XTTS
+- Emergency only: `edge-tts`
 
 ## API surface
 

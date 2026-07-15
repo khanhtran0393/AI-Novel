@@ -2,20 +2,22 @@
 
 import React, { useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
-import {
-  Download,
-  ChevronLeft,
-  ChevronRight
-} from 'lucide-react';
+import { Download } from 'lucide-react';
 
-// Import modular UI subcomponents
-import Header from './components/Header';
-import SetupPhase from './components/SetupPhase';
-import Sidebar from './components/Sidebar';
-import ContentTab from './components/ContentTab';
-import AINovelDashboard from './components/AINovelDashboard';
+/**
+ * Workspace orchestrator — thin page.
+ * UI layers: layouts → chrome → features/* → modules/hooks
+ * @see ./ARCHITECTURE.md
+ */
+import Header from './chrome/Header';
+import { AppShell } from './layouts';
+import { SetupPhase, YoutubeSetupPhase, Sidebar, ContentTab } from './features/script';
+import AINovelDashboard from './features/ainovel/AINovelDashboard';
+import { ToastHost } from './shared';
+import OnboardingBanner from './features/onboarding/OnboardingBanner';
+import MediaDnaBanner from './features/media/MediaDnaBanner';
+import FlowAutoBootstrap from './features/media/FlowAutoBootstrap';
 
-// Import custom business logic hooks modules
 import { useSetupActions } from './hooks/useSetupActions';
 import { useWriteChapter } from './hooks/useWriteChapter';
 import { useSceneActions } from './hooks/useSceneActions';
@@ -25,9 +27,10 @@ import { useImagePromptActions } from './hooks/useImagePromptActions';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useProjectActions } from './hooks/useProjectActions';
 
-// Import các tiện ích xử lý chuỗi
 import { parseScenes, getWordCount } from './utils/stringUtils';
+import { imageAssetKey, sceneAssetKey } from '@/contracts';
 import { YOUTUBE_HOOK_SCENE_INDEX } from '@/lib/youtubeSafe';
+import { toast } from '@/lib/toastBus';
 
 export default function Workspace() {
   const store = useNovelStore();
@@ -38,13 +41,16 @@ export default function Workspace() {
     promptError,
     setPromptError,
     isGeneratingIdea,
+    isAnalyzingPlot,
     handleRandomTemplate,
+    handlePhanTichYoutube,
     handleGenerateOutline
   } = useSetupActions();
 
   const {
     isStreaming,
     streamText,
+    liveWordCount,
     handleWriteChapter,
     handleIntervene,
     handleReviseFromReview,
@@ -66,11 +72,9 @@ export default function Workspace() {
     handleGenerateTTS,
     handleGenerateChapterTTS,
     handleStopChapterTTS,
-    handleChapterCastPreflight,
     ttsProgress,
     ttsStatus,
     chapterTtsRunning,
-    chapterTtsProgress,
     chapterTtsStatus,
   } = useTTSActions();
 
@@ -93,35 +97,30 @@ export default function Workspace() {
     handleExportTxt
   } = useProjectActions(streamText);
 
-  // Điều hướng Pagination chuyển Chương
-  const handlePrevChapter = () => {
-    if (store.chuong_dang_chon > 1) {
-      store.selectChuong(store.chuong_dang_chon - 1);
-    }
-  };
-
-  const handleNextChapter = () => {
-    if (store.chuong_dang_chon < store.danh_sach_chuong.length) {
-      store.selectChuong(store.chuong_dang_chon + 1);
-    }
-  };
-
   // Trả về Loading Screen nếu Zustand chưa hydrate
   if (!store.isHydrated) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-black font-sans text-amber-500">
-        <div className="relative h-16 w-16 animate-spin rounded-full border-4 border-amber-950 border-t-amber-500"></div>
-        <p className="mt-4 text-sm tracking-widest text-zinc-400 uppercase">Đang nạp trạng thái bộ nhớ...</p>
-      </div>
+      <AppShell>
+        <div className="flex h-full flex-col items-center justify-center bg-black/40 font-sans text-amber-500">
+          <div className="relative h-16 w-16 animate-spin rounded-full border-4 border-amber-950 border-t-amber-500" />
+          <p className="mt-4 text-sm tracking-widest text-zinc-400 uppercase">
+            Đang nạp trạng thái bộ nhớ...
+          </p>
+        </div>
+      </AppShell>
     );
   }
 
   const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
-  const wordsCount = getWordCount(currentChapter?.noi_dung || '');
+  // Live Word-Gate: while streaming, count ticks from typing animation; else saved chapter
+  const wordsCount = isStreaming
+    ? liveWordCount
+    : getWordCount(currentChapter?.noi_dung || '');
   const targetWords = store.setup.so_tu_chuong || 4250;
-  // % đúng tỉ lệ (có thể >100% khi vượt chỉ tiêu) — không ép trần 100
+  // % đúng tỉ lệ (có thể >100% khi vượt chỉ tiêu) — không ép trần 100; bar fill clamp 100
   const progressPercent =
     targetWords > 0 ? Math.round((wordsCount / targetWords) * 100) : 0;
+  const progressBarPct = Math.min(100, Math.max(0, progressPercent));
 
   // Tính toán thống kê hình ảnh chương hiện tại
   const activeChapterNum = store.chuong_dang_chon;
@@ -132,12 +131,12 @@ export default function Workspace() {
   // Include Hook (990) + normal scenes in image progress
   const sceneIndicesForStats = [YOUTUBE_HOOK_SCENE_INDEX, ...scenesList.map((_, i) => i)];
   sceneIndicesForStats.forEach((sceneIdx) => {
-    const assetKey = `${activeChapterNum}_${sceneIdx}`;
+    const assetKey = sceneAssetKey(activeChapterNum, sceneIdx);
     const prompts = store.generatedPrompts[assetKey] || [];
     totalPromptsCount += prompts.length;
 
     prompts.forEach((_, promptIdx) => {
-      const imageKey = `${activeChapterNum}_${sceneIdx}_${promptIdx}`;
+      const imageKey = imageAssetKey(activeChapterNum, sceneIdx, promptIdx);
       if (store.generatedImages?.[imageKey]) {
         successImagesCount++;
       }
@@ -147,24 +146,16 @@ export default function Workspace() {
   const failedImagesCount = totalPromptsCount - successImagesCount;
 
   return (
-    <div className="flex h-screen max-h-screen overflow-hidden flex-col bg-black text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
+    <AppShell>
+    <FlowAutoBootstrap />
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
       {/* 1. HEADER CHUNG CAO CẤP */}
       <Header />
+      <OnboardingBanner />
+      <MediaDnaBanner />
 
-      {/* GIAI ĐOẠN 1: MÀN HÌNH SETUP THAM SỐ */}
-      {store.giai_doan === 1 && (
-        <SetupPhase
-          promptError={promptError}
-          isGeneratingIdea={isGeneratingIdea}
-          handleRandomTemplate={handleRandomTemplate}
-          handleGenerateOutline={handleGenerateOutline}
-        />
-      )}
-
-      {/* GIAI ĐOẠN 2: WORKSPACE CHÍNH (Layout 2 cột) */}
-      {store.giai_doan === 2 && (
-        <main className="flex flex-1 overflow-hidden">
-          {/* CỘT TRÁI: SIDEBAR ĐIỀU HƯỚNG & DÀN Ý */}
+      {/* Workspace 2 cột — trục chính luôn hiện; Setup = modal giữa màn hình */}
+      <main className="flex min-h-0 flex-1 overflow-hidden">
           <Sidebar
             handleWriteChapter={handleWriteChapter}
             isStreaming={isStreaming}
@@ -172,10 +163,10 @@ export default function Workspace() {
           />
 
           {/* CỘT PHẢI: KHÔNG GIAN SOẠN THẢO */}
-          <section className="flex flex-1 flex-col bg-black overflow-hidden min-w-0">
-            {/* Hàng 1: 1 dòng gọn — không vỡ / không dính chữ */}
-            <div className="shrink-0 border-b border-zinc-900 bg-zinc-950 px-3 sm:px-4 h-11 flex items-center gap-2 min-w-0">
-              <span className="text-[11px] font-bold text-amber-500 uppercase tracking-wide shrink-0 whitespace-nowrap">
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black/40">
+            {/* Hàng 1: toolbar fluid */}
+            <div className="flex h-11 min-w-0 shrink-0 items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/80 px-3 sm:px-4">
+              <span className="shrink-0 whitespace-nowrap text-[clamp(10px,1.1vw,12px)] font-bold uppercase tracking-wide text-amber-500">
                 {store.workspaceTab === 'script' ? '📝 Kịch Bản Làm Việc' : '🤖 AI Novel Engine'}
               </span>
 
@@ -184,16 +175,39 @@ export default function Workspace() {
                   <span className="text-zinc-800 shrink-0 select-none" aria-hidden>
                     ·
                   </span>
-                  {/* Cổng từ: một chuỗi liền, có khoảng trắng rõ */}
+                  {/* Cổng từ: realtime khi sinh kịch bản (liveWordCount theo từng tick gõ) */}
                   <span
-                    className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ${
+                    className={`relative inline-flex items-center gap-1.5 overflow-hidden rounded border px-2 py-0.5 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ${
                       progressPercent >= 92
                         ? 'border-emerald-900/50 bg-emerald-950/30 text-emerald-400'
                         : 'border-amber-900/50 bg-amber-950/30 text-amber-400'
-                    }`}
-                    title={`Tối thiểu ${Math.round(targetWords * 0.92)} từ (92%)`}
+                    } ${isStreaming ? 'ring-1 ring-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.15)]' : ''}`}
+                    title={
+                      isStreaming
+                        ? `Đang sinh… ${wordsCount}/${targetWords} từ (live)`
+                        : `Tối thiểu ${Math.round(targetWords * 0.92)} từ (92%)`
+                    }
+                    aria-live="polite"
+                    aria-atomic="true"
                   >
-                    Cổng từ {wordsCount}/{targetWords} · {progressPercent}%
+                    {/* Thanh máu neon nền — đầy dần realtime */}
+                    <span
+                      aria-hidden
+                      className={`pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-150 ease-out ${
+                        progressPercent >= 92
+                          ? 'bg-emerald-500/25'
+                          : isStreaming
+                            ? 'bg-amber-500/20'
+                            : 'bg-amber-500/10'
+                      }`}
+                      style={{ width: `${progressBarPct}%` }}
+                    />
+                    <span className="relative z-[1]">
+                      Cổng từ {wordsCount}/{targetWords} · {progressPercent}%
+                      {isStreaming && (
+                        <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current align-middle opacity-80" />
+                      )}
+                    </span>
                   </span>
                   {/* Ảnh: một pill, không xuống dòng từng ký tự */}
                   <span
@@ -202,43 +216,79 @@ export default function Workspace() {
                   >
                     Ảnh {successImagesCount}✓/{failedImagesCount}✗ ({totalPromptsCount})
                   </span>
+                  {/* Memory commit status — hàng 1 cạnh Ảnh / .txt */}
+                  {(() => {
+                    const mem = store.memoryPipelineStatus;
+                    const st = mem?.status || 'idle';
+                    const msg = (mem?.message || '').trim();
+                    const shortMsg =
+                      msg.length > 48 ? `${msg.slice(0, 46)}…` : msg;
+                    const label =
+                      st === 'pending'
+                        ? 'đang commit…'
+                        : st === 'ok'
+                          ? 'commit ok'
+                          : st === 'failed'
+                            ? 'commit lỗi'
+                            : 'chưa commit';
+                    const color =
+                      st === 'failed'
+                        ? 'text-red-400 border-red-900/40 bg-red-950/20'
+                        : st === 'pending'
+                          ? 'text-amber-400 border-amber-900/40 bg-amber-950/15 animate-pulse'
+                          : st === 'ok'
+                            ? 'text-emerald-400 border-emerald-900/40 bg-emerald-950/15'
+                            : 'text-zinc-500 border-zinc-800 bg-zinc-900/50';
+                    const showRetry =
+                      st === 'failed' &&
+                      (mem?.chapter === activeChapterNum || !mem?.chapter);
+                    return (
+                      <div
+                        className={`shrink-0 flex max-w-[min(220px,30vw)] items-center gap-1 rounded border px-1.5 py-0.5 ${color}`}
+                        title={
+                          msg ||
+                          'Bộ nhớ vĩ mô sau khi viết chương (tóm tắt / lore / world state). Không liên quan dàn ý outline.'
+                        }
+                      >
+                        <span className="text-[8px] font-bold uppercase tracking-wide opacity-80">
+                          Mem
+                        </span>
+                        <span className="text-[9px] font-bold whitespace-nowrap">
+                          · {label}
+                        </span>
+                        {shortMsg && st !== 'idle' ? (
+                          <span className="hidden sm:inline text-[8px] font-medium text-zinc-400 truncate min-w-0 max-w-[100px]">
+                            {shortMsg}
+                          </span>
+                        ) : null}
+                        {st === 'pending' ? (
+                          <span className="text-[8px] opacity-70">…</span>
+                        ) : showRetry ? (
+                          <button
+                            type="button"
+                            onClick={() => void retryMemoryCommit(activeChapterNum)}
+                            className="text-[9px] font-bold underline hover:opacity-80 shrink-0"
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </>
               )}
 
               <div className="flex-1 min-w-0" />
 
               {store.workspaceTab === 'script' && (
-                <div className="inline-flex items-center gap-1 shrink-0">
-                  <div className="inline-flex items-center rounded border border-zinc-800 bg-black/50 h-7">
-                    <button
-                      type="button"
-                      disabled={store.chuong_dang_chon <= 1}
-                      onClick={handlePrevChapter}
-                      className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30 px-1 h-full"
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <span className="text-[10px] font-bold text-zinc-400 px-1.5 tabular-nums whitespace-nowrap">
-                      Ch. {store.chuong_dang_chon}/{store.danh_sach_chuong.length}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={store.chuong_dang_chon >= store.danh_sach_chuong.length}
-                      onClick={handleNextChapter}
-                      className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30 px-1 h-full"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleExportTxt}
-                    className="inline-flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/60 px-2 h-7 text-[10px] font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white"
-                  >
-                    <Download className="h-3 w-3" />
-                    .txt
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleExportTxt}
+                  className="inline-flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/60 px-2 h-7 text-[10px] font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white shrink-0"
+                >
+                  <Download className="h-3 w-3" />
+                  .txt
+                </button>
               )}
             </div>
 
@@ -249,19 +299,12 @@ export default function Workspace() {
               </div>
             )}
 
-            {/* KỊCH BẢN WORKSPACE */}
+            {/* KỊCH BẢN WORKSPACE (trục chính) */}
             {store.workspaceTab === 'script' && (
               <>
                 {/* Hàng 2: tên series + cuộn cảnh + viết lại toàn bộ chương (phải) */}
                 {currentChapter && (
                   <div className="shrink-0 border-b border-zinc-900/80 bg-zinc-950/95 px-3 sm:px-4 py-1.5 flex items-center gap-2 min-w-0 z-10">
-                    <span
-                      className="text-[10px] font-semibold text-zinc-500 truncate max-w-[24%] sm:max-w-[32%] shrink min-w-0"
-                      title={store.ten_tac_pham}
-                    >
-                      {store.ten_tac_pham || '—'}
-                    </span>
-                    <div className="h-3 w-px bg-zinc-800 shrink-0" />
                     <div className="flex flex-1 items-center gap-1 min-w-0 overflow-x-auto scrollbar-thin py-0.5">
                       <button
                         type="button"
@@ -299,35 +342,76 @@ export default function Workspace() {
                         );
                       })}
                     </div>
-                    {store.memoryPipelineStatus?.status === 'failed' &&
-                      store.memoryPipelineStatus.chapter === activeChapterNum && (
+                    {/* TTS chương + Mem + Viết lại — sticky hàng 2 (không cuộn mất) */}
+                    <div className="ml-auto shrink-0 flex items-center gap-1.5 min-w-0">
+                      <button
+                        type="button"
+                        disabled={chapterTtsRunning || isStreaming}
+                        title="Gen TTS mọi cảnh; bỏ qua cảnh đã có audio. Hỏi force nếu 100% đã có."
+                        onClick={() =>
+                          void handleGenerateChapterTTS({
+                            includeHook: true,
+                            skipExisting: true,
+                          }).catch((e) =>
+                            toast.error(
+                              'TTS chương',
+                              e instanceof Error ? e.message : String(e),
+                            ),
+                          )
+                        }
+                        className="shrink-0 inline-flex items-center rounded border border-amber-700/50 bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-black hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {chapterTtsRunning ? 'Đang gen…' : '🎙️ Gen TTS cả chương'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={chapterTtsRunning || isStreaming}
+                        title="Gen lại fail-log; nếu không có log → gen cảnh chưa có audio"
+                        onClick={() =>
+                          void handleGenerateChapterTTS({
+                            includeHook: true,
+                            onlyFailed: true,
+                            skipExisting: false,
+                          }).catch((e) =>
+                            toast.error(
+                              'Retry TTS',
+                              e instanceof Error ? e.message : String(e),
+                            ),
+                          )
+                        }
+                        className="shrink-0 inline-flex items-center rounded border border-rose-800/50 bg-rose-950/30 px-2 py-0.5 text-[10px] font-bold text-rose-300 hover:bg-rose-950/50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        ↺ Gen lại cảnh lỗi
+                      </button>
+                      {chapterTtsRunning ? (
                         <button
                           type="button"
-                          onClick={() => void retryMemoryCommit(activeChapterNum)}
-                          className="shrink-0 text-[9px] font-bold text-red-400 hover:text-red-300"
-                          title={store.memoryPipelineStatus.message}
+                          onClick={handleStopChapterTTS}
+                          className="shrink-0 inline-flex items-center rounded border border-rose-800/60 px-2 py-0.5 text-[10px] font-bold text-rose-400 hover:bg-rose-950/40 whitespace-nowrap"
+                          title={chapterTtsStatus || 'Dừng TTS chương'}
                         >
-                          ⚠ Memory
+                          Dừng
                         </button>
-                      )}
-                    <button
-                      type="button"
-                      disabled={store.dang_tai || isStreaming}
-                      title="Viết lại toàn bộ chương này từ đầu (xóa kịch bản + media chương)"
-                      onClick={() => {
-                        if (
-                          !confirm(
-                            `⚠️ Viết lại toàn bộ Chương ${store.chuong_dang_chon}?\nSẽ xóa kịch bản và media (audio/ảnh/video/prompt) của chương này.`,
-                          )
-                        ) {
-                          return;
-                        }
-                        void handleWriteChapter(true);
-                      }}
-                      className="ml-auto shrink-0 inline-flex items-center gap-1 rounded border border-red-900/50 bg-red-500/15 px-2.5 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      Viết lại toàn bộ chương
-                    </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={store.dang_tai || isStreaming}
+                        title="Viết lại toàn bộ chương này từ đầu (xóa kịch bản + media chương)"
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              `⚠️ Viết lại toàn bộ Chương ${store.chuong_dang_chon}?\nSẽ xóa kịch bản và media (audio/ảnh/video/prompt) của chương này.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          void handleWriteChapter(true);
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1 rounded border border-red-900/50 bg-red-500/15 px-2.5 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        Viết lại toàn bộ chương
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -357,12 +441,6 @@ export default function Workspace() {
                       generatingTTS={generatingTTS}
                       ttsProgress={ttsProgress}
                       ttsStatus={ttsStatus}
-                      chapterTtsRunning={chapterTtsRunning}
-                      chapterTtsProgress={chapterTtsProgress}
-                      chapterTtsStatus={chapterTtsStatus}
-                      handleGenerateChapterTTS={handleGenerateChapterTTS}
-                      handleStopChapterTTS={handleStopChapterTTS}
-                      handleChapterCastPreflight={handleChapterCastPreflight}
                       generatingPrompt={generatingPrompt}
                       regeneratingSinglePrompt={regeneratingSinglePrompt}
                       generatingImage={generatingImage}
@@ -375,6 +453,26 @@ export default function Workspace() {
             )}
           </section>
         </main>
+
+      {/* Setup modal giữa màn hình — classic | youtube */}
+      {store.giai_doan === 1 && store.setupKind === 'youtube' && (
+        <YoutubeSetupPhase
+          promptError={promptError}
+          isGeneratingIdea={isGeneratingIdea}
+          isAnalyzingPlot={isAnalyzingPlot}
+          handlePhanTichYoutube={handlePhanTichYoutube}
+          handleGenerateOutline={handleGenerateOutline}
+          onClose={() => store.setGiaiDoan(2)}
+        />
+      )}
+      {store.giai_doan === 1 && store.setupKind !== 'youtube' && (
+        <SetupPhase
+          promptError={promptError}
+          isGeneratingIdea={isGeneratingIdea}
+          handleRandomTemplate={handleRandomTemplate}
+          handleGenerateOutline={handleGenerateOutline}
+          onClose={() => store.setGiaiDoan(2)}
+        />
       )}
 
       {/* 3. LIGHTBOX PHÓNG TO ẢNH CAO CẤP */}
@@ -396,11 +494,13 @@ export default function Workspace() {
             src={zoomImageUrl}
             alt="Zoomed art"
             onClick={(e) => e.stopPropagation()}
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg border border-zinc-900 shadow-2xl animate-in zoom-in-95 duration-200 cursor-default"
+            className="max-h-[90vh] max-w-[90vw] cursor-default rounded-2xl border border-zinc-800 object-contain shadow-2xl animate-in zoom-in-95 duration-200"
           />
         </div>
       )}
 
+      <ToastHost />
     </div>
+    </AppShell>
   );
 }

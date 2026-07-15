@@ -107,12 +107,23 @@ function loadOmnivoiceLibrary(cwd: string): VoiceOption[] & { _byLang?: Record<s
         }
 
         if (!byLang[lang]) byLang[lang] = [];
-        byLang[lang].push({
+        const entry: VoiceOption = {
           id: String(voice.id),
           name,
           gender,
           previewUrl,
-        });
+        };
+        // Library JSON có thể lặp id (vd. omnivoice_preset_ref_vn_trang ×2) → React key warning
+        const existIdx = byLang[lang].findIndex((x) => x.id === entry.id);
+        if (existIdx >= 0) {
+          // Giữ bản name/style dài hơn (thường mô tả đầy đủ hơn)
+          const prev = byLang[lang][existIdx];
+          if ((entry.name || '').length >= (prev.name || '').length) {
+            byLang[lang][existIdx] = entry;
+          }
+        } else {
+          byLang[lang].push(entry);
+        }
       }
       return Object.assign([], { _byLang: byLang }) as VoiceOption[] & {
         _byLang?: Record<string, VoiceOption[]>;
@@ -170,6 +181,16 @@ export async function GET(req: NextRequest) {
     const piper = loadPiperModels(cwd);
     if (piper.length) {
       setLangList(catalog, 'piper', 'vi', piper);
+      // VieNeu chỉ hiện model có file thật (tránh Adam 2/3… 404)
+      setLangList(
+        catalog,
+        'vieneu_tts',
+        'vi',
+        piper.map((p) => ({
+          ...p,
+          name: p.name.includes('Piper') ? p.name : `${p.name} (VieNeu→Piper)`,
+        })),
+      );
       sources.push('piper-disk');
     }
 

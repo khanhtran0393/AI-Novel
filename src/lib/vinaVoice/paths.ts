@@ -21,6 +21,81 @@ export function getVinaRoot(cwd = process.cwd()): string {
   return path.join(cwd, 'data', 'vina-voices');
 }
 
+/** Locked ONNX brain filenames (must live under src/python_core/models/vina_voice/). */
+export const VINA_ONNX_BRAIN_FILES = [
+  'model-tts_0.onnx',
+  'model-tts_1.onnx',
+  'model-tts_2.onnx',
+  'vocab.txt',
+] as const;
+
+/**
+ * Permanent core path for Vina ONNX brain (~1.46GB).
+ * Clone native ALWAYS loads from here — never tools/ or external Vina-Voice.exe.
+ */
+export function getVinaOnnxModelsDir(cwd = process.cwd()): string {
+  return path.join(cwd, 'src', 'python_core', 'models', 'vina_voice');
+}
+
+export function getVinaInferScript(cwd = process.cwd()): string {
+  return path.join(cwd, 'src', 'python_core', 'vina_voice_infer.py');
+}
+
+/**
+ * Python used for ONNX clone infer. Prefer SuperAudioTools / local omnivoice runtime
+ * (has onnxruntime + librosa). System `python` (e.g. 3.14) often hangs or lacks deps.
+ */
+export function resolveVinaPython(cwd = process.cwd()): string {
+  const fromEnv = [
+    process.env.VINA_PYTHON,
+    process.env.OMNIVOICE_PYTHON,
+    process.env.PYTHON_EXE,
+  ].filter(Boolean) as string[];
+  const candidates = [
+    ...fromEnv,
+    'D:\\SuperAudioTools\\omnivoice-python\\python.exe',
+    path.join(cwd, 'omnivoice-python', 'python.exe'),
+    path.join(cwd, 'runtime', 'omnivoice-python', 'python.exe'),
+    path.join(cwd, 'python_core', '.venv', 'Scripts', 'python.exe'),
+  ];
+  for (const p of candidates) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+  return process.platform === 'win32' ? 'python.exe' : 'python';
+}
+
+/** Integrity check for locked brain assets. */
+export function inspectVinaOnnxBrain(cwd = process.cwd()): {
+  modelsDir: string;
+  ok: boolean;
+  totalBytes: number;
+  totalGB: number;
+  files: { name: string; exists: boolean; bytes: number }[];
+  missing: string[];
+} {
+  const modelsDir = getVinaOnnxModelsDir(cwd);
+  const files = VINA_ONNX_BRAIN_FILES.map((name) => {
+    const p = path.join(modelsDir, name);
+    const exists = fs.existsSync(p) && fs.statSync(p).isFile();
+    const bytes = exists ? fs.statSync(p).size : 0;
+    return { name, exists, bytes };
+  });
+  const missing = files.filter((f) => !f.exists).map((f) => f.name);
+  const totalBytes = files.reduce((s, f) => s + f.bytes, 0);
+  return {
+    modelsDir,
+    ok: missing.length === 0 && totalBytes > 1_000_000_000,
+    totalBytes,
+    totalGB: Math.round((totalBytes / 1024 / 1024 / 1024) * 1000) / 1000,
+    files,
+    missing,
+  };
+}
+
 export function vinaPaths(cwd = process.cwd()) {
   const root = getVinaRoot(cwd);
   return {
@@ -38,6 +113,9 @@ export function vinaPaths(cwd = process.cwd()) {
     publicClones: path.join(cwd, 'public', 'audio', 'clones'),
     engineDir: path.join(cwd, 'tools', 'vina_voice_engine'),
     engineScript: path.join(cwd, 'tools', 'vina_voice_engine', 'engine_server.py'),
+    /** Locked ONNX brain (~1.46GB) — clone native only */
+    onnxModelsDir: getVinaOnnxModelsDir(cwd),
+    inferScript: getVinaInferScript(cwd),
   };
 }
 
@@ -90,6 +168,19 @@ export function ensureVinaEnvironment(cwd = process.cwd()): {
   const requiredFiles = [p.profilesGoc, p.chunkProfiles, p.sessionState, p.help];
   for (const f of requiredFiles) {
     if (!fs.existsSync(f)) missing.push(f);
+  }
+
+  // Locked ONNX brain is required for true clone (not Edge fallback)
+  const brain = inspectVinaOnnxBrain(cwd);
+  if (!brain.ok) {
+    for (const name of brain.missing) {
+      missing.push(path.join(brain.modelsDir, name));
+    }
+    if (brain.missing.length === 0 && brain.totalBytes <= 1_000_000_000) {
+      missing.push(
+        `${brain.modelsDir} (brain size ${brain.totalGB}GB < 1GB — incomplete)`,
+      );
+    }
   }
 
   return {

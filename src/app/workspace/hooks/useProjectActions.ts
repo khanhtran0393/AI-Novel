@@ -1,8 +1,13 @@
 'use client';
 
 import { useNovelStore } from '@/store/useNovelStore';
+import {
+  allowIntentionalStoreReset,
+  commitIntentionalProjectResetFromLocal,
+} from '@/store/persistStorage';
 import { exportTxtAction, resetProjectAction } from '../modules/projectModule';
 import { resetEngineAction } from '../modules/engineModule';
+import { toast } from '@/lib/toastBus';
 
 export function useProjectActions(streamText: string) {
   const store = useNovelStore();
@@ -28,8 +33,29 @@ export function useProjectActions(streamText: string) {
       } catch (err: unknown) {
         console.warn(err instanceof Error ? err.message : String(err));
       }
+      // RESET_POINT: blank canvas + keep settings.
+      // 1) open wipe-guard window  2) reset memory  3) force all durables (local/IPC/HTTP)
+      // so pickRichest cannot resurrect old title/lore/chapters from disk.
+      allowIntentionalStoreReset(60_000);
       store.resetStore();
-      alert('🎉 Đã làm mới dự án và dọn dẹp sạch sẽ tài nguyên cũ thành công!');
+      // Zustand persist setItem is sync; re-flush every durable layer + retry after tick
+      commitIntentionalProjectResetFromLocal();
+      queueMicrotask(() => commitIntentionalProjectResetFromLocal());
+      setTimeout(() => commitIntentionalProjectResetFromLocal(), 200);
+      setTimeout(() => commitIntentionalProjectResetFromLocal(), 1000);
+
+      const live = useNovelStore.getState();
+      if (
+        live.ten_tac_pham ||
+        live.lorebook ||
+        (live.danh_sach_chuong && live.danh_sach_chuong.length > 0)
+      ) {
+        // Hard re-apply blank if something raced and refilled story fields
+        live.resetStore();
+        commitIntentionalProjectResetFromLocal();
+      }
+
+      toast.info('Notice', 'Đã làm mới dự án (trống tên / lore / chương). Cài đặt & API key giữ nguyên.');
     }
   };
 

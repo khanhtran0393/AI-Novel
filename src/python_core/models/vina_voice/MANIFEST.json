@@ -1,0 +1,35 @@
+{
+  "id": "vina-voice-onnx-brain",
+  "locked_path": "src/python_core/models/vina_voice",
+  "description": "Permanent AI Novel core brain for native voice clone (F5/Vina ONNX A/B/C). Loaded only by src/python_core/vina_voice_infer.py. Not Vina-Voice.exe.",
+  "expected_total_bytes": 1453338431,
+  "expected_total_gb": 1.354,
+  "files": [
+    {
+      "name": "model-tts_0.onnx",
+      "role": "Model A — ref audio + text conditioning / init latent",
+      "bytes": 68730596
+    },
+    {
+      "name": "model-tts_1.onnx",
+      "role": "Model B — Transformer flow-matching (NFE)",
+      "bytes": 1322088963
+    },
+    {
+      "name": "model-tts_2.onnx",
+      "role": "Model C — Vocoder waveform",
+      "bytes": 62547336
+    },
+    {
+      "name": "vocab.txt",
+      "role": "Character vocabulary",
+      "bytes": 11536
+    }
+  ],
+  "consumers": [
+    "src/python_core/vina_voice_infer.py",
+    "src/lib/vinaVoice/engine.ts → tryNativeEngine (--models_dir forced to CORE)",
+    "src/lib/vinaVoice/paths.ts → getVinaOnnxModelsDir / inspectVinaOnnxBrain"
+  ],
+  "policy": "HARD LOCK — do not relocate; do not load from tools/ or external paths"
+}

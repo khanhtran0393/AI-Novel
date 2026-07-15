@@ -172,7 +172,7 @@ const EDGE_EN: VoiceOption[] = [
   // US
   v('en-US-AriaNeural', 'Aria (Nữ US)', 'female', 'en-US'),
   v('en-US-JennyNeural', 'Jenny (Nữ US)', 'female', 'en-US'),
-  v('en-US-JennyMultilingualNeural', 'Jenny Multilingual (Nữ)', 'female', 'en-US'),
+  // JennyMultilingualNeural — Edge thường fail "unknown"; dùng JennyNeural thay
   v('en-US-MichelleNeural', 'Michelle (Nữ US)', 'female', 'en-US'),
   v('en-US-AnaNeural', 'Ana (Nữ trẻ US)', 'female', 'en-US'),
   v('en-US-EmmaNeural', 'Emma (Nữ US)', 'female', 'en-US'),
@@ -199,8 +199,7 @@ const EDGE_EN: VoiceOption[] = [
   v('en-US-EricNeural', 'Eric (Nam US)', 'male', 'en-US'),
   v('en-US-RogerNeural', 'Roger (Nam US)', 'male', 'en-US'),
   v('en-US-SteffanNeural', 'Steffan (Nam US)', 'male', 'en-US'),
-  v('en-US-AIGenerate1Neural', 'AI Generate 1 (Nam)', 'male', 'en-US'),
-  v('en-US-AIGenerate2Neural', 'AI Generate 2 (Nữ)', 'female', 'en-US'),
+  // AIGenerate* often returns Edge "unknown" — removed from catalog
   // UK
   v('en-GB-SoniaNeural', 'Sonia (Nữ UK)', 'female', 'en-GB'),
   v('en-GB-LibbyNeural', 'Libby (Nữ UK)', 'female', 'en-GB'),
@@ -434,26 +433,17 @@ const HOTAI_VI: VoiceOption[] = [
   v('tvb', 'TVB Lồng Tiếng', 'male'),
 ];
 
+/**
+ * VieNeu route local → Piper ONNX trong bin/piper_vn.
+ * Chỉ liệt kê model có file thật (probe disk lúc runtime merge thêm).
+ * Alias cũ (Adam 1…) được map trong generate-tts → manhdung/ngochuyen.
+ */
 const VIENEU_VI: VoiceOption[] = [
-  v('Adam 1', 'Adam 1', 'male'),
-  v('Adam 2', 'Adam 2', 'male'),
-  v('Adam 3', 'Adam 3', 'male'),
-  v('Adam 4', 'Adam Trí Dũng', 'male'),
+  v('manhdung.onnx', 'Mạnh Dũng (Nam — Piper local)', 'male'),
+  v('ngochuyen.onnx', 'Ngọc Huyền (Nữ — Piper local)', 'female'),
+  // Friendly aliases (resolve to onnx at generate time)
+  v('Mạnh Dũng', 'Mạnh Dũng', 'male'),
   v('Ngọc Huyền', 'Ngọc Huyền (Truyện Audio)', 'female'),
-  v('Đức Trung', 'Đức Trung', 'male'),
-  v('Quang Anh', 'Quang Anh', 'male'),
-  v('Trung Quân', 'Trung Quân', 'male'),
-  v('Trường An', 'Trường An (Phật Pháp)', 'male'),
-  v('Chi Chi', 'Chi Chi', 'female'),
-  v('Vy Tin Tức', 'Vy Tin Tức', 'female'),
-  v('My Review', 'My Review', 'female'),
-  v('Dung Lồng Tiếng', 'Dung Lồng Tiếng', 'female'),
-  v('Hùng Dung', 'Hùng Dung', 'male'),
-  v('Thanh Vân', 'Thanh Vân', 'female'),
-  v('Phương Thảo', 'Phương Thảo', 'female'),
-  v('Thanh Mai', 'Thanh Mai', 'female'),
-  v('Tùng Sơn', 'Tùng Sơn', 'male'),
-  v('Minh Khôi', 'Minh Khôi', 'male'),
 ];
 
 const PIPER_VI_STATIC: VoiceOption[] = [
@@ -461,19 +451,21 @@ const PIPER_VI_STATIC: VoiceOption[] = [
   v('manhdung.onnx', 'Mạnh Dũng (Nam)', 'male'),
 ];
 
+/** VBee list — nghe thử = map mẫu local (Piper/Edge), không phải API VBee cloud */
 const VBEE_VI: VoiceOption[] = [
-  v('hn_ngo_ngochuyen_24g_v2', '👑 Ngọc Huyền (Cao cấp)', 'female'),
-  v('hn_male_manhdung_news_48k-v2', '👑 Mạnh Dũng (Thời sự)', 'male'),
-  v('VBEE_MaiPhuong', '👑 Mai Phương (Chuẩn VTV)', 'female'),
-  v('VBEE_ThaoTrinh', '👑 Thảo Trinh (Sôi động)', 'female'),
-  v('VBEE_MinhHoang', '👑 Minh Hoàng (Trầm ấm)', 'male'),
+  v('hn_ngo_ngochuyen_24g_v2', '👑 Ngọc Huyền (mẫu→Piper/Edge Nữ)', 'female'),
+  v('hn_male_manhdung_news_48k-v2', '👑 Mạnh Dũng (mẫu→Piper/Edge Nam)', 'male'),
+  v('VBEE_MaiPhuong', '👑 Mai Phương (mẫu→Edge Nữ)', 'female'),
+  v('VBEE_ThaoTrinh', '👑 Thảo Trinh (mẫu→Edge Nữ)', 'female'),
+  v('VBEE_MinhHoang', '👑 Minh Hoàng (mẫu→Edge Nam)', 'male'),
 ];
 
+/** Google Cloud voice IDs — có API key thì gen Cloud thật; không key = nghe mẫu Edge */
 const GOOGLE_VI: VoiceOption[] = [
-  v('vi-VN-Standard-A', 'Google Nữ Chuẩn (A)', 'female'),
-  v('vi-VN-Standard-B', 'Google Nam Chuẩn (B)', 'male'),
-  v('vi-VN-Standard-C', 'Google Nữ Chuẩn (C)', 'female'),
-  v('vi-VN-Standard-D', 'Google Nam Chuẩn (D)', 'male'),
+  v('vi-VN-Standard-A', 'Google Nữ Chuẩn (A) · mẫu Edge nếu chưa key', 'female'),
+  v('vi-VN-Standard-B', 'Google Nam Chuẩn (B) · mẫu Edge nếu chưa key', 'male'),
+  v('vi-VN-Standard-C', 'Google Nữ Chuẩn (C) · mẫu Edge nếu chưa key', 'female'),
+  v('vi-VN-Standard-D', 'Google Nam Chuẩn (D) · mẫu Edge nếu chưa key', 'male'),
   v('vi-VN-Neural2-A', 'Google Nữ Neural2 (A)', 'female'),
   v('vi-VN-Neural2-D', 'Google Nam Neural2 (D)', 'male'),
   v('vi-VN-Wavenet-A', 'Google Nữ Wavenet (A)', 'female'),
@@ -546,23 +538,48 @@ export const STATIC_VOICE_CATALOG: VoiceCatalog = {
   },
   vina_voice: {
     vi: [
-      v('vi-VN-NamMinhNeural', 'Nam (builtin map)', 'male'),
-      v('vi-VN-HoaiMyNeural', 'Nữ (builtin map)', 'female'),
+      v('vi-VN-NamMinhNeural', 'Nam (Edge map / Vina engine)', 'male'),
+      v('vi-VN-HoaiMyNeural', 'Nữ (Edge map / Vina engine)', 'female'),
+      v('manhdung.onnx', 'Mạnh Dũng (Piper-style id)', 'male'),
+      v('ngochuyen.onnx', 'Ngọc Huyền (Piper-style id)', 'female'),
     ],
-    en: [v('vi-VN-NamMinhNeural', 'Nam (builtin)', 'male')],
+    en: [
+      v('en-US-GuyNeural', 'Guy (EN map)', 'male'),
+      v('en-US-JennyNeural', 'Jenny (EN map)', 'female'),
+    ],
   },
+  // Design presets (Omni native) + clone library merge runtime qua /api/tts/voices
   omnivoice_local: {
-    vi: [],
-    en: [],
-    ja: [],
-    ko: [],
-    th: [],
-    zh: [],
-    fr: [],
-    de: [],
-    es: [],
-    pt: [],
-    id: [],
+    vi: [
+      v('alloy', 'Alloy (Omni design)', 'neutral'),
+      v('echo', 'Echo (Omni design)', 'male'),
+      v('nova', 'Nova (Omni design)', 'female'),
+      v('onyx', 'Onyx (Omni design)', 'male'),
+      v('shimmer', 'Shimmer (Omni design)', 'female'),
+      v('fable', 'Fable (Omni design)', 'neutral'),
+      v('coral', 'Coral (Omni design)', 'female'),
+      v('ash', 'Ash (Omni design)', 'male'),
+    ],
+    en: [
+      v('alloy', 'Alloy (Omni design)', 'neutral'),
+      v('echo', 'Echo (Omni design)', 'male'),
+      v('nova', 'Nova (Omni design)', 'female'),
+      v('onyx', 'Onyx (Omni design)', 'male'),
+      v('shimmer', 'Shimmer (Omni design)', 'female'),
+      v('fable', 'Fable (Omni design)', 'neutral'),
+    ],
+    ja: [
+      v('alloy', 'Alloy (Omni design)', 'neutral'),
+      v('nova', 'Nova (Omni design)', 'female'),
+    ],
+    ko: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    th: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    zh: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    fr: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    de: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    es: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    pt: [v('alloy', 'Alloy (Omni design)', 'neutral')],
+    id: [v('alloy', 'Alloy (Omni design)', 'neutral')],
   },
   vbee: {
     vi: VBEE_VI,
@@ -607,17 +624,29 @@ export function cloneVoiceCatalog(catalog: VoiceCatalog = STATIC_VOICE_CATALOG):
   return out;
 }
 
+function dedupeVoicesById(list: VoiceOption[]): VoiceOption[] {
+  const map = new Map<string, VoiceOption>();
+  for (const voice of list || []) {
+    if (!voice?.id) continue;
+    const prev = map.get(voice.id);
+    if (!prev || (voice.name || '').length >= (prev.name || '').length) {
+      map.set(voice.id, voice);
+    }
+  }
+  return Array.from(map.values());
+}
+
 export function getVoiceList(
   catalog: VoiceCatalog,
   platform: string,
   language: string,
 ): VoiceOption[] {
   const byLang = catalog[platform]?.[language];
-  if (byLang?.length) return byLang;
+  if (byLang?.length) return dedupeVoicesById(byLang);
   // fallback: any non-empty language for platform
   const plat = catalog[platform] || {};
   for (const code of Object.keys(plat)) {
-    if (plat[code]?.length) return plat[code];
+    if (plat[code]?.length) return dedupeVoicesById(plat[code]);
   }
   return [];
 }
