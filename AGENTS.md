@@ -3,6 +3,11 @@
 
 Tài liệu này được viết theo phương pháp "Giải phẫu sinh học", lột tả chi tiết từng sợi cơ, dây thần kinh (logic), lớp da (UI), và cơ quan nội tạng (cấu hình) của dự án. **Toàn bộ AI Agent (Dev, UI, Backend) CHỈ ĐƯỢC NHẬN ĐỊNH VÀ THỰC THI một cách vô điều kiện theo đúng thiết kế dưới đây.**
 
+> ## ⚔️ BẮT BUỘC ĐỌC TRƯỚC KHI BUILD TIẾP
+> **Quy luật thép + sự thật hiển nhiên (chống nhầm lẫn):** [`docs/IRON_LAWS.md`](docs/IRON_LAWS.md)  
+> Domain ownership: [`docs/DOMAIN_MAP.md`](docs/DOMAIN_MAP.md) · Constitution: [`specs/constitution.md`](specs/constitution.md)  
+> Tóm tắt 5 giây: Engine AI Novel = **native TS** (`lib/novel-engine` + `/api/ainovel`) — **CẤM** `ainovel-gui`/`:8080`. NAV = **`python_core` only**. Zustand **bắt buộc** `isHydrated`. Cross-domain **chỉ** contracts/API. TTS multi-gate **không** dùng `sceneEmotion`.
+
 ---
 
 ## 1. HỆ THẦN KINH TRUNG ƯƠNG (CẤU HÌNH & KIẾN TRÚC LÕI)
@@ -69,11 +74,12 @@ Khu vực này thao tác viết truyện và làm phim.
 
 ## 4. HỆ MIỄN DỊCH & VŨ KHÍ TỰ ĐỘNG HÓA CAO CẤP (AUTOMATION ENGINES)
 
-### Vĩ thú 1: Đa Luồng Gen Ảnh Ngầm (Labs Whisk Parallel Engine)
-- API chạy `puppeteer-extra-plugin-stealth` mô phỏng trình duyệt headless.
-- **Đa luồng song song:** Frontend gửi hàng loạt fetch, Server mở nhiều worker cùng lúc.
-- **Cơ chế xoay Tua Bất Tử:** Chống Google Rate Limit bằng cách chia bài `promptIndex % cookies.length` để xoay vòng danh sách Cookie nhập vào.
-- **Thuật dọn rác (Auto Purge):** Rất dễ nổ RAM và Ổ Cứng. Mọi Worker BẮT BUỘC có thư mục Chrome Profile tạm theo ID Cảnh, và phải bị lệnh `fs.rmSync` tiêu diệt sạch sẽ ở khối `finally` ngay khi tải xong PNG.
+### Vĩ thú 1: Google Flow Bridge (mặc định gen ảnh/video)
+- **Default:** `imageProvider=flow` / `videoProvider=flow` qua `labs.google` (Imagen + Veo).
+- **Kiến trúc:** Chrome extension `extensions/ainovel-flow` ↔ bridge Node `src/lib/flow-bridge` (WS `:9223`, HTTP `:8101`) ↔ `/api/flow/*` + providers `generate-image` / `generate-video`.
+- **Multi-account + queue:** panel trong Media Config; Connect mở Chrome + tab Flow, capture Bearer + reCAPTCHA.
+- **Legacy (vẫn có):** Whisk Puppeteer, Banana/Imagen API key, OpenAI, Grok, Sora — chọn trong dropdown “legacy”.
+- Docs: [`docs/flow-bridge.md`](docs/flow-bridge.md).
 
 ### Vĩ thú 2: Bộ Nhớ Đệm Âm Thanh Ngoại Tuyến (Offline TTS Cache)
 - Thuật toán `Cache Storage API` gốc của trình duyệt. 

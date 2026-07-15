@@ -49,6 +49,17 @@ next-env.d.ts
 *.mp4
 *.wav
 
+# === LOCKED Vina ONNX brain (permanent core asset ~1.46GB) ===
+# Must stay under src/python_core/models/vina_voice/ for clone native.
+!src/python_core/models/vina_voice/
+!src/python_core/models/vina_voice/vocab.txt
+!src/python_core/models/vina_voice/MANIFEST.json
+!src/python_core/models/vina_voice/README.md
+# ONNX weights: keep on disk; track via LFS if desired (uncomment next 3 lines):
+# !src/python_core/models/vina_voice/model-tts_0.onnx
+# !src/python_core/models/vina_voice/model-tts_1.onnx
+# !src/python_core/models/vina_voice/model-tts_2.onnx
+
 # Scratch and Cache
 /scratch/
 /.ainovel-app/
@@ -63,3 +74,13 @@ test_*.wav
 
 # Temp libs
 /ainovel-cli-main/
+
+# Extra data and temp
+/accounts_data/
+/data/
+/exports/
+/test-results/
+/tools/browsers/
+/Voice Studio/
+/FlowAgent.exe_extracted/
+"{if(x.includes('name"

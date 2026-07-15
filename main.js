@@ -262,11 +262,26 @@ function registerIpc() {
   ipcMain.handle('ainovel-open-path', async (_event, targetPath) => {
     try {
       const { shell } = require('electron');
+      const fs = require('fs');
       if (!targetPath || typeof targetPath !== 'string') {
         return { ok: false, error: 'empty path' };
       }
-      await shell.showItemInFolder(targetPath);
-      return { ok: true };
+      const p = String(targetPath).trim();
+      if (!p) return { ok: false, error: 'empty path' };
+
+      // Directories → openPath; files → reveal in folder
+      try {
+        if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+          const errMsg = await shell.openPath(p);
+          if (errMsg) return { ok: false, error: errMsg };
+          return { ok: true, opened: p };
+        }
+      } catch {
+        /* fall through to showItemInFolder */
+      }
+
+      await shell.showItemInFolder(p);
+      return { ok: true, opened: p };
     } catch (err) {
       return { ok: false, error: err?.message || String(err) };
     }
@@ -353,22 +368,53 @@ app.whenReady().then(() => {
     server.listen(STABLE_PORT, () => {
       console.log(`Next.js local server listening on http://localhost:${STABLE_PORT}`);
 
+      // Auto-bootstrap Google Flow bridge (Chrome + extension) after UI is up
+      setTimeout(() => {
+        const url = `http://127.0.0.1:${STABLE_PORT}/api/flow/bootstrap`;
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ forceChrome: false, waitExtensionMs: 15000 }),
+        })
+          .then(async (r) => {
+            const j = await r.json().catch(() => ({}));
+            console.log(
+              `[FlowBridge] bootstrap ok=${j.ok} ext=${j.extensionConnected} token=${j.flowKeyPresent} chrome=${j.chromeLaunched}`,
+            );
+          })
+          .catch((err) => {
+            console.warn('[FlowBridge] bootstrap skip:', err?.message || err);
+          });
+      }, 2500);
+
       mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
         minWidth: 1024,
         minHeight: 768,
         title: 'AI Novel & Script Generator',
+        frame: false,
+        // Không dùng transparent: trên Windows pixel alpha thấp / drag-region
+        // dễ khiến click xuyên qua → nút Header (TTS, CapCut, Cài đặt…) “chết”.
+        transparent: false,
+        backgroundColor: '#050505',
         autoHideMenuBar: true,
         webPreferences: {
           preload: preloadPath,
           nodeIntegration: false,
           contextIsolation: true,
-          // Named persistent partition — independent of default session wipes
           partition: 'persist:ainovel-v1',
           spellcheck: false,
         },
       });
+
+      // Lắng nghe sự kiện điều khiển cửa sổ từ giao diện web
+      ipcMain.on('window-minimize', () => mainWindow.minimize());
+      ipcMain.on('window-maximize', () => {
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        else mainWindow.maximize();
+      });
+      ipcMain.on('window-close', () => mainWindow.close());
 
       mainWindow.loadURL(`http://localhost:${STABLE_PORT}`);
 

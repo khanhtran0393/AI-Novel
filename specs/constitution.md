@@ -5,6 +5,9 @@
 - **Purpose:** A high-end workspace for writing and generating storyboards for post-apocalyptic and survival novels.
 - **Methodology:** Specification-Driven Development (SDD). Specifications are the source of truth, code is the generated output.
 
+> **Iron laws (normative, Vietnamese):** see [`docs/IRON_LAWS.md`](../docs/IRON_LAWS.md) before any follow-up build.  
+> Non-negotiable facts: native AI Novel engine (no `ainovel-gui`/`:8080`); NAV via `python_core` only; Zustand `isHydrated`; domain isolation via contracts; TTS multi-gate never uses storyboard `sceneEmotion`.
+
 ## 1. Architectural Principles
 - **Framework:** Next.js (App Router) + TypeScript + TailwindCSS v4.
 - **State Management:** Zustand with `persist` middleware. All components reading Zustand MUST check for the `isHydrated` flag to prevent SSR Hydration Mismatch.

@@ -18,12 +18,34 @@ Hệ thống xoay quanh 3 Node vận hành song song:
 2. **Write Script Node**: Ứng dụng kỷ luật "Real-time Pacing", cấm AI tóm tắt hay nhảy cóc thời gian, ép miêu tả đa giác quan. Kết xuất bằng **Typing Effect** (Có `.normalize('NFC')` chuẩn tiếng Việt).
 3. **Commit Memory Node**: Cuốn chiếu ký ức ngắn hạn liên tục để duy trì tính liền mạch của bộ truyện.
 
-## 🤖 CÔNG NĂNG TỰ ĐỘNG HÓA MỞ RỘNG (V2.3)
+## 🤖 CÔNG NĂNG TỰ ĐỘNG HÓA MỞ RỘNG (V2.3+)
 Dự án không chỉ sinh chữ, mà là một cỗ máy sản xuất phim phân cảnh hoàn chỉnh:
-- **Đa luồng Gen Ảnh (Labs Whisk)**: Chạy ngầm Headless qua thư viện `puppeteer-stealth`, xoay tua danh sách `cookies` tự động, chạy song song nhiều Worker cùng lúc mà không làm treo UI, và tự dọn dẹp thư mục Chrome sau khi xong.
-- **Tách câu động (Dynamic Clause-Level Splitting)**: Backend tự động chẻ nhỏ các đoạn văn dài >100 ký tự bằng các dấu (`,`, `，`, `-`) thành các mệnh đề hình ảnh, đảm bảo đủ số lượng Storyboard cho phân cảnh dài.
-- **TTS Local Cache (Nghe thử Offline)**: Tích hợp công nghệ `Cache Storage API` để phát blob URL cục bộ, tiết kiệm băng thông và tăng tốc nghe thử giọng đọc. Đồng bộ timestamp thực tế của TTS sang quy trình chia mốc thời gian vẽ ảnh.
-- **Giao tiếp Hệ điều hành (Native Explorer)**: Tích hợp nút `child_process` gọi trực tiếp `explorer.exe` mở thư mục Google Drive Desktop cục bộ.
+- **Đa kênh (Channel DNA)**: Mỗi kênh khóa **Cấu hình đầu ra** + **Giọng đọc toàn cục** (provider, ratio, DNA, speed/pitch…). Đổi kênh nạp lại DNA; self-heal chỉ sửa tạm, không ghi đè DNA.
+- **YouTube Studio**: SEO meta chấm điểm, Thumb prompt (EN) gen ảnh như scene, viết lại ± Thumbnail line, overlay preview, biến thể thumb, lightbox.
+- **Soát trước đăng**: Panel Ready / Not ready + click jump tới chỗ thiếu (TTS, ảnh, SEO, thumb…).
+- **Job queue**: Gen tất cả ảnh xếp hàng — pause / cancel / dọn job xong (panel Jobs trên header).
+- **Health + Backup**: Credential & runtime health; portable project export/import (strip secrets); job error report.
+- **Ship quality**: CI (`verify:ci`), Zod hot APIs, correlationId logs, Labs hidden by default, core-loop onboarding.
+- **Genre packs**: Mạt thế / Trinh thám / Horror radio / Romance / Xuyên không — nạp rules + DNA + TTS mặc định.
+- **Ship pack**: copy **file media vật lý** vào folder pack + `media_copy_result.json` + SRT đa speaker.
+- **Jobs panel**: Gen all **ảnh + video** + TTS chương mirror job; **Retry failed**; pause/cancel.
+- **Policy ảnh**: fail safety → auto viết lại prompt → gen lại 1 lần.
+- **Face-ref binary**: concept sheet `face_ref` load server-side → OpenAI edits / Gemini multimodal khi có file.
+- **Toast**: workspace hooks chính (scene/TTS/thumb/video/file) dùng toast, giảm `alert`.
+- **Studio drawer**: 1 panel mở TTS / Media / DNA / Health.
+- **Editor banner**: verdict rewrite/polish → nút Sửa theo nhận xét (sticky).
+- **Concept cache**: hash hồ sơ NV → reuse prompt sheet; `face_ref` sau gen concept.
+- **Persist v3**: migrate channel `outputDna` / `ttsDna`.
+- **TTS → timestamp**: Tự re-sync mốc prompt khi duration TTS lệch >15%.
+- **Đa luồng Gen Ảnh**: Whisk/API, cookie xoay, worker song song, dọn profile Chrome.
+- **TTS Local Cache**: Cache Storage API nghe thử offline.
+- **Native Explorer**: `explorer.exe` mở thư mục lưu.
+
+### Kiểm chứng lõi
+```bash
+npm run verify:core
+```
+Chạy DNA kênh · ship pack · publish readiness · youtube-safe · cast unit.
 
 ---
 

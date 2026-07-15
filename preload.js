@@ -38,12 +38,24 @@ function scoreRaw(raw) {
       Object.keys(state?.generatedPrompts || {}).length +
       Object.keys(state?.generatedImages || {}).length +
       Object.keys(state?.generatedVideos || {}).length;
+    // DNA + media settings count so boot inject does not drop style config
+    const dnaLen = String(state?.visualDnaPrompt || '').trim().length;
+    const styleLen = String(state?.mediaStylePreset || '').trim().length;
+    const mediaFlags = [
+      state?.imageProvider,
+      state?.videoProvider,
+      state?.imageAspectRatio,
+      state?.videoAspectRatio,
+      state?.ttsConfig,
+    ].filter(Boolean).length;
+    const settingsScore = Math.min(dnaLen, 3000) + Math.min(styleLen, 500) + mediaFlags * 40;
     return (
       chapterContentChars +
       readyChapters * 5000 +
       keyCount * 1000 +
       generatedAssets * 100 +
-      (state?.giai_doan === 2 ? 2000 : 0)
+      (state?.giai_doan === 2 ? 2000 : 0) +
+      settingsScore
     );
   } catch {
     return 0;
@@ -120,4 +132,9 @@ contextBridge.exposeInMainWorld('ainovelTools', {
   setTtsQueue: (snapshot) => ipcRenderer.invoke('ainovel-tts-queue-set', snapshot),
   getTtsQueue: () => ipcRenderer.invoke('ainovel-tts-queue-get'),
   openPath: (targetPath) => ipcRenderer.invoke('ainovel-open-path', targetPath),
+  windowControls: {
+    minimize: () => ipcRenderer.send('window-minimize'),
+    maximize: () => ipcRenderer.send('window-maximize'),
+    close: () => ipcRenderer.send('window-close'),
+  }
 });

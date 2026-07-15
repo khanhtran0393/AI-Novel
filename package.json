@@ -10,13 +10,33 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke:core": "node scripts/smoke-core.mjs",
+    "audit:functional": "npx tsx scripts/audit-functional-full.mjs",
+    "test:e2e": "playwright test",
+    "verify:ci": "npm run typecheck && npm run smoke:core && npm run test:e2e",
     "dev:desktop": "electron .",
     "build:desktop": "next build && electron-builder --win nsis",
     "pack:portable": "next build && electron-builder --win portable",
     "test:capassistant": "npx tsx scratch/test-capassistant-independent.mjs",
     "test:auto-master": "npx tsx scratch/test-auto-master.mjs",
     "test:self-heal": "npx tsx scratch/test-self-heal-brain.mjs",
-    "test:persist": "node scratch/test-durable-persist.mjs"
+    "test:persist": "node scratch/test-durable-persist.mjs",
+    "test:channel-ship": "npx tsx src/scripts/verify-channel-ship.mjs",
+    "test:channel-dna": "npx tsx src/scripts/verify-channel-output-dna.mjs",
+    "test:integrations": "node scripts/test-integrations-hub.mjs",
+    "test:chapter-pipeline": "npx tsx scripts/test-chapter-pipeline.mjs",
+    "test:chapter-tts": "npx tsx scripts/test-chapter-tts-selfcheck.mjs",
+    "test:youtube-psych": "npx tsx scripts/test-youtube-psych55.mjs",
+    "audit:workspace-script": "npx tsx scripts/audit-workspace-script-quality.mjs",
+    "audit:output-criteria": "npx tsx scripts/audit-output-criteria.mjs",
+    "rebuild:ship-packs": "npx tsx scripts/rebuild-all-ship-packs.mjs",
+    "smoke:regen": "node scripts/smoke-regen-if-server.mjs",
+    "test:youtube-safe": "npx tsx scripts/verify-youtube-safe.mjs",
+    "verify:core": "npx tsx src/scripts/verify-channel-output-dna.mjs && npx tsx src/scripts/verify-channel-ship.mjs && npx tsx src/scripts/verify-publish-readiness.mjs && npx tsx scripts/verify-youtube-safe.mjs && npx tsx scripts/audit-output-criteria.mjs",
+    "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
+    "test:e2e:ui": "playwright test --project=ui",
+    "test:e2e:api": "playwright test --project=api-and-contracts"
   },
   "build": {
     "appId": "com.ainovel.desktop",
@@ -28,8 +48,18 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "AI-Novel-${version}-${arch}.${ext}"
     },
@@ -60,11 +90,27 @@
       "!scratch/**/*",
       "!.git/**/*",
       "!dist/**/*",
-      "!OpenMontage/**/*"
+      "!OpenMontage/**/*",
+      "!Voice Studio/**/*",
+      "!ainovel-cli-main/**/*",
+      "!exports/**/*",
+      "!test-results/**/*"
     ],
     "extraResources": [
-      { "from": "bin", "to": "bin", "filter": ["**/*"] },
-      { "from": "fonts", "to": "fonts", "filter": ["**/*"] }
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "fonts",
+        "to": "fonts",
+        "filter": [
+          "**/*"
+        ]
+      }
     ]
   },
   "dependencies": {
@@ -83,13 +129,17 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tiktok-tts": "^1.1.17",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "concurrently": "^10.0.3",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",

@@ -223,7 +223,8 @@ export function handleExtMessage(raw: string): void {
   }
 
   if (msg.type === 'token_captured' && typeof msg.flowKey === 'string') {
-    const shouldCloseLogin = s.loginSessionOpen || !s.flowKey;
+    // Only auto-close when we explicitly opened a login window (tracked session)
+    const shouldCloseLogin = Boolean(s.loginSessionOpen);
     s.flowKey = msg.flowKey;
     s.tokenCapturedAt = Date.now();
     console.log('[FlowBridge] Bearer token / session cookie captured');

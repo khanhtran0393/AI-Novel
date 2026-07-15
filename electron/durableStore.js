@@ -94,6 +94,16 @@ function scorePersistedStore(raw) {
       Object.keys(state?.generatedVideos || {}).length;
     const loreLen = String(state?.lorebook || '').trim().length;
     const outlineLen = String(state?.dan_y_tong_the || '').trim().length;
+    const dnaLen = String(state?.visualDnaPrompt || '').trim().length;
+    const styleLen = String(state?.mediaStylePreset || '').trim().length;
+    const mediaFlags = [
+      state?.imageProvider,
+      state?.videoProvider,
+      state?.imageAspectRatio,
+      state?.videoAspectRatio,
+      state?.ttsConfig,
+    ].filter(Boolean).length;
+    const settingsScore = Math.min(dnaLen, 3000) + Math.min(styleLen, 500) + mediaFlags * 40;
 
     return {
       score:
@@ -104,7 +114,8 @@ function scorePersistedStore(raw) {
         (state?.giai_doan === 2 ? 2000 : 0) +
         (String(state?.ten_tac_pham || '').trim() ? 50 : 0) +
         Math.min(loreLen, 2000) +
-        Math.min(outlineLen, 2000),
+        Math.min(outlineLen, 2000) +
+        settingsScore,
       chapterContentChars,
       keyCount,
       title: String(state?.ten_tac_pham || ''),
