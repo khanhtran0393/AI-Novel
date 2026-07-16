@@ -113,7 +113,7 @@ Mọi path HTTP chuẩn nằm trong `src/contracts/apiMap.ts` (`API.*`). UI/feat
 | Feature | Folder | Owns |
 |---------|--------|------|
 | Settings | `features/settings` | Cookie, API keys, GPU/system settings. |
-| Toolbox | `features/toolbox` | Nut cong cu, menu host, classic media tools, video editor, render, SRT. |
+| Toolbox | `features/toolbox` | Nut cong cu, menu host, batch media tools. |
 | Download | `features/download` | Crawler/download studio, platform registry, download modes. |
 | Script | `features/script` | Sidebar, chapters, outline, character roster, scene cards. |
 | TTS | `features/tts` | TTS config, role cast, voice tabs, TikTok sessions. |
@@ -135,10 +135,8 @@ Crawler/download khong nam trong toolbox nua:
 
 | Entry | Owner |
 |-------|-------|
-| Media Crawler Studio | `features/download/DownloadStudioPanel.tsx` |
 | Download platforms/modes | `features/download/downloadRegistry.ts` |
 | Toolbox menu items | `features/toolbox/toolboxRegistry.ts` |
-| Classic download form | `features/toolbox/forms/NavToolForms.tsx` uses `features/download/downloadRegistry.ts` |
 
 Quy tac provider tai xuong:
 
@@ -164,10 +162,9 @@ Quy tac provider tai xuong:
 | `components/Header.tsx` | `chrome/Header.tsx` |
 | `components/AppShell.tsx` | `layouts/AppShell.tsx` |
 | Header settings inline | `features/settings/SettingsPanel.tsx` |
-| Header/toolbox crawler inline | `features/download/DownloadStudioPanel.tsx` |
+| Header/toolbox crawler inline | `features/download/downloadRegistry.ts` |
 | Toolbox item array inline | `features/toolbox/toolboxRegistry.ts` |
 | Download platform options inline | `features/download/downloadRegistry.ts` |
-| `components/NavToolsPanel.tsx` | `features/toolbox/NavToolsPanel.tsx` |
 | `components/Sidebar.tsx` | `features/script/Sidebar.tsx` |
 | `components/YoutubeSafeChecklist.tsx` | `features/youtube/*` |
 | `components/TTSConfigModal.tsx` | `features/tts/*` |
@@ -199,22 +196,18 @@ Quy tac provider tai xuong:
 |----------|------------|
 | `chrome/Header.tsx` | `features/settings/SettingsPanel.tsx`, toolbar hosts |
 | `features/toolbox/ToolboxHost.tsx` | `toolboxRegistry.ts` |
-| `features/toolbox/DownloadStudioPanel.tsx` | `features/download/DownloadStudioPanel.tsx`, `downloadRegistry.ts` |
 | `features/media/*` | `MediaToolbarButton.tsx` |
 | `features/tts/*` | `TtsToolbarButton.tsx`, `TikTokSessionsPanel.tsx` |
 | `features/project/*` | `CapCutExportButton.tsx` |
 | `features/youtube/*` | `SeoField.tsx`, `YoutubeThumbPanel.tsx` |
 | `features/script/SceneCard.tsx` | `ScenePromptRow.tsx` |
 | `features/tts/TTSConfigModal.tsx` | `CreateVoiceTab`, `CloneVoiceTab`, `EngineVoiceTab`, `TikTokSessionsPanel`, `ttsSelectStyles` |
-| `features/toolbox/NavToolsPanel.tsx` | `forms/NavToolForms.tsx` |
 | `features/script/Sidebar.tsx` | `ChapterList`, `OutlineAccordions`, `CharacterRoster` |
 | `features/script/CharacterRoster.tsx` | `CharacterProfileForm` |
 | `features/tts/RoleCastStudioModal.tsx` | `rolecast/RoleCastRolesPanel`, `RoleCastBoardPanel` |
-| `features/toolbox/VideoEditorModal.tsx` | `video-editor/*` left panels, `VideoEditorRightCanvas` |
 | `features/ainovel/AINovelDashboard.tsx` | `EngineToolbar` |
 | `hooks/useTTSActions.ts` | `ttsActionHelpers` |
 | `features/script/SceneCard.tsx` | `SceneTtsBar` (scene TTS / role cast / partial cache) |
-| `features/toolbox/VideoEditorModal.tsx` | `video-editor/constants`, `video-editor/types`, `video-editor/io` |
 | `features/tts/TTSConfigModal.tsx` | `hooks/useVoiceCatalogPrep`, `hooks/useCloneStack`, `hooks/useTikTokSessions` |
 | `utils/mediaSelfRepair.ts` | `media-self-heal/types`, `media-self-heal/issue` |
 | `hooks/useTTSActions.ts` | `ttsActionHelpers` chapter job/audio helpers |
@@ -264,7 +257,6 @@ Quy tac provider tai xuong:
 ## Uu tien tach tiep
 
 1. `api/generate/route.ts` -> split request handlers/services.
-2. `features/toolbox/NavToolsPanel.tsx` -> tach classic 6 tool handlers ra controller/hooks.
-3. `features/youtube/YoutubeSafeChecklist.tsx` -> split score panels + generated pack preview.
-4. `features/ainovel/AINovelDashboard.tsx` -> split dashboard state + engine widgets.
-5. `api/generate-image/route.ts` / `generate-tts/providers.ts` khi chạm domain đó.
+2. `features/youtube/YoutubeSafeChecklist.tsx` -> split score panels + generated pack preview.
+3. `features/ainovel/AINovelDashboard.tsx` -> split dashboard state + engine widgets.
+4. `api/generate-image/route.ts` / `generate-tts/providers.ts` khi chạm domain đó.

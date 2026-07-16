@@ -17,8 +17,8 @@ export default function EditorPanel({
   onFullRewrite,
   isRewriting,
 }: EditorPanelProps) {
-  const store = useNovelStore();
-  const review = store.editorReviews[chapterIndex];
+  // Narrow selector — full useNovelStore() re-renders on every media/TTS tick
+  const review = useNovelStore((s) => s.editorReviews[chapterIndex]);
 
   if (!review || !review.summary) return null;
 

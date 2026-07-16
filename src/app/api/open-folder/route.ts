@@ -24,11 +24,10 @@ function resolveOpenTarget(folderPath: string): string {
   ) {
     // Prefer project root; then common media/output dirs
     const candidates = [
-      cwd,
-      path.join(cwd, 'public', 'generated'),
-      path.join(cwd, 'output'),
       path.join(cwd, 'public'),
+      path.join(cwd, 'output'),
       path.join(cwd, '.ainovel-app'),
+      cwd,
     ];
     for (const c of candidates) {
       if (fs.existsSync(c)) return path.resolve(c);
@@ -41,31 +40,19 @@ function resolveOpenTarget(folderPath: string): string {
 }
 
 async function openWithExplorer(resolvedPath: string): Promise<void> {
-  // Windows: explorer.exe; also try shell.open via cmd start as fallback
+  // Một lệnh duy nhất theo OS — không cmd start dự phòng
   if (process.platform === 'win32') {
-    try {
-      const child = spawn('explorer.exe', [resolvedPath], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.unref();
-      return;
-    } catch {
-      /* fall through */
-    }
-    // Fallback: cmd start
-    await execFileAsync('cmd.exe', ['/c', 'start', '', resolvedPath], {
-      windowsHide: true,
+    const child = spawn('explorer.exe', [resolvedPath], {
+      detached: true,
+      stdio: 'ignore'
     });
+    child.unref();
     return;
   }
-
   if (process.platform === 'darwin') {
     await execFileAsync('open', [resolvedPath]);
     return;
   }
-
   await execFileAsync('xdg-open', [resolvedPath]);
 }
 
@@ -79,20 +66,25 @@ export async function POST(req: Request) {
 
     let resolvedPath = resolveOpenTarget(folderPath);
 
-    // Auto-create if missing (absolute user path)
     if (!fs.existsSync(resolvedPath)) {
       try {
         fs.mkdirSync(resolvedPath, { recursive: true });
         console.log(`[Open Folder] Created: ${resolvedPath}`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[Open Folder] Cannot create: ${msg}`);
+        return NextResponse.json(
+          {
+            error: `Thư mục không tồn tại và không tạo được: ${resolvedPath}. ${msg}. Không fallback cwd.`,
+          },
+          { status: 400 },
+        );
       }
     }
-
-    // If still missing, fall back to cwd
     if (!fs.existsSync(resolvedPath)) {
-      resolvedPath = path.resolve(process.cwd());
+      return NextResponse.json(
+        { error: `Thư mục không tồn tại: ${resolvedPath}. Không fallback cwd.` },
+        { status: 400 },
+      );
     }
 
     try {

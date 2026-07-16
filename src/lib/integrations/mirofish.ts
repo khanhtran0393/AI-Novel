@@ -71,33 +71,11 @@ function buildPersonas(input: WhatIfInput): MiroPersona[] {
 
   if (fromChars.length >= 2) return fromChars;
 
-  // Fallback swarm seeded from title
-  return [
-    {
-      name: fromChars[0]?.name || 'Protagonist',
-      role: 'lead survivor',
-      goal: 'protect core bond and reclaim agency',
-      flaw: 'obsessive control under threat',
-    },
-    {
-      name: 'Antagonist Echo',
-      role: 'opposing force / system pressure',
-      goal: 'force a costly choice',
-      flaw: 'underestimates human stubbornness',
-    },
-    {
-      name: 'Witness',
-      role: 'side character / chorus',
-      goal: 'record truth and survive',
-      flaw: 'paralyzed by fear',
-    },
-    {
-      name: 'World Engine',
-      role: 'environment / society swarm node',
-      goal: 'apply systemic consequences',
-      flaw: 'indifferent entropy',
-    },
-  ];
+  // IRON B10: không nhồi persona giả Protagonist/Antagonist
+  throw new Error(
+    `Mirofish: cần ≥2 nhân vật trong danh sách (hiện ${fromChars.length}). ` +
+      `Không seed persona fallback. Thêm nhân vật trong Sidebar rồi chạy lại.`,
+  );
 }
 
 async function callGeminiJson(apiKey: string, prompt: string): Promise<string> {

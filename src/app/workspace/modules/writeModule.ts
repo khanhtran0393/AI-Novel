@@ -104,7 +104,15 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
     });
   }
 
-  const storeYt = useNovelStore.getState().youtubeSafe;
+  const store = useNovelStore.getState();
+  const storeYt = store.youtubeSafe;
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi viet chuong.',
+    );
+  }
   const data = await postGenerate(
     'WRITE_CHAPTER',
     {
@@ -127,12 +135,19 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
       intervention_directive,
       force_word_gate_continue,
       humanize_script: storeYt?.humanizeScript !== false,
+      chu_de,
+      phong_cach,
+      genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
     },
     { signal },
   );
 
+  const noi_dung = String(data.noi_dung || '').trim();
+  if (!noi_dung) {
+    throw new Error('WRITE_CHAPTER tra noi_dung rong. Khong dung fill cuc bo.');
+  }
   return {
-    noi_dung: String(data.noi_dung || 'Không có nội dung trả về.').normalize('NFC'),
+    noi_dung: noi_dung.normalize('NFC'),
     wordCount: typeof data.wordCount === 'number' ? data.wordCount : undefined,
     sceneCount: typeof data.sceneCount === 'number' ? data.sceneCount : undefined,
     wordMin: typeof data.wordMin === 'number' ? data.wordMin : undefined,
@@ -161,7 +176,15 @@ export async function reviseChapterAction(params: {
   nhan_vat_prompts?: WriteChapterParams['nhan_vat_prompts'];
   signal?: AbortSignal;
 }): Promise<WriteChapterResult> {
-  const storeYt = useNovelStore.getState().youtubeSafe;
+  const store = useNovelStore.getState();
+  const storeYt = store.youtubeSafe;
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi sua chuong.',
+    );
+  }
   const data = await postGenerate(
     'REVISE_CHAPTER',
     {
@@ -177,12 +200,19 @@ export async function reviseChapterAction(params: {
       nhan_vat: params.nhan_vat,
       nhan_vat_prompts: params.nhan_vat_prompts,
       humanize_script: storeYt?.humanizeScript !== false,
+      chu_de,
+      phong_cach,
+      genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
     },
     { signal: params.signal },
   );
 
+  const noi_dung = String(data.noi_dung || '').trim();
+  if (!noi_dung) {
+    throw new Error('REVISE_CHAPTER tra noi_dung rong. Khong dung fill cuc bo.');
+  }
   return {
-    noi_dung: String(data.noi_dung || 'Không có nội dung trả về.').normalize('NFC'),
+    noi_dung: noi_dung.normalize('NFC'),
     wordCount: typeof data.wordCount === 'number' ? data.wordCount : undefined,
     sceneCount: typeof data.sceneCount === 'number' ? data.sceneCount : undefined,
     needsContinue: Boolean(data.needsContinue),
@@ -200,12 +230,23 @@ export async function evaluateChapterAction(params: {
   signal?: AbortSignal;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<any> {
+  const store = useNovelStore.getState();
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi cham chuong.',
+    );
+  }
   return postGenerate(
     'EVALUATE_CHAPTER',
     {
       chuong_hien_tai: params.chuong_hien_tai,
       noi_dung_kich_ban: params.noi_dung_kich_ban,
       userRules: resolveUserRules(params.userRules),
+      chu_de,
+      phong_cach,
+      genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
     },
     { signal: params.signal },
   );
@@ -224,7 +265,24 @@ export async function planArcAction(params: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<any> {
   const { signal, apiKey: _a, apiKeys: _b, ...payload } = params;
-  return postGenerate('PLAN_ARC', payload as unknown as Record<string, unknown>, { signal });
+  const setup = useNovelStore.getState().setup;
+  const chu_de = String(setup?.chu_de || '').trim();
+  const phong_cach = String(setup?.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi plan arc.',
+    );
+  }
+  return postGenerate(
+    'PLAN_ARC',
+    {
+      ...(payload as Record<string, unknown>),
+      chu_de,
+      phong_cach,
+      genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+    },
+    { signal },
+  );
 }
 
 export async function commitMemoryAction(params: {
@@ -256,6 +314,9 @@ export async function commitMemoryAction(params: {
       : params.apiKey
         ? [params.apiKey]
         : undefined;
+  const setup = useNovelStore.getState().setup;
+  const chu_de = String(setup?.chu_de || '').trim();
+  const phong_cach = String(setup?.phong_cach || '').trim();
   return postGenerate(
     'COMMIT_MEMORY',
     {
@@ -264,6 +325,9 @@ export async function commitMemoryAction(params: {
       noi_dung_kich_ban: params.noi_dung_kich_ban,
       tom_tat_cuon_chieu: params.tom_tat_cuon_chieu,
       tri_nho_ngan_han: params.tri_nho_ngan_han,
+      chu_de,
+      phong_cach,
+      genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
       lorebook: params.lorebook,
       world_state: params.world_state,
       da_dien_ra_entities: params.da_dien_ra_entities,

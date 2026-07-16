@@ -51,9 +51,6 @@ wire('src/app/workspace/features/project/ShipPackModal.tsx', [
   ["fetch('/api/ship-pack'", 'fetch(API.shipPack'],
 ]);
 
-wire('src/app/workspace/features/download/DownloadStudioPanel.tsx', [
-  ["fetch('/api/download-video'", 'fetch(API.downloadVideo'],
-]);
 
 wire('src/app/workspace/features/project/ImportModal.tsx', [
   ["fetch('/api/generate'", 'fetch(API.generate'],

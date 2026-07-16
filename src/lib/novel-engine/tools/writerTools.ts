@@ -12,6 +12,7 @@ import {
   generateBaseUrl,
   loadProjectContext,
   resolveGenerateKeys,
+  setupGenrePayload,
   type ProjectContext,
 } from '../projectContext';
 import { loadChapter, saveChapter, saveProgress } from '../store/diskStore';
@@ -55,19 +56,18 @@ function chapterMeta(ctx: ProjectContext, chapterNum: number): {
   noi_dung: string;
 } {
   const found = ctx.danh_sach_chuong.find((c) => c.so_chuong === chapterNum);
-  if (found) {
-    return {
-      so_chuong: found.so_chuong,
-      tieu_de: found.tieu_de || `Chương ${chapterNum}`,
-      dan_y: found.dan_y || '',
-      noi_dung: found.noi_dung || '',
-    };
+  if (!found) {
+    throw new Error(`Khong tim thay metadata chuong ${chapterNum}. App khong tu tao chapter thay the.`);
+  }
+  const title = String(found.tieu_de || '').trim();
+  if (!title) {
+    throw new Error(`Chuong ${chapterNum} thieu tieu_de. App khong tu tao tieu de thay the.`);
   }
   return {
-    so_chuong: chapterNum,
-    tieu_de: `Chương ${chapterNum}`,
-    dan_y: `Tiếp nối mạch truyện chương ${chapterNum} theo dàn ý tổng thể.`,
-    noi_dung: '',
+    so_chuong: found.so_chuong,
+    tieu_de: title,
+    dan_y: found.dan_y || '',
+    noi_dung: found.noi_dung || '',
   };
 }
 
@@ -82,27 +82,26 @@ export async function planChapterTool(
 
   let dan_y = meta.dan_y;
   if (!dan_y.trim() && ctx.dan_y_tong_the.trim()) {
-    try {
-      const data = await postGenerate(
-        'GENERATE_CHAPTER_OUTLINE',
-        {
-          ten_tac_pham: ctx.ten_tac_pham,
-          dan_y_tong_the: ctx.dan_y_tong_the,
-          lorebook: ctx.lorebook,
-          chuong_so: chapterNum,
-          tom_tat_cuon_chieu: ctx.tom_tat_cuon_chieu,
-          tri_nho_ngan_han: ctx.tri_nho_ngan_han,
-        },
-        ctx,
-      );
-      dan_y = String(data.dan_y || data.outline || meta.dan_y || '');
-    } catch (err) {
-      logEngine(
-        `plan fallback: ${err instanceof Error ? err.message : String(err)}`,
-        'error',
-      );
-      dan_y = `Viết chương ${chapterNum} bám dàn ý tổng: ${ctx.dan_y_tong_the.slice(0, 400)}`;
+    const data = await postGenerate(
+      'GENERATE_CHAPTER_OUTLINE',
+      {
+        ten_tac_pham: ctx.ten_tac_pham,
+        dan_y_tong_the: ctx.dan_y_tong_the,
+        lorebook: ctx.lorebook,
+        chuong_so: chapterNum,
+        tom_tat_cuon_chieu: ctx.tom_tat_cuon_chieu,
+        tri_nho_ngan_han: ctx.tri_nho_ngan_han,
+        ...setupGenrePayload(ctx),
+      },
+      ctx,
+    );
+    dan_y = String(data.dan_y || data.outline || '').trim();
+    if (!dan_y) {
+      throw new Error(`GENERATE_CHAPTER_OUTLINE khong tra dan_y cho chuong ${chapterNum}.`);
     }
+  }
+  if (!dan_y.trim()) {
+    throw new Error(`Chuong ${chapterNum} thieu dan_y. App khong tu tao dan_y thay the.`);
   }
 
   const chapter: EngineChapter = {
@@ -160,6 +159,7 @@ export async function draftChapterTool(
       ngon_ngu: ctx.ngon_ngu,
       noi_dung_hien_tai: baseContent,
       userRules: ctx.userRules,
+      ...setupGenrePayload(ctx),
     },
     ctx,
   );
@@ -242,6 +242,25 @@ export async function commitChapterTool(
     return updatedFail;
   }
 
+  await postGenerate(
+    'COMMIT_MEMORY',
+    {
+      ten_tac_pham: ctxRules.ten_tac_pham,
+      chuong_hien_tai: {
+        so_chuong: chapterNum,
+        tieu_de: chapter.title,
+        dan_y: chapter.dan_y,
+      },
+      noi_dung_kich_ban: chapter.content,
+      tom_tat_cuon_chieu: ctxRules.tom_tat_cuon_chieu,
+      tri_nho_ngan_han: ctxRules.tri_nho_ngan_han,
+      lorebook: ctxRules.lorebook,
+      ...setupGenrePayload(ctxRules),
+    },
+    ctxRules,
+  );
+  logEngine(`🧠 COMMIT_MEMORY ch${chapterNum} OK`, 'success');
+
   chapter.status = 'committed';
   saveChapter(chapter);
   pushChapterToStoreBackup(chapter);
@@ -266,33 +285,6 @@ export async function commitChapterTool(
     updatedAt: new Date().toISOString(),
   };
   saveProgress(updated);
-
-  // Memory commit best-effort
-  try {
-    const ctx = loadProjectContext();
-    await postGenerate(
-      'COMMIT_MEMORY',
-      {
-        ten_tac_pham: ctx.ten_tac_pham,
-        chuong_hien_tai: {
-          so_chuong: chapterNum,
-          tieu_de: chapter.title,
-          dan_y: chapter.dan_y,
-        },
-        noi_dung_kich_ban: chapter.content,
-        tom_tat_cuon_chieu: ctx.tom_tat_cuon_chieu,
-        tri_nho_ngan_han: ctx.tri_nho_ngan_han,
-        lorebook: ctx.lorebook,
-      },
-      ctx,
-    );
-    logEngine(`🧠 COMMIT_MEMORY ch${chapterNum} OK`, 'success');
-  } catch (err) {
-    logEngine(
-      `COMMIT_MEMORY skip: ${err instanceof Error ? err.message : String(err)}`,
-      'error',
-    );
-  }
 
   recordCheckpoint({
     step: 'commit',
@@ -322,31 +314,30 @@ export async function saveReviewTool(
   const ruleFindings = checkChapterAgainstRules(chapter.content, rules);
   const ruleErrors = ruleFindings.filter((f) => f.severity === 'error');
 
-  let verdict = 'accept';
-  let summary = 'Auto-accept (native engine).';
-  try {
-    const data = await postGenerate(
-      'EVALUATE_CHAPTER',
-      {
-        ten_tac_pham: ctx.ten_tac_pham,
-        chuong_hien_tai: {
-          so_chuong: chapterNum,
-          tieu_de: chapter.title,
-          dan_y: chapter.dan_y,
-        },
-        noi_dung: chapter.content,
-        lorebook: ctx.lorebook,
-        userRules: ctx.userRules,
+  const data = await postGenerate(
+    'EVALUATE_CHAPTER',
+    {
+      ten_tac_pham: ctx.ten_tac_pham,
+      chuong_hien_tai: {
+        so_chuong: chapterNum,
+        tieu_de: chapter.title,
+        dan_y: chapter.dan_y,
       },
-      ctx,
-    );
-    verdict = String(data.verdict || 'accept');
-    summary = String(data.summary || data.nhan_xet || summary);
-  } catch (err) {
-    logEngine(
-      `EVALUATE fallback accept: ${err instanceof Error ? err.message : String(err)}`,
-      'error',
-    );
+      noi_dung: chapter.content,
+      noi_dung_kich_ban: chapter.content,
+      lorebook: ctx.lorebook,
+      userRules: ctx.userRules,
+      ...setupGenrePayload(ctx),
+    },
+    ctx,
+  );
+  let verdict = String(data.verdict || '').trim();
+  let summary = String(data.summary || data.nhan_xet || '').trim();
+  if (!verdict) {
+    throw new Error(`EVALUATE_CHAPTER khong tra verdict cho chuong ${chapterNum}.`);
+  }
+  if (!summary) {
+    throw new Error(`EVALUATE_CHAPTER khong tra summary cho chuong ${chapterNum}.`);
   }
 
   // Rules escalate rewrite

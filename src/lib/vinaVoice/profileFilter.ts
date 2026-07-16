@@ -1,10 +1,12 @@
 /**
- * Lọc catalog Clone Voice theo giới tính / vùng miền / phong cách / cảm xúc
+ * Lọc catalog Clone Voice theo giới tính / phong cách / cảm xúc
  * (suy ra từ tên profile Vina — không có metadata riêng).
+ * Vùng miền: không lọc (bỏ filter area) — hiển thị full catalog theo giới/style/emotion.
  */
 
 export type CloneFilterInput = {
   gender?: 'male' | 'female' | string;
+  /** @deprecated Không còn lọc theo vùng miền — giữ field để tương thích API cũ. */
   area?: 'northern' | 'central' | 'southern' | string;
   group?: string;
   emotion?: string;
@@ -72,20 +74,9 @@ export function inferEmotionsFromName(name: string): string[] {
 }
 
 /**
- * Vùng miền: hầu hết profile Vina không gắn Bắc/Trung/Nam.
- * Soft: chỉ lọc khi tên có từ khóa; không có → coi như match mọi area.
+ * Vùng miền: đã bỏ lọc — luôn match (giữ export để không vỡ import cũ).
  */
-export function matchesArea(name: string, area?: string): boolean {
-  if (!area) return true;
-  const n = norm(name);
-  const hasNorth = /bắc|northern|hà nội|hn_/.test(n);
-  const hasCentral = /miền trung|huế|đà nẵng|central/.test(n) && !/trung niên/.test(n);
-  const hasSouth = /miền nam|sài gòn|southern|nam bộ/.test(n);
-  const hasAnyRegion = hasNorth || hasCentral || hasSouth;
-  if (!hasAnyRegion) return true; // không ghi vùng → giữ lại
-  if (area === 'northern') return hasNorth;
-  if (area === 'central') return hasCentral;
-  if (area === 'southern') return hasSouth;
+export function matchesArea(_name: string, _area?: string): boolean {
   return true;
 }
 
@@ -96,7 +87,6 @@ export function filterCloneProfilesByFields<T extends { name: string; isUser?: b
   const gender = filters.gender || 'male';
   const group = filters.group || 'story';
   const emotion = filters.emotion || 'neutral';
-  const area = filters.area;
 
   const isUserProfile = (p: { name: string; isUser?: boolean; source?: string }) =>
     !!(
@@ -107,36 +97,25 @@ export function filterCloneProfilesByFields<T extends { name: string; isUser?: b
     );
 
   // USER clone luôn giữ (mẫu user upload) — không bị lọc tên catalog
+  // Không lọc vùng miền (Bắc/Trung/Nam).
   let list = profiles.filter((p) => {
     if (isUserProfile(p)) return true;
     const g = inferGenderFromName(p.name);
     if (g !== 'unknown' && g !== gender) return false;
-    if (!matchesArea(p.name, area)) return false;
     return true;
   });
 
-  // Phong cách
-  const byGroup = list.filter((p) => inferGroupFromName(p.name).includes(group));
-  if (byGroup.length > 0) list = byGroup;
+  // Phong cách — hard filter (không giữ list cũ khi 0 khớp)
+  list = list.filter((p) => inferGroupFromName(p.name).includes(group));
 
-  // Cảm xúc
+  // Cảm xúc — lọc đúng filter, không nới dần che “không khớp”
   if (emotion && emotion !== 'neutral') {
-    const byEmo = list.filter((p) => inferEmotionsFromName(p.name).includes(emotion));
-    if (byEmo.length > 0) list = byEmo;
+    list = list.filter((p) => inferEmotionsFromName(p.name).includes(emotion));
   } else {
-    // neutral: ưu tiên profile generic (có neutral), vẫn giữ list nếu rỗng
     const generic = list.filter((p) => inferEmotionsFromName(p.name).includes('neutral'));
     if (generic.length > 0) list = generic;
   }
 
-  // Fallback: nếu lọc quá chặt → nới chỉ còn gender
-  if (list.length === 0) {
-    list = profiles.filter((p) => {
-      const g = inferGenderFromName(p.name);
-      return g === 'unknown' || g === gender;
-    });
-  }
-  if (list.length === 0) return profiles;
-
+  // IRON B10: không trả full profiles khi filter rỗng
   return list;
 }

@@ -94,7 +94,7 @@ export function runCastPreflight(params: {
         nhanVatPrompts: params.nhanVatPrompts,
         defaultVoice: params.defaultVoice,
         platform: params.platform,
-        language: params.language || 'vi',
+        language: params.language || '',
         globalSpeed: params.globalSpeed,
         globalPitch: params.globalPitch,
       });
@@ -121,7 +121,7 @@ export function runCastPreflight(params: {
       }
       if (!r.voiceId?.trim()) {
         issues.push({
-          level: 'warn',
+          level: 'block',
           code: 'role_no_voice',
           message: `Vai「${r.label}」chưa có voiceId.`,
         });

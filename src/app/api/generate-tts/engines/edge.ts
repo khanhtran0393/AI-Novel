@@ -28,24 +28,6 @@ function inferLang(voiceName: string): string {
   return 'vi-VN';
 }
 
-function safeVoiceFor(voiceName: string): string {
-  const v = voiceName || '';
-  if (/^en-/i.test(v)) {
-    return /female|aria|jenny|emma|ava|sara|nancy|michelle|ana|amber|ashley|cora|elizabeth|monica|leah|luna|rosa|yan|emily|molly|clara|natasha|sonia|libby|maisie|neerja/i.test(
-      v,
-    )
-      ? 'en-US-JennyNeural'
-      : 'en-US-GuyNeural';
-  }
-  if (/^zh-/i.test(v)) return 'zh-CN-XiaoxiaoNeural';
-  if (/^ja-/i.test(v)) return 'ja-JP-NanamiNeural';
-  if (/^ko-/i.test(v)) return 'ko-KR-SunHiNeural';
-  if (/^fr-/i.test(v)) return 'fr-FR-DeniseNeural';
-  if (/^de-/i.test(v)) return 'de-DE-KatjaNeural';
-  if (/^es-/i.test(v)) return 'es-ES-ElviraNeural';
-  return /HoaiMy|female|Nu|nữ/i.test(v) ? 'vi-VN-HoaiMyNeural' : 'vi-VN-NamMinhNeural';
-}
-
 async function edgeOnce(
   text: string,
   voiceName: string,
@@ -101,51 +83,36 @@ export async function generateEdgeTTS(
   speed: number = 1.0,
   _pitch: number = 0,
 ): Promise<Buffer> {
+  // IRON B10: đúng voice + rate user chọn — không đổi voice/rate dự phòng
+  if (!voiceName || !String(voiceName).trim()) {
+    throw new Error('Edge TTS: thiếu voice. Không gán giọng mặc định dự phòng.');
+  }
   const rate = speedToEdgeRate(speed);
-  const primary = voiceName || 'vi-VN-HoaiMyNeural';
-  const safe = safeVoiceFor(primary);
-
-  const attempts: Array<{ voice: string; rate: string; timeout: number; label: string }> = [
-    { voice: primary, rate, timeout: 25_000, label: 'primary' },
-    { voice: primary, rate: 'default', timeout: 20_000, label: 'primary-default-rate' },
-    { voice: safe, rate, timeout: 25_000, label: 'safe-voice' },
-    { voice: safe, rate: 'default', timeout: 20_000, label: 'safe-default' },
-    {
-      voice: 'vi-VN-HoaiMyNeural',
-      rate: 'default',
-      timeout: 20_000,
-      label: 'vi-hoaimy',
-    },
-  ];
-
-  // Dedupe identical attempts
-  const seen = new Set<string>();
-  const queue = attempts.filter((a) => {
-    const k = `${a.voice}|${a.rate}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-
+  const primary = String(voiceName).trim();
   let lastErr: Error | null = null;
-  for (let i = 0; i < queue.length; i++) {
-    const a = queue[i];
+  // Bing Edge WS cold-start can exceed 25s on some networks — use 55s × 3 tries.
+  // IRON B10: same voice + same rate only (no voice/rate swap fallback).
+  const timeouts = [55_000, 70_000, 90_000];
+  for (let i = 0; i < timeouts.length; i++) {
     try {
       console.log(
-        `[EdgeTTS] try#${i + 1} ${a.label} voice=${a.voice} rate=${a.rate} (ui speed=${speed})`,
+        `[EdgeTTS] try#${i + 1}/${timeouts.length} voice=${primary} rate=${rate} timeout=${timeouts[i]}ms uiSpeed=${speed}`,
       );
-      const buf = await edgeOnce(text, a.voice, a.rate, a.timeout);
-      if (i > 0) {
-        console.log(`[EdgeTTS] recovered via ${a.label} (${a.voice})`);
-      }
-      return buf;
+      return await edgeOnce(text, primary, rate, timeouts[i]);
     } catch (err) {
-      lastErr = err instanceof Error ? err : new Error(String(err));
+      // node-edge-tts rejects with bare string "Timed out" (not Error)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'string'
+            ? err
+            : String(err);
+      lastErr = new Error(msg || 'unknown');
       console.warn(`[EdgeTTS] try#${i + 1} fail: ${lastErr.message}`);
-      // Brief pause to dodge rate-limit
-      await sleep(350 + i * 200);
+      if (i < timeouts.length - 1) await sleep(600 + i * 400);
     }
   }
-
-  throw lastErr || new Error('Edge TTS failed after retries');
+  throw new Error(
+    `Edge TTS fail voice=${primary} rate=${rate} (không đổi giọng/rate dự phòng): ${lastErr?.message || 'unknown'}`,
+  );
 }

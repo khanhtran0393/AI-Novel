@@ -1,5 +1,5 @@
 /**
- * Capability matrix — độc lập: báo rõ cái gì có trong project, cái gì fallback.
+ * Capability matrix — báo rõ cái gì có / thiếu (IRON B10: không ngụ ý auto-fallback).
  */
 import fs from 'fs';
 import path from 'path';
@@ -52,12 +52,15 @@ export function buildCapabilitiesReport() {
     media: {
       ffmpeg: { available: ffmpeg, path: 'bin/ffmpeg.exe' },
       piper: { available: piper, path: 'bin/piper/piper.exe' },
-      edgeTts: { available: true, note: 'Built-in free fallback' },
+      edgeTts: {
+        available: true,
+        note: 'Chỉ khi user chọn platform edge_tts — không phải fallback cho engine khác',
+      },
       capcutTts: {
         available: capcut,
         note: capcut
           ? 'CapCut desktop detected'
-          : 'Missing — no auto fallback (chọn Edge TTS thủ công nếu cần)',
+          : 'Missing — hard-fail nếu chọn CapCut TTS (không nhảy Edge)',
       },
       exportCapcutProject: {
         available: true,

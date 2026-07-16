@@ -166,7 +166,7 @@ export function mergeLiveSettingsIntoChannel(
 
 /**
  * Resolve full output criteria for ship / CapCut / audits.
- * Priority: channel.outputDna / ttsDna (already merged with live) → recipe fallback.
+ * IRON B10: DNA kênh/user trước — recipe chỉ khi field DNA trống tường minh (đã merge), không đổi platform.
  */
 export function resolveOutputCriteria(
   channel: ChannelProfile,
@@ -176,7 +176,12 @@ export function resolveOutputCriteria(
   const outputDna = resolveChannelOutputDna(channel);
   const tts = resolveChannelTtsDna(channel);
 
-  // Visual mode: prefer user video aspect (CapCut timeline), then image aspect, then recipe
+  if (!tts.platform || !tts.voice) {
+    throw new Error(
+      'Output criteria: thiếu ttsDna.platform/voice trên kênh. Không gán edge_tts dự phòng. Cấu hình TTS kênh trước.',
+    );
+  }
+
   const imageAspectRatio =
     outputDna.imageAspectRatio || channel.aspectRatio || recipe.aspectRatio || '16:9';
   const videoAspectRatio =

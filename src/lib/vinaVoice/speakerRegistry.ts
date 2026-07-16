@@ -86,7 +86,7 @@ export function resolveDefaultNarratorProfile(
 }
 
 /**
- * Resolve a SpeakerRef from profile name, ad-hoc settings, or default narrator.
+ * Resolve a SpeakerRef from profile name or ad-hoc settings.
  *
  * Important: when `profileName` is set (catalog dropdown), always resolve by
  * that profile's WAV. Never let a stale `settings.reference_audio` from the
@@ -96,6 +96,8 @@ export function resolveSpeaker(opts: {
   cwd?: string;
   profileName?: string;
   settings?: Partial<VinaVoiceSettings>;
+  /** Explicit opt-in only; preview/global TTS must not silently swap voices. */
+  allowDefaultNarrator?: boolean;
   /**
    * Only used when there is NO profileName (Create-voice / ad-hoc upload).
    * Default true for that path; ignored when profileName is present.
@@ -154,6 +156,13 @@ export function resolveSpeaker(opts: {
   }
 
   // 4) Default narrator — always a real studio/user sample
+  if (opts.allowDefaultNarrator !== true) {
+    throw new SpeakerResolveError(
+      'CODE_REF_MISSING',
+      'VinaVoice: chua chon profile Zero-Shot hoac reference_audio hop le. Khong dung DEFAULT_NARRATOR.',
+    );
+  }
+
   const def = resolveDefaultNarratorProfile(cwd);
   if (!def) {
     throw new SpeakerResolveError(

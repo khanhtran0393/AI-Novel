@@ -14,16 +14,29 @@ import {
 } from '@/lib/mediaDnaMatch';
 
 export default function MediaDnaBanner() {
-  const store = useNovelStore();
+  // Subscribe to stable store field refs only (no object-literal selectors)
+  const isHydrated = useNovelStore((s) => s.isHydrated);
+  const ch = useNovelStore((s) => s.chuong_dang_chon);
+  const generatedAudioPaths = useNovelStore((s) => s.generatedAudioPaths);
+  const generatedImages = useNovelStore((s) => s.generatedImages);
+  const generatedVideos = useNovelStore((s) => s.generatedVideos);
+  const generatedAssetDna = useNovelStore((s) => s.generatedAssetDna);
+  const ttsConfig = useNovelStore((s) => s.ttsConfig);
+  const imageProvider = useNovelStore((s) => s.imageProvider);
+  const imageModel = useNovelStore((s) => s.imageModel);
+  const imageAspectRatio = useNovelStore((s) => s.imageAspectRatio);
+  const videoProvider = useNovelStore((s) => s.videoProvider);
+  const videoModel = useNovelStore((s) => s.videoModel);
+  const videoAspectRatio = useNovelStore((s) => s.videoAspectRatio);
+  const videoDuration = useNovelStore((s) => s.videoDuration);
   const [dismissed, setDismissed] = useState(false);
-  const ch = store.chuong_dang_chon;
 
   const report = useMemo(() => {
-    if (!store.isHydrated) return null;
+    if (!isHydrated) return null;
     const keys = chapterAssetKeys(ch, {
-      audio: store.generatedAudioPaths,
-      images: store.generatedImages,
-      videos: store.generatedVideos,
+      audio: generatedAudioPaths,
+      images: generatedImages,
+      videos: generatedVideos,
     });
     if (
       keys.audioKeys.length + keys.imageKeys.length + keys.videoKeys.length ===
@@ -36,33 +49,33 @@ export default function MediaDnaBanner() {
       audioKeys: keys.audioKeys,
       imageKeys: keys.imageKeys,
       videoKeys: keys.videoKeys,
-      stamps: store.generatedAssetDna || {},
+      stamps: generatedAssetDna || {},
       live: liveDnaFromStoreLike({
-        ttsConfig: store.ttsConfig,
-        imageProvider: store.imageProvider,
-        imageModel: store.imageModel,
-        imageAspectRatio: store.imageAspectRatio,
-        videoProvider: store.videoProvider,
-        videoModel: store.videoModel,
-        videoAspectRatio: store.videoAspectRatio,
-        videoDuration: store.videoDuration,
+        ttsConfig,
+        imageProvider,
+        imageModel,
+        imageAspectRatio,
+        videoProvider,
+        videoModel,
+        videoAspectRatio,
+        videoDuration,
       }),
     });
   }, [
-    store.isHydrated,
+    isHydrated,
     ch,
-    store.generatedAudioPaths,
-    store.generatedImages,
-    store.generatedVideos,
-    store.generatedAssetDna,
-    store.ttsConfig,
-    store.imageProvider,
-    store.imageModel,
-    store.imageAspectRatio,
-    store.videoProvider,
-    store.videoModel,
-    store.videoAspectRatio,
-    store.videoDuration,
+    generatedAudioPaths,
+    generatedImages,
+    generatedVideos,
+    generatedAssetDna,
+    ttsConfig,
+    imageProvider,
+    imageModel,
+    imageAspectRatio,
+    videoProvider,
+    videoModel,
+    videoAspectRatio,
+    videoDuration,
   ]);
 
   // Reset dismiss when chapter or report changes materially

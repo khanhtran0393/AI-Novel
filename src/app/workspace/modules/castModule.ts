@@ -3,7 +3,6 @@
  */
 import type { NhanVatPromptsMap } from '@/lib/characterProfile';
 import { buildSceneCastSegments } from '@/lib/castDialogue';
-import { getCharacterVoiceOptions, suggestVoiceFromProfile } from '@/lib/characterVoice';
 import {
   ensureSeededCast,
   seedRolesFromProject,
@@ -65,8 +64,11 @@ export function resolveSceneCast(params: {
     cast: castNorm,
   });
 
-  const platform = params.platform || 'edge_tts';
-  const language = params.language || 'vi';
+  const platform = (params.platform || '').trim();
+  if (!platform) {
+    throw new Error('Chua chon engine TTS (platform).');
+  }
+  const language = (params.language || '').trim();
   const prompts = params.nhanVatPrompts || {};
 
   // Diversify role voiceIds so different characters don't all share global default
@@ -102,7 +104,7 @@ export function resolveSceneCast(params: {
     const isNarr = !role || role.id === NARRATOR_ROLE_ID || role.kind === 'narrator';
     const voice = isNarr
       ? narrVoice
-      : (role?.voiceId || defaultVoice).trim() || defaultVoice;
+      : (role?.voiceId || '').trim();
     const speaker = isNarr ? null : role?.characterName || role?.label || null;
     const roleId = role?.id || (isNarr ? NARRATOR_ROLE_ID : seg.speakerRoleId);
     const pitch =
@@ -153,85 +155,31 @@ export function diversifyRoleVoices(
   prompts: NhanVatPromptsMap,
   defaultVoice: string,
 ): VoiceRole[] {
-  const pool = getCharacterVoiceOptions(platform, language, {
-    includeAllLanguages: false,
-  });
-  const fullPool =
-    pool.length > 0
-      ? pool
-      : getCharacterVoiceOptions(platform, language, { includeAllLanguages: true });
-
-  const used = new Set<string>();
+  void language;
   const out: VoiceRole[] = [];
 
-  // Narrator first — keep default
   for (const r of roles) {
     if (r.id === NARRATOR_ROLE_ID || r.kind === 'narrator') {
-      const v = (r.voiceId || defaultVoice).trim() || defaultVoice;
-      used.add(v);
-      out.push({ ...r, voiceId: v });
-    }
-  }
-
-  for (const r of roles) {
-    if (r.id === NARRATOR_ROLE_ID || r.kind === 'narrator') continue;
-    if (r.locked && r.voiceId?.trim()) {
-      used.add(r.voiceId.trim());
-      out.push(r);
+      const v = (r.voiceId || defaultVoice).trim();
+      out.push(v ? { ...r, voiceId: v } : { ...r, voiceId: '' });
       continue;
     }
 
     const name = r.characterName || r.label || '';
-    const profile = name ? prompts[name] : undefined;
-    let v = (r.voiceId || '').trim();
-    const explicit = (profile?.tts_voice || '').trim();
-    if (explicit) v = explicit;
-    const g = (profile?.gioi_tinh || '').toLowerCase();
-    const wantF = /nữ|nu|female/.test(g);
-    const wantM = (/nam|male/.test(g) && !wantF) || (!wantF && !g && r.kind === 'character');
-    // Prefer gender-matched suggestion first
-    if (!v || used.has(v)) {
-      const suggested = suggestVoiceFromProfile(profile, platform, language);
-      if (suggested && !used.has(suggested)) v = suggested;
-    }
-    if (!v || used.has(v)) {
-      for (const opt of fullPool) {
-        if (!opt.id || used.has(opt.id)) continue;
-        if (wantF && opt.gender && opt.gender !== 'female') continue;
-        if (wantM && !wantF && opt.gender && opt.gender !== 'male') continue;
-        v = opt.id;
-        break;
-      }
-    }
-    // Prefer gender-correct voice even if shared (pitch diversifies multi-path)
-    if (wantF) {
-      const female = fullPool.find((o) => o.gender === 'female' || /hoaimy|nu|female/i.test(o.id + o.name));
-      if (female?.id) v = female.id;
-    } else if (wantM) {
-      const male = fullPool.find((o) => o.gender === 'male' || /namminh|male/i.test(o.id + o.name));
-      if (male?.id) v = male.id;
-    }
-    if (!v) {
-      for (const opt of fullPool) {
-        if (opt.id && !used.has(opt.id)) {
-          v = opt.id;
-          break;
-        }
-      }
-    }
-    if (!v) v = defaultVoice || fullPool[0]?.id || 'vi-VN-NamMinhNeural';
-    used.add(v);
+    const explicit = name ? (prompts[name]?.tts_voice || '').trim() : '';
+    const v = (r.voiceId || explicit || '').trim();
     out.push({
       ...r,
       voiceId: v,
-      voicesByPlatform: {
-        ...(r.voicesByPlatform || {}),
-        [platform]: v,
-      },
+      voicesByPlatform: v
+        ? {
+            ...(r.voicesByPlatform || {}),
+            [platform]: v,
+          }
+        : r.voicesByPlatform,
     });
   }
 
-  // Preserve order similar to input
   const byId = new Map(out.map((r) => [r.id, r]));
   return roles.map((r) => byId.get(r.id) || r);
 }

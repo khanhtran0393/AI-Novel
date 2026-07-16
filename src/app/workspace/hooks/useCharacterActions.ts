@@ -14,9 +14,6 @@ import {
   generateCharImageAction,
 } from '../modules/characterModule';
 import { composeCharacterReferenceSheetPrompt } from '@/lib/characterProfile';
-import { suggestVoiceFromProfile } from '@/lib/characterVoice';
-import { suggestAllRolesFromProfiles } from '@/lib/castSeed';
-import { normalizeVoiceCast } from '@/lib/voiceCast';
 import { toast } from '@/lib/toastBus';
 import {
   profilePromptCacheKey,
@@ -25,7 +22,8 @@ import {
 } from '@/lib/conceptPromptCache';
 
 export function useCharacterActions() {
-  const store = useNovelStore();
+  // getState only — parent CharacterRoster selects data slices
+  const store = () => useNovelStore.getState();
 
   const [editingChar, setEditingChar] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState<NhanVatProfile>(emptyNhanVatProfile());
@@ -65,7 +63,7 @@ export function useCharacterActions() {
     } else {
       setEditingChar(char);
       setRenameDraft(char);
-      setProfileDraft(normalizeNhanVatProfile(store.nhan_vat_prompts?.[char]));
+      setProfileDraft(normalizeNhanVatProfile(store().nhan_vat_prompts?.[char]));
     }
   };
 
@@ -79,7 +77,7 @@ export function useCharacterActions() {
     // Lưu draft hồ sơ trước khi đổi key
     persistProfile(oldName, profileDraft);
 
-    const result = store.renameNhanVat(oldName, next, {
+    const result = store().renameNhanVat(oldName, next, {
       replaceInText: replaceNameInText,
     });
     if (!result.ok) {
@@ -100,7 +98,7 @@ export function useCharacterActions() {
   };
 
   const persistProfile = (char: string, data: Partial<NhanVatProfile>) => {
-    store.updateNhanVatPrompt(char, data);
+    store().updateNhanVatPrompt(char, data);
   };
 
   const handleGenerateCharPrompt = async (char: string) => {
@@ -119,8 +117,8 @@ export function useCharacterActions() {
       } else {
         data = (await generateCharPromptAction({
           char,
-          dan_y_tong_the: store.dan_y_tong_the,
-          lorebook: store.lorebook,
+          dan_y_tong_the: store().dan_y_tong_the,
+          lorebook: store().lorebook,
           profile: profileDraft,
         })) as Record<string, unknown>;
         if (typeof data.prompt === 'string' && data.prompt.trim()) {
@@ -134,18 +132,10 @@ export function useCharacterActions() {
         }
       }
 
-      const platform = store.ttsConfig?.platform || 'edge_tts';
-      const language = store.ttsConfig?.language || 'vi';
-      const suggestedVoice = suggestVoiceFromProfile(
-        { ...profileDraft, ...data },
-        platform,
-        language,
-      );
-
       const merged = normalizeNhanVatProfile({
         ...profileDraft,
         ...data,
-        tts_voice: (data as { tts_voice?: string }).tts_voice || suggestedVoice || profileDraft.tts_voice,
+        tts_voice: profileDraft.tts_voice,
         angle_prompts: {
           ...(profileDraft.angle_prompts || {}),
           ...((data.angle_prompts as object) || {}),
@@ -157,9 +147,6 @@ export function useCharacterActions() {
       });
       setProfileDraft(merged);
       persistProfile(char, merged);
-      if (merged.tts_voice) {
-        store.setCharacterVoice(char, merged.tts_voice);
-      }
       toast.success('Hồ sơ NV', `Đã sinh identity lock + góc/biểu cảm cho "${char}"`);
     } catch (err: unknown) {
       toast.error('Lỗi hồ sơ NV', err instanceof Error ? err.message : String(err));
@@ -176,7 +163,7 @@ export function useCharacterActions() {
     applyCastVoices?: boolean;
     silent?: boolean;
   }) => {
-    const chars = (store.nhan_vat || []).map((c) => c.normalize('NFC').trim()).filter(Boolean);
+    const chars = (store().nhan_vat || []).map((c) => c.normalize('NFC').trim()).filter(Boolean);
     if (!chars.length) {
       if (!opts?.silent) toast.warn('NV', 'Chưa có nhân vật nào trong danh sách.');
       return { ok: 0, fail: 0, castUpdated: 0 };
@@ -197,8 +184,6 @@ export function useCharacterActions() {
     }
 
     setGeneratingAllCharPrompts(true);
-    const platform = store.ttsConfig?.platform || 'edge_tts';
-    const language = store.ttsConfig?.language || 'vi';
     let ok = 0;
     let fail = 0;
     const failNames: string[] = [];
@@ -215,25 +200,15 @@ export function useCharacterActions() {
 
           const data = await generateCharPromptAction({
             char,
-            dan_y_tong_the: store.dan_y_tong_the,
-            lorebook: store.lorebook,
+            dan_y_tong_the: store().dan_y_tong_the,
+            lorebook: store().lorebook,
             profile: base,
           });
-
-          const suggestedVoice = suggestVoiceFromProfile(
-            { ...base, ...data },
-            platform,
-            language,
-          );
 
           const merged = normalizeNhanVatProfile({
             ...base,
             ...data,
-            tts_voice:
-              (data as { tts_voice?: string }).tts_voice ||
-              suggestedVoice ||
-              base.tts_voice ||
-              '',
+            tts_voice: base.tts_voice || '',
             angle_prompts: {
               ...(base.angle_prompts || {}),
               ...(data.angle_prompts || {}),
@@ -244,10 +219,7 @@ export function useCharacterActions() {
             },
           });
 
-          store.updateNhanVatPrompt(char, merged);
-          if (merged.tts_voice) {
-            store.setCharacterVoice(char, merged.tts_voice);
-          }
+          store().updateNhanVatPrompt(char, merged);
           if (editingChar === char) {
             setProfileDraft(merged);
           }
@@ -262,34 +234,7 @@ export function useCharacterActions() {
       }
 
       let castUpdated = 0;
-      if (opts?.applyCastVoices !== false) {
-        // Seed cast nếu chưa có, rồi ép giọng từ hồ sơ vừa gen
-        store.ensureVoiceCastSeeded();
-        const snap = useNovelStore.getState();
-        const cast = normalizeVoiceCast(snap.voiceCast);
-        const { roles: nextRoles, updated } = suggestAllRolesFromProfiles(
-          cast.roles,
-          snap.nhan_vat_prompts || {},
-          platform,
-          language,
-          snap.ttsConfig?.speed ?? 1,
-          snap.ttsConfig?.pitch ?? 0,
-          { preferFreshSuggest: true, respectExplicitTtsVoice: false },
-        );
-        castUpdated = updated;
-        if (updated > 0 || cast.roles.length > 0) {
-          store.setVoiceCast({
-            ...cast,
-            enabled: true,
-            roles: nextRoles,
-          });
-          for (const r of nextRoles) {
-            if (r.kind === 'character' && r.characterName && r.voiceId && !r.locked) {
-              store.updateNhanVatPrompt(r.characterName, { tts_voice: r.voiceId });
-            }
-          }
-        }
-      }
+      void opts?.applyCastVoices;
 
       if (!opts?.silent) {
         const castNote =
@@ -330,18 +275,24 @@ export function useCharacterActions() {
     }
   };
 
-  const imageCtx = () => ({
-    savePathCharacter: store.savePathCharacter || '',
-    googleDrivePath: store.googleDrivePath || '',
-    ten_tac_pham: store.ten_tac_pham || 'Kịch Bản Vô Danh',
-    googleStudioCookies: store.googleStudioCookies || [],
-    googleStudioCookie: store.googleStudioCookie || '',
-  });
+  const imageCtx = () => {
+    const title = (store().ten_tac_pham || '').trim();
+    if (!title) {
+      throw new Error('Chua nhap ten_tac_pham. App khong tu gan ten truyen.');
+    }
+    return {
+      savePathCharacter: store().savePathCharacter || '',
+      googleDrivePath: store().googleDrivePath || '',
+      ten_tac_pham: title,
+      googleStudioCookies: store().googleStudioCookies || [],
+      googleStudioCookie: store().googleStudioCookie || '',
+    };
+  };
 
   const applyImageResult = (key: string, path: string, projectUrl?: string) => {
     const imagePath = path + (path.includes('?') ? '&' : '?') + 't=' + Date.now();
-    store.addGeneratedImage(key, imagePath);
-    if (projectUrl) store.addProjectUrl(key, projectUrl);
+    store().addGeneratedImage(key, imagePath);
+    if (projectUrl) store().addProjectUrl(key, projectUrl);
   };
 
   /**
@@ -354,7 +305,7 @@ export function useCharacterActions() {
     }
     setGeneratingCharImage(true);
     const charKey = characterImageKey(char);
-    store.addGeneratedImage(charKey, '');
+    store().addGeneratedImage(charKey, '');
     try {
       persistProfile(char, profileDraft);
       const sheetPrompt = composeCharacterReferenceSheetPrompt(profileDraft, char);

@@ -12,7 +12,29 @@ import {
   ensureWorkDirs,
   type IntegrationId,
 } from './paths';
-import { seedanceRepoReady, compileSeedancePrompt, compileSeedanceBatch, persistSeedanceCompile } from './seedance';
+import {
+  seedanceRepoReady,
+  compileSeedancePrompt,
+  compileSeedanceBatch,
+  persistSeedanceCompile,
+  compileDirectedClip,
+} from './seedance';
+import {
+  ensureSeedanceProject,
+  loadSeedanceProject,
+  saveSeedanceProject,
+  listSeedanceProjects,
+} from './seedancePersist';
+import {
+  reviewTake,
+  buildContinuationPrompt,
+  markClipGenerated,
+} from './seedanceTakeReview';
+import {
+  applySequenceToVideoPrompts,
+  resolveVideoPromptWithSequence,
+  autoEnsureChapterProject,
+} from './seedanceAuto';
 import {
   fableCutStatus,
   buildFableCutProject,
@@ -32,6 +54,9 @@ import {
 
 export * from './paths';
 export * from './seedance';
+export * from './seedancePersist';
+export * from './seedanceTakeReview';
+export * from './seedanceAuto';
 export * from './fablecut';
 export * from './watchVideo';
 export * from './mirofish';
@@ -75,7 +100,18 @@ export async function getIntegrationsStatus(): Promise<IntegrationsStatus> {
       seedance: {
         ready: seedance.ready && seedanceRepoReady(),
         path: seedance.path,
-        detail: { bridge: 'prompt-compiler', api: API.integrations.seedance },
+        detail: {
+          bridge: 'seedance-bridge-v2',
+          api: API.integrations.seedance,
+          features: [
+            'directing-engine',
+            'anti-slop',
+            'multishot-grammar',
+            'clip-contract',
+            'project-state-lite',
+            'prompt-spec',
+          ],
+        },
       },
       fablecut: {
         ready: fablecut.ready,
@@ -112,7 +148,22 @@ export async function getIntegrationsStatus(): Promise<IntegrationsStatus> {
 
 export const integrationsApi = {
   status: getIntegrationsStatus,
-  seedance: { compile: compileSeedancePrompt, batch: compileSeedanceBatch, persist: persistSeedanceCompile },
+  seedance: {
+    compile: compileSeedancePrompt,
+    batch: compileSeedanceBatch,
+    persist: persistSeedanceCompile,
+    directedClip: compileDirectedClip,
+    ensureProject: ensureSeedanceProject,
+    loadProject: loadSeedanceProject,
+    saveProject: saveSeedanceProject,
+    listProjects: listSeedanceProjects,
+    reviewTake,
+    continue: buildContinuationPrompt,
+    markGenerated: markClipGenerated,
+    applySequenceToVideoPrompts,
+    resolveVideoPromptWithSequence,
+    autoEnsureChapterProject,
+  },
   fablecut: {
     build: buildFableCutProject,
     fromChapter: buildFromChapterAssets,

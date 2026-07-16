@@ -7,6 +7,7 @@ import {
   generateBaseUrl,
   loadProjectContext,
   resolveGenerateKeys,
+  setupGenrePayload,
   type ProjectContext,
 } from '../projectContext';
 import { listChapters, saveProgress, writeJsonAtomicSafe } from '../store/diskStore';
@@ -39,29 +40,25 @@ export async function saveArcSummaryTool(progress: EngineProgress): Promise<Engi
   const body = chapters.map((c) => `### Ch${c.id} ${c.title}\n${c.content.slice(0, 1500)}`).join('\n\n');
   logEngine('📚 save_arc_summary…');
 
-  let summary = '';
-  try {
-    const data = await postGenerate(
-      'COMMIT_MEMORY',
-      {
-        ten_tac_pham: ctx.ten_tac_pham,
-        chuong_hien_tai: {
-          so_chuong: progress.currentChapter,
-          tieu_de: `Arc summary @ ch${progress.currentChapter}`,
-        },
-        noi_dung_kich_ban: body || ctx.dan_y_tong_the,
-        tom_tat_cuon_chieu: ctx.tom_tat_cuon_chieu,
-        tri_nho_ngan_han: ctx.tri_nho_ngan_han,
-        lorebook: ctx.lorebook,
+  const data = await postGenerate(
+    'COMMIT_MEMORY',
+    {
+      ten_tac_pham: ctx.ten_tac_pham,
+      chuong_hien_tai: {
+        so_chuong: progress.currentChapter,
+        tieu_de: `Arc summary @ ch${progress.currentChapter}`,
       },
-      ctx,
-    );
-    summary = String(
-      data.tom_tat_cuon_chieu || data.summary || data.compressedMemory || JSON.stringify(data).slice(0, 800),
-    );
-  } catch (err) {
-    summary = chapters.map((c) => `Ch${c.id}: ${c.title}`).join('; ') || 'Arc summary (offline)';
-    logEngine(`arc summary fallback: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      noi_dung_kich_ban: body || ctx.dan_y_tong_the,
+      ...setupGenrePayload(ctx),
+      tom_tat_cuon_chieu: ctx.tom_tat_cuon_chieu,
+      tri_nho_ngan_han: ctx.tri_nho_ngan_han,
+      lorebook: ctx.lorebook,
+    },
+    ctx,
+  );
+  const summary = String(data.tom_tat_cuon_chieu || data.summary || data.compressedMemory || '').trim();
+  if (!summary) {
+    throw new Error('COMMIT_MEMORY khong tra summary cho arc.');
   }
 
   writeJsonAtomicSafe('summaries/arc-latest.json', {
@@ -120,29 +117,30 @@ export async function expandArcTool(progress: EngineProgress): Promise<EnginePro
   const next = Math.min(progress.totalChapters, (progress.completedChapters.at(-1) || 0) + 1);
   logEngine(`🏗️ architect expand_arc → ch${next}`);
   const pack = buildNovelContext(next, ctx);
-  try {
-    const data = await postGenerate(
-      'GENERATE_CHAPTER_OUTLINE',
-      {
-        ten_tac_pham: ctx.ten_tac_pham,
-        dan_y_tong_the: ctx.dan_y_tong_the,
-        lorebook: ctx.lorebook,
-        chuong_so: next,
-        tom_tat_cuon_chieu: pack.scrollSummary,
-        tri_nho_ngan_han: pack.shortTerm,
-      },
-      ctx,
-    );
-    writeJsonAtomicSafe(`outline/expand-ch${String(next).padStart(2, '0')}.json`, {
-      chapter: next,
-      dan_y: data.dan_y,
-      contextHint: pack.chapterPlan,
-      updatedAt: new Date().toISOString(),
-    });
-    logEngine(`✅ expand_arc plan ch${next}`, 'success');
-  } catch (err) {
-    logEngine(`expand_arc fail: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  const outline = await postGenerate(
+    'GENERATE_CHAPTER_OUTLINE',
+    {
+      ten_tac_pham: ctx.ten_tac_pham,
+      dan_y_tong_the: ctx.dan_y_tong_the,
+      lorebook: ctx.lorebook,
+      chuong_so: next,
+      tom_tat_cuon_chieu: pack.scrollSummary,
+      tri_nho_ngan_han: pack.shortTerm,
+      ...setupGenrePayload(ctx),
+    },
+    ctx,
+  );
+  const danY = String(outline.dan_y || '').trim();
+  if (!danY) {
+    throw new Error(`GENERATE_CHAPTER_OUTLINE khong tra dan_y cho expand_arc ch${next}.`);
   }
+  writeJsonAtomicSafe(`outline/expand-ch${String(next).padStart(2, '0')}.json`, {
+    chapter: next,
+    dan_y: danY,
+    contextHint: pack.chapterPlan,
+    updatedAt: new Date().toISOString(),
+  });
+  logEngine(`✅ expand_arc plan ch${next}`, 'success');
   const updated = {
     ...progress,
     lastAction: `Architect expanded outline ch${next}`,

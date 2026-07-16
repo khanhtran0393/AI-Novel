@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Silent Flow bootstrap once per session when workspace mounts.
- * Opens Chrome + extension only if token not ready.
+ * Silent bridge warm-up once per session when workspace mounts.
+ * Chỉ ensure bridge HTTP/WS — KHÔNG mở Chrome / tab Flow (user chủ động Đăng nhập).
  */
 import { useEffect, useRef } from 'react';
 import { API } from '@/contracts';
@@ -26,17 +26,9 @@ export default function FlowAutoBootstrap() {
           /* ignore */
         }
 
-        const st = await fetch(API.flowStatus, { cache: 'no-store' })
-          .then((r) => r.json())
-          .catch(() => null);
+        // GET status → ensureBridgeStarted only (no browser launch)
+        await fetch(API.flowStatus, { cache: 'no-store' }).catch(() => null);
         if (cancelled) return;
-        if (st?.flowKeyPresent && st?.extensionConnected) return;
-
-        await fetch(API.flowBootstrap, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ forceChrome: false, waitExtensionMs: 12000 }),
-        });
         try {
           sessionStorage.setItem(KEY, String(Date.now()));
         } catch {

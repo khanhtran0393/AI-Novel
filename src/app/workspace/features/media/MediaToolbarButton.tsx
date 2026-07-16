@@ -18,8 +18,10 @@ export default function MediaToolbarButton() {
         const res = await fetch(API.flowStatus, { cache: 'no-store' });
         const j = await res.json();
         if (dead) return;
-        setFlowReady(Boolean(j.flowKeyPresent && j.extensionConnected));
-        setLoginOpen(Boolean(j.loginSessionOpen));
+        const ready = Boolean(j.flowKeyPresent && j.extensionConnected);
+        const login = Boolean(j.loginSessionOpen);
+        setFlowReady((prev) => (prev === ready ? prev : ready));
+        setLoginOpen((prev) => (prev === login ? prev : login));
       } catch {
         if (!dead) {
           setFlowReady(false);

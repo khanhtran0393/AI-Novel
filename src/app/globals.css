@@ -34,6 +34,9 @@
 html {
   height: 100%;
   font-size: 16px;
+  /* Electron frameless: default NO drag — only .app-chrome-drag opts in */
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 html,
@@ -49,6 +52,16 @@ body {
   overflow: hidden;
   height: 100%;
   min-height: 100dvh;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+/* Next root + portals (Setup modal → body) luôn nhận click */
+#__next,
+[data-app-shell],
+[data-setup-modal] {
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 /* ─── App frame: full sát mép cửa sổ — không đệm đen vuông quanh ─── */
@@ -106,9 +119,19 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
+  max-height: var(--app-chrome-h);
   cursor: default;
-  /* Chỉ dải này được kéo cửa sổ */
+  /* Chỉ dải title bar 32px được kéo — không lan xuống work surface */
   -webkit-app-region: drag;
+  /* drag region vẫn nhận hit-test cho OS drag; không block siblings */
+  pointer-events: auto;
+}
+
+/* Mọi con của work surface + fixed modal: tuyệt đối no-drag (Electron) */
+.app-work-surface *,
+[data-setup-modal],
+[data-setup-modal] * {
+  -webkit-app-region: no-drag;
 }
 
 .app-window-controls {

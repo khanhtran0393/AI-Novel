@@ -102,10 +102,7 @@ export interface VinaSynthesizeRequest {
   settings?: Partial<VinaVoiceSettings>;
   /** profile name from profiles_goc / profiles_user */
   profileName?: string;
-  /**
-   * Escape hatch: force Edge builtin (NOT ONNX brain).
-   * Universal mode ignores silent Edge unless this is true or VINA_EMERGENCY_EDGE=1.
-   */
+  /** Deprecated; kept for API compatibility. Vina no longer falls back to Edge. */
   forceBuiltin?: boolean;
   /**
    * Universal Zero-Shot mode (default true when brain ready).

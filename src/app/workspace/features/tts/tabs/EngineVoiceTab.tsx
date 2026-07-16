@@ -15,9 +15,6 @@ import { useOmniVoiceStatus } from '../hooks/useOmniVoiceStatus';
 
 const LANGUAGES = [...TTS_LANGUAGES];
 
-/** Platforms removed from manual picker — legacy store values map to Edge. */
-const REMOVED_PLATFORMS = new Set(['vbee', 'google', 'openai_tts', 'elevenlabs']);
-
 export type EngineVoiceTabProps = {
   config: TTSConfig;
   updateTTSConfig: (p: Partial<TTSConfig>) => void;
@@ -64,9 +61,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
   const store = { updateTTSConfig };
   const isOmni = config.platform === 'omnivoice_local';
   const { status: omniStatus, ensureStart: ensureOmni } = useOmniVoiceStatus(isOmni);
-  const platformSelectValue = REMOVED_PLATFORMS.has(String(config.platform))
-    ? 'edge_tts'
-    : config.platform;
+  const platformSelectValue = config.platform;
 
   return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -92,9 +87,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                       let voice = nextVoiceConfig.voice;
                       if (newPlatform === 'omnivoice_local') {
                         const omniList =
-                          dynamicVoices.omnivoice_local?.[config.language] ||
-                          dynamicVoices.omnivoice_local?.vi ||
-                          [];
+                          dynamicVoices.omnivoice_local?.[config.language] || [];
                         const cur = config.voice || '';
                         const curOk =
                           omniList.some((v) => v.id === cur) ||
@@ -102,7 +95,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                             cur,
                           ) ||
                           cur.startsWith('omnivoice_');
-                        voice = curOk ? cur : omniList[0]?.id || nextVoiceConfig.voice;
+                        voice = curOk ? cur : nextVoiceConfig.voice;
                       }
                       store.updateTTSConfig({
                         platform: newPlatform,
@@ -125,7 +118,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     <option className={OPTION_DARK} value="capcut_tts">CapCut TTS</option>
                     <option className={OPTION_DARK} value="tiktok_tts">TikTok TTS</option>
                     <option className={OPTION_DARK} value="gemini_tts">Gemini TTS</option>
-                    <option className={OPTION_DARK} value="hotai_tts">Hotai TTS</option>
+                    {/* Hotai: API fetch fail trên môi trường này — không liệt kê (B10: không fallback) */}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
                 </div>
@@ -134,7 +127,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     <p className="text-[10px] text-sky-300/95 leading-snug">
                       <strong>OmniVoice</strong> — chỉ gọi engine này (exclusive GPU). Vina sẽ được
                       unload khi gen Omni. Chọn <strong>clone library</strong> (omnivoice_…) hoặc
-                      preset (alloy/nova). Không fallback Edge/Piper.
+                      preset (alloy/nova). Không tự đổi sang Edge/Piper.
                     </p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
@@ -235,7 +228,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                         isPreviewing
                           ? 'Bấm để hủy nghe thử'
                           : isTikTokWithoutSession
-                            ? 'Thiếu SessionID TikTok — nghe thử sẽ lỗi (không fallback engine khác)'
+                            ? 'Thiếu SessionID TikTok — nghe thử sẽ lỗi, không tự đổi engine khác'
                             : 'Nghe thử giọng đang chọn'
                       }
                       className={`flex items-center gap-1.5 px-3 py-1 rounded transition-colors ${

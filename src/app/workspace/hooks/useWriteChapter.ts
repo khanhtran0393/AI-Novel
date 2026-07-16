@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import { useNovelStore, type Chuong } from '@/store/useNovelStore';
 import {
   writeChapterAction,
@@ -18,6 +18,7 @@ import {
   MAX_AUTO_CONTINUES,
   normalizeSceneTags,
 } from '@/lib/storyWriting';
+import { setStreamUi, getStreamUi } from '../modules/streamUiStore';
 
 export type WriteChapterOptions = {
   /** Apply editor review via REVISE_CHAPTER instead of fresh write */
@@ -30,13 +31,11 @@ export type WriteChapterOptions = {
   skipAutoRevise?: boolean;
 };
 
-
+/**
+ * Write-chapter actions. Stream UI is external (streamUiStore) so typewriter
+ * ticks only re-render leaves that call useStreamUi — not the workspace shell.
+ */
 export function useWriteChapter(setPromptError: (err: string) => void) {
-  const [streamText, setStreamText] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  /** Full chapter text under construction — drives live Word-Gate UI */
-  const [liveScriptText, setLiveScriptText] = useState('');
-  const [liveWordCount, setLiveWordCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamTextRef = useRef('');
   const abortRef = useRef<AbortController | null>(null);
@@ -53,13 +52,24 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
 
   const publishLiveText = (fullText: string) => {
     const normalized = (fullText || '').normalize('NFC');
-    setLiveScriptText(normalized);
-    setLiveWordCount(getWordCount(normalized));
+    setStreamUi({
+      liveScriptText: normalized,
+      liveWordCount: getWordCount(normalized),
+    });
+  };
+
+  const setIsStreaming = (v: boolean) => {
+    setStreamUi({ isStreaming: v });
+  };
+
+  const setStreamText = (v: string) => {
+    streamTextRef.current = v;
+    setStreamUi({ streamText: v });
   };
 
   /**
    * Typewriter for the new chunk; Word-Gate counts base + typed so far in real time.
-   * @param baseContent chapter text before this chunk (empty on overwrite first pass)
+   * ~30fps (33ms / step 28) — smooth enough without flooding React.
    */
   const animateText = (
     content: string,
@@ -72,10 +82,9 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       streamTextRef.current = '';
       liveBaseRef.current = baseContent || '';
       const base = liveBaseRef.current;
-      // Seed gate with base immediately so bar doesn't stay at 0 while waiting first tick
       publishLiveText(base);
-      const delay = 12;
-      const step = 14;
+      const delay = 33;
+      const step = 28;
       let index = 0;
 
       intervalRef.current = setInterval(() => {
@@ -88,15 +97,13 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           index = Math.min(index + step, content.length);
           const next = content.substring(0, index);
           streamTextRef.current = next;
-          setStreamText(next);
-          // Count every typing tick — interactive Word-Gate (outside setState)
+          setStreamUi({ streamText: next });
           publishLiveText(base ? `${base}\n\n${next}` : next);
           return;
         }
         stopTyping();
-        // Snap to full chunk end
         streamTextRef.current = content;
-        setStreamText(content);
+        setStreamUi({ streamText: content });
         publishLiveText(base ? `${base}\n\n${content}` : content);
         resolve();
       }, delay);
@@ -108,7 +115,6 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
     chapterNumber: number = useNovelStore.getState().chuong_dang_chon,
     options: WriteChapterOptions = {},
   ): Promise<void> => {
-    // Cancel any in-flight write
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -116,7 +122,9 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
     stopTyping();
 
     const startState = useNovelStore.getState();
-    const currentChapter = startState.danh_sach_chuong.find((c) => c.so_chuong === chapterNumber);
+    const currentChapter = startState.danh_sach_chuong.find(
+      (c) => c.so_chuong === chapterNumber,
+    );
     if (!currentChapter) return;
 
     startState.setDangTai(true);
@@ -131,18 +139,15 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
     setPromptError('');
 
     if (overwrite) {
-      // Clear audio/prompts/images/videos + editor review gắn chương
       startState.clearChapterMedia(chapterNumber);
     }
 
     try {
       let workingContent = overwrite ? '' : currentChapter.noi_dung || '';
       let latestChunk = '';
-      // Seed live Word-Gate immediately (continue keeps previous words; overwrite → 0)
       liveBaseRef.current = workingContent;
       publishLiveText(workingContent);
 
-      // --- Path A: revise from editor review ---
       if (options.reviseFromReview) {
         const review = startState.editorReviews[chapterNumber];
         if (!review || !workingContent.trim()) {
@@ -166,12 +171,10 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
         if (genId !== writeGenRef.current) return;
         latestChunk = revised.noi_dung;
         workingContent = normalizeSceneTags(revised.noi_dung);
-        // Revise replaces full script — type from empty base
         await animateText(latestChunk, genId, '');
         liveBaseRef.current = workingContent;
         publishLiveText(workingContent);
       } else {
-        // --- Path B: write / continue with Word-Gate auto-continue ---
         let autoContinues = 0;
         let forceGate = false;
         let intervention = options.intervention;
@@ -214,15 +217,16 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
             ? normalizeSceneTags(`${workingContent}\n\n${result.noi_dung}`)
             : normalizeSceneTags(result.noi_dung);
 
-          // Type only the new chunk; Word-Gate = base + typed (real-time)
           await animateText(latestChunk, genId, baseBeforeChunk);
           liveBaseRef.current = workingContent;
           publishLiveText(workingContent);
 
-          // Consume one-shot intervention after first pass
           intervention = undefined;
 
-          const gate = evaluateWordGate(workingContent, live.setup.so_tu_chuong || 4250);
+          const gate = evaluateWordGate(
+            workingContent,
+            live.setup.so_tu_chuong || 4250,
+          );
           if (options.skipAutoContinue || !gate.needsContinue) {
             break;
           }
@@ -235,7 +239,7 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           autoContinues += 1;
           forceGate = true;
           setPromptError(
-            `⏳ Tự động bù Cổng Từ (lượt ${autoContinues}/${MAX_AUTO_CONTINUES}): ${gate.wordCount}/${gate.wordMin} từ, ${gate.sceneCount} cảnh...`,
+            `↻ Tự động bù Cổng Từ (lượt ${autoContinues}/${MAX_AUTO_CONTINUES}): ${gate.wordCount}/${gate.wordMin} từ, ${gate.sceneCount} cảnh...`,
           );
         } while (true);
       }
@@ -253,7 +257,6 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       });
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // Silent abort when superseded
         return;
       }
       setPromptError(getFriendlyErrorMessage(err));
@@ -272,12 +275,10 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
     signal: AbortSignal;
     skipAutoRevise?: boolean;
   }): Promise<void> => {
-    // Keep gate at final count while post-pipeline runs
     publishLiveText(params.content);
     liveBaseRef.current = params.content;
     await finishChapterWrite(params, {
       isCurrentGen: (genId) => genId === writeGenRef.current,
-      // Auto-revise / audio polish replace full script → type from empty base
       animateText: async (content, genId) => {
         await animateText(content, genId, '');
         liveBaseRef.current = content;
@@ -318,7 +319,10 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
 
   const handleReviseFromReview = async (chapterNumber?: number) => {
     const ch = chapterNumber ?? useNovelStore.getState().chuong_dang_chon;
-    await handleWriteChapter(false, ch, { reviseFromReview: true, skipAutoRevise: true });
+    await handleWriteChapter(false, ch, {
+      reviseFromReview: true,
+      skipAutoRevise: true,
+    });
   };
 
   const retryMemoryCommit = async (chapterNumber?: number) => {
@@ -351,12 +355,19 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
   };
 
   return {
-    isStreaming,
-    streamText,
-    /** Full in-progress script (base + typed) for live Word-Gate */
-    liveScriptText,
-    /** getWordCount(liveScriptText) — updates every typing tick */
-    liveWordCount,
+    /** Snapshots for non-React callers — UI leaves should use useStreamUi() */
+    get isStreaming() {
+      return getStreamUi().isStreaming;
+    },
+    get streamText() {
+      return getStreamUi().streamText;
+    },
+    get liveScriptText() {
+      return getStreamUi().liveScriptText;
+    },
+    get liveWordCount() {
+      return getStreamUi().liveWordCount;
+    },
     setStreamText,
     setIsStreaming,
     handleWriteChapter,

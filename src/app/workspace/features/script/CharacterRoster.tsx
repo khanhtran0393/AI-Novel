@@ -20,7 +20,10 @@ type Props = { onImageZoom: (url: string) => void };
  * Tách khỏi Sidebar shell (title, chapters, outline, write actions).
  */
 export default function CharacterRoster({ onImageZoom }: Props) {
-  const store = useNovelStore();
+  // Raw store refs only — never `|| []` / map inside selector (infinite getSnapshot loop)
+  const nhanVat = useNovelStore((s) => s.nhan_vat);
+  const nhanVatPrompts = useNovelStore((s) => s.nhan_vat_prompts);
+  const generatedImages = useNovelStore((s) => s.generatedImages);
 
   const {
     editingChar,
@@ -45,13 +48,16 @@ export default function CharacterRoster({ onImageZoom }: Props) {
     handleRenameChar,
   } = useCharacterActions();
 
-  if (!store.nhan_vat || store.nhan_vat.length === 0) return null;
+  if (!nhanVat?.length) return null;
 
   return (
         <div className="mb-6 border-t border-zinc-900 pt-4">
           <div className="mb-2.5 flex items-center justify-between gap-2 flex-wrap">
             <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">
               HỒ SƠ NHÂN VẬT ĐÃ PHÁT HIỆN
+              <span className="ml-1.5 font-normal normal-case tracking-normal text-zinc-600">
+                (song song · không chặn sinh chương)
+              </span>
             </label>
             <button
               type="button"
@@ -63,7 +69,7 @@ export default function CharacterRoster({ onImageZoom }: Props) {
               <Sparkles className="h-3 w-3" />
               {generatingAllCharPrompts && genAllProgress
                 ? `Gen ${genAllProgress.current}/${genAllProgress.total}…`
-                : `Gen Prompt tất cả (${store.nhan_vat.length})`}
+                : `Gen Prompt tất cả (${nhanVat.length})`}
             </button>
           </div>
           {generatingAllCharPrompts && genAllProgress && (
@@ -73,11 +79,11 @@ export default function CharacterRoster({ onImageZoom }: Props) {
             </p>
           )}
           <div className="flex flex-wrap gap-1.5">
-            {store.nhan_vat.map((char, idx) => {
+            {nhanVat.map((char, idx) => {
               const status = getCharacterProfileSetupStatus(
-                store.nhan_vat_prompts?.[char],
+                nhanVatPrompts?.[char],
                 {
-                  hasReferenceImage: !!store.generatedImages?.[charImageKey(char)],
+                  hasReferenceImage: !!generatedImages?.[charImageKey(char)],
                 },
               );
               const setupDone = status.complete;

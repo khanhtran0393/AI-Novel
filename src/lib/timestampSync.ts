@@ -14,20 +14,40 @@ export type TimedPrompt = {
 };
 
 /**
- * Parse "12-18s" or "0s" style ranges; returns start seconds if possible.
+ * Unified timestamp format: "start-end s" (e.g. "0-8.5s").
+ * Legacy duration-start "08-16" still parsed for span checks.
  */
 export function parseTimestampStart(ts?: string): number {
   const s = String(ts || '').trim();
   const range = s.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
-  if (range) return Number(range[1]) || 0;
+  if (range) {
+    const a = Number(range[1]) || 0;
+    const b = Number(range[2]) || 0;
+    // start-end when end >= start; else legacy duration-start → start is second number
+    if (b >= a) return a;
+    return b;
+  }
   const single = s.match(/^(\d+(?:\.\d+)?)\s*s?/i);
   if (single) return Number(single[1]) || 0;
   return 0;
 }
 
+/** Shot length in seconds from timestamp; 0 if unparsable. */
+export function parseTimestampDuration(ts?: string): number {
+  const s = String(ts || '').trim();
+  const range = s.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+  if (!range) return 0;
+  const a = Number(range[1]);
+  const b = Number(range[2]);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  if (b >= a) return Math.round((b - a) * 10) / 10;
+  // legacy: first number is duration
+  return a > 0 ? a : 0;
+}
+
 /**
  * Redistribute prompts evenly across totalDurationSec (real TTS length).
- * Keeps sentence/prompt/emotion; only rewrites timestamp fields.
+ * Keeps sentence/prompt/emotion; only rewrites timestamp fields (start-end).
  */
 export function resyncPromptTimestamps<T extends TimedPrompt>(
   prompts: T[],
@@ -62,8 +82,14 @@ export function timestampsNeedResync(
   for (const p of prompts) {
     const s = String(p.timestamp || '');
     const m = s.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
-    if (m) maxEnd = Math.max(maxEnd, Number(m[2]) || 0);
-    else maxEnd = Math.max(maxEnd, parseTimestampStart(s));
+    if (m) {
+      const a = Number(m[1]) || 0;
+      const b = Number(m[2]) || 0;
+      // start-end → end is max; legacy duration-start → duration+start
+      maxEnd = Math.max(maxEnd, b >= a ? b : a + b);
+    } else {
+      maxEnd = Math.max(maxEnd, parseTimestampStart(s));
+    }
   }
   if (maxEnd <= 0) return true;
   const drift = Math.abs(maxEnd - ttsDurationSec) / Math.max(ttsDurationSec, 1);

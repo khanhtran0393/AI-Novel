@@ -1,40 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
-  buildContinueContext,
-  evaluateWordGate,
-  formatCharacterBible,
-  formatSpentEntities,
-  formatWorldState,
-  normalizeSceneTags,
+  lorebookForPrompt,
+  requireGenreLabelFromSetup,
+  setupGenreFromPayload,
   truncateOutline,
-  DEFAULT_WORD_GOAL,
-  MIN_SCENE_COUNT,
+  writeEngineRoleLine,
 } from '@/lib/storyWriting';
 import {
-  buildHumanizeScriptBlock,
-  buildNarrativePsychBlock,
-  buildShotDiversityBlock,
-  buildSpeechFingerprintBlock,
-  buildAudioReadabilityBlock,
-  enforceShotGraphOnPrompts,
-  resolveUserRules,
-  scoreNarrativePsychScript,
-  injectHumanJokeAsides,
-  countHumanJokeAsides,
-} from '@/lib/youtubeSafe';
-import {
-  applyCharacterSheetFormulas,
-  applyDirectorFormulasToPromptPair,
-  compileStillImagePrompt,
-} from '@/lib/integrations/seedance';
-import {
-  CHAR_ANGLE_CAMERA,
-  CHAR_EMOTION_FACE,
-} from '@/lib/characterProfile';
-import {
   callActiveModel,
-  callActiveVision,
-  cleanAndParseJson,
   generateJsonWithRetry,
   getLastWorkingApiKey,
 } from '../modelClients';
@@ -100,6 +73,36 @@ export async function handleOutline(
       ? youtube_title || 'Kịch bản dán'
       : youtube_title || 'YouTube';
 
+    // Classic mode: require Setup. Rewrite mode may use rewrite defaults if user left blank.
+    let genreLabel: string;
+    try {
+      if (isRewrite) {
+        const fromSetup = requireGenreLabelFromSetup({
+          chu_de: chu_de || (isScriptRewrite ? 'Viết lại kịch bản có sẵn' : 'Viết lại từ YouTube'),
+          phong_cach: phong_cach || `Trùng ý tưởng mẫu ~${simTarget}%`,
+        });
+        genreLabel = fromSetup;
+      } else {
+        genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+      }
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
+
+    const moTa = String(mo_ta || '').trim();
+    if (!moTa && !isRewrite) {
+      return NextResponse.json(
+        {
+          error:
+            'Thieu mo_ta (y tuong cot truyen). Sinh y tuong hoac nhap cot truyen truoc khi tao dan y. App khong tu bi a bối cảnh.',
+        },
+        { status: 400 },
+      );
+    }
+
     const rewriteBlock = isRewrite
       ? `
   CHẾ ĐỘ VIẾT LẠI TỪ NGUỒN MẪU (bắt buộc tuân thủ):
@@ -119,20 +122,21 @@ ${captionsExcerpt}
   `
       : '';
 
-    const prompt = `Bạn là một Trợ lý Biên kịch Sản xuất tiểu thuyết / kịch bản YouTube xuất sắc bậc nhất.
+    const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
   Dựa trên các tham số cấu hình sau:
-  - Chủ đề: ${chu_de || (isScriptRewrite ? 'Viết lại kịch bản có sẵn' : isRewrite ? 'Viết lại từ YouTube' : 'Sinh tồn')}
-  - Phong cách: ${phong_cach || (isRewrite ? `Trùng ý tưởng mẫu ~${simTarget}%` : 'Kịch tính')}
-  - Ý tưởng cốt truyện gốc: ${mo_ta || 'Ngẫu nhiên bối cảnh hoang phế độc đáo'}
+  - Chủ đề + Phong cách (Setup): ${genreLabel}
+  - Chủ đề (raw): ${String(chu_de || '').trim() || '(nằm trong Setup gộp)'}
+  - Phong cách (raw): ${String(phong_cach || '').trim() || '(nằm trong Setup gộp)'}
+  - Ý tưởng cốt truyện gốc: ${moTa || '(chế độ viết lại — lấy từ nguồn mẫu)'}
   - Số lượng chương cần phân bổ: ${so_chuong} chương (BẮT BUỘC: chỉ được phép lên dàn ý đúng chính xác ${so_chuong} chương, không thừa không thiếu)
   - Ngôn ngữ đầu ra: ${ngon_ngu || 'Tiếng Việt'}
   ${rewriteBlock}
   Nhiệm vụ của bạn là:
-  1. Đề xuất một tên tác phẩm bằng ${ngon_ngu || 'Tiếng Việt'} kịch tính, độc đáo${isRewrite ? ' (KHÔNG copy tiêu đề nguồn)' : ', đậm chất mạt thế/sinh tồn nếu phù hợp'}.
-  2. Thiết lập Dàn ý Tổng thể (World-building & Plot Outline) thật chi tiết dưới dạng Markdown.
-  3. Bóc tách ra khoảng 2-4 tên nhân vật chính yếu (bắt buộc phải là tên Hán Việt độc đáo mới mẻ, ví dụ: Tiêu Hàn, Thạch Dã, Diệp Dao... tuyệt đối không sử dụng Lâm Khuyết hay các tên quá phổ biến).
+  1. Đề xuất một tên tác phẩm bằng ${ngon_ngu || 'Tiếng Việt'} kịch tính, độc đáo${isRewrite ? ' (KHÔNG copy tiêu đề nguồn)' : `, bám thể loại Setup: ${genreLabel} — KHÔNG ép mạt thế/sinh tồn nếu Setup khác`}.
+  2. Thiết lập Dàn ý Tổng thể (World-building & Plot Outline) thật chi tiết dưới dạng Markdown, khớp Setup thể loại.
+  3. Bóc tách ra khoảng 2-4 tên nhân vật chính yếu (bắt buộc tên Hán Việt độc đáo mới mẻ, ví dụ: Tiêu Hàn, Thạch Dã, Diệp Dao... tuyệt đối không dùng Lâm Khuyết hay tên mòn). Mỗi nhân vật PHẢI có khuyết điểm (điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế — KHÔNG bắt buộc "khuyết tật mạt thế").
   4. Phác thảo dàn ý chi tiết cho từng chương (từ Chương 1 đến Chương ${so_chuong}) để người dùng chốt chặn trước khi viết. (BẮT BUỘC: danh sách "danh_sach_chuong" bên dưới phải có đúng chính xác ${so_chuong} phần tử chương, không được phép tự tiện thêm bớt bất kỳ chương nào ngoài số lượng này).
-  5. Xây dựng Bản Đồ Lưu Trữ Lõi Bất Biến (Lorebook) bao gồm các quy luật, hệ sinh thái, bối cảnh, hoặc nguyên tắc cốt lõi của thế giới này. Trình bày dưới dạng Markdown.
+  5. Xây dựng Bản Đồ Lưu Trữ Lõi Bất Biến (Lorebook) bao gồm các quy luật, hệ sinh thái, bối cảnh, hoặc nguyên tắc cốt lõi của thế giới này theo Setup — không ép mạt thế. Trình bày dưới dạng Markdown.
   
   Hạn chế/Yêu cầu:
   - Trả về định dạng JSON duy nhất và TUYỆT ĐỐI không bao bọc bởi tag markdown \`\`\`json hay text thừa. Khối JSON phải khớp chính xác cấu trúc sau:
@@ -162,12 +166,23 @@ ${captionsExcerpt}
   
   if (requestType === 'GENERATE_CHAPTER_OUTLINE') {
     const { ten_tac_pham, dan_y_tong_the, lorebook, tri_nho_ngan_han, tom_tat_cuon_chieu, chuong_so } = payload;
-    const prompt = `Bạn là Trợ lý Biên kịch Sản xuất kịch bản tiểu thuyết chuyên nghiệp.
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
+    const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
   Tác phẩm: "${ten_tac_pham}"
   Chương hiện tại cần lên dàn ý: Chương ${chuong_so}
+  Setup thể loại (BẮT BUỘC bám): ${genreLabel}.
+  Nhân vật trong dàn ý phải có khuyết điểm (điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế — KHÔNG bắt buộc "khuyết tật mạt thế").
   
   --- LOREBOOK ---
-  ${lorebook || 'Không có'}
+  ${lorebookForPrompt(lorebook)}
   
   --- DÀN Ý TỔNG THỂ ---
   ${truncateOutline(dan_y_tong_the || 'Không có')}
@@ -176,19 +191,37 @@ ${captionsExcerpt}
   Cuốn chiếu: ${tom_tat_cuon_chieu || 'Chưa có'}
   Ngắn hạn: ${(tri_nho_ngan_han && tri_nho_ngan_han.length > 0) ? tri_nho_ngan_han.join('\n') : 'Chưa có'}
   
-  Dựa trên các dữ liệu trên, hãy suy luận logic và đưa ra Gợi Ý Dàn Ý Chương chi tiết cho chương tiếp theo (Chương ${chuong_so}). Đảm bảo tình tiết phát triển tự nhiên, hấp dẫn, cực kỳ sáng tạo và KHÔNG BỊ LẶP LẠI cốt truyện cũ (ví dụ: không lặp lại việc mài dao rỉ sét nếu đã làm ở chương trước).
+  Dựa trên các dữ liệu trên, hãy suy luận logic và đưa ra Gợi Ý Dàn Ý Chương chi tiết cho chương tiếp theo (Chương ${chuong_so}). Đảm bảo tình tiết phát triển tự nhiên, hấp dẫn, cực kỳ sáng tạo và KHÔNG BỊ LẶP LẠI cốt truyện cũ.
   Chỉ trả về văn bản dàn ý (khoảng 100-200 từ), không bọc markdown hay json.`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
-    return NextResponse.json({ dan_y: aiResponse.trim(), usedApiKey: getLastWorkingApiKey() });
+    const danY = String(aiResponse || '').trim();
+    if (!danY) {
+      return NextResponse.json(
+        { error: 'AI tra dan_y rong. Khong dung fill cuc bo.' },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json({ dan_y: danY, usedApiKey: getLastWorkingApiKey() });
   }
   
   if (requestType === 'PLAN_ARC') {
     const { ten_tac_pham, lorebook, danh_sach_chuong_da_viet, cung_hien_tai, so_chuong_moi_cung } = payload;
-    const prompt = `Bạn là Kiến trúc sư của tiểu thuyết "${ten_tac_pham}".
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
+    const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
+  Bạn là Kiến trúc sư của tiểu thuyết "${ten_tac_pham}" — thể loại Setup: ${genreLabel}.
   Hãy lập Dàn Ý cho Arc (Cung/Tập) ${cung_hien_tai + 1} gồm ${so_chuong_moi_cung} chương tiếp theo.
+  Bám Setup; nhân vật giữ khuyết điểm (điểm yếu) nhất quán — không ép khuyết tật mạt thế.
   
   1. LÕI BẤT BIẾN:
-  ${lorebook}
+  ${lorebookForPrompt(lorebook)}
   
   2. TÓM TẮT CÁC CHƯƠNG ĐÃ VIẾT TRƯỚC ĐÓ:
   ${danh_sach_chuong_da_viet}

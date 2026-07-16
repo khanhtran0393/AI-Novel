@@ -2,10 +2,17 @@
 
 import React, { useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
+import {
+  selectTenTacPham,
+  selectUpdateTenTacPham,
+  selectSetSetupKind,
+  selectSetGiaiDoan,
+  selectSetupKind,
+} from '@/store/useNovelStoreSelectors';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { useFolderActions } from '../../hooks/useFolderActions';
 import { useProjectActions } from '../../hooks/useProjectActions';
-import { RefreshCw, Settings2, UploadCloud, Video } from 'lucide-react';
+import { RefreshCw, Settings2, UploadCloud, Video, CheckCircle } from 'lucide-react';
 import { planArcAction } from '../../modules/writeModule';
 import { silentEnrichArcHooks } from '../../modules/integrationsModule';
 import { toast } from '@/lib/toastBus';
@@ -25,23 +32,28 @@ export default function Sidebar({
   isStreaming,
   onImageZoom,
 }: SidebarProps) {
-  const store = useNovelStore();
+  const tenTacPham = useNovelStore(selectTenTacPham);
+  const updateTenTacPham = useNovelStore(selectUpdateTenTacPham);
+  const setSetupKind = useNovelStore(selectSetSetupKind);
+  const setGiaiDoan = useNovelStore(selectSetGiaiDoan);
+  const setupKind = useNovelStore(selectSetupKind);
   const [isPlanningArc, setIsPlanningArc] = useState(false);
   const [isContinueOpen, setIsContinueOpen] = useState(false);
 
   const openClassicSetup = () => {
-    store.setSetupKind('classic');
-    store.setGiaiDoan(1);
+    setSetupKind('classic');
+    setGiaiDoan(1);
   };
 
   const openYoutubeSetup = () => {
-    store.setSetupKind('youtube');
-    store.setGiaiDoan(1);
+    setSetupKind('youtube');
+    setGiaiDoan(1);
   };
 
   const handlePlanNextArc = async (): Promise<boolean> => {
     setIsPlanningArc(true);
     try {
+      const store = useNovelStore.getState();
       const so_chuong_moi_cung = store.setup.so_chuong || 10;
       const chuong_bat_dau =
         store.danh_sach_chuong.length > 0
@@ -87,6 +99,7 @@ export default function Sidebar({
   };
 
   const handleAppendOrPlanNextArc = async () => {
+    const store = useNovelStore.getState();
     const currentChapterNum = store.chuong_dang_chon;
     const isLastChapter = currentChapterNum === store.danh_sach_chuong.length;
     const currentChapter = store.danh_sach_chuong.find(
@@ -125,20 +138,26 @@ export default function Sidebar({
         <button
           type="button"
           onClick={openClassicSetup}
-          className="flex w-full min-h-[2.25rem] items-center justify-center gap-1.5 rounded-lg border border-amber-800/50 bg-amber-500/10 px-2 py-2 text-[10px] font-bold uppercase leading-snug tracking-wide text-amber-400 transition-all hover:bg-amber-500/20 hover:border-amber-600/60"
+          className="relative flex w-full min-h-[2.25rem] items-center justify-center gap-1.5 rounded-lg border border-amber-800/50 bg-amber-500/10 px-2 py-2 text-[10px] font-bold uppercase leading-snug tracking-wide text-amber-400 transition-all hover:bg-amber-500/20 hover:border-amber-600/60"
           title="Thiết lập chủ đề · phong cách · cốt truyện"
         >
           <Settings2 className="h-3.5 w-3.5 shrink-0" />
           <span className="text-center leading-snug">Setup · Tham số AI Novel</span>
+          {setupKind === 'classic' && (
+            <CheckCircle className="absolute right-3 h-4 w-4 text-emerald-500" />
+          )}
         </button>
         <button
           type="button"
           onClick={openYoutubeSetup}
-          className="flex w-full min-h-[2.25rem] items-center justify-center gap-1.5 rounded-lg border border-red-800/50 bg-red-500/10 px-2 py-2 text-[10px] font-bold uppercase leading-snug tracking-wide text-red-400 transition-all hover:bg-red-500/20 hover:border-red-600/60"
+          className="relative flex w-full min-h-[2.25rem] items-center justify-center gap-1.5 rounded-lg border border-red-800/50 bg-red-500/10 px-2 py-2 text-[10px] font-bold uppercase leading-snug tracking-wide text-red-400 transition-all hover:bg-red-500/20 hover:border-red-600/60"
           title="Link YouTube · lấy chép lời · % trùng · viết lại tương tự"
         >
           <Video className="h-3.5 w-3.5 shrink-0" />
           <span className="text-center leading-snug">Link YouTube · viết lại tương tự</span>
+          {setupKind === 'youtube' && (
+            <CheckCircle className="absolute right-3 h-4 w-4 text-emerald-500" />
+          )}
         </button>
 
         <button
@@ -158,8 +177,8 @@ export default function Sidebar({
         </label>
         <input
           type="text"
-          value={store.ten_tac_pham}
-          onChange={(e) => store.updateTenTacPham(e.target.value)}
+          value={tenTacPham}
+          onChange={(e) => updateTenTacPham(e.target.value)}
           className="w-full rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs font-semibold text-zinc-200 outline-none focus:border-amber-500 focus:bg-zinc-950 font-sans"
         />
       </div>
@@ -171,7 +190,8 @@ export default function Sidebar({
       <div className="mt-auto space-y-3 pt-4 border-t border-zinc-900">
         <button
           type="button"
-          disabled={store.dang_tai}
+          // Chỉ khóa khi ĐANG VIẾT CHƯƠNG — không khóa vì gen hồ sơ NV / job khác
+          disabled={isStreaming}
           onClick={() => {
             if (
               confirm(
@@ -183,7 +203,7 @@ export default function Sidebar({
           }}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 bg-red-500/10 py-2.5 text-xs font-bold uppercase tracking-wider text-red-500 shadow-lg transition-all duration-300 hover:bg-red-500 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
         >
-          {store.dang_tai && isStreaming ? (
+          {isStreaming ? (
             <>
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               ĐANG VIẾT...
@@ -195,11 +215,12 @@ export default function Sidebar({
 
         <button
           type="button"
-          disabled={store.dang_tai || isPlanningArc}
+          disabled={isStreaming || isPlanningArc}
           onClick={handleAppendOrPlanNextArc}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 text-xs font-bold uppercase tracking-wider text-black shadow-lg shadow-emerald-500/5 transition-all duration-300 hover:bg-emerald-400 hover:shadow-emerald-500/15 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+          title="Gen hồ sơ NV chạy song song — không chặn sinh chương"
         >
-          {store.dang_tai || isPlanningArc ? (
+          {isStreaming || isPlanningArc ? (
             <>
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               {isPlanningArc ? 'ĐANG LÊN DÀN Ý ARC...' : 'ĐANG VIẾT...'}
@@ -211,7 +232,7 @@ export default function Sidebar({
 
         <button
           type="button"
-          disabled={store.dang_tai}
+          disabled={isStreaming}
           onClick={handleResetProject}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/40 py-2.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-200 cursor-pointer font-sans"
         >

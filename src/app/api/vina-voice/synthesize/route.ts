@@ -14,12 +14,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Thiếu text' }, { status: 400 });
     }
 
+    const isPreview =
+      body.isPreview === true ||
+      body.preview === true ||
+      String(body.mode || '').toLowerCase() === 'preview';
     const result = await synthesizeVinaVoice(
       {
         text,
         settings: body.settings || body.vinaSettings || {},
         profileName: body.profileName || body.voice || undefined,
         forceBuiltin: !!body.forceBuiltin,
+        isPreview,
+        isChapter: !isPreview && !!body.isChapter,
       },
       {
         outDir: path.join(

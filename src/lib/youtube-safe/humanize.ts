@@ -71,17 +71,16 @@ export function buildSpeechFingerprintBlock(
   >,
 ): string {
   if (!nhan_vat?.length) return '';
-  const fallbackQuirks = [
-    'nói cộc, câu ngắn',
-    'nói vòng vo, hay hỏi lại',
-    'mỉa mai, nửa cười',
-    'lắp bắp khi sợ',
-    'trầm, ít lời, ngắt quãng',
-  ];
-  const lines = nhan_vat.map((name, i) => {
+  const lines = nhan_vat.map((name) => {
     const p = nhan_vat_prompts?.[name];
-    const habit = p?.thoi_quen || p?.so_thich || 'không rõ';
-    const quirk = (p?.giong_thoai || '').trim() || fallbackQuirks[i % fallbackQuirks.length];
+    const habit = (p?.thoi_quen || p?.so_thich || '').trim();
+    const quirk = (p?.giong_thoai || '').trim();
+    if (!quirk) {
+      throw new Error(`Nhan vat "${name}" thieu giong_thoai. App khong tu tao quirk thoai.`);
+    }
+    if (!habit) {
+      throw new Error(`Nhan vat "${name}" thieu thoi_quen/so_thich. App khong tu tao habit.`);
+    }
     const motive = p?.dong_co ? `; động cơ = "${p.dong_co}"` : '';
     const mark = p?.dac_diem_nhan_dang ? `; nhận dạng = "${p.dac_diem_nhan_dang}"` : '';
     return `- ${name}: quirk thoại = "${quirk}"; thói quen/sở thích = "${habit}"${motive}${mark}. Mọi câu thoại của ${name} phải giữ quirk này.`;

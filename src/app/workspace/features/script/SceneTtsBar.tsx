@@ -50,13 +50,24 @@ export default function SceneTtsBar({
   handleStopTTS,
   handleGenerateTTS,
 }: SceneTtsBarProps) {
-  const store = useNovelStore();
+  // Narrow selectors — never full useNovelStore() (full store = lag every tick)
+  const voiceCast = useNovelStore((s) => s.voiceCast);
+  const nhanVat = useNovelStore((s) => s.nhan_vat);
+  const nhanVatPrompts = useNovelStore((s) => s.nhan_vat_prompts);
+  const ttsPlatform = useNovelStore((s) => s.ttsConfig?.platform || '');
+  const ttsLanguage = useNovelStore((s) => s.ttsConfig?.language || '');
+  const ttsVoice = useNovelStore((s) => s.ttsConfig?.voice || '');
+  const ttsSpeed = useNovelStore((s) => s.ttsConfig?.speed);
+  const ttsPitch = useNovelStore((s) => s.ttsConfig?.pitch);
+  const ttsSyncMode = useNovelStore((s) => s.ttsConfig?.syncMode);
+  const ensureVoiceCastSeeded = useNovelStore((s) => s.ensureVoiceCastSeeded);
+  const assetKey = sceneAssetKey(chapterNum, sceneIndex);
+  const audioAsset = useNovelStore((s) => s.generatedAudioPaths[assetKey]);
+
   const [castStudioOpen, setCastStudioOpen] = useState(false);
   const [, setPartialTick] = useState(0);
-  const cast = normalizeVoiceCast(store.voiceCast);
+  const cast = normalizeVoiceCast(voiceCast);
   const castActive = isCastActive(cast);
-  const assetKey = sceneAssetKey(chapterNum, sceneIndex);
-  const audioAsset = store.generatedAudioPaths[assetKey];
 
   const partialEntry = loadMultiPartial(chapterNum, sceneIndex);
   const partialCached = countPartialParts(partialEntry);
@@ -82,13 +93,13 @@ export default function SceneTtsBar({
         chapter: chapterNum,
         sceneIndex,
         cast,
-        characterNames: store.nhan_vat || [],
-        nhanVatPrompts: store.nhan_vat_prompts || {},
-        defaultVoice: store.ttsConfig.voice || '',
-        platform: store.ttsConfig.platform || 'edge_tts',
-        language: store.ttsConfig.language || 'vi',
-        globalSpeed: store.ttsConfig.speed ?? 1,
-        globalPitch: store.ttsConfig.pitch ?? 0,
+        characterNames: nhanVat || [],
+        nhanVatPrompts: nhanVatPrompts || {},
+        defaultVoice: ttsVoice || '',
+        platform: (ttsPlatform || '').trim(),
+        language: (ttsLanguage || '').trim(),
+        globalSpeed: ttsSpeed,
+        globalPitch: ttsPitch,
       });
       const warns = pf.issues
         .filter((i) => i.level === 'warn' || i.level === 'block')
@@ -128,13 +139,13 @@ export default function SceneTtsBar({
     sceneContent,
     sceneIndex,
     chapterNum,
-    store.nhan_vat,
-    store.nhan_vat_prompts,
-    store.ttsConfig.voice,
-    store.ttsConfig.platform,
-    store.ttsConfig.language,
-    store.ttsConfig.speed,
-    store.ttsConfig.pitch,
+    nhanVat,
+    nhanVatPrompts,
+    ttsVoice,
+    ttsPlatform,
+    ttsLanguage,
+    ttsSpeed,
+    ttsPitch,
   ]);
 
   return (
@@ -150,7 +161,7 @@ export default function SceneTtsBar({
         <div className="flex flex-col sm:flex-row items-end gap-3">
           <div className="flex-1 w-full flex flex-col gap-1 bg-black/20 px-3 py-1.5 rounded border border-amber-900/20">
             <span className="text-[10px] text-zinc-400 font-sans italic">
-              🌍 TTS: {store.ttsConfig.platform.toUpperCase()} · người kể = giọng mặc định · thoại{' '}
+              🌍 TTS: {(ttsPlatform || '?').toUpperCase()} · người kể = giọng mặc định · thoại{' '}
               <span className="text-sky-500/90">Tên NV:</span> đổi giọng theo hồ sơ
             </span>
             {castActive && castPreview.label ? (
@@ -192,7 +203,7 @@ export default function SceneTtsBar({
             <button
               type="button"
               onClick={() => {
-                store.ensureVoiceCastSeeded();
+                ensureVoiceCastSeeded();
                 setCastStudioOpen(true);
               }}
               className={`h-8 px-3 rounded border text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer font-sans ${
@@ -231,8 +242,14 @@ export default function SceneTtsBar({
               onClick={async (e) => {
                 const durationVal =
                   manualDuration !== ''
-                    ? parseInt(manualDuration) || 5
-                    : voiceDurationReference || 5;
+                    ? parseInt(manualDuration, 10)
+                    : voiceDurationReference || undefined;
+                if (
+                  manualDuration !== '' &&
+                  (!Number.isFinite(durationVal) || Number(durationVal) <= 0)
+                ) {
+                  return;
+                }
                 const forceFull = e.shiftKey;
 
                 const newDuration = await handleGenerateTTS(
@@ -243,7 +260,7 @@ export default function SceneTtsBar({
                   forceFull ? { forceFullMulti: true } : undefined,
                 );
 
-                if (store.ttsConfig.syncMode === 'pro' && newDuration) {
+                if (ttsSyncMode === 'pro' && newDuration) {
                   setManualDuration(newDuration.toString());
                 }
               }}

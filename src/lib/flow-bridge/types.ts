@@ -6,13 +6,16 @@ export type FlowAccountStatus =
   | 'error'
   | 'offline';
 
-export type FlowTaskKind = 'image' | 'video';
+export type FlowTaskKind = 'image' | 'video' | 'extend' | 'edit';
 export type FlowTaskStatus =
   | 'pending'
   | 'running'
   | 'done'
   | 'failed'
   | 'cancelled';
+
+/** Video gen strategy inside queue */
+export type FlowVideoMode = 'auto' | 't2v' | 'i2v' | 'ingredients' | 'extend';
 
 export type FlowExecutionMode = 'parallel' | 'sequential';
 
@@ -25,22 +28,102 @@ export type RetryCategory =
   | 'content'
   | 'other';
 
+export type FlowProjectInfo = {
+  id: string;
+  title: string;
+  source: 'create' | 'capture' | 'manual';
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type FlowAccount = {
   id: string;
   name: string;
   email?: string;
+  /** Google display name from labs session */
+  displayName?: string;
   projectId?: string;
+  /** Projects bound to this profile (from sync/create on its session) */
+  projects?: FlowProjectInfo[];
   /** chromium = clean Chromium/Ungoogled/Brave; mullvad = Firefox family */
   engine: 'chromium' | 'mullvad' | 'chrome';
   browserExe?: string;
+  proxy?: string;
   status: FlowAccountStatus;
   flowKeyPresent: boolean;
+  /**
+   * True only after real labs session harvest (email present).
+   * UI "Hoạt động" requires this — never green from stale/global token alone.
+   */
+  sessionVerified?: boolean;
   tokenAgeMs?: number | null;
   credits?: number | null;
+  paygateTier?: string | null;
+  sessionExpires?: string | null;
+  lastSyncedAt?: number | null;
+  /** Round-robin: last time this profile ran a gen task */
+  lastTaskAt?: number | null;
+  /** Live: Chrome process for this profile is running (snapshot only) */
+  browserAlive?: boolean;
+  /**
+   * Live per-profile session (UI manages ALL of these on the card, not global):
+   * Bridge / Extension / Token / Project / Login
+   */
+  bridgeRunning?: boolean;
+  extensionConnected?: boolean;
+  loginSessionOpen?: boolean;
+  /** True when this profile has a projectId bound */
+  projectReady?: boolean;
+  /**
+   * Chrome --user-data-dir for this profile (cookies/cache/fingerprint live here).
+   * App inherits the whole browser session from this path.
+   */
+  profileDir?: string;
+  /** Last successful full inherit (token+email+credits+projects from browser) */
+  sessionInheritedAt?: number | null;
+  /**
+   * What this Google account can do — mirrored into app so UI/gen match Flow web.
+   * Updated on inherit + after each gen task.
+   */
+  capabilities?: {
+    canGenerateImage: boolean;
+    canGenerateVideo: boolean;
+    canUpload: boolean;
+    canListProjects: boolean;
+    paygateTier: string | null;
+    credits: number | null;
+    projectCount: number;
+    flowKeyPresent: boolean;
+    browserCookies: boolean;
+    proxyParity: boolean;
+    updatedAt: number;
+  } | null;
   cooldownUntil?: number | null;
   lastError?: string | null;
+  /** P3: 0–100 health (token age, errors, credits) */
+  healthScore?: number | null;
+  /** P3: soft credit budget for this account (null = unlimited) */
+  creditBudget?: number | null;
+  /** P3: estimated credits spent this session/day */
+  creditsSpent?: number | null;
+  /** P3: enable auto re-login on 401 for this profile */
+  autoRelogin?: boolean;
+  successCount?: number;
+  failCount?: number;
   createdAt: number;
   updatedAt: number;
+};
+
+/** Live identity harvested from the parasitic browser session (same as Veo/Flow UI). */
+export type FlowAccountIdentity = {
+  email?: string;
+  name?: string;
+  image?: string;
+  credits?: number | null;
+  paygateTier?: string | null;
+  sessionExpires?: string | null;
+  lastSyncedAt?: number | null;
+  projectCount?: number;
 };
 
 export type FlowTask = {
@@ -65,6 +148,21 @@ export type FlowTask = {
   referenceImagePath?: string;
   startImagePath?: string;
   endImagePath?: string;
+  /** P0: 1–3 local paths for ingredients-to-video */
+  ingredientPaths?: string[];
+  /** P0: extend from Flow media id or local video path resolved to media */
+  extendMediaId?: string;
+  extendVideoPath?: string;
+  videoMode?: FlowVideoMode;
+  /** P1: structured camera (serialized plain object) */
+  camera?: {
+    move?: string;
+    angle?: string;
+    focal?: string;
+    scaleIndex?: number;
+  };
+  /** Estimated credits for budget accounting */
+  estimatedCredits?: number;
   resultPaths?: string[];
   mediaIds?: string[];
   createdAt: number;
@@ -78,7 +176,12 @@ export type BridgeSnapshot = {
   httpPort: number;
   extensionConnected: boolean;
   flowKeyPresent: boolean;
+  /** Profile currently bound to the open Chrome/extension session */
+  activeAccountId?: string | null;
   projectId?: string | null;
+  projects?: FlowProjectInfo[];
+  /** Real Google account identity from browser session */
+  identity?: FlowAccountIdentity | null;
   tokenAgeMs?: number | null;
   /** True while visible login Chrome is open (waiting for Google login) */
   loginSessionOpen?: boolean;

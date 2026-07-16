@@ -116,8 +116,10 @@ export const DOMAIN_OWNERSHIP: DomainOwnership[] = [
       'workspace/features/toolbox',
       'workspace/features/download',
       'api/navtools',
+      'api/bypass-engine',
+      'lib/bypass-engine',
     ],
-    apis: ['navtools.*', 'downloadVideo'],
+    apis: ['navtools.*', 'downloadVideo', 'bypassEngine'],
     contracts: [],
   },
   {

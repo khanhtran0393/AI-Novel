@@ -1,9 +1,10 @@
 /**
  * When Next adopts an external bridge daemon (port already bound),
- * all gen/bootstrap/status go over HTTP to that daemon — never local empty queue.
+ * all gen/bootstrap/status/commands go over HTTP to that daemon —
+ * never local empty socket.
  */
 import { FLOW_HOST, FLOW_HTTP_PORT } from './config';
-import type { BridgeSnapshot } from './types';
+import type { BridgeSnapshot, ExtApiResponse } from './types';
 
 const base = () => `http://${FLOW_HOST}:${FLOW_HTTP_PORT}`;
 
@@ -18,6 +19,81 @@ export async function remoteStatus(): Promise<BridgeSnapshot | null> {
   } catch {
     return null;
   }
+}
+
+/** Proxy extension command to the process that owns the WS socket. */
+export async function remoteCommand(
+  method: string,
+  params: Record<string, unknown> = {},
+  timeoutMs = 60_000,
+): Promise<ExtApiResponse> {
+  const res = await fetch(`${base()}/api/command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, params, timeoutMs }),
+    signal: AbortSignal.timeout(Math.max(timeoutMs + 5000, 15_000)),
+  });
+  const json = (await res.json().catch(() => ({}))) as ExtApiResponse & {
+    error?: string;
+    ok?: boolean;
+  };
+  if (!res.ok) {
+    return {
+      id: 'remote',
+      error: json.error || `remote command HTTP ${res.status}`,
+    };
+  }
+  return json;
+}
+
+export async function remoteSyncAccount(accountId?: string): Promise<{
+  ok: boolean;
+  error?: string;
+  identity?: unknown;
+  snapshot?: BridgeSnapshot;
+  steps?: string[];
+  [k: string]: unknown;
+}> {
+  const res = await fetch(`${base()}/api/sync-account`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  return (await res.json().catch(() => ({
+    ok: false,
+    error: `HTTP ${res.status}`,
+  }))) as {
+    ok: boolean;
+    error?: string;
+    identity?: unknown;
+    snapshot?: BridgeSnapshot;
+    steps?: string[];
+  };
+}
+
+export async function remoteClaimSession(accountId: string): Promise<{
+  ok: boolean;
+  error?: string;
+  snapshot?: BridgeSnapshot;
+  message?: string;
+  [k: string]: unknown;
+}> {
+  const res = await fetch(`${base()}/api/claim-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  return (await res.json().catch(() => ({
+    ok: false,
+    error: `HTTP ${res.status}`,
+  }))) as {
+    ok: boolean;
+    error?: string;
+    snapshot?: BridgeSnapshot;
+    message?: string;
+  };
 }
 
 export async function remoteGenerateOne(
@@ -60,11 +136,12 @@ export async function remoteGenerateOne(
 export async function remoteBootstrap(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  // Bootstrap is heavy; run on the process that owns the bridge.
-  // If Next owns it, caller should use local bootstrapFlow.
-  // This is for completeness when daemon exposes bootstrap later.
   const res = await fetch(`${base()}/api/status`, { cache: 'no-store' });
-  return { ok: res.ok, note: 'use Next /api/flow/bootstrap for spawn browser' };
+  return {
+    ok: res.ok,
+    note: 'use Next /api/flow/bootstrap for spawn browser',
+    body,
+  };
 }
 
 export function isRemoteBridgeMode(

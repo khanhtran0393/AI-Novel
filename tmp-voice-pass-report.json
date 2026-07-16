@@ -1,0 +1,618 @@
+﻿[
+    {
+        "platform":  "edge_tts",
+        "voice":  "vi-VN-HoaiMyNeural",
+        "ok":  true,
+        "ms":  41,
+        "error":  ""
+    },
+    {
+        "platform":  "edge_tts",
+        "voice":  "vi-VN-NamMinhNeural",
+        "ok":  false,
+        "ms":  55486,
+        "error":  "The underlying connection was closed: A connection that was expected to be kept alive was closed by the server."
+    },
+    {
+        "platform":  "piper",
+        "voice":  "manhdung.onnx",
+        "ok":  true,
+        "ms":  9591,
+        "error":  ""
+    },
+    {
+        "platform":  "piper",
+        "voice":  "ngochuyen.onnx",
+        "ok":  false,
+        "ms":  222,
+        "error":  "The underlying connection was closed: A connection that was expected to be kept alive was closed by the server."
+    },
+    {
+        "platform":  "vieneu_tts",
+        "voice":  "manhdung.onnx",
+        "ok":  true,
+        "ms":  3044,
+        "error":  ""
+    },
+    {
+        "platform":  "vieneu_tts",
+        "voice":  "ngochuyen.onnx",
+        "ok":  true,
+        "ms":  2670,
+        "error":  ""
+    },
+    {
+        "platform":  "hotai_tts",
+        "voice":  "chau_tinh_tri",
+        "ok":  false,
+        "ms":  146,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "hotai_tts",
+        "voice":  "nguyen_ngoc_ngan",
+        "ok":  false,
+        "ms":  16,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "hotai_tts",
+        "voice":  "tao_thao",
+        "ok":  false,
+        "ms":  2333,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "hotai_tts",
+        "voice":  "nui_yen_tu",
+        "ok":  false,
+        "ms":  4444,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "hotai_tts",
+        "voice":  "doraemon",
+        "ok":  false,
+        "ms":  683,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "hotai_tts",
+        "voice":  "tvb",
+        "ok":  false,
+        "ms":  70,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Tráº» 1",
+        "ok":  false,
+        "ms":  18,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam GiÃ  1",
+        "ok":  false,
+        "ms":  24,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Tráº» 2",
+        "ok":  false,
+        "ms":  329,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  443,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Tráº» 1",
+        "ok":  false,
+        "ms":  803,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tiáº¿ng Anh - Nam 2",
+        "ok":  false,
+        "ms":  19,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tiáº¿ng Anh - Nam 1",
+        "ok":  false,
+        "ms":  19,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tin Tá»©c - Nam Tráº» 1",
+        "ok":  false,
+        "ms":  23,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tiáº¿ng Anh - Ná»¯ Tráº» 1",
+        "ok":  false,
+        "ms":  749,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tiáº¿ng Anh - Ná»¯ Tráº» 1 - Giáº­n dá»¯",
+        "ok":  false,
+        "ms":  917,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tin Tá»©c - Ná»¯ Tráº» 1",
+        "ok":  false,
+        "ms":  24,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Quáº£ng CÃ¡o Game - Ná»¯ Tráº» 1",
+        "ok":  false,
+        "ms":  20,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Quáº£ng CÃ¡o Game - Nam Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  730,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t PhÃ¡p - Nam Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  877,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t PhÃ¡p - Nam Trung NiÃªn 2",
+        "ok":  false,
+        "ms":  2346,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Äiáº¿u VÄn - Nam GiÃ  1 - Cháº­m",
+        "ok":  false,
+        "ms":  46,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Äiáº¿u VÄn - Nam GiÃ  1 - Nhanh",
+        "ok":  false,
+        "ms":  24,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Äiáº¿u VÄn - Nam GiÃ  1 - Äá»c thÆ¡",
+        "ok":  false,
+        "ms":  1204,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Quáº£ng CÃ¡o SP - Ná»¯ Tráº» 1",
+        "ok":  false,
+        "ms":  458,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - ÄÃ´ng PhÆ°Æ¡ng Báº¥t Báº¡i",
+        "ok":  false,
+        "ms":  272,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Truyá»n Ma - Nam Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  31,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tin Tá»©c - Nam Tráº» 2",
+        "ok":  false,
+        "ms":  26,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Truyá»n Ma - Nam Tráº» 1",
+        "ok":  false,
+        "ms":  1267,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t PhÃ¡p - Nam Trung NiÃªn 3",
+        "ok":  false,
+        "ms":  1708,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t PhÃ¡p - Nam Trung NiÃªn 4",
+        "ok":  false,
+        "ms":  1494,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Quáº£ng CÃ¡o SP - Nam Tráº» 1",
+        "ok":  false,
+        "ms":  5069,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "VÄn ChÆ°Æ¡ng - Nam GiÃ  1",
+        "ok":  false,
+        "ms":  1463,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t Minh - Ná»¯ Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  5639,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kiáº¿n Thá»©c Khoa Há»c - Ná»¯ Tráº» 1",
+        "ok":  false,
+        "ms":  4624,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Tráº» 3",
+        "ok":  false,
+        "ms":  3017,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Tráº» 4",
+        "ok":  false,
+        "ms":  4117,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Trung NiÃªn 4",
+        "ok":  false,
+        "ms":  5603,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tin Tá»©c - Ná»¯ Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  2140,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Trung NiÃªn 3",
+        "ok":  false,
+        "ms":  6814,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tin Tá»©c - Nam Tráº» 3",
+        "ok":  false,
+        "ms":  6086,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Tiáº¿ng Anh - Nam Tráº» 3",
+        "ok":  false,
+        "ms":  10270,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kiáº¿n Thá»©c Khoa Há»c - Ná»¯ Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  7638,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kiáº¿n Thá»©c Khoa Há»c - Ná»¯ Tráº» 2",
+        "ok":  false,
+        "ms":  1560,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t PhÃ¡p - Nam Trung NiÃªn 5",
+        "ok":  false,
+        "ms":  5263,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Truyá»n Ma - Nam GiÃ  1",
+        "ok":  false,
+        "ms":  6609,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Thuyáº¿t Minh 2 - Ná»¯ Trung NiÃªn 1",
+        "ok":  false,
+        "ms":  561,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Tráº» 2",
+        "ok":  false,
+        "ms":  1239,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam GiÃ  2",
+        "ok":  false,
+        "ms":  2315,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Trung NiÃªn 5",
+        "ok":  false,
+        "ms":  17,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Tráº» 3",
+        "ok":  false,
+        "ms":  15,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Trung NiÃªn 6",
+        "ok":  false,
+        "ms":  692,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Trung NiÃªn 2",
+        "ok":  false,
+        "ms":  260,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam GiÃ  3",
+        "ok":  false,
+        "ms":  16,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Tráº» 4",
+        "ok":  false,
+        "ms":  12380,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Tráº» 5",
+        "ok":  false,
+        "ms":  12376,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Trung NiÃªn 7",
+        "ok":  false,
+        "ms":  646,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam Trung NiÃªn 8",
+        "ok":  false,
+        "ms":  994,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Nam GiÃ  4",
+        "ok":  false,
+        "ms":  566,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Ná»¯ Trung NiÃªn 3",
+        "ok":  false,
+        "ms":  20,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Lá»ng Tiáº¿ng Phim - Kenny - Nam Trung NiÃªn",
+        "ok":  false,
+        "ms":  1181,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Ká» chuyá»n - Tráº§m áº¥m, Cháº­m rÃ£i",
+        "ok":  false,
+        "ms":  2166,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Ká» chuyá»n - BÃ­ áº©n, Kinh dá»",
+        "ok":  false,
+        "ms":  2105,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Vui váº» - HÃ o há»©ng",
+        "ok":  false,
+        "ms":  1940,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Dá»u dÃ ng - An á»§i",
+        "ok":  false,
+        "ms":  22,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Buá»n bÃ£ - Tuyá»t vá»ng",
+        "ok":  false,
+        "ms":  17,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Má»t má»i - ChÃ¡n chÆ°á»ng",
+        "ok":  false,
+        "ms":  1221,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Giáº­n dá»¯ - QuÃ¡t thÃ¡o",
+        "ok":  false,
+        "ms":  1230,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Láº¡nh lÃ¹ng - Äe dá»a",
+        "ok":  false,
+        "ms":  18,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Giao Tiáº¿p - Tá»± nhiÃªn - Review",
+        "ok":  false,
+        "ms":  1048,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Ngáº¡c nhiÃªn - Sá»c",
+        "ok":  false,
+        "ms":  874,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Má»a mai - ChÃ¢m biáº¿m",
+        "ok":  false,
+        "ms":  20,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc - Sá»£ hÃ£i - Hoáº£ng loáº¡n",
+        "ok":  false,
+        "ms":  25,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc -  E tháº¹n - Ngáº¡i ngÃ¹ng",
+        "ok":  false,
+        "ms":  557,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Cáº£m XÃºc -  Quyáº¿n rÅ© - Gá»£i cáº£m",
+        "ok":  false,
+        "ms":  823,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Sáº¯c ThÃ¡i -  KiÃªu ngáº¡o - Bá» trÃªn",
+        "ok":  false,
+        "ms":  624,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Äá»c Tin tá»©c - Thá»i sá»±",
+        "ok":  false,
+        "ms":  25,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Äá»c Quáº£ng cÃ¡o - SÃ´i Äá»ng",
+        "ok":  false,
+        "ms":  1375,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Giá»ng HÃ¹ng há»n - Truyá»n cáº£m há»©ng",
+        "ok":  false,
+        "ms":  693,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Giá»ng GiÃ  - LÃ£o niÃªn",
+        "ok":  false,
+        "ms":  493,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Giá»ng Tráº» con - NgÃ¢y thÆ¡",
+        "ok":  false,
+        "ms":  18,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    },
+    {
+        "platform":  "vina_voice",
+        "voice":  "Kenny - Nam - Giá»ng Say xá»n",
+        "ok":  false,
+        "ms":  63,
+        "error":  "The remote server returned an error: (500) Internal Server Error."
+    }
+]

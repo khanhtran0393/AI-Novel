@@ -27,7 +27,7 @@ import { suggestAllRolesFromProfiles } from '@/lib/castSeed';
 import { applyBulkRoleRule } from '../../modules/castModule';
 import { playTTSAction } from '../../modules/ttsModule';
 import { getTTSCredentialsForConfig } from '../../modules/tts/credentials';
-import { getTTSApiCredentials, resolveDefaultTtsVoice } from '../../hooks/ttsActionHelpers';
+import { getTTSApiCredentials } from '../../hooks/ttsActionHelpers';
 import { useCharacterActions } from '../../hooks/useCharacterActions';
 import {
   downloadJson,
@@ -91,10 +91,10 @@ export default function RoleCastStudioModal({
 
   const hydrated = store.isHydrated;
   const cast = normalizeVoiceCast(store.voiceCast);
-  const platform = store.ttsConfig?.platform || 'edge_tts';
-  const language = store.ttsConfig?.language || 'vi';
+  const platform = (store.ttsConfig?.platform || '').trim();
+  const language = (store.ttsConfig?.language || '').trim();
   const voiceOptions = useMemo(
-    () => getCharacterVoiceOptions(platform, language),
+    () => (platform && language ? getCharacterVoiceOptions(platform, language) : []),
     [platform, language],
   );
 
@@ -126,8 +126,8 @@ export default function RoleCastStudioModal({
       defaultVoice: store.ttsConfig.voice || '',
       platform: platform,
       language,
-      globalSpeed: store.ttsConfig.speed ?? 1,
-      globalPitch: store.ttsConfig.pitch ?? 0,
+      globalSpeed: store.ttsConfig.speed,
+      globalPitch: store.ttsConfig.pitch,
     });
   }, [
     sceneText,
@@ -206,12 +206,8 @@ export default function RoleCastStudioModal({
   const previewRole = async (role: VoiceRole) => {
     try {
       setPreviewingId(role.id);
-      const snap = useNovelStore.getState();
-      resolveDefaultTtsVoice(snap);
       const live = useNovelStore.getState();
-      const voice =
-        (role.voiceId || live.ttsConfig.voice || '').trim() ||
-        live.ttsConfig.voice;
+      const voice = (role.voiceId || '').trim();
       if (!voice) {
         throw new Error('Chưa chọn giọng cho role — gán voice trước khi nghe thử.');
       }
@@ -304,8 +300,8 @@ export default function RoleCastStudioModal({
       snap.nhan_vat_prompts || {},
       platform,
       language,
-      snap.ttsConfig.speed ?? 1,
-      snap.ttsConfig.pitch ?? 0,
+      snap.ttsConfig.speed,
+      snap.ttsConfig.pitch,
       { preferFreshSuggest: true, respectExplicitTtsVoice: false },
     );
     store.setVoiceCast({
@@ -358,10 +354,8 @@ export default function RoleCastStudioModal({
 
   const previewSegment = async (segId: string, text: string, roleId: string) => {
     const role = roles.find((r) => r.id === roleId);
-    const snap = useNovelStore.getState();
-    resolveDefaultTtsVoice(snap);
     const live = useNovelStore.getState();
-    const voice = (role?.voiceId || live.ttsConfig.voice || '').trim();
+    const voice = (role?.voiceId || '').trim();
     if (!voice || !text.trim()) {
       showToast('Thiếu voice hoặc text để preview — gán giọng role / engine TTS trước.');
       return;

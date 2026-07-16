@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { FlowAccount } from './types';
+import { isPlausibleProjectId } from './projectStore';
 
 function accountsPath(): string {
   const root = process.env.AI_NOVEL_ROOT || process.cwd();
@@ -19,30 +20,153 @@ export function loadAccounts(): FlowAccount[] {
     if (!fs.existsSync(p)) return [];
     const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
     if (!Array.isArray(raw)) return [];
-    return raw.map((a) => ({
-      id: String(a.id || newId()),
-      name: String(a.name || 'Account'),
-      email: a.email ? String(a.email) : '',
-      projectId: a.projectId ? String(a.projectId) : '',
-      engine:
-        a.engine === 'mullvad'
-          ? 'mullvad'
-          : a.engine === 'chrome'
-            ? 'chrome'
-            : 'chromium',
-      browserExe: a.browserExe ? String(a.browserExe) : '',
-      status: (a.status as FlowAccount['status']) || 'idle',
-      flowKeyPresent: Boolean(a.flowKeyPresent),
-      tokenAgeMs: a.tokenAgeMs ?? null,
-      credits: a.credits ?? null,
-      cooldownUntil: a.cooldownUntil ?? null,
-      lastError: a.lastError ?? null,
-      createdAt: Number(a.createdAt) || Date.now(),
-      updatedAt: Number(a.updatedAt) || Date.now(),
-    }));
+    return raw.map((a) => {
+      const rawPid = a.projectId ? String(a.projectId).trim() : '';
+      const projects = Array.isArray(a.projects)
+        ? a.projects
+            .map(
+              (p: {
+                id?: string;
+                title?: string;
+                source?: string;
+                createdAt?: number;
+                updatedAt?: number;
+              }) => ({
+                id: String(p.id || '').trim(),
+                title: String(p.title || p.id || 'Project').trim(),
+                source:
+                  p.source === 'create' ||
+                  p.source === 'manual' ||
+                  p.source === 'capture'
+                    ? p.source
+                    : ('capture' as const),
+                createdAt: Number(p.createdAt) || Date.now(),
+                updatedAt: Number(p.updatedAt) || Date.now(),
+              }),
+            )
+            .filter(
+              (p: { id: string }) => p.id && isPlausibleProjectId(p.id),
+            )
+        : [];
+      // Never surface placeholder project ids (abc-111) as bound
+      const projectId = isPlausibleProjectId(rawPid)
+        ? rawPid
+        : projects[0]?.id || '';
+      return {
+        id: String(a.id || newId()),
+        name: String(a.name || 'Account'),
+        email: a.email ? String(a.email) : '',
+        displayName: a.displayName ? String(a.displayName) : '',
+        projectId,
+        engine:
+          a.engine === 'mullvad'
+            ? 'mullvad'
+            : a.engine === 'chrome'
+              ? 'chrome'
+              : 'chromium',
+        browserExe: a.browserExe ? String(a.browserExe) : '',
+        status: (a.status as FlowAccount['status']) || 'idle',
+        proxy: a.proxy ? String(a.proxy) : undefined,
+        flowKeyPresent: Boolean(a.flowKeyPresent),
+        sessionVerified: Boolean(a.sessionVerified) && Boolean(a.email),
+        tokenAgeMs: a.tokenAgeMs ?? null,
+        credits: a.credits ?? null,
+        paygateTier: a.paygateTier != null ? String(a.paygateTier) : null,
+        sessionExpires: a.sessionExpires ? String(a.sessionExpires) : null,
+        lastSyncedAt: a.lastSyncedAt != null ? Number(a.lastSyncedAt) : null,
+        lastTaskAt: a.lastTaskAt != null ? Number(a.lastTaskAt) : null,
+        projects,
+        profileDir: a.profileDir ? String(a.profileDir) : '',
+        sessionInheritedAt:
+          a.sessionInheritedAt != null ? Number(a.sessionInheritedAt) : null,
+        capabilities:
+          a.capabilities && typeof a.capabilities === 'object'
+            ? (a.capabilities as FlowAccount['capabilities'])
+            : null,
+        cooldownUntil: a.cooldownUntil ?? null,
+        lastError: a.lastError ?? null,
+        healthScore:
+          a.healthScore != null ? Number(a.healthScore) : computeHealthScore(a),
+        creditBudget:
+          a.creditBudget != null && Number.isFinite(Number(a.creditBudget))
+            ? Number(a.creditBudget)
+            : null,
+        creditsSpent: a.creditsSpent != null ? Number(a.creditsSpent) : 0,
+        autoRelogin: a.autoRelogin !== false,
+        successCount: Number(a.successCount) || 0,
+        failCount: Number(a.failCount) || 0,
+        createdAt: Number(a.createdAt) || Date.now(),
+        updatedAt: Number(a.updatedAt) || Date.now(),
+      };
+    });
   } catch {
     return [];
   }
+}
+
+/** P3 health: token, credits, fail ratio, cooldown. */
+export function computeHealthScore(a: Partial<FlowAccount>): number {
+  let score = 50;
+  if (a.sessionVerified && a.email) score += 20;
+  else if (a.flowKeyPresent) score += 8;
+  else score -= 25;
+
+  if (a.tokenAgeMs != null) {
+    if (a.tokenAgeMs < 20 * 60 * 1000) score += 15;
+    else if (a.tokenAgeMs < 45 * 60 * 1000) score += 5;
+    else score -= 20;
+  }
+
+  if (typeof a.credits === 'number') {
+    if (a.credits > 50) score += 10;
+    else if (a.credits > 10) score += 5;
+    else if (a.credits <= 0) score -= 30;
+  }
+
+  const ok = Number(a.successCount) || 0;
+  const fail = Number(a.failCount) || 0;
+  if (ok + fail > 0) {
+    const rate = ok / (ok + fail);
+    score += Math.round((rate - 0.5) * 30);
+  }
+
+  if (
+    a.status === 'cooldown' &&
+    a.cooldownUntil &&
+    a.cooldownUntil > Date.now()
+  ) {
+    score -= 25;
+  }
+  if (a.lastError && /quota|forbidden|unauth/i.test(a.lastError)) score -= 15;
+
+  return Math.max(0, Math.min(100, score));
+}
+
+export function recordAccountTaskResult(
+  id: string,
+  ok: boolean,
+  creditsUsed = 0,
+): void {
+  const a = loadAccounts().find((x) => x.id === id);
+  if (!a) return;
+  const successCount = (a.successCount || 0) + (ok ? 1 : 0);
+  const failCount = (a.failCount || 0) + (ok ? 0 : 1);
+  const creditsSpent = (a.creditsSpent || 0) + (ok ? creditsUsed : 0);
+  const patch: Partial<FlowAccount> = {
+    successCount,
+    failCount,
+    creditsSpent,
+    lastTaskAt: Date.now(),
+  };
+  const next = { ...a, ...patch };
+  patch.healthScore = computeHealthScore(next);
+  updateAccount(id, patch);
+}
+
+export function accountWithinBudget(a: FlowAccount, needCredits: number): boolean {
+  if (a.creditBudget == null || !Number.isFinite(a.creditBudget)) return true;
+  const spent = Number(a.creditsSpent) || 0;
+  return spent + needCredits <= a.creditBudget;
 }
 
 export function saveAccounts(accounts: FlowAccount[]): void {
@@ -60,26 +184,70 @@ export function createAccount(input: {
   email?: string;
   engine?: 'chromium' | 'mullvad' | 'chrome';
   browserExe?: string;
+  proxy?: string;
+  creditBudget?: number | null;
+  autoRelogin?: boolean;
 }): FlowAccount {
   const list = loadAccounts();
   const acc: FlowAccount = {
     id: newId(),
     name: input.name.trim() || `Account ${list.length + 1}`,
     email: input.email || '',
+    displayName: '',
     projectId: '',
     engine: input.engine || 'chromium',
     browserExe: input.browserExe || '',
+    proxy: input.proxy || undefined,
     status: 'idle',
     flowKeyPresent: false,
+    sessionVerified: false,
     tokenAgeMs: null,
     credits: null,
+    paygateTier: null,
+    sessionExpires: null,
+    lastSyncedAt: null,
+    lastTaskAt: null,
+    projects: [],
+    profileDir: '',
+    sessionInheritedAt: null,
+    capabilities: null,
     cooldownUntil: null,
     lastError: null,
+    healthScore: 40,
+    creditBudget:
+      input.creditBudget != null && Number.isFinite(input.creditBudget)
+        ? Number(input.creditBudget)
+        : null,
+    creditsSpent: 0,
+    autoRelogin: input.autoRelogin !== false,
+    successCount: 0,
+    failCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   list.push(acc);
   saveAccounts(list);
+  // Pre-create BLANK browser folder (no cookies / no Google session)
+  try {
+    const {
+      prepareBlankLoginProfile,
+      ensureIsolatedAccountProfile,
+    } = require('./chromeSession') as typeof import('./chromeSession');
+    const src = path.join(
+      process.env.AI_NOVEL_ROOT || process.cwd(),
+      'extensions',
+      'ainovel-flow',
+    );
+    if (fs.existsSync(path.join(src, 'manifest.json'))) {
+      try {
+        prepareBlankLoginProfile(acc.id, src);
+      } catch {
+        ensureIsolatedAccountProfile(acc.id, src);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
   return acc;
 }
 
@@ -108,16 +276,112 @@ export function deleteAccount(id: string): boolean {
   return true;
 }
 
+/**
+ * Clear stuck "connecting" flags on boot. Keep active+token if already set
+ * (token alone is a valid login; email is enrichment).
+ */
+export function sanitizeUnverifiedAccounts(): number {
+  const list = loadAccounts();
+  let n = 0;
+  for (const a of list) {
+    if (a.status === 'connecting') {
+      // Stuck mid-login from previous crash → idle unless already has token
+      if (!a.flowKeyPresent && !a.sessionVerified) {
+        updateAccount(a.id, {
+          status: 'idle',
+          lastError: a.lastError || null,
+        });
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
+/**
+ * Round-robin among ready profiles (least recently used for a gen task).
+ * Skips cooldown to avoid spam / quota hits on one account.
+ * Requires sessionVerified (real email) — not just a painted token flag.
+ */
 export function pickReadyAccount(accounts: FlowAccount[]): FlowAccount | null {
   const now = Date.now();
   const ready = accounts.filter((a) => {
     if (a.status === 'cooldown' && a.cooldownUntil && a.cooldownUntil > now) {
       return false;
     }
-    return a.status === 'active' || a.flowKeyPresent;
+    if (a.cooldownUntil && a.cooldownUntil > now) return false;
+    // Ready if verified session (email optional if token present)
+    if (a.sessionVerified || (a.flowKeyPresent && a.status === 'active')) {
+      return true;
+    }
+    return false;
   });
   if (!ready.length) return null;
-  // least recently updated first (simple load balance)
-  ready.sort((a, b) => a.updatedAt - b.updatedAt);
+  // Oldest lastTaskAt first → rotate profiles evenly
+  ready.sort(
+    (a, b) =>
+      (a.lastTaskAt || 0) - (b.lastTaskAt || 0) ||
+      a.updatedAt - b.updatedAt,
+  );
   return ready[0];
+}
+
+/** Mark profile used after a gen assignment (round-robin cursor). */
+export function markAccountTaskUsed(id: string): FlowAccount | null {
+  return updateAccount(id, { lastTaskAt: Date.now() });
+}
+
+export function upsertAccountProject(
+  accountId: string,
+  project: {
+    id: string;
+    title?: string;
+    source?: 'create' | 'capture' | 'manual';
+  },
+): FlowAccount | null {
+  const acc = loadAccounts().find((a) => a.id === accountId);
+  if (!acc) return null;
+  const id = String(project.id || '').trim();
+  if (!id || !isPlausibleProjectId(id)) return null;
+  const list = [...(acc.projects || [])];
+  const i = list.findIndex((p) => p.id === id);
+  const now = Date.now();
+  const row = {
+    id,
+    title: (project.title || list[i]?.title || `Project ${id.slice(0, 8)}`).trim(),
+    source: (project.source || list[i]?.source || 'capture') as
+      | 'create'
+      | 'capture'
+      | 'manual',
+    createdAt: list[i]?.createdAt || now,
+    updatedAt: now,
+  };
+  if (i >= 0) list[i] = row;
+  else list.unshift(row);
+  // Prefer binding this project when profile has no real project yet
+  const keep =
+    acc.projectId && isPlausibleProjectId(acc.projectId)
+      ? acc.projectId
+      : id;
+  return updateAccount(accountId, {
+    projects: list,
+    projectId: keep,
+  });
+}
+
+/** Persist-sanitize: strip fake projectIds from disk once. */
+export function sanitizeAccountProjects(): number {
+  const list = loadAccounts();
+  let n = 0;
+  for (const a of list) {
+    const raw = String(a.projectId || '').trim();
+    if (raw && !isPlausibleProjectId(raw)) {
+      updateAccount(a.id, {
+        projectId: (a.projects || []).find((p) => isPlausibleProjectId(p.id))
+          ?.id || '',
+      });
+      n++;
+    }
+  }
+  return n;
 }

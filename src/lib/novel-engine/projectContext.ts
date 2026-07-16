@@ -15,6 +15,14 @@ export interface ProjectContext {
   so_chuong: number;
   so_tu_chuong: number;
   ngon_ngu: string;
+  /** Setup truyện — bắt buộc cho write/gen (B10, không ép mạt thế) */
+  chu_de: string;
+  phong_cach: string;
+  /** visual DNA / media style for director formulas */
+  visualDnaPrompt: string;
+  mediaStylePreset: string;
+  wpm: number;
+  secondsPerBeat: number;
   apiKeys: string[];
   openaiApiKeys: string[];
   grokApiKeys: string[];
@@ -27,6 +35,30 @@ export interface ProjectContext {
     trang_thai?: string;
   }>;
   userRules?: { forbidden_words: string; fatigue_words: string };
+}
+
+/** Payload fields for /api/generate that need Setup genre (no silent mat-the). */
+export function setupGenrePayload(ctx: ProjectContext): {
+  chu_de: string;
+  phong_cach: string;
+  genre: string;
+} {
+  const chu_de = String(ctx.chu_de || '').trim();
+  const phong_cach = String(ctx.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Thieu Setup Chu de + Phong cach trong store. Mo Setup chon truoc khi chay AI Novel engine. App khong tu gan mat the.',
+    );
+  }
+  return {
+    chu_de,
+    phong_cach,
+    genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+  };
+}
+
+export function styleHintFromContext(ctx: ProjectContext): string {
+  return String(ctx.visualDnaPrompt || ctx.mediaStylePreset || '').trim();
 }
 
 function asArray(v: unknown): string[] {
@@ -74,6 +106,12 @@ export function loadProjectContext(): ProjectContext {
     so_chuong: Number(setup.so_chuong) || chapters.length || 10,
     so_tu_chuong: Number(setup.so_tu_chuong) || 4250,
     ngon_ngu: String(setup.ngon_ngu || 'Tiếng Việt'),
+    chu_de: String(setup.chu_de || '').trim(),
+    phong_cach: String(setup.phong_cach || '').trim(),
+    visualDnaPrompt: String(state.visualDnaPrompt || '').trim(),
+    mediaStylePreset: String(state.mediaStylePreset || '').trim(),
+    wpm: Number(state.wpm) > 0 ? Number(state.wpm) : 0,
+    secondsPerBeat: Number(state.secondsPerBeat) > 0 ? Number(state.secondsPerBeat) : 0,
     apiKeys,
     openaiApiKeys,
     grokApiKeys,

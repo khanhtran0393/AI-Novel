@@ -73,19 +73,26 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
     onImageZoom,
   } = props;
 
-  const store = useNovelStore();
+  const ttsPlatform = useNovelStore((s) => s.ttsConfig?.platform || '');
+  const ttsLanguage = useNovelStore((s) => s.ttsConfig?.language || '');
+  const sheetImage = useNovelStore((s) =>
+    editingChar ? s.generatedImages?.[charImageKey(editingChar)] : undefined,
+  );
+  const sheetProjectUrl = useNovelStore((s) =>
+    editingChar ? s.projectUrls?.[charImageKey(editingChar)] : undefined,
+  );
+  const setCharacterVoice = useNovelStore((s) => s.setCharacterVoice);
   const [voiceListTick, setVoiceListTick] = useState(0);
   useEffect(() => {
     void prepareVoiceCatalog().then(() => setVoiceListTick((t) => t + 1));
   }, []);
   const characterVoiceOptions = useMemo(() => {
     void voiceListTick;
-    return getCharacterVoiceOptions(
-      store.ttsConfig?.platform || 'edge_tts',
-      store.ttsConfig?.language || 'vi',
-      { includeAllLanguages: true },
-    );
-  }, [store.ttsConfig?.platform, store.ttsConfig?.language, voiceListTick]);
+    const platform = (ttsPlatform || '').trim();
+    const language = (ttsLanguage || '').trim();
+    if (!platform || !language) return [];
+    return getCharacterVoiceOptions(platform, language, { includeAllLanguages: true });
+  }, [ttsPlatform, ttsLanguage, voiceListTick]);
 
   if (!editingChar) return null;
 
@@ -95,7 +102,7 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
           {editingChar && (() => {
             // Live theo draft + ảnh sheet đã gen
             const formStatus = getCharacterProfileSetupStatus(profileDraft, {
-              hasReferenceImage: !!store.generatedImages?.[charImageKey(editingChar)],
+              hasReferenceImage: !!sheetImage,
             });
             const formSetupDone = formStatus.complete;
             const formColor = formSetupDone ? '#10b981' : '#ef4444';
@@ -267,10 +274,10 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Khuyết tật / thương tật</label>
+                  <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Khuyết điểm (điểm yếu / thói xấu / nỗi sợ)</label>
                   <input
                     type="text"
-                    placeholder="Mất ngón út trái, chân khập khiễng..."
+                    placeholder="VD: kiêu ngạo che sợ bị bỏ rơi; nghiện cờ bạc; nói dối khi sợ..."
                     value={profileDraft.khuet_tat}
                     onChange={(e) => patchDraft({ khuet_tat: e.target.value })}
                     className="h-7 w-full rounded border border-zinc-800 bg-black/60 px-2 text-[11px] text-zinc-300 outline-none focus:border-amber-500"
@@ -329,14 +336,17 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                     <button
                       type="button"
                       onClick={() => {
+                        const platform = (ttsPlatform || '').trim();
+                        const language = (ttsLanguage || '').trim();
+                        if (!platform || !language) return;
                         const suggested = suggestVoiceFromProfile(
                           profileDraft,
-                          store.ttsConfig?.platform || 'edge_tts',
-                          store.ttsConfig?.language || 'vi',
+                          platform,
+                          language,
                         );
                         if (suggested) {
                           patchDraft({ tts_voice: suggested });
-                          store.setCharacterVoice(editingChar, suggested);
+                          setCharacterVoice(editingChar, suggested);
                         }
                       }}
                       className="text-[8px] font-bold uppercase text-amber-500 hover:text-amber-400 cursor-pointer"
@@ -350,7 +360,7 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                     onChange={(e) => {
                       const v = e.target.value;
                       patchDraft({ tts_voice: v });
-                      store.setCharacterVoice(editingChar, v);
+                      setCharacterVoice(editingChar, v);
                     }}
                     className="h-7 w-full rounded border border-zinc-700 bg-zinc-900 px-2 text-[11px] text-zinc-100 outline-none focus:border-sky-500 cursor-pointer [color-scheme:dark]"
                   >
@@ -365,7 +375,7 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                   </select>
                   <p className="text-[8px] text-zinc-600 leading-snug">
                     {characterVoiceOptions.length} giọng · platform{' '}
-                    <span className="text-zinc-400">{store.ttsConfig?.platform || 'edge_tts'}</span>.
+                    <span className="text-zinc-400">{ttsPlatform || 'chưa chọn'}</span>.
                     Kịch bản <span className="text-zinc-400">Tên NV: lời thoại</span> → TTS đổi giọng theo NV.
                     Dual-write Studio cast khi đã seed.
                   </p>
@@ -414,14 +424,14 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                   <p className="text-[8px] text-zinc-600 leading-relaxed">
                     Gộp: chân dung front · turnaround 4 chiều · hàng biểu cảm — cùng 1 file
                   </p>
-                  {store.generatedImages?.[charImageKey(editingChar)] ? (
+                  {sheetImage ? (
                     <div
                       className="relative w-full h-48 rounded-xl overflow-hidden border border-zinc-800 bg-black group cursor-zoom-in"
-                      onClick={() => onImageZoom(store.generatedImages[charImageKey(editingChar)])}
+                      onClick={() => onImageZoom(sheetImage)}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={store.generatedImages[charImageKey(editingChar)]}
+                        src={sheetImage}
                         alt={`Sheet ${editingChar}`}
                         className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500"
                       />
@@ -451,12 +461,11 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                     >
                       {generatingCharImage ? 'Đang vẽ sheet...' : '🎨 Gen Sheet'}
                     </button>
-                    {store.projectUrls?.[charImageKey(editingChar)] && (
+                    {sheetProjectUrl && (
                       <button
                         type="button"
                         onClick={() => {
-                          const projectUrl = store.projectUrls[charImageKey(editingChar)];
-                          if (projectUrl) window.open(projectUrl, '_blank');
+                          if (sheetProjectUrl) window.open(sheetProjectUrl, '_blank');
                         }}
                         className="text-[9px] font-bold uppercase text-zinc-400 hover:text-amber-500 cursor-pointer"
                       >

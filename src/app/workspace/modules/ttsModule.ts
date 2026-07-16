@@ -48,7 +48,7 @@ interface GenerateTTSParams {
   onProgress?: (ev: TTSProgressEvent) => void;
   /** Ignore multi partial cache — regenerate every segment */
   forceFullMulti?: boolean;
-  /** Chapter mono fallback: ignore Role Cast multi path */
+  /** Chapter mono mode: ignore Role Cast multi path */
   forceMono?: boolean;
 }
 
@@ -94,12 +94,21 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{
     let emotion = getDominantPromptEmotion(prompts);
 
     // Đa giọng: prefer Role Casting Studio when castActive; else legacy name: lines
-    const platform = activeConfig?.platform || storeState.ttsConfig.platform;
-    const defaultVoice = activeVoice || activeConfig?.voice || storeState.ttsConfig.voice;
+    const platform = (activeConfig?.platform || storeState.ttsConfig.platform || '').trim();
+    if (!platform) {
+      throw new Error('Chua chon engine TTS (platform).');
+    }
+    const defaultVoice = (activeVoice || activeConfig?.voice || storeState.ttsConfig.voice || '').trim();
+    if (!defaultVoice) {
+      throw new Error('Chua chon voice TTS. App khong tu gan voice.');
+    }
     const charNames = storeState.nhan_vat || [];
     const globalSpeed = activeConfig?.speed ?? storeState.ttsConfig.speed ?? 1;
     const globalPitch = activeConfig?.pitch ?? storeState.ttsConfig.pitch ?? 0;
-    const language = activeConfig?.language || storeState.ttsConfig.language || 'vi';
+    const language = (activeConfig?.language || storeState.ttsConfig.language || '').trim();
+    if (!language) {
+      throw new Error('Chua chon ngon ngu TTS. App khong tu gan language.');
+    }
     const cast = normalizeVoiceCast(storeState.voiceCast);
     const castActive = !forceMono && isCastActive(cast);
 
@@ -153,7 +162,7 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{
         charNames,
         storeState.nhan_vat_prompts || {},
         platform,
-        true,
+        false,
         language,
       );
       for (const name of charNames) {
@@ -185,8 +194,7 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{
     // forceMono chỉ tắt Role Cast, KHÔNG tắt parallel-split (vẫn 1 giọng, nhiều luồng).
     if (
       !multi &&
-      shouldParallelSplitMono(sceneText, platform) &&
-      (activeVoice || defaultVoice)
+      shouldParallelSplitMono(sceneText, platform)
     ) {
       const parts = splitMonoForParallel(sceneText, { maxChars: 240 });
       if (parts.length > 1) {
@@ -194,12 +202,12 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{
         voiceSegments = parts.map((t, i) => ({
           speaker: `đoạn${i + 1}`,
           text: t,
-          voice: activeVoice || defaultVoice,
+          voice: defaultVoice,
           speed: globalSpeed,
           pitch: globalPitch,
         }));
         console.info(
-          `[TTS Parallel-split] mono ${parts.length} đoạn · voice=${activeVoice || defaultVoice} · → gen song song + ghép`,
+          `[TTS Parallel-split] mono ${parts.length} đoạn · voice=${defaultVoice} · → gen song song + ghép`,
         );
         onProgress?.({
           percent: 5,
@@ -246,14 +254,12 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{
         chapterNum: chuong_dang_chon,
         sceneIndex,
         drivePath,
-        voiceName: activeVoice,
+        voiceName: defaultVoice,
         apiKeys: keysToUse,
         ten_tac_pham,
         ttsConfig: withRotatedTikTokSession({
           config: activeConfig || storeState.ttsConfig,
-          fallbackPlatform: storeState.ttsConfig?.platform,
           sessions: storeState.tiktokSessionIds || [],
-          fallbackSession: activeConfig?.tiktokSessionId || storeState.ttsConfig?.tiktokSessionId,
           rotateIndex: sceneIndex,
         }),
         targetDuration,
@@ -297,6 +303,6 @@ export async function generateTTSAction(params: GenerateTTSParams): Promise<{
     };
   };
 
-  // No provider/platform fallback — only API key rotation (inside engines / route).
+  // Provider/platform are explicit; API key rotation stays inside engines / route.
   return await postTTS(ttsConfig, voice, apiKey, apiKeys);
 }

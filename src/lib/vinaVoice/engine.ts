@@ -5,13 +5,11 @@
 import fs from 'fs';
 import path from 'path';
 import { execFileSync, execSync } from 'child_process';
-import { EdgeTTS } from 'node-edge-tts';
 import { applyVinaTextRules } from './textPipeline';
 import { chunkVinaText } from './chunking';
 import {
   applyProfileToSettings,
   loadVinaProfiles,
-  mapToEdgeVoice,
   mergeSettings,
   emotionPitchBias,
 } from './profiles';
@@ -46,26 +44,6 @@ function findFfmpeg(): string {
   const local = path.join(process.cwd(), 'bin', 'ffmpeg', 'ffmpeg.exe');
   if (fs.existsSync(local)) return local;
   return 'ffmpeg';
-}
-
-async function edgeSynthToFile(
-  text: string,
-  voice: string,
-  outPath: string,
-): Promise<void> {
-  const tts = new EdgeTTS({ voice, lang: 'vi-VN' });
-  // node-edge-tts API variants
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const anyTts = tts as any;
-  if (typeof anyTts.ttsPromise === 'function') {
-    await anyTts.ttsPromise(text, outPath);
-    return;
-  }
-  if (typeof anyTts.toFile === 'function') {
-    await anyTts.toFile(outPath, text);
-    return;
-  }
-  throw new Error('node-edge-tts API không tương thích (ttsPromise/toFile missing).');
 }
 
 /** Chain atempo (each step must stay in [0.5, 2.0]) */
@@ -143,87 +121,6 @@ function postProcessWav(
   );
 }
 
-function silenceWav(ms: number, outPath: string): void {
-  const ffmpeg = findFfmpeg();
-  const sec = Math.max(0.02, ms / 1000);
-  execFileSync(
-    ffmpeg,
-    [
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      `anullsrc=r=44100:cl=mono`,
-      '-t',
-      String(sec),
-      outPath,
-    ],
-    { stdio: 'pipe' },
-  );
-}
-
-function concatWithCrossfade(
-  parts: { wav: string; pauseMs: number }[],
-  outPath: string,
-  crossfadeSec: number,
-): void {
-  const ffmpeg = findFfmpeg();
-  if (parts.length === 1) {
-    fs.copyFileSync(parts[0].wav, outPath);
-    return;
-  }
-
-  // Build list: audio0, silence0, audio1, silence1, ...
-  const files: string[] = [];
-  const scratch = path.dirname(outPath);
-  parts.forEach((p, i) => {
-    files.push(p.wav);
-    if (i < parts.length - 1 && p.pauseMs > 30) {
-      const sil = path.join(scratch, `sil_${i}.wav`);
-      silenceWav(p.pauseMs, sil);
-      files.push(sil);
-    }
-  });
-
-  const listFile = path.join(scratch, `concat_${Date.now()}.txt`);
-  fs.writeFileSync(
-    listFile,
-    files.map((f) => `file '${f.replace(/\\/g, '/')}'`).join('\n'),
-    'utf8',
-  );
-  try {
-    // acrossfade is complex for many files; simple concat is stable & Vina-like enough
-    execFileSync(
-      ffmpeg,
-      ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', outPath],
-      { stdio: 'pipe' },
-    );
-  } catch {
-    // re-encode fallback
-    execFileSync(
-      ffmpeg,
-      [
-        '-y',
-        '-f',
-        'concat',
-        '-safe',
-        '0',
-        '-i',
-        listFile,
-        '-ac',
-        '1',
-        '-ar',
-        '44100',
-        outPath,
-      ],
-      { stdio: 'pipe' },
-    );
-  } finally {
-    if (fs.existsSync(listFile)) fs.unlinkSync(listFile);
-  }
-  void crossfadeSec;
-}
-
 async function tryNativeEngine(
   text: string,
   settings: VinaVoiceSettings,
@@ -265,15 +162,39 @@ async function tryNativeEngine(
     const styleSeed = Number.isFinite(settings.style_seed)
       ? Math.trunc(settings.style_seed)
       : 4125;
-    const provider = opts?.provider || 'auto';
+    // Prefer cached EP (cpu on 4GB cards) over blind CUDA — same ONNX brain, not platform swap.
+    const cachedEp = (() => {
+      try {
+        const p = path.join(cwd, 'data', 'cache', 'vina_ort_ep.json');
+        if (!fs.existsSync(p)) return '';
+        const j = JSON.parse(fs.readFileSync(p, 'utf8')) as { prefer?: string };
+        return String(j.prefer || '').toLowerCase();
+      } catch {
+        return '';
+      }
+    })();
+    const provider =
+      opts?.provider ||
+      (cachedEp === 'cpu' || cachedEp === 'cuda' || cachedEp === 'dml'
+        ? (cachedEp as 'cpu' | 'cuda' | 'dml')
+        : 'auto');
     const nfeStep =
       Number.isFinite(opts?.nfeStep) && (opts?.nfeStep as number) > 0
         ? Math.trunc(opts!.nfeStep as number)
         : resolveNfeStep({});
 
     // ── Fast path: warm daemon (models stay in RAM) ──
-    if (isDaemonEnabled()) {
-      const warm = await daemonSynth(
+    // Preview on GTX-class GPUs: first job after load often 60–100s; allow headroom.
+    const daemonTimeoutMs = Math.max(
+      240_000,
+      Number(process.env.VINA_DAEMON_TIMEOUT_MS) || 0,
+    );
+
+    const runDaemonOnce = async () => {
+      if (!isDaemonEnabled()) {
+        return { ok: false as const, error: 'daemon disabled' };
+      }
+      return daemonSynth(
         {
           text,
           refText,
@@ -284,10 +205,15 @@ async function tryNativeEngine(
           styleSeed,
           nfeStep,
           provider,
-          timeoutMs: 120_000,
+          timeoutMs: daemonTimeoutMs,
         },
         cwd,
       );
+    };
+
+    // Attempt 1 + optional respawn retry (never stack concurrent cold CUDA loads).
+    if (isDaemonEnabled()) {
+      let warm = await runDaemonOnce();
       if (warm.ok && fs.existsSync(outPath)) {
         console.log(
           `[VinaVoice] warm-daemon OK nfe=${nfeStep} ${warm.method || ''} brain=${brain.totalGB}GB`,
@@ -299,109 +225,209 @@ async function tryNativeEngine(
             `VinaDaemon warm-ONNX (brain=${brain.totalGB}GB, seed=${speakerSeed}/${styleSeed}, nfe=${nfeStep})`,
         };
       }
-      console.warn(
-        `[VinaVoice] warm-daemon miss → one-shot CLI: ${warm.error || 'unknown'}`,
-      );
-    }
-
-    const { spawn } = require('child_process') as typeof import('child_process');
-    const pythonExe = resolveVinaPython(cwd);
-    const timeoutMs = 150_000;
-    return new Promise((resolve) => {
-      console.log(
-        `[VinaVoice] Native one-shot py=${pythonExe} brain=${modelsDir} (${brain.totalGB}GB) ` +
-          `provider=${provider} nfe=${nfeStep} timeout=${timeoutMs}ms`,
-      );
-      // Duration planning speed=1; UI speed/pitch applied in finalizeWithProsody
-      const args = [
-        '-u',
-        pythonScript,
-        '--text',
-        text,
-        '--ref_text',
-        refText,
-        '--ref_audio',
-        settings.reference_audio,
-        '--output',
-        outPath,
-        '--speed',
-        '1.0',
-        '--speaker_seed',
-        String(speakerSeed),
-        '--style_seed',
-        String(styleSeed),
-        '--nfe_step',
-        String(nfeStep),
-        '--provider',
-        provider,
-        '--models_dir',
-        modelsDir,
-      ];
-
-      let settled = false;
-      const finish = (r: { ok: boolean; method?: string; error?: string }) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(killer);
-        resolve(r);
-      };
-
-      const child = spawn(pythonExe, args, {
-        cwd,
-        windowsHide: true,
-        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONUTF8: '1' },
-      });
-      let errLog = '';
-      let outLog = '';
-      child.stderr?.on('data', (d: Buffer | string) => {
-        errLog += d.toString();
-      });
-      child.stdout?.on('data', (d: Buffer | string) => {
-        outLog += d.toString();
-      });
-
-      const killer = setTimeout(() => {
+      const warmErr = warm.error || 'unknown';
+      // Timeout/killed/missing worker: recycle + ONE retry before one-shot.
+      // One-shot cold load while CUDA brain is half-alive = OOM / ECONNRESET.
+      if (/timeout|killed|Daemon not available|No live daemon|not available/i.test(warmErr)) {
+        console.warn(
+          `[VinaVoice] warm-daemon miss (${warmErr.slice(0, 160)}) — kill orphans, respawn, retry once`,
+        );
         try {
-          child.kill();
+          const { killAllDaemons } = await import('./warmDaemon');
+          killAllDaemons();
         } catch {
           /* ignore */
         }
-        try {
-          if (child.pid && process.platform === 'win32') {
-            execSync(`taskkill /PID ${child.pid} /T /F`, { stdio: 'ignore' });
-          }
-        } catch {
-          /* ignore */
-        }
-        finish({
-          ok: false,
-          error:
-            `Native infer timeout ${timeoutMs}ms (py=${pythonExe}, ep=${provider}, nfe=${nfeStep}). ` +
-            `Log: ${(errLog || outLog).slice(-600)}`,
-        });
-      }, timeoutMs);
-
-      child.on('close', (code: number | null) => {
-        if (code === 0 && fs.existsSync(outPath)) {
-          finish({
+        killOrphanVinaOneShots();
+        await new Promise((r) => setTimeout(r, 800));
+        warm = await runDaemonOnce();
+        if (warm.ok && fs.existsSync(outPath)) {
+          console.log(
+            `[VinaVoice] warm-daemon OK after retry nfe=${nfeStep} ${warm.method || ''}`,
+          );
+          return {
             ok: true,
             method:
-              `VinaEngine Python Native (clone, brain=${brain.totalGB}GB, ` +
-              `seed=${speakerSeed}/${styleSeed}, nfe=${nfeStep}, ep=${provider}, py=${path.basename(pythonExe)})`,
-          });
-        } else {
-          const tail = (errLog || outLog).slice(-800);
-          finish({
-            ok: false,
-            error: `Python exit ${code ?? 'null'} (py=${pythonExe}, ep=${provider}, models=${modelsDir}). Log: ${tail}`,
-          });
+              warm.method ||
+              `VinaDaemon warm-ONNX-retry (brain=${brain.totalGB}GB, seed=${speakerSeed}/${styleSeed}, nfe=${nfeStep})`,
+          };
         }
-      });
-      child.on('error', (e: Error) => finish({ ok: false, error: e.message }));
-    });
+        console.warn(
+          `[VinaVoice] warm-daemon retry miss → serialized one-shot: ${warm.error || warmErr}`,
+        );
+      } else {
+        console.warn(
+          `[VinaVoice] warm-daemon miss → serialized one-shot: ${warmErr}`,
+        );
+      }
+    }
+
+    // Serialize one-shot cold loads (module mutex) — never 2× full ONNX in RAM.
+    return withOneShotMutex(() =>
+      runNativeOneShot({
+        text,
+        refText,
+        settings,
+        outPath,
+        cwd,
+        pythonScript,
+        modelsDir,
+        brainGb: brain.totalGB,
+        speakerSeed,
+        styleSeed,
+        nfeStep,
+        provider,
+      }),
+    );
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Kill leftover `vina_voice_infer.py` one-shots (not the warm daemon server). */
+function killOrphanVinaOneShots(): void {
+  if (process.platform !== 'win32') return;
+  try {
+    execSync(
+      'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'python.exe\'\\" | Where-Object { $_.CommandLine -match \'vina_voice_infer\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"',
+      { stdio: 'ignore', timeout: 15_000 },
+    );
+  } catch {
+    try {
+      execSync(
+        'wmic process where "CommandLine like \'%vina_voice_infer%\'" call terminate',
+        { stdio: 'ignore', timeout: 15_000 },
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+let oneShotChain: Promise<unknown> = Promise.resolve();
+function withOneShotMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const run = oneShotChain.then(fn, fn);
+  oneShotChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function runNativeOneShot(opts: {
+  text: string;
+  refText: string;
+  settings: VinaVoiceSettings;
+  outPath: string;
+  cwd: string;
+  pythonScript: string;
+  modelsDir: string;
+  brainGb: number;
+  speakerSeed: number;
+  styleSeed: number;
+  nfeStep: number;
+  provider: 'auto' | 'cuda' | 'dml' | 'cpu';
+}): Promise<{ ok: boolean; method?: string; error?: string }> {
+  killOrphanVinaOneShots();
+  const { spawn } = require('child_process') as typeof import('child_process');
+  const pythonExe = resolveVinaPython(opts.cwd);
+  // One-shot cold load + nfe=8–12 can exceed 150s on 4GB GPUs
+  const timeoutMs = Math.max(
+    300_000,
+    Number(process.env.VINA_ONESHOT_TIMEOUT_MS) || 0,
+  );
+  return new Promise((resolve) => {
+    console.log(
+      `[VinaVoice] Native one-shot py=${pythonExe} brain=${opts.modelsDir} (${opts.brainGb}GB) ` +
+        `provider=${opts.provider} nfe=${opts.nfeStep} timeout=${timeoutMs}ms`,
+    );
+    // Duration planning speed=1; UI speed/pitch applied in finalizeWithProsody
+    const args = [
+      '-u',
+      opts.pythonScript,
+      '--text',
+      opts.text,
+      '--ref_text',
+      opts.refText,
+      '--ref_audio',
+      opts.settings.reference_audio,
+      '--output',
+      opts.outPath,
+      '--speed',
+      '1.0',
+      '--speaker_seed',
+      String(opts.speakerSeed),
+      '--style_seed',
+      String(opts.styleSeed),
+      '--nfe_step',
+      String(opts.nfeStep),
+      '--provider',
+      opts.provider,
+      '--models_dir',
+      opts.modelsDir,
+    ];
+
+    let settled = false;
+    const finish = (r: { ok: boolean; method?: string; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killer);
+      resolve(r);
+    };
+
+    const child = spawn(pythonExe, args, {
+      cwd: opts.cwd,
+      windowsHide: true,
+      env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONUTF8: '1' },
+    });
+    let errLog = '';
+    let outLog = '';
+    child.stderr?.on('data', (d: Buffer | string) => {
+      errLog += d.toString();
+    });
+    child.stdout?.on('data', (d: Buffer | string) => {
+      outLog += d.toString();
+    });
+
+    const killer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (child.pid && process.platform === 'win32') {
+          execSync(`taskkill /PID ${child.pid} /T /F`, { stdio: 'ignore' });
+        }
+      } catch {
+        /* ignore */
+      }
+      finish({
+        ok: false,
+        error:
+          `Native infer timeout ${timeoutMs}ms (py=${pythonExe}, ep=${opts.provider}, nfe=${opts.nfeStep}). ` +
+          `Log: ${(errLog || outLog).slice(-600)}`,
+      });
+    }, timeoutMs);
+
+    child.on('close', (code: number | null) => {
+      if (code === 0 && fs.existsSync(opts.outPath)) {
+        finish({
+          ok: true,
+          method:
+            `VinaEngine Python Native (clone, brain=${opts.brainGb}GB, ` +
+            `seed=${opts.speakerSeed}/${opts.styleSeed}, nfe=${opts.nfeStep}, ep=${opts.provider}, py=${path.basename(pythonExe)})`,
+        });
+      } else {
+        const tail = (errLog || outLog).slice(-800);
+        finish({
+          ok: false,
+          error: `Python exit ${code ?? 'null'} (py=${pythonExe}, ep=${opts.provider}, models=${opts.modelsDir}). Log: ${tail}`,
+        });
+      }
+    });
+    child.on('error', (e: Error) => finish({ ok: false, error: e.message }));
+  });
 }
 
 async function tryExternalEngine(
@@ -493,12 +519,11 @@ export async function synthesizeVinaVoice(
   const brain = inspectVinaOnnxBrain(cwd);
   const universal =
     req.universalBrainMode !== false &&
-    !req.forceBuiltin &&
     process.env.VINA_UNIVERSAL_BRAIN !== '0';
 
   let settings = mergeSettings(req.settings, cwd);
 
-  // Resolve SpeakerRef (catalog / user / ad-hoc / default narrator)
+  // Resolve SpeakerRef (catalog / user / ad-hoc). No implicit default narrator.
   let speakerId: string | undefined;
   try {
     const speaker = resolveSpeaker({
@@ -574,7 +599,7 @@ export async function synthesizeVinaVoice(
   );
 
   // ── Universal / zero-shot path: ONNX brain only ──
-  if (!req.forceBuiltin) {
+  if (universal) {
     if (universal && !brain.ok) {
       return {
         ok: false,
@@ -701,75 +726,24 @@ export async function synthesizeVinaVoice(
     }
   }
 
-  // ── Escape hatch only: forceBuiltin or VINA_EMERGENCY_EDGE=1 ──
-  const emergency =
-    req.forceBuiltin ||
-    process.env.VINA_EMERGENCY_EDGE === '1' ||
-    process.env.VINA_EMERGENCY_EDGE === 'true';
-
-  if (!emergency) {
-    return {
-      ok: false,
-      method: 'uve-no-fallback',
-      chunks: chunks.length,
-      warnings,
-      error:
-        'Không có path Edge im lặng. Bật forceBuiltin hoặc VINA_EMERGENCY_EDGE=1 nếu cần escape hatch.',
-      errorCode: 'CODE_INFER_FAILED',
-      speakerId,
-    };
-  }
-
-  const voice = mapToEdgeVoice(settings);
-  const processed: { wav: string; pauseMs: number }[] = [];
-
-  try {
-    for (const ch of chunks) {
-      const rawPath = path.join(outDir, `raw_${ch.index}.mp3`);
-      const wavPath = path.join(outDir, `chunk_${ch.index}.wav`);
-      await edgeSynthToFile(ch.text, voice, rawPath);
-      const ffmpeg = findFfmpeg();
-      const mid = path.join(outDir, `mid_${ch.index}.wav`);
-      try {
-        execFileSync(
-          ffmpeg,
-          ['-y', '-i', rawPath, '-ac', '1', '-ar', '44100', mid],
-          { stdio: 'pipe' },
-        );
-      } catch {
-        fs.copyFileSync(rawPath, mid);
-      }
-      postProcessWav(mid, wavPath, settings);
-      processed.push({ wav: wavPath, pauseMs: ch.pauseAfterMs });
-    }
-
-    concatWithCrossfade(processed, finalPath, settings.cross_fade_duration);
-
+  // IRON B10: không Edge emergency (kể cả env VINA_EMERGENCY_EDGE / forceBuiltin)
+  if (req.forceBuiltin || process.env.VINA_EMERGENCY_EDGE === '1' || process.env.VINA_EMERGENCY_EDGE === 'true') {
     warnings.push(
-      'EMERGENCY_EDGE: không dùng não ONNX — chỉ khi forceBuiltin / VINA_EMERGENCY_EDGE.',
+      'VINA_EMERGENCY_EDGE/forceBuiltin bị bỏ qua — không được fallback Edge (IRON B10).',
     );
-    return {
-      ok: true,
-      method: `EMERGENCY_EDGE (not ONNX) Edge ${voice} + postprocess`,
-      audioPath: finalPath,
-      chunks: chunks.length,
-      warnings,
-      mimeType: 'audio/wav',
-      errorCode: 'CODE_EMERGENCY_EDGE',
-      speakerId,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      method: 'builtin-failed',
-      chunks: chunks.length,
-      warnings,
-      error: e instanceof Error ? e.message : String(e),
-      speakerId,
-    };
   }
+  return {
+    ok: false,
+    method: 'uve-no-fallback',
+    chunks: chunks.length,
+    warnings,
+    error:
+      'VinaVoice: không sinh được audio cho voice đã chọn. Không fallback Edge/engine khác. ' +
+      'Sửa profile/sample/ONNX brain, hoặc chọn platform Edge TTS tường minh trong Cấu hình giọng.',
+    errorCode: 'CODE_INFER_FAILED',
+    speakerId,
+  };
 }
-
 export function previewChunks(
   text: string,
   settingsPartial?: Partial<VinaVoiceSettings>,
@@ -829,8 +803,8 @@ export function engineStatus(cwd = process.cwd()) {
     })(),
     universalZeroShot: true,
     modelNote:
-      'Universal Zero-Shot: catalog + user clone + default narrator → same ONNX brain ' +
+      'Universal Zero-Shot: catalog + user clone -> same ONNX brain ' +
       'src/python_core/models/vina_voice/ (~1.46GB). SpeakerRegistry resolves ref WAV. ' +
-      'No silent Edge; escape = forceBuiltin | VINA_EMERGENCY_EDGE=1.',
+      'No silent Edge/default narrator fallback.',
   };
 }

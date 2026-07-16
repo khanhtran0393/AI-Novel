@@ -19,6 +19,7 @@ export type PreviewCacheKeyInput = {
   speakerSeed?: number;
   styleSeed?: number;
   nfeStep?: number;
+  variantKey?: string;
   /** Absolute path to sample WAV (vina) — mtime invalidates cache */
   samplePath?: string;
 };
@@ -103,6 +104,7 @@ export function buildPreviewCacheId(input: PreviewCacheKeyInput): string {
     String(n.speakerSeed ?? ''),
     String(n.styleSeed ?? ''),
     String(n.nfeStep ?? ''),
+    String(n.variantKey ?? ''),
     sampleFingerprint(n.samplePath),
   ].join('|');
   return crypto.createHash('sha1').update(payload, 'utf8').digest('hex').slice(0, 20);
@@ -223,7 +225,7 @@ export function tryReadPreviewCache(
 export function tryReadPreviewCacheAny(
   input: PreviewCacheKeyInput,
   preferredExt: 'wav' | 'mp3',
-  opts?: { maxAgeMs?: number; cwd?: string },
+  opts?: { maxAgeMs?: number; cwd?: string; allowLegacy?: boolean },
 ): PreviewCacheHit | null {
   const cwd = opts?.cwd || process.cwd();
   const maxAgeMs = opts?.maxAgeMs;
@@ -235,6 +237,8 @@ export function tryReadPreviewCacheAny(
     const hit = tryReadPreviewCache(n, ext, { maxAgeMs, cwd });
     if (hit) return hit;
   }
+
+  if (opts?.allowLegacy !== true) return null;
 
   // Legacy public/audio/previews/preview_{platform}_{voice}_s{speed}_p{pitch}.*
   const pubDir = publicPreviewDir(cwd);

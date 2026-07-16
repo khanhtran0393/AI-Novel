@@ -103,7 +103,8 @@ export default function ContinueScriptPhase({
 
   if (!isOpen) return null;
 
-  const busy = isWorking || isSummarizing || store.dang_tai;
+  // Busy cục bộ modal — không store.dang_tai (tránh khóa nút workspace)
+  const busy = isWorking || isSummarizing;
 
   const handleAdjustChapters = (amount: number) => {
     const nextVal = Math.max(1, Math.min(1000, store.setup.so_chuong + amount));
@@ -253,7 +254,6 @@ export default function ContinueScriptPhase({
 
     setError('');
     setIsWorking(true);
-    store.setDangTai(true);
     try {
       const live = useNovelStore.getState();
       // Excerpt kịch bản dán để AI canh % trùng (không dump full)
@@ -347,7 +347,6 @@ export default function ContinueScriptPhase({
       setError(getFriendlyErrorMessage(err));
     } finally {
       setIsWorking(false);
-      store.setDangTai(false);
     }
   };
 
@@ -757,7 +756,7 @@ export default function ContinueScriptPhase({
               onClick={() => void handleRewriteGenerate()}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isWorking || store.dang_tai ? (
+              {isWorking ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
                   Đang sinh dàn ý viết lại…

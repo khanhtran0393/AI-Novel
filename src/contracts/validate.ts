@@ -46,7 +46,10 @@ export const imagePromptPayloadSchema = z
     characterPrompt: z.string().optional(),
     voiceDuration: z.union([z.number(), z.string()]).optional(),
     wpm: z.union([z.number(), z.string()]).optional(),
+    /** Beat length (sec) — drives shot cap: maxShots ≈ duration / secondsPerBeat */
     secondsPerBeat: z.union([z.number(), z.string()]).optional(),
+    /** Optional hard override for max prompt shots (else derived from beat + duration) */
+    maxPromptShots: z.union([z.number(), z.string()]).optional(),
   })
   .passthrough();
 

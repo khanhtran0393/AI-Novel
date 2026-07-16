@@ -1,47 +1,34 @@
-import fs from 'fs';
-import path from 'path';
 import type { TTSProvider } from '../ttsTypes';
-import { generateCapCutTTS } from '../engines/capcut';
+import { generateCapCutTTS, diagnoseCapCutInstall } from '../engines/capcut';
+import { findCapCutSscronet, capCutDllMissingMessage } from '../engines/capcutDll';
+import { resolveCapCutVoice } from '@/lib/capcutVoices';
 
 /** Owner: TTS platform `capcut_tts` — hard-fail khi thiếu CapCut/sscronet */
 export const provider_capcut_tts: TTSProvider = {
   name: 'CapCut TTS',
-  supportsNativeSpeed: false,
+  supportsNativeSpeed: true,
   supportsNativePitch: false,
   generate: async (text, opts) => {
-    const localAppData =
-      process.env.LOCALAPPDATA ||
-      path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
-    const capcutAppsDir = path.join(localAppData, 'CapCut', 'Apps');
-    let capcutInstalled = false;
-    if (fs.existsSync(capcutAppsDir)) {
-      try {
-        const versions = fs
-          .readdirSync(capcutAppsDir)
-          .filter((f) => fs.statSync(path.join(capcutAppsDir, f)).isDirectory());
-        for (const v of versions) {
-          if (fs.existsSync(path.join(capcutAppsDir, v, 'sscronet.dll'))) {
-            capcutInstalled = true;
-            break;
-          }
-        }
-      } catch {
-        capcutInstalled = false;
-      }
+    const hit = findCapCutSscronet();
+    if (!hit) {
+      throw new Error(capCutDllMissingMessage());
     }
 
-    if (!capcutInstalled) {
-      throw new Error(
-        'CapCut TTS: thiếu CapCut/sscronet.dll — cài CapCut hoặc chọn platform khác (không fallback Edge).',
-      );
-    }
+    const resolved = resolveCapCutVoice(opts.voice);
+    // Map app speed (0.5–2) → CapCut prosody rate string
+    const speed =
+      typeof opts.speed === 'number' && Number.isFinite(opts.speed) && opts.speed > 0
+        ? String(Math.min(2, Math.max(0.5, opts.speed)))
+        : '1.0';
 
-    const buffer = await generateCapCutTTS(text, opts.voice);
+    const buffer = await generateCapCutTTS(text, opts.voice, speed);
     return {
       buffer,
-      method: `CapCut TTS (${opts.voice})`,
-      nativeSpeedApplied: false,
+      method: `CapCut TTS (${resolved.displayName} · ${resolved.resourceId})`,
+      nativeSpeedApplied: speed !== '1.0',
       nativePitchApplied: false,
     };
   },
 };
+
+export { diagnoseCapCutInstall };

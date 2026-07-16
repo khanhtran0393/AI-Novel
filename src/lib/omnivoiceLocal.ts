@@ -271,6 +271,97 @@ export function hasOmniProfile(profileId: string, cwd = process.cwd()): boolean 
   return fs.existsSync(audio);
 }
 
+/** CapCut/Omni clone endpoints 504 on multi-minute refs (e.g. Adam 104s / 1.6MB). */
+const OMNI_CLONE_MAX_REF_SEC = 12;
+const OMNI_CLONE_MAX_REF_BYTES = 450_000;
+const OMNI_CLONE_MAX_REF_TEXT = 420;
+
+function findProjectFfmpeg(cwd = process.cwd()): string {
+  const candidates = [
+    path.join(cwd, 'bin', 'ffmpeg.exe'),
+    path.join(cwd, 'bin', 'ffmpeg', 'ffmpeg.exe'),
+    path.join(cwd, 'python_core', 'ffmpeg', 'ffmpeg.exe'),
+    'ffmpeg',
+  ];
+  for (const p of candidates) {
+    if (p === 'ffmpeg') return p;
+    if (fs.existsSync(p)) return p;
+  }
+  return 'ffmpeg';
+}
+
+/**
+ * Prepare a short ref clip + compact ref_text for clone profile / one-shot upload.
+ * Same OmniVoice engine — only shortens the reference (B10: not platform swap).
+ */
+export function prepareOmniCloneRefAssets(
+  refAudioPath: string,
+  refText: string | undefined,
+  profileId: string,
+  cwd = process.cwd(),
+): { audioPath: string; refText?: string; trimmed: boolean } {
+  const textIn = (refText || '').trim();
+  let shortText = textIn;
+  if (textIn.length > OMNI_CLONE_MAX_REF_TEXT) {
+    const cut = textIn.slice(0, OMNI_CLONE_MAX_REF_TEXT);
+    const sp = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
+    shortText = (sp > 80 ? cut.slice(0, sp + 1) : cut).trim();
+  }
+
+  if (!refAudioPath || !fs.existsSync(refAudioPath)) {
+    return { audioPath: refAudioPath, refText: shortText || undefined, trimmed: false };
+  }
+
+  let size = 0;
+  try {
+    size = fs.statSync(refAudioPath).size;
+  } catch {
+    size = 0;
+  }
+  if (size > 0 && size <= OMNI_CLONE_MAX_REF_BYTES) {
+    return { audioPath: refAudioPath, refText: shortText || undefined, trimmed: false };
+  }
+
+  const safe = (profileId || 'ref').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || 'ref';
+  const outDir = path.join(cwd, 'data', 'cache', 'omni-clone-refs');
+  try {
+    fs.mkdirSync(outDir, { recursive: true });
+  } catch {
+    /* ignore */
+  }
+  const outPath = path.join(outDir, `${safe}_clip${OMNI_CLONE_MAX_REF_SEC}s.wav`);
+  // Reuse clip if still fresh and non-empty
+  try {
+    if (fs.existsSync(outPath) && fs.statSync(outPath).size > 8_000) {
+      return { audioPath: outPath, refText: shortText || undefined, trimmed: true };
+    }
+  } catch {
+    /* re-encode */
+  }
+
+  const ffmpeg = findProjectFfmpeg(cwd);
+  try {
+    execSync(
+      `"${ffmpeg}" -y -i "${refAudioPath}" -t ${OMNI_CLONE_MAX_REF_SEC} -ac 1 -ar 24000 -f wav "${outPath}"`,
+      { stdio: 'pipe', windowsHide: true, timeout: 60_000 },
+    );
+    if (fs.existsSync(outPath) && fs.statSync(outPath).size > 8_000) {
+      console.log(
+        `[OmniVoice] clone ref trimmed ${path.basename(refAudioPath)} (${size}B) → ${OMNI_CLONE_MAX_REF_SEC}s clip`,
+      );
+      return { audioPath: outPath, refText: shortText || undefined, trimmed: true };
+    }
+  } catch (e) {
+    console.warn(
+      `[OmniVoice] ref trim failed, using full file: ${e instanceof Error ? e.message : String(e)}`.slice(
+        0,
+        160,
+      ),
+    );
+  }
+  return { audioPath: refAudioPath, refText: shortText || undefined, trimmed: false };
+}
+
 async function fetchWithTimeout(
   url: string,
   timeoutMs: number,
@@ -450,6 +541,12 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
       env.HUGGINGFACE_HUB_CACHE = path.join(cacheRoot, 'huggingface', 'hub');
     }
 
+    // GTX 1050 Ti clone synth often >120s → server default 504. Same engine, longer budget.
+    const requestTimeoutS = Math.max(
+      120,
+      Number(process.env.OMNIVOICE_REQUEST_TIMEOUT_S) || 360,
+    );
+    env.OMNIVOICE_REQUEST_TIMEOUT_S = String(requestTimeoutS);
     const cliArgs = [
       ...launcher.args,
       '--host',
@@ -460,6 +557,8 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
       profileDir,
       '--device',
       device,
+      '--timeout',
+      String(requestTimeoutS),
     ];
     const cmdLine = `"${launcher.cmd}" ${cliArgs.join(' ')}`;
     console.log(`[OmniVoice] spawning (${launcher.kind}): ${cmdLine}`);
@@ -616,21 +715,27 @@ export async function ensureOmniCloneProfile(
     throw new Error(`Không tìm thấy file ref audio OmniVoice: ${refAudioPath}`);
   }
 
-  const bytes = fs.readFileSync(refAudioPath);
+  const prepared = prepareOmniCloneRefAssets(refAudioPath, refText, safe);
+  if (!fs.existsSync(prepared.audioPath)) {
+    throw new Error(`Không tìm thấy file ref audio OmniVoice: ${prepared.audioPath}`);
+  }
+
+  const bytes = fs.readFileSync(prepared.audioPath);
   const form = new FormData();
   form.append('profile_id', safe);
   form.append('overwrite', 'true');
-  if (refText) form.append('ref_text', refText);
+  if (prepared.refText) form.append('ref_text', prepared.refText);
   const u8 = new Uint8Array(bytes);
   const blob = new Blob([u8], {
-    type: refAudioPath.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
+    type: prepared.audioPath.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
   });
-  form.append('ref_audio', blob, path.basename(refAudioPath));
+  form.append('ref_audio', blob, path.basename(prepared.audioPath));
 
   // Correct path: POST /v1/voices/profiles (not /v1/audio/voices/profiles)
   const res = await fetch(`${baseUrl}/v1/voices/profiles`, {
     method: 'POST',
     body: form,
+    signal: AbortSignal.timeout(180_000),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
@@ -646,13 +751,31 @@ async function synthViaJson(
   voice: string,
   speed: number,
   language?: string,
+  opts?: { numStep?: number },
 ): Promise<Buffer> {
+  // Default server num_step=32 OOM/timeouts on GTX 1050 Ti clone (~180s+).
+  // Preview/listen path: 8 is enough to hear timbre (verified ~39s vs 504@32).
+  const numStep = Math.max(
+    1,
+    Math.min(
+      64,
+      Number(opts?.numStep) ||
+        Number(process.env.OMNIVOICE_NUM_STEP) ||
+        8,
+    ),
+  );
   const payload: Record<string, unknown> = {
     model: 'omnivoice',
     input: text,
     voice,
     speed: speed || 1.0,
     response_format: 'wav',
+    num_step: numStep,
+    // Per-request override (server default 120s is too low for clone on 4GB GPU)
+    request_timeout_s: Math.max(
+      120,
+      Number(process.env.OMNIVOICE_REQUEST_TIMEOUT_S) || 360,
+    ),
   };
   if (language) payload.language = language;
 
@@ -660,6 +783,7 @@ async function synthViaJson(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(400_000),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
@@ -675,29 +799,44 @@ async function synthViaCloneUpload(
   refText: string | undefined,
   speed: number,
   language?: string,
+  profileIdHint = 'upload',
 ): Promise<Buffer> {
-  const bytes = fs.readFileSync(refAudioPath);
-  const form = new FormData();
-  form.append('text', text);
-  form.append('speed', String(speed || 1.0));
-  form.append('response_format', 'wav');
-  if (refText) form.append('ref_text', refText);
-  if (language) form.append('language', language);
-  const u8 = new Uint8Array(bytes);
-  const blob = new Blob([u8], {
-    type: refAudioPath.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
-  });
-  form.append('ref_audio', blob, path.basename(refAudioPath));
-
-  const res = await fetch(`${baseUrl}/v1/audio/speech/clone`, {
-    method: 'POST',
-    body: form,
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`OmniVoice /v1/audio/speech/clone ${res.status}: ${errText.slice(0, 300)}`);
+  const prepared = prepareOmniCloneRefAssets(refAudioPath, refText, profileIdHint);
+  if (!fs.existsSync(prepared.audioPath)) {
+    throw new Error(`Không tìm thấy file ref audio OmniVoice: ${prepared.audioPath}`);
   }
-  return Buffer.from(await res.arrayBuffer());
+  const bytes = fs.readFileSync(prepared.audioPath);
+  const mime = prepared.audioPath.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav';
+  const fileName = path.basename(prepared.audioPath);
+
+  let lastErr = '';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const form = new FormData();
+    form.append('text', text);
+    form.append('speed', String(speed || 1.0));
+    form.append('response_format', 'wav');
+    if (prepared.refText) form.append('ref_text', prepared.refText);
+    if (language) form.append('language', language);
+    form.append('ref_audio', new Blob([new Uint8Array(bytes)], { type: mime }), fileName);
+
+    const res = await fetch(`${baseUrl}/v1/audio/speech/clone`, {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(240_000),
+    });
+    if (res.ok) {
+      return Buffer.from(await res.arrayBuffer());
+    }
+    const errText = await res.text().catch(() => '');
+    lastErr = `OmniVoice /v1/audio/speech/clone ${res.status}: ${errText.slice(0, 300)}`;
+    // 504 / busy — one retry after short pause (same engine, no platform swap)
+    if (attempt < 2 && /504|503|timeout|busy/i.test(lastErr)) {
+      await sleep(2000 * attempt);
+      continue;
+    }
+    throw new Error(lastErr);
+  }
+  throw new Error(lastErr || 'OmniVoice clone upload failed');
 }
 
 function guessLanguage(entry: OmniLibraryEntry | null, voiceKey: string): string | undefined {
@@ -807,7 +946,9 @@ async function synthesizeOmniVoiceLocalInner(params: {
 
   // OpenAI-style design presets (alloy, nova…) — clean path
   if (isDesign) {
-    const buffer = await synthViaJson(baseUrl, text, voiceKey.toLowerCase(), speed, language);
+    const buffer = await synthViaJson(baseUrl, text, voiceKey.toLowerCase(), speed, language, {
+      numStep: 16,
+    });
     return {
       buffer,
       method: `OmniVoice Local design (${voiceKey})${recycleTag}`,
@@ -826,10 +967,17 @@ async function synthesizeOmniVoiceLocalInner(params: {
       if (refPath) {
         await ensureOmniCloneProfile(baseUrl, profileId, refPath, refText);
       }
-      const buffer = await synthViaJson(baseUrl, text, `clone:${profileId}`, speed, language);
+      const buffer = await synthViaJson(
+        baseUrl,
+        text,
+        `clone:${profileId}`,
+        speed,
+        language,
+        { numStep: 8 },
+      );
       return {
         buffer,
-        method: `OmniVoice Local clone (${profileId})${recycleTag}`,
+        method: `OmniVoice Local clone (${profileId} nfe=8)${recycleTag}`,
         baseUrl,
         mode: 'clone-profile',
       };
@@ -847,6 +995,7 @@ async function synthesizeOmniVoiceLocalInner(params: {
             refText,
             speed,
             language,
+            profileId,
           );
           return {
             buffer,

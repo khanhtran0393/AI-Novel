@@ -2,6 +2,7 @@
  * Catalog giọng TTS dùng chung toàn app (TTSConfigModal, Sidebar NV, multi-voice, AutoRender…).
  * Nguồn tĩnh — runtime merge động (Piper/OmniVoice/Vina) qua voiceCatalogPrep + /api/tts/voices.
  */
+import { buildCapCutVoiceCatalog } from './capcutVoices';
 
 export type VoiceGender = 'male' | 'female' | 'neutral';
 
@@ -165,7 +166,7 @@ const TIKTOK_OTHER: Record<string, VoiceOption[]> = {
 // ─── Edge TTS (Neural — multilingual, production-known set) ─
 const EDGE_VI: VoiceOption[] = [
   v('vi-VN-HoaiMyNeural', 'Hoài My (Nữ)', 'female', 'vi-VN'),
-  v('vi-VN-NamMinhNeural', 'Nam Minh (Nam)', 'male', 'vi-VN'),
+  v('vi-VN-NamMinhNeural', 'Nam Minh (Nam)', 'male', 'vi-VN')
 ];
 
 const EDGE_EN: VoiceOption[] = [
@@ -179,18 +180,7 @@ const EDGE_EN: VoiceOption[] = [
   v('en-US-EmmaMultilingualNeural', 'Emma Multilingual (Nữ)', 'female', 'en-US'),
   v('en-US-AvaNeural', 'Ava (Nữ US)', 'female', 'en-US'),
   v('en-US-AvaMultilingualNeural', 'Ava Multilingual (Nữ)', 'female', 'en-US'),
-  v('en-US-SaraNeural', 'Sara (Nữ US)', 'female', 'en-US'),
-  v('en-US-JaneNeural', 'Jane (Nữ US)', 'female', 'en-US'),
-  v('en-US-NancyNeural', 'Nancy (Nữ US)', 'female', 'en-US'),
-  v('en-US-AmberNeural', 'Amber (Nữ US)', 'female', 'en-US'),
-  v('en-US-AshleyNeural', 'Ashley (Nữ US)', 'female', 'en-US'),
-  v('en-US-CoraNeural', 'Cora (Nữ US)', 'female', 'en-US'),
-  v('en-US-ElizabethNeural', 'Elizabeth (Nữ US)', 'female', 'en-US'),
-  v('en-US-MonicaNeural', 'Monica (Nữ US)', 'female', 'en-US'),
   v('en-US-GuyNeural', 'Guy (Nam US)', 'male', 'en-US'),
-  v('en-US-DavisNeural', 'Davis (Nam US)', 'male', 'en-US'),
-  v('en-US-TonyNeural', 'Tony (Nam US)', 'male', 'en-US'),
-  v('en-US-JasonNeural', 'Jason (Nam US)', 'male', 'en-US'),
   v('en-US-BrianNeural', 'Brian (Nam US)', 'male', 'en-US'),
   v('en-US-BrianMultilingualNeural', 'Brian Multilingual (Nam)', 'male', 'en-US'),
   v('en-US-AndrewNeural', 'Andrew (Nam US)', 'male', 'en-US'),
@@ -206,10 +196,8 @@ const EDGE_EN: VoiceOption[] = [
   v('en-GB-MaisieNeural', 'Maisie (Nữ UK)', 'female', 'en-GB'),
   v('en-GB-RyanNeural', 'Ryan (Nam UK)', 'male', 'en-GB'),
   v('en-GB-ThomasNeural', 'Thomas (Nam UK)', 'male', 'en-GB'),
-  v('en-GB-OliverNeural', 'Oliver (Nam UK)', 'male', 'en-GB'),
   // AU / CA / IE / NZ / IN / SG / PH / ZA / HK
   v('en-AU-NatashaNeural', 'Natasha (Nữ AU)', 'female', 'en-AU'),
-  v('en-AU-WilliamNeural', 'William (Nam AU)', 'male', 'en-AU'),
   v('en-CA-ClaraNeural', 'Clara (Nữ CA)', 'female', 'en-CA'),
   v('en-CA-LiamNeural', 'Liam (Nam CA)', 'male', 'en-CA'),
   v('en-IE-ConnorNeural', 'Connor (Nam IE)', 'male', 'en-IE'),
@@ -226,32 +214,16 @@ const EDGE_EN: VoiceOption[] = [
   v('en-ZA-LeahNeural', 'Leah (Nữ ZA)', 'female', 'en-ZA'),
   v('en-ZA-LukeNeural', 'Luke (Nam ZA)', 'male', 'en-ZA'),
   v('en-HK-YanNeural', 'Yan (Nữ HK)', 'female', 'en-HK'),
-  v('en-HK-SamNeural', 'Sam (Nam HK)', 'male', 'en-HK'),
+  v('en-HK-SamNeural', 'Sam (Nam HK)', 'male', 'en-HK')
 ];
 
 const EDGE_ZH: VoiceOption[] = [
   v('zh-CN-XiaoxiaoNeural', 'Xiaoxiao (Nữ CN)', 'female', 'zh-CN'),
   v('zh-CN-XiaoyiNeural', 'Xiaoyi (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaochenNeural', 'Xiaochen (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaohanNeural', 'Xiaohan (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaomengNeural', 'Xiaomeng (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaomoNeural', 'Xiaomo (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaoqiuNeural', 'Xiaoqiu (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaoruiNeural', 'Xiaorui (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaoshuangNeural', 'Xiaoshuang (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaoxuanNeural', 'Xiaoxuan (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaoyanNeural', 'Xiaoyan (Nữ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaoyouNeural', 'Xiaoyou (Nữ trẻ CN)', 'female', 'zh-CN'),
-  v('zh-CN-XiaozhenNeural', 'Xiaozhen (Nữ CN)', 'female', 'zh-CN'),
   v('zh-CN-YunxiNeural', 'Yunxi (Nam CN)', 'male', 'zh-CN'),
   v('zh-CN-YunjianNeural', 'Yunjian (Nam CN)', 'male', 'zh-CN'),
   v('zh-CN-YunyangNeural', 'Yunyang (Nam tin tức)', 'male', 'zh-CN'),
   v('zh-CN-YunxiaNeural', 'Yunxia (Nam trẻ CN)', 'male', 'zh-CN'),
-  v('zh-CN-YunfengNeural', 'Yunfeng (Nam CN)', 'male', 'zh-CN'),
-  v('zh-CN-YunhaoNeural', 'Yunhao (Nam CN)', 'male', 'zh-CN'),
-  v('zh-CN-YunjieNeural', 'Yunjie (Nam CN)', 'male', 'zh-CN'),
-  v('zh-CN-YunyeNeural', 'Yunye (Nam CN)', 'male', 'zh-CN'),
-  v('zh-CN-YunzeNeural', 'Yunze (Nam CN)', 'male', 'zh-CN'),
   v('zh-CN-liaoning-XiaobeiNeural', 'Xiaobei (Nữ Liêu Ninh)', 'female', 'zh-CN'),
   v('zh-CN-shaanxi-XiaoniNeural', 'Xiaoni (Nữ Thiểm Tây)', 'female', 'zh-CN'),
   v('zh-TW-HsiaoChenNeural', 'HsiaoChen (Nữ TW)', 'female', 'zh-TW'),
@@ -259,28 +231,17 @@ const EDGE_ZH: VoiceOption[] = [
   v('zh-TW-YunJheNeural', 'YunJhe (Nam TW)', 'male', 'zh-TW'),
   v('zh-HK-HiuMaanNeural', 'HiuMaan (Nữ HK)', 'female', 'zh-HK'),
   v('zh-HK-HiuGaaiNeural', 'HiuGaai (Nữ HK)', 'female', 'zh-HK'),
-  v('zh-HK-WanLungNeural', 'WanLung (Nam HK)', 'male', 'zh-HK'),
+  v('zh-HK-WanLungNeural', 'WanLung (Nam HK)', 'male', 'zh-HK')
 ];
 
 const EDGE_JA: VoiceOption[] = [
   v('ja-JP-NanamiNeural', 'Nanami (Nữ)', 'female', 'ja-JP'),
-  v('ja-JP-KeitaNeural', 'Keita (Nam)', 'male', 'ja-JP'),
-  v('ja-JP-AoiNeural', 'Aoi (Nữ)', 'female', 'ja-JP'),
-  v('ja-JP-DaichiNeural', 'Daichi (Nam)', 'male', 'ja-JP'),
-  v('ja-JP-MayuNeural', 'Mayu (Nữ)', 'female', 'ja-JP'),
-  v('ja-JP-NaokiNeural', 'Naoki (Nam)', 'male', 'ja-JP'),
-  v('ja-JP-ShioriNeural', 'Shiori (Nữ)', 'female', 'ja-JP'),
+  v('ja-JP-KeitaNeural', 'Keita (Nam)', 'male', 'ja-JP')
 ];
 
 const EDGE_KO: VoiceOption[] = [
   v('ko-KR-SunHiNeural', 'SunHi (Nữ)', 'female', 'ko-KR'),
-  v('ko-KR-InJoonNeural', 'InJoon (Nam)', 'male', 'ko-KR'),
-  v('ko-KR-BongJinNeural', 'BongJin (Nam)', 'male', 'ko-KR'),
-  v('ko-KR-GookMinNeural', 'GookMin (Nam)', 'male', 'ko-KR'),
-  v('ko-KR-JiMinNeural', 'JiMin (Nữ)', 'female', 'ko-KR'),
-  v('ko-KR-SeoHyeonNeural', 'SeoHyeon (Nữ)', 'female', 'ko-KR'),
-  v('ko-KR-SoonBokNeural', 'SoonBok (Nữ)', 'female', 'ko-KR'),
-  v('ko-KR-YuJinNeural', 'YuJin (Nữ)', 'female', 'ko-KR'),
+  v('ko-KR-InJoonNeural', 'InJoon (Nam)', 'male', 'ko-KR')
 ];
 
 const EDGE_FR: VoiceOption[] = [
@@ -296,50 +257,25 @@ const EDGE_FR: VoiceOption[] = [
   v('fr-BE-CharlineNeural', 'Charline (Nữ BE)', 'female', 'fr-BE'),
   v('fr-BE-GerardNeural', 'Gerard (Nam BE)', 'male', 'fr-BE'),
   v('fr-CH-ArianeNeural', 'Ariane (Nữ CH)', 'female', 'fr-CH'),
-  v('fr-CH-FabriceNeural', 'Fabrice (Nam CH)', 'male', 'fr-CH'),
+  v('fr-CH-FabriceNeural', 'Fabrice (Nam CH)', 'male', 'fr-CH')
 ];
 
 const EDGE_DE: VoiceOption[] = [
   v('de-DE-KatjaNeural', 'Katja (Nữ DE)', 'female', 'de-DE'),
   v('de-DE-ConradNeural', 'Conrad (Nam DE)', 'male', 'de-DE'),
   v('de-DE-AmalaNeural', 'Amala (Nữ DE)', 'female', 'de-DE'),
-  v('de-DE-BerndNeural', 'Bernd (Nam DE)', 'male', 'de-DE'),
-  v('de-DE-ChristophNeural', 'Christoph (Nam DE)', 'male', 'de-DE'),
-  v('de-DE-ElkeNeural', 'Elke (Nữ DE)', 'female', 'de-DE'),
-  v('de-DE-GiselaNeural', 'Gisela (Nữ DE)', 'female', 'de-DE'),
-  v('de-DE-KasperNeural', 'Kasper (Nam DE)', 'male', 'de-DE'),
   v('de-DE-KillianNeural', 'Killian (Nam DE)', 'male', 'de-DE'),
-  v('de-DE-KlarissaNeural', 'Klarissa (Nữ DE)', 'female', 'de-DE'),
-  v('de-DE-KlausNeural', 'Klaus (Nam DE)', 'male', 'de-DE'),
-  v('de-DE-LouisaNeural', 'Louisa (Nữ DE)', 'female', 'de-DE'),
-  v('de-DE-MajaNeural', 'Maja (Nữ DE)', 'female', 'de-DE'),
-  v('de-DE-RalfNeural', 'Ralf (Nam DE)', 'male', 'de-DE'),
-  v('de-DE-TanjaNeural', 'Tanja (Nữ DE)', 'female', 'de-DE'),
   v('de-DE-SeraphinaMultilingualNeural', 'Seraphina Multilingual (Nữ)', 'female', 'de-DE'),
   v('de-DE-FlorianMultilingualNeural', 'Florian Multilingual (Nam)', 'male', 'de-DE'),
   v('de-AT-IngridNeural', 'Ingrid (Nữ AT)', 'female', 'de-AT'),
   v('de-AT-JonasNeural', 'Jonas (Nam AT)', 'male', 'de-AT'),
   v('de-CH-JanNeural', 'Jan (Nam CH)', 'male', 'de-CH'),
-  v('de-CH-LeniNeural', 'Leni (Nữ CH)', 'female', 'de-CH'),
+  v('de-CH-LeniNeural', 'Leni (Nữ CH)', 'female', 'de-CH')
 ];
 
 const EDGE_ES: VoiceOption[] = [
   v('es-ES-ElviraNeural', 'Elvira (Nữ ES)', 'female', 'es-ES'),
   v('es-ES-AlvaroNeural', 'Alvaro (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-AbrilNeural', 'Abril (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-ArnauNeural', 'Arnau (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-DarioNeural', 'Dario (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-EliasNeural', 'Elias (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-EliaNeural', 'Elia (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-EstrellaNeural', 'Estrella (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-IreneNeural', 'Irene (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-LaiaNeural', 'Laia (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-LiaNeural', 'Lia (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-NilNeural', 'Nil (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-SaulNeural', 'Saul (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-TeoNeural', 'Teo (Nam ES)', 'male', 'es-ES'),
-  v('es-ES-TrianaNeural', 'Triana (Nữ ES)', 'female', 'es-ES'),
-  v('es-ES-VeraNeural', 'Vera (Nữ ES)', 'female', 'es-ES'),
   v('es-ES-XimenaNeural', 'Ximena (Nữ ES)', 'female', 'es-ES'),
   v('es-MX-DaliaNeural', 'Dalia (Nữ MX)', 'female', 'es-MX'),
   v('es-MX-JorgeNeural', 'Jorge (Nam MX)', 'male', 'es-MX'),
@@ -348,65 +284,36 @@ const EDGE_ES: VoiceOption[] = [
   v('es-CO-SalomeNeural', 'Salome (Nữ CO)', 'female', 'es-CO'),
   v('es-CO-GonzaloNeural', 'Gonzalo (Nam CO)', 'male', 'es-CO'),
   v('es-US-PalomaNeural', 'Paloma (Nữ US-ES)', 'female', 'es-US'),
-  v('es-US-AlonsoNeural', 'Alonso (Nam US-ES)', 'male', 'es-US'),
+  v('es-US-AlonsoNeural', 'Alonso (Nam US-ES)', 'male', 'es-US')
 ];
 
 const EDGE_PT: VoiceOption[] = [
   v('pt-BR-FranciscaNeural', 'Francisca (Nữ BR)', 'female', 'pt-BR'),
   v('pt-BR-AntonioNeural', 'Antonio (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-BrendaNeural', 'Brenda (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-DonatoNeural', 'Donato (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-ElzaNeural', 'Elza (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-FabioNeural', 'Fabio (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-GiovannaNeural', 'Giovanna (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-HumbertoNeural', 'Humberto (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-JulioNeural', 'Julio (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-LeilaNeural', 'Leila (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-LeticiaNeural', 'Leticia (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-ManuelaNeural', 'Manuela (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-NicolauNeural', 'Nicolau (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-ValerioNeural', 'Valerio (Nam BR)', 'male', 'pt-BR'),
-  v('pt-BR-YaraNeural', 'Yara (Nữ BR)', 'female', 'pt-BR'),
-  v('pt-BR-ThalitaNeural', 'Thalita (Nữ BR)', 'female', 'pt-BR'),
   v('pt-PT-RaquelNeural', 'Raquel (Nữ PT)', 'female', 'pt-PT'),
-  v('pt-PT-DuarteNeural', 'Duarte (Nam PT)', 'male', 'pt-PT'),
-  v('pt-PT-FernandaNeural', 'Fernanda (Nữ PT)', 'female', 'pt-PT'),
+  v('pt-PT-DuarteNeural', 'Duarte (Nam PT)', 'male', 'pt-PT')
 ];
 
 const EDGE_ID: VoiceOption[] = [
   v('id-ID-GadisNeural', 'Gadis (Nữ)', 'female', 'id-ID'),
-  v('id-ID-ArdiNeural', 'Ardi (Nam)', 'male', 'id-ID'),
+  v('id-ID-ArdiNeural', 'Ardi (Nam)', 'male', 'id-ID')
 ];
 
 const EDGE_TH: VoiceOption[] = [
   v('th-TH-PremwadeeNeural', 'Premwadee (Nữ)', 'female', 'th-TH'),
-  v('th-TH-NiwatNeural', 'Niwat (Nam)', 'male', 'th-TH'),
-  v('th-TH-AcharaNeural', 'Achara (Nữ)', 'female', 'th-TH'),
+  v('th-TH-NiwatNeural', 'Niwat (Nam)', 'male', 'th-TH')
 ];
 
 const EDGE_RU: VoiceOption[] = [
   v('ru-RU-SvetlanaNeural', 'Svetlana (Nữ)', 'female', 'ru-RU'),
-  v('ru-RU-DmitryNeural', 'Dmitry (Nam)', 'male', 'ru-RU'),
-  v('ru-RU-DariyaNeural', 'Dariya (Nữ)', 'female', 'ru-RU'),
+  // Dmitry: MS list still has it but Edge WS often timeout in this region — removed after live probe fail
 ];
 
 const EDGE_IT: VoiceOption[] = [
   v('it-IT-ElsaNeural', 'Elsa (Nữ)', 'female', 'it-IT'),
   v('it-IT-IsabellaNeural', 'Isabella (Nữ)', 'female', 'it-IT'),
   v('it-IT-DiegoNeural', 'Diego (Nam)', 'male', 'it-IT'),
-  v('it-IT-GiuseppeMultilingualNeural', 'Giuseppe Multilingual (Nam)', 'male', 'it-IT'),
-  v('it-IT-BenignoNeural', 'Benigno (Nam)', 'male', 'it-IT'),
-  v('it-IT-CalimeroNeural', 'Calimero (Nam)', 'male', 'it-IT'),
-  v('it-IT-CataldoNeural', 'Cataldo (Nam)', 'male', 'it-IT'),
-  v('it-IT-FabiolaNeural', 'Fabiola (Nữ)', 'female', 'it-IT'),
-  v('it-IT-FiammaNeural', 'Fiamma (Nữ)', 'female', 'it-IT'),
-  v('it-IT-GianniNeural', 'Gianni (Nam)', 'male', 'it-IT'),
-  v('it-IT-ImeldaNeural', 'Imelda (Nữ)', 'female', 'it-IT'),
-  v('it-IT-IrmaNeural', 'Irma (Nữ)', 'female', 'it-IT'),
-  v('it-IT-LisandroNeural', 'Lisandro (Nam)', 'male', 'it-IT'),
-  v('it-IT-PalmiraNeural', 'Palmira (Nữ)', 'female', 'it-IT'),
-  v('it-IT-PierinaNeural', 'Pierina (Nữ)', 'female', 'it-IT'),
-  v('it-IT-RinaldoNeural', 'Rinaldo (Nam)', 'male', 'it-IT'),
+  v('it-IT-GiuseppeMultilingualNeural', 'Giuseppe Multilingual (Nam)', 'male', 'it-IT')
 ];
 
 const EDGE_AR: VoiceOption[] = [
@@ -415,12 +322,12 @@ const EDGE_AR: VoiceOption[] = [
   v('ar-EG-SalmaNeural', 'Salma (Nữ EG)', 'female', 'ar-EG'),
   v('ar-EG-ShakirNeural', 'Shakir (Nam EG)', 'male', 'ar-EG'),
   v('ar-AE-FatimaNeural', 'Fatima (Nữ AE)', 'female', 'ar-AE'),
-  v('ar-AE-HamdanNeural', 'Hamdan (Nam AE)', 'male', 'ar-AE'),
+  v('ar-AE-HamdanNeural', 'Hamdan (Nam AE)', 'male', 'ar-AE')
 ];
 
 const EDGE_HI: VoiceOption[] = [
   v('hi-IN-SwaraNeural', 'Swara (Nữ)', 'female', 'hi-IN'),
-  v('hi-IN-MadhurNeural', 'Madhur (Nam)', 'male', 'hi-IN'),
+  v('hi-IN-MadhurNeural', 'Madhur (Nam)', 'male', 'hi-IN')
 ];
 
 // ─── HotAI / VieNeu / Piper / Vbee / Google / Eleven ──────
@@ -451,21 +358,21 @@ const PIPER_VI_STATIC: VoiceOption[] = [
   v('manhdung.onnx', 'Mạnh Dũng (Nam)', 'male'),
 ];
 
-/** VBee list — nghe thử = map mẫu local (Piper/Edge), không phải API VBee cloud */
+/** VBee list — legacy catalog only (platform hard-fail; IRON B10) */
 const VBEE_VI: VoiceOption[] = [
-  v('hn_ngo_ngochuyen_24g_v2', '👑 Ngọc Huyền (mẫu→Piper/Edge Nữ)', 'female'),
-  v('hn_male_manhdung_news_48k-v2', '👑 Mạnh Dũng (mẫu→Piper/Edge Nam)', 'male'),
-  v('VBEE_MaiPhuong', '👑 Mai Phương (mẫu→Edge Nữ)', 'female'),
-  v('VBEE_ThaoTrinh', '👑 Thảo Trinh (mẫu→Edge Nữ)', 'female'),
-  v('VBEE_MinhHoang', '👑 Minh Hoàng (mẫu→Edge Nam)', 'male'),
+  v('hn_ngo_ngochuyen_24g_v2', '👑 Ngọc Huyền (legacy)', 'female'),
+  v('hn_male_manhdung_news_48k-v2', '👑 Mạnh Dũng (legacy)', 'male'),
+  v('VBEE_MaiPhuong', '👑 Mai Phương (legacy)', 'female'),
+  v('VBEE_ThaoTrinh', '👑 Thảo Trinh (legacy)', 'female'),
+  v('VBEE_MinhHoang', '👑 Minh Hoàng (legacy)', 'male'),
 ];
 
-/** Google Cloud voice IDs — có API key thì gen Cloud thật; không key = nghe mẫu Edge */
+/** Google Cloud voice IDs — bắt buộc API key (IRON B10) */
 const GOOGLE_VI: VoiceOption[] = [
-  v('vi-VN-Standard-A', 'Google Nữ Chuẩn (A) · mẫu Edge nếu chưa key', 'female'),
-  v('vi-VN-Standard-B', 'Google Nam Chuẩn (B) · mẫu Edge nếu chưa key', 'male'),
-  v('vi-VN-Standard-C', 'Google Nữ Chuẩn (C) · mẫu Edge nếu chưa key', 'female'),
-  v('vi-VN-Standard-D', 'Google Nam Chuẩn (D) · mẫu Edge nếu chưa key', 'male'),
+  v('vi-VN-Standard-A', 'Google Nữ Chuẩn (A)', 'female'),
+  v('vi-VN-Standard-B', 'Google Nam Chuẩn (B)', 'male'),
+  v('vi-VN-Standard-C', 'Google Nữ Chuẩn (C)', 'female'),
+  v('vi-VN-Standard-D', 'Google Nam Chuẩn (D)', 'male'),
   v('vi-VN-Neural2-A', 'Google Nữ Neural2 (A)', 'female'),
   v('vi-VN-Neural2-D', 'Google Nam Neural2 (D)', 'male'),
   v('vi-VN-Wavenet-A', 'Google Nữ Wavenet (A)', 'female'),
@@ -521,11 +428,8 @@ export const STATIC_VOICE_CATALOG: VoiceCatalog = {
     en: TIKTOK_EN,
     ...TIKTOK_OTHER,
   },
-  capcut_tts: {
-    vi: TIKTOK_VI,
-    en: TIKTOK_EN.slice(0, 6),
-    ...TIKTOK_OTHER,
-  },
+  // Full CapCut matrix (127) + resource_id map — see capcutVoices.ts / data/capcut_voices.json
+  capcut_tts: buildCapCutVoiceCatalog(),
   hotai_tts: {
     vi: HOTAI_VI,
   },
@@ -537,16 +441,8 @@ export const STATIC_VOICE_CATALOG: VoiceCatalog = {
     en: [v('Bình An', 'Bình An (Bilingual)', 'male')],
   },
   vina_voice: {
-    vi: [
-      v('vi-VN-NamMinhNeural', 'Nam (Edge map / Vina engine)', 'male'),
-      v('vi-VN-HoaiMyNeural', 'Nữ (Edge map / Vina engine)', 'female'),
-      v('manhdung.onnx', 'Mạnh Dũng (Piper-style id)', 'male'),
-      v('ngochuyen.onnx', 'Ngọc Huyền (Piper-style id)', 'female'),
-    ],
-    en: [
-      v('en-US-GuyNeural', 'Guy (EN map)', 'male'),
-      v('en-US-JennyNeural', 'Jenny (EN map)', 'female'),
-    ],
+    vi: [],
+    en: [],
   },
   // Design presets (Omni native) + clone library merge runtime qua /api/tts/voices
   omnivoice_local: {
@@ -643,11 +539,6 @@ export function getVoiceList(
 ): VoiceOption[] {
   const byLang = catalog[platform]?.[language];
   if (byLang?.length) return dedupeVoicesById(byLang);
-  // fallback: any non-empty language for platform
-  const plat = catalog[platform] || {};
-  for (const code of Object.keys(plat)) {
-    if (plat[code]?.length) return dedupeVoicesById(plat[code]);
-  }
   return [];
 }
 
@@ -683,8 +574,7 @@ export function getCharacterVoiceOptions(
   }
   const list = getVoiceList(catalog, platform, language);
   if (list.length) return list;
-  // last resort Edge VI
-  return getVoiceList(catalog, 'edge_tts', 'vi');
+  return [];
 }
 
 export function getDefaultVoiceConfig(
@@ -695,16 +585,6 @@ export function getDefaultVoiceConfig(
   const platformVoices = catalog[platform] || {};
   let language = preferredLanguage;
   let voices = platformVoices[language] || [];
-
-  if (voices.length === 0) {
-    const availableLanguage = Object.keys(platformVoices).find(
-      (code) => (platformVoices[code]?.length || 0) > 0,
-    );
-    if (availableLanguage) {
-      language = availableLanguage;
-      voices = platformVoices[availableLanguage] || [];
-    }
-  }
 
   return {
     language,

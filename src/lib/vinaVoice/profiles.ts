@@ -262,12 +262,6 @@ export function resolveSamplePath(
   const dataDir = getVinaDataDir(cwd);
   candidates.push(path.join(dataDir, 'samples', profile.filename));
   candidates.push(path.join(dataDir, 'user-clones', profile.filename));
-  // fallback: original Vina install path (if still on disk)
-  candidates.push(
-    path.join('D:', 'Vina-Voice_V5.4', 'Vina-Voice_V5.4', 'VGA', 'saved_voices_goc', profile.filename),
-    path.join('D:', 'Vina-Voice_V5.4', 'Vina-Voice_V5.4', 'VGA', 'saved_voices', profile.filename),
-    path.join('D:', 'Vina-Voice_V5.4', 'Vina-Voice_V5.4', 'VGA', 'saved_voices_goc', path.basename(profile.filename || '')),
-  );
   for (const c of candidates) {
     if (c && fs.existsSync(c)) return c;
   }
@@ -397,15 +391,6 @@ export function applyProfileToSettings(
     reference_text: profile.text || settings.reference_text,
     use_clone: !!(sample || settings.use_clone),
   };
-}
-
-/** Map Vina gender/area/group → Edge neural voice (builtin backend) */
-export function mapToEdgeVoice(settings: VinaVoiceSettings): string {
-  if (settings.gender === 'female') {
-    // Edge has limited VI voices
-    return 'vi-VN-HoaiMyNeural';
-  }
-  return 'vi-VN-NamMinhNeural';
 }
 
 /** Emotion / area micro-adjust pitch (semitones) */

@@ -39,12 +39,43 @@ function levelDot(level: HealthLevel): string {
   }
 }
 
+type QuotaKeyRow = {
+  fp: string;
+  available: boolean;
+  rpmUsed: number;
+  rpmLimit: number;
+  rpmResetMs: number;
+  rpdUsed: number;
+  rpdLimit: number;
+  rpdResetMs: number;
+  nextReadyMs: number;
+  cooling: boolean;
+  coolReason?: string;
+  coolUntilMs?: number;
+};
+
+function formatMs(ms: number): string {
+  const sec = Math.max(0, Math.ceil(ms / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.ceil(sec / 60);
+  if (min < 60) return `${min}p`;
+  return `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}p` : ''}`;
+}
+
 export default function CredentialHealthPanel() {
   const store = useNovelStore();
   const [runtimeItems, setRuntimeItems] = useState<HealthItem[]>([]);
   const [runtimeScore, setRuntimeScore] = useState<string>('');
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [quotaRows, setQuotaRows] = useState<QuotaKeyRow[]>([]);
+  const [quotaWait, setQuotaWait] = useState<string | null>(null);
+  const [quotaMeta, setQuotaMeta] = useState({
+    rpmLimit: 10,
+    rpdLimit: 250,
+    minIntervalMs: 6000,
+    headroom: 0.85,
+  });
 
   const health = useMemo(
     () =>
@@ -108,9 +139,58 @@ export default function CredentialHealthPanel() {
     }
   }, []);
 
+  const geminiKeys = useMemo(() => {
+    const set = new Set<string>();
+    if (store.apiKey) set.add(store.apiKey);
+    for (const k of store.apiKeys || []) if (k) set.add(k);
+    return [...set];
+  }, [store.apiKey, store.apiKeys]);
+
+  const refreshQuota = useCallback(async () => {
+    if (geminiKeys.length === 0) {
+      setQuotaRows([]);
+      setQuotaWait(null);
+      return;
+    }
+    try {
+      const res = await fetch(API.keyQuota, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: geminiKeys, register: true }),
+        cache: 'no-store',
+      });
+      const data = (await res.json()) as {
+        keys?: QuotaKeyRow[];
+        wait?: { message?: string } | null;
+        rpmLimit?: number;
+        rpdLimit?: number;
+        minIntervalMs?: number;
+        headroom?: number;
+      };
+      if (!res.ok) return;
+      setQuotaRows(Array.isArray(data.keys) ? data.keys : []);
+      setQuotaWait(data.wait?.message || null);
+      setQuotaMeta((m) => ({
+        ...m,
+        rpmLimit: data.rpmLimit ?? m.rpmLimit,
+        rpdLimit: data.rpdLimit ?? m.rpdLimit,
+        minIntervalMs: data.minIntervalMs ?? m.minIntervalMs,
+        headroom: data.headroom ?? m.headroom,
+      }));
+    } catch {
+      /* server cold */
+    }
+  }, [geminiKeys]);
+
   useEffect(() => {
     void refreshRuntime();
   }, [refreshRuntime]);
+
+  useEffect(() => {
+    void refreshQuota();
+    const t = setInterval(() => void refreshQuota(), 5000);
+    return () => clearInterval(t);
+  }, [refreshQuota]);
 
   const allItems = useMemo(
     () => [...health.items, ...runtimeItems],
@@ -164,6 +244,61 @@ export default function CredentialHealthPanel() {
         Core loop: Key LLM + TTS platform + (Cookie nếu Whisk). Runtime: FFmpeg /
         public dirs / Edge package. Đỏ = chặn gen; vàng = có thể skip feature.
       </p>
+
+      {/* Per-key RPM/RPD timers — hard gate before provider call */}
+      <div className="mt-3 border-t border-zinc-800/80 pt-3">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <h5 className="text-[10px] font-bold uppercase tracking-wider text-sky-400/90">
+            Tránh chạm trần · RPM ≤{quotaMeta.rpmLimit}/phút · RPD ≤
+            {quotaMeta.rpdLimit}/ngày · gap ≥
+            {Math.ceil(quotaMeta.minIntervalMs / 1000)}s · headroom{' '}
+            {Math.round(quotaMeta.headroom * 100)}%
+          </h5>
+          <button
+            type="button"
+            onClick={() => void refreshQuota()}
+            className="rounded border border-zinc-700 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-400 hover:text-white cursor-pointer"
+          >
+            Sync
+          </button>
+        </div>
+        {quotaWait ? (
+          <p className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-snug text-amber-200">
+            ⏳ {quotaWait}
+          </p>
+        ) : null}
+        {geminiKeys.length === 0 ? (
+          <p className="text-[10px] text-zinc-600">
+            Chưa có Gemini key — thêm key để bật bộ đếm.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {quotaRows.map((row) => (
+              <li
+                key={row.fp}
+                className={`rounded border px-2 py-1 font-mono text-[10px] ${
+                  row.available
+                    ? 'border-emerald-900/50 bg-emerald-950/20 text-emerald-300/90'
+                    : 'border-rose-900/50 bg-rose-950/20 text-rose-300/90'
+                }`}
+              >
+                <span className="font-bold">{row.fp}</span>
+                {' · '}
+                RPM {row.rpmUsed}/{row.rpmLimit}
+                {row.rpmResetMs > 0 ? ` (chờ ${formatMs(row.rpmResetMs)})` : ''}
+                {' · '}
+                RPD {row.rpdUsed}/{row.rpdLimit}
+                {!row.available && row.nextReadyMs > 0
+                  ? ` · sẵn sàng sau ${formatMs(row.nextReadyMs)}`
+                  : ''}
+                {row.cooling
+                  ? ` · cooldown ${row.coolReason || ''} ${formatMs(row.coolUntilMs || 0)}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

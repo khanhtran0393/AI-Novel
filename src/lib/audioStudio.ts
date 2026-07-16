@@ -135,9 +135,12 @@ export async function applyAudioStudioMix(
     cleanup(paths);
     return { buffer: out, applied };
   } catch (err) {
-    console.warn('[AudioStudio] mix failed, returning original:', (err as Error).message);
     cleanup(paths);
-    return { buffer: inputBuffer, applied: [] };
+    // IRON B10: không trả buffer gốc im lặng — user phải thấy lỗi mix thật
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `AudioStudio mix thất bại (không fallback audio gốc): ${msg}. Kiểm tra FFmpeg / roomTone / BGM path.`,
+    );
   }
 }
 

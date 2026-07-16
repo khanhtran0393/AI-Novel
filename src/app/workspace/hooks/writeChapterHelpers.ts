@@ -203,7 +203,7 @@ export async function commitChapterMemory(
     );
     return { ok: true };
   } catch (error) {
-    // No local/heuristic fallback — fail hard (API key rotation stays inside generate).
+    // No local/heuristic replacement — fail hard (API key rotation stays inside generate).
     const errMsg =
       error instanceof Error
         ? error.message

@@ -37,17 +37,6 @@ function resolveAudioUrl(raw: string): string {
   return s;
 }
 
-function defaultVoiceForPlatform(platform: string, language?: string): string {
-  const p = (platform || 'edge_tts').toLowerCase();
-  const lang = (language || 'vi').toLowerCase();
-  if (p.includes('openai')) return 'alloy';
-  if (p.includes('gemini')) return 'Kore';
-  if (p.includes('piper')) return lang.startsWith('en') ? 'en_US-lessac-medium' : 'vi_VN-vivos-x_low';
-  if (p.includes('tiktok')) return 'vi_female_1';
-  if (lang.startsWith('en')) return 'en-US-JennyNeural';
-  return 'vi-VN-HoaiMyNeural';
-}
-
 async function playBlobOrUrl(
   src: string,
   onSuccess: (audio: HTMLAudioElement) => void,
@@ -102,11 +91,16 @@ export async function playTTSAction(params: PlayTTSParams): Promise<void> {
     platform:
       ttsConfig?.platform ||
       store0.ttsConfig?.platform ||
-      'edge_tts',
+      '',
   };
   const resolvedVoice =
-    (voice || baseConfig.voice || store0.ttsConfig?.voice || '').trim() ||
-    defaultVoiceForPlatform(baseConfig.platform, baseConfig.language);
+    (voice || baseConfig.voice || store0.ttsConfig?.voice || '').trim();
+  if (!baseConfig.platform?.trim()) {
+    throw new Error('Chua chon engine TTS (platform).');
+  }
+  if (!resolvedVoice) {
+    throw new Error('Chua chon voice TTS. App khong tu gan voice.');
+  }
   baseConfig.voice = resolvedVoice;
 
   // Always resolve platform-correct credentials (OpenAI / Gemini / master keys)
@@ -148,6 +142,13 @@ export async function playTTSAction(params: PlayTTSParams): Promise<void> {
       pitch,
       speakerSeed: activeConfig.vinaSpeakerSeed,
       styleSeed: activeConfig.vinaStyleSeed,
+      vinaGender: activeConfig.vinaGender,
+      vinaArea: activeConfig.vinaArea,
+      vinaGroup: activeConfig.vinaGroup,
+      vinaEmotion: activeConfig.vinaEmotion,
+      vinaReferenceAudio: activeConfig.vinaReferenceAudio,
+      vinaReferenceAudioB64: activeConfig.vinaReferenceAudioB64,
+      vinaReferenceText: activeConfig.vinaReferenceText,
     });
 
     // 1) Browser cache / session — no API, no re-synth
@@ -247,7 +248,7 @@ export async function playTTSAction(params: PlayTTSParams): Promise<void> {
   };
 
   try {
-    // No platform fallback — only multi-key rotation on the server for quota.
+    // Platform is explicit; multi-key rotation stays on the server for quota.
     await playPreview(baseConfig, resolvedVoice, creds.apiKey, keysToUse);
   } catch (err: unknown) {
     onEnded();

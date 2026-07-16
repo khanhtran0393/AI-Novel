@@ -33,21 +33,46 @@ export async function generateWithFlow(
   try {
     await ensureBridgeStarted();
     let snap = await getBridgeSnapshotAsync();
-    if (!snap.flowKeyPresent || !snap.extensionConnected) {
-      console.log('[Flow Image] Session incomplete — auto bootstrap…');
-      await bootstrapFlow({
-        forceChrome: !snap.extensionConnected,
+    const sessionReady =
+      Boolean(snap.extensionConnected) && Boolean(snap.flowKeyPresent);
+    if (!sessionReady) {
+      console.log(
+        `[Flow Image] Session incomplete ext=${snap.extensionConnected} key=${snap.flowKeyPresent} — auto bootstrap…`,
+      );
+      const boot = await bootstrapFlow({
+        forceChrome: !snap.extensionConnected || !snap.flowKeyPresent,
         engine: 'auto',
-        waitExtensionMs: 35000,
-        waitLoginMs: 15000,
+        waitExtensionMs: 40000,
+        waitLoginMs: 25000,
       });
       snap = await getBridgeSnapshotAsync();
+      if (!snap.flowKeyPresent || !snap.extensionConnected) {
+        const detail =
+          boot.message ||
+          (!snap.extensionConnected
+            ? 'Extension chưa nối — đang/đã thử mở browser.'
+            : 'Chưa có token — đăng nhập Google trên browser Flow của app.');
+        return NextResponse.json(
+          {
+            error: `[Google Flow] ${detail}`,
+            loginRequired: Boolean(boot.loginRequired) || !snap.flowKeyPresent,
+            extensionConnected: snap.extensionConnected,
+            flowKeyPresent: snap.flowKeyPresent,
+            chromeLaunched: boot.chromeLaunched,
+            steps: boot.steps?.slice(-12),
+          },
+          { status: 503 },
+        );
+      }
     }
     if (!snap.flowKeyPresent) {
       return NextResponse.json(
         {
           error:
-            '[Google Flow] Chưa có token. Ảnh/Video → Engine Auto (Playwright/Ungoogled) → Đăng nhập Google trên browser app mở.',
+            '[Google Flow] Chưa có token. Ảnh/Video → Engine Auto → Đăng nhập Google trên browser app mở.',
+          loginRequired: true,
+          extensionConnected: snap.extensionConnected,
+          flowKeyPresent: false,
         },
         { status: 503 },
       );
@@ -68,25 +93,36 @@ export async function generateWithFlow(
       fs.writeFileSync(referenceImagePath, Buffer.from(referenceImageB64, 'base64'));
     }
 
-    // quality from body if present (2k/4k → FlowAgent upsample stage)
+    // quality from body if present (2k/4k → FlowAgent upsample stage); default HD (P1)
     const quality =
       typeof ctx.body.imageQuality === 'string'
         ? ctx.body.imageQuality
         : typeof ctx.body.quality === 'string'
           ? ctx.body.quality
-          : '1k';
+          : 'hd';
 
     const result = await runGenerateOne({
-      kind: 'image',
+      kind: ctx.body.edit === true || ctx.body.kind === 'edit' ? 'edit' : 'image',
       prompt: providerPrompt,
       chapterNum,
       sceneIndex,
       promptIndex,
       aspectRatio: imageAspectRatio,
       imageCount,
-      imageModel: model && model !== 'flow' && model !== 'imagen' ? model : 'GEM_PIX_2',
+      // resolveFlowImageModelName applied inside payloadBuilder
+      imageModel:
+        model && model !== 'flow' && model !== 'imagen' ? model : 'GEM_PIX_2',
       referenceImagePath,
       quality,
+      camera:
+        ctx.body.camera && typeof ctx.body.camera === 'object'
+          ? ctx.body.camera
+          : {
+              scaleIndex: Number(promptIndex) % 6,
+              move: 'static',
+              angle: 'eye',
+              focal: Number(promptIndex) % 6 <= 1 ? 'tele' : 'normal',
+            },
     });
 
     if (!result.ok || !result.resultPaths?.length) {

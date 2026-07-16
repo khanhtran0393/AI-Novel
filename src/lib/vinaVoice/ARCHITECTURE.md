@@ -25,7 +25,7 @@ Port **toàn bộ hành vi** app tham chiếu Vina-Voice vào AI Novel theo **c�
 ```
 bootstrap env
   → inspect ONNX brain (src/python_core/models/vina_voice ~1.46GB)
-  → speakerRegistry.resolveSpeaker(profile | ad-hoc | DEFAULT_NARRATOR)
+  → speakerRegistry.resolveSpeaker(profile | ad-hoc)
        catalog studio WAV  ==  zero-shot mồi
        user clone WAV      ==  zero-shot mồi
   → apply text rules + chunk
@@ -35,13 +35,13 @@ bootstrap env
   → finalizeWithProsody (ffmpeg speed/pitch)
   → public/audio or scene path
 
-Escape hatch ONLY:
-  forceBuiltin=true  OR  VINA_EMERGENCY_EDGE=1  → labeled EMERGENCY_EDGE (not ONNX)
+No fallback:
+  forceBuiltin / VINA_EMERGENCY_EDGE are disabled for voice identity.
 ```
 
 ## Nguyên lý
 
-- **Một não ONNX** cho catalog + clone + default narrator.
+- **Một não ONNX** cho catalog + clone.
 - **Không có** “giọng neural riêng”: mọi giọng = `(reference_audio, reference_text, seeds)`.
 - Modules: `speakerRegistry.ts`, `paths.ts` (brain lock), `engine.ts` (UVE), `vina_voice_infer.py`.
 
@@ -56,7 +56,7 @@ Escape hatch ONLY:
 - ONNX Runtime + librosa/soundfile (Python)
 - `ffmpeg` (prosody)
 - Optional: HTTP engine :8765 / XTTS
-- Emergency only: `edge-tts`
+- No emergency Edge path inside platform `vina_voice`
 
 ## API surface
 

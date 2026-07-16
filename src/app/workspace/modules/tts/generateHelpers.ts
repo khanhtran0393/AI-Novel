@@ -25,34 +25,33 @@ export function resolveTikTokSessionFromList({
   rotateIndex?: number;
 }) {
   const list = sessions.map((s) => String(s || '').trim()).filter(Boolean);
-  const fallback = (primary || '').trim();
-  if (list.length === 0) return fallback;
+  const configured = (primary || '').trim();
+  if (list.length === 0) return configured;
   if (list.length === 1) return list[0];
   const picked = list[Math.abs(rotateIndex) % list.length];
-  return picked || fallback || list[0];
+  if (!picked) {
+    throw new Error('TikTok session rotation failed: selected session is empty.');
+  }
+  return picked;
 }
 
 export function withRotatedTikTokSession({
   config,
-  fallbackPlatform,
   sessions,
-  fallbackSession,
   rotateIndex = 0,
 }: {
   config: TTSConfig | undefined;
-  fallbackPlatform?: string;
   sessions: string[];
-  fallbackSession?: string;
   rotateIndex?: number;
 }): TTSConfig | undefined {
   if (!config) return config;
-  const platform = config.platform || fallbackPlatform;
+  const platform = config.platform;
   if (platform !== 'tiktok_tts') return config;
   return {
     ...config,
     tiktokSessionId: resolveTikTokSessionFromList({
       sessions,
-      primary: config.tiktokSessionId || fallbackSession,
+      primary: config.tiktokSessionId,
       rotateIndex,
     }),
   };

@@ -19,6 +19,12 @@ export async function POST(req: Request) {
     const tasks = q.enqueueMany(body);
     return NextResponse.json({ tasks, queue: q.snapshot() });
   }
+  if (action === 'mode') {
+    if (body.mode === 'parallel' || body.mode === 'sequential') {
+      q.setMode(body.mode);
+    }
+    return NextResponse.json(q.snapshot());
+  }
   if (action === 'start') {
     if (body.mode === 'parallel' || body.mode === 'sequential') {
       q.setMode(body.mode);

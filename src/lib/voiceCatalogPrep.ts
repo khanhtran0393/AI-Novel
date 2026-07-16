@@ -4,7 +4,6 @@ import { API } from '@/contracts';
  * Gọi /api/tts/voices để merge: static + Piper scan + OmniVoice library + Vina profiles.
  */
 import {
-  STATIC_VOICE_CATALOG,
   cloneVoiceCatalog,
   countCatalogVoices,
   type VoiceCatalog,
@@ -120,34 +119,12 @@ export async function prepareVoiceCatalog(options?: {
       cachedPrep = result;
       return result;
     } catch (err) {
-      const fallback = cloneVoiceCatalog(STATIC_VOICE_CATALOG);
-      // best-effort client OmniVoice
-      try {
-        const omniRes = await fetch('/omnivoice-library.json', { signal: options?.signal });
-        if (omniRes.ok) {
-          const rows = await omniRes.json();
-          if (Array.isArray(rows)) {
-            const merged = mergeOmnivoiceIntoCatalog(fallback, rows);
-            const result: VoiceCatalogPrepResult = {
-              ok: true,
-              catalog: merged,
-              counts: countCatalogVoices(merged),
-              sources: ['static', 'omnivoice-client-fallback'],
-              preparedAt: new Date().toISOString(),
-              error: err instanceof Error ? err.message : String(err),
-            };
-            cachedPrep = result;
-            return result;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
+      const catalog: VoiceCatalog = {};
       const result: VoiceCatalogPrepResult = {
         ok: false,
-        catalog: fallback,
-        counts: countCatalogVoices(fallback),
-        sources: ['static-fallback'],
+        catalog,
+        counts: {},
+        sources: [],
         preparedAt: new Date().toISOString(),
         error: err instanceof Error ? err.message : String(err),
       };
@@ -162,7 +139,7 @@ export async function prepareVoiceCatalog(options?: {
 }
 
 export function getCachedPreparedCatalog(): VoiceCatalog {
-  return cachedPrep?.catalog || STATIC_VOICE_CATALOG;
+  return cachedPrep?.catalog || {};
 }
 
 export function clearVoiceCatalogCache(): void {

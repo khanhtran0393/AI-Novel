@@ -69,7 +69,7 @@ export async function runMultiVoiceTts(params: {
     onProgress,
   } = params;
   const total = voiceSegments.length;
-  const MAX_SEG_RETRY = 2;
+  const MAX_SEG_RETRY = 0;
   const plat = (
     activeConfig?.platform ||
     storeTtsConfig?.platform ||
@@ -136,9 +136,7 @@ export async function runMultiVoiceTts(params: {
         speed: typeof seg.speed === 'number' ? seg.speed : globalSpeed,
         pitch: typeof seg.pitch === 'number' ? seg.pitch : globalPitch,
       },
-      fallbackPlatform: storeTtsConfig?.platform,
       sessions: tiktokSessionIds,
-      fallbackSession: activeConfig?.tiktokSessionId || storeTtsConfig?.tiktokSessionId,
       rotateIndex: i + sceneIndex,
     }) as TTSConfig;
     let lastErr: Error | null = null;
@@ -158,9 +156,7 @@ export async function runMultiVoiceTts(params: {
           attempt > 0
             ? (withRotatedTikTokSession({
                 config: segConfig,
-                fallbackPlatform: storeTtsConfig?.platform,
                 sessions: tiktokSessionIds,
-                fallbackSession: activeConfig?.tiktokSessionId || storeTtsConfig?.tiktokSessionId,
                 rotateIndex: i + sceneIndex + attempt,
               }) as TTSConfig)
             : segConfig;

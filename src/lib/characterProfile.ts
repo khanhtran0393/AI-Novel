@@ -94,9 +94,13 @@ export interface NhanVatProfile {
   tts_voice: string;
   /** Khóa ngoại hình khuôn mặt (face lock) */
   ngoai_hinh: string;
-  /** Đặc điểm nhận dạng cố định: sẹo, nốt ruồi, xăm, khuyết tật, vật dụng... */
+  /** Đặc điểm nhận dạng cố định: sẹo, nốt ruồi, xăm, vật dụng signature... */
   dac_diem_nhan_dang: string;
-  /** Khuyết tật mạt thế / thương tật (nếu có) */
+  /**
+   * Khuyết điểm nhân vật (BẮT BUỘC có nội dung khi hồ sơ đầy đủ):
+   * điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế xã hội/tâm lý;
+   * có thể gồm thương tật thể chất nếu phù hợp Setup — KHÔNG ép "khuyết tật mạt thế".
+   */
   khuet_tat: string;
   /**
    * Master visual prompt (English) — khóa nhận diện gốc cho concept + consistency.
@@ -150,7 +154,7 @@ export function normalizeNhanVatProfile(
   };
 }
 
-/** Các trường text bắt buộc (khuyết tật mạt thế = tùy chọn) */
+/** Các trường text bắt buộc — khuyết điểm (`khuet_tat`) bắt buộc khi validate hồ sơ đầy đủ */
 export const CHAR_PROFILE_REQUIRED_FIELDS: Array<{
   key: keyof NhanVatProfile;
   label: string;
@@ -168,6 +172,11 @@ export const CHAR_PROFILE_REQUIRED_FIELDS: Array<{
   { key: 'tts_voice', label: 'Giọng đọc TTS', minLen: 2 },
   { key: 'ngoai_hinh', label: 'Face lock', minLen: 4 },
   { key: 'dac_diem_nhan_dang', label: 'Đặc điểm nhận dạng', minLen: 2 },
+  {
+    key: 'khuet_tat',
+    label: 'Khuyết điểm (điểm yếu / thói xấu / nỗi sợ — không bắt buộc khuyết tật mạt thế)',
+    minLen: 2,
+  },
   { key: 'prompt', label: 'Master prompt EN', minLen: 12 },
 ];
 
@@ -180,8 +189,8 @@ export type CharacterSetupStatus = {
 };
 
 /**
- * Hồ sơ NV setup xong = đủ MỌI trường bắt buộc + giọng TTS + ảnh tham chiếu.
- * `khuet_tat` không bắt buộc (không phải NV nào cũng có).
+ * Hồ sơ NV setup xong = đủ MỌI trường bắt buộc (gồm khuyết điểm) + giọng TTS + ảnh tham chiếu.
+ * Khuyết điểm = điểm yếu nhân vật, không ép "khuyết tật mạt thế".
  */
 export function getCharacterProfileSetupStatus(
   raw?: Partial<NhanVatProfile> | null,
@@ -247,7 +256,9 @@ export function buildIdentityLockEnglish(profile: Partial<NhanVatProfile> | unde
     parts.push(`Distinctive identifying marks (MUST keep identical every shot): ${profile.dac_diem_nhan_dang.trim()}`);
   }
   if (profile.khuet_tat?.trim()) {
-    parts.push(`Permanent trait/disability: ${profile.khuet_tat.trim()}`);
+    parts.push(
+      `Character flaw / weakness (behavioral or limiting trait — not forced post-apoc disability): ${profile.khuet_tat.trim()}`,
+    );
   }
   if (profile.quan_ao?.trim()) {
     parts.push(`Signature outfit: ${profile.quan_ao.trim()}`);
@@ -310,10 +321,6 @@ export function composeExpressionPrompt(
     .join(', ');
 }
 
-/**
- * ONE unified character reference sheet prompt:
- * master front portrait + 4-view turnaround + expression row — single image.
- */
 export function composeCharacterReferenceSheetPrompt(
   profile: Partial<NhanVatProfile>,
   charName?: string,
@@ -321,14 +328,17 @@ export function composeCharacterReferenceSheetPrompt(
   const identity = buildIdentityLockEnglish(profile);
   const nameHint = charName?.trim() ? `Character: ${charName.trim()}. ` : '';
   return [
-    `${nameHint}Professional character design reference sheet, single cohesive image, clean neutral studio background`,
-    'Layout: TOP ROW = large front-facing master portrait (head-and-shoulders, neutral expression)',
-    'MIDDLE ROW = full-body turnaround 4 views of the SAME character left-to-right: front, three-quarter, side profile, back',
-    'BOTTOM ROW = facial expression sheet close-ups of the SAME face: neutral, happy, sad, angry, fear, surprised, determined, pain',
+    `${nameHint}Professional comprehensive character design reference sheet, single cohesive image, clean neutral studio background`,
+    'Layout structure:',
+    '- MAIN: A large full-body presentation pose of the character prominently featured',
+    '- EXPRESSIONS: A row or section of facial expression close-ups (e.g. neutral, happy, surprised, curious, determined, pain, etc.)',
+    '- TURNAROUND: A full-body turnaround sequence showing multiple angles (front, 3/4 front, side, back, 3/4 rear)',
+    '- POSES: A sequence of various dynamic action poses (e.g. standing, walking, running, pointing, exploring, etc.)',
+    '- DETAILS: Close-up details of signature accessories, props, and a clean color palette block',
     identity || 'consistent character identity',
     'CRITICAL: identical face structure, hair, eyes, skin, scars/moles/marks, body proportions, and signature outfit in EVERY panel',
-    'Distinctive identifying marks must appear the same in portrait, all 4 turnaround angles, and all expression faces',
-    'Even panel spacing, model-sheet style, concept art production design, cinematic natural lighting, high detail, no text labels, no watermark, no logo',
+    'Distinctive identifying marks must appear the same in the main portrait, all turnaround angles, poses, and expression faces',
+    'Even panel spacing, meticulously organized model-sheet style layout, concept art production design, cinematic natural lighting, high detail, no text labels, no watermark, no logo',
   ]
     .filter(Boolean)
     .join('. ');
@@ -344,7 +354,7 @@ export function formatProfileBibleLine(name: string, p: Partial<NhanVatProfile>)
     `Trang phục=${p.quan_ao || '?'}`,
     p.ngoai_hinh ? `Ngoại hình=${p.ngoai_hinh}` : null,
     p.dac_diem_nhan_dang ? `Nhận dạng=${p.dac_diem_nhan_dang}` : null,
-    p.khuet_tat ? `Khuyết tật=${p.khuet_tat}` : null,
+    p.khuet_tat ? `Khuyết điểm=${p.khuet_tat}` : null,
     `Sở thích=${p.so_thich || '?'}`,
     `Thói quen=${p.thoi_quen || '?'}`,
     p.dong_co ? `Động cơ=${p.dong_co}` : null,

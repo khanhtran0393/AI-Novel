@@ -3,14 +3,36 @@
  * production-ready video prompts using the Director Formula
  * (Subject + Action + Scene + Camera + Lighting + Audio + Constraints).
  *
- * Knowledge distilled from D:\repo\seedance-2.0-main (prompt skill + directing engine).
- * Does not call Seedance API itself — enhances prompts for existing generate-video routes.
+ * Knowledge distilled from D:\repo\seedance-2.0-main:
+ * - references/directing-engine.md (scene-function coherent stacks)
+ * - skills/seedance-prompt + anti-slop
+ * - event-density: one visible beat per generation / per shot slot
+ * - multishot-grammar: ~4–6s per shot → AI Novel maps this to user `secondsPerBeat`
+ *
+ * Scope (honest): this is a **prompt compiler layer** inside AI Novel, NOT a full
+ * port of seedance-2.0 OS (no sequence project-state, clip contracts, continuation
+ * handoff, surface matrix, or Seedance API client). generate-video routes stay owners
+ * of actual media generation.
  */
 import fs from 'fs';
 import path from 'path';
 import { ensureWorkDirs, getIntegrationPaths } from './paths';
+import {
+  formatMultishotProse,
+  planMultishot,
+  splitActionBeats,
+} from './seedanceMultishot';
+import {
+  buildClipContract,
+  buildProjectStateFromChapter,
+  buildPromptSpec,
+} from './seedanceSequence';
 
 export type SeedanceMode = 'T2V' | 'I2V' | 'V2V' | 'R2V' | 'FLF2V' | 'edit' | 'extend';
+
+export * from './seedanceTypes';
+export * from './seedanceMultishot';
+export * from './seedanceSequence';
 
 export type SceneFunction =
   | 'intimate_dialogue'
@@ -49,7 +71,10 @@ export interface SeedanceCompileResult {
   audio: string;
   constraints: string;
   antiSlopNotes: string[];
-  source: 'seedance-bridge-v1';
+  source: 'seedance-bridge-v1' | 'seedance-bridge-v2';
+  /** Multishot plan metadata (v2) */
+  shotStructure?: string;
+  shotCount?: number;
 }
 
 const SCENE_FUNCTION_STACK: Record<
@@ -124,6 +149,7 @@ const SCENE_FUNCTION_STACK: Record<
   },
 };
 
+/** Anti-slop lexicon (references/anti-slop-lexicon.md) — empty evaluators + image-model tokens */
 const SLOP_WORDS = [
   'cinematic',
   'epic',
@@ -133,10 +159,32 @@ const SLOP_WORDS = [
   'masterpiece',
   '8k',
   '4k',
+  '8K',
   'ultra detailed',
+  'ultra-detailed',
+  'highly detailed',
   'best quality',
   'award-winning',
   'hyperrealistic',
+  'ultra-realistic',
+  'hyper realistic',
+  'trending on artstation',
+  'artstation',
+  'unreal engine',
+  'unreal engine 5',
+  'raw photo',
+  'gorgeous',
+  'mesmerizing',
+  'visually striking',
+  'insanely detailed',
+  'perfect',
+  'amazing',
+  'wonderful',
+  'dynamic',
+  'dramatic',
+  'atmospheric',
+  'vibey',
+  '电影感',
 ];
 
 function detectSceneFunction(text: string): SceneFunction {
@@ -175,6 +223,51 @@ function extractVisibleAction(sceneText: string): string {
   return (parts[0] || cleaned).slice(0, 220);
 }
 
+/**
+ * B10: no silent mat-the / dark-survival style.
+ * Callers must pass Visual DNA / Media Style and/or Setup genre (chu_de + phong_cach).
+ */
+export function requireDirectorStyle(input: {
+  styleHint?: string;
+  genre?: string;
+}): string {
+  const style = String(input.styleHint || '').trim();
+  if (style) return style;
+  const genre = String(input.genre || '').trim();
+  if (genre) return genre;
+  throw new Error(
+    'Thieu styleHint/genre cho cong thuc dao dien. Cau hinh Visual DNA / Media Style va Setup (Chu de + Phong cach). App khong tu gan mat the.',
+  );
+}
+
+/** Build genre label from Setup fields only — empty if not configured. */
+export function buildGenreFromSetup(opts: {
+  genre?: string;
+  chu_de?: string;
+  phong_cach?: string;
+}): string {
+  const explicit = String(opts.genre || '').trim();
+  if (explicit) return explicit;
+  const parts = [opts.chu_de, opts.phong_cach]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  return parts.join(' / ');
+}
+
+export function requireGenreFromSetup(opts: {
+  genre?: string;
+  chu_de?: string;
+  phong_cach?: string;
+}): string {
+  const g = buildGenreFromSetup(opts);
+  if (!g) {
+    throw new Error(
+      'Thieu genre/chu_de/phong_cach. Mo Setup chon Chu de + Phong cach truoc khi Gen Prompt. App khong tu gan mat the.',
+    );
+  }
+  return g;
+}
+
 function buildIntention(fn: SceneFunction, action: string): string {
   const map: Record<SceneFunction, string> = {
     intimate_dialogue: 'make the audience feel the private pressure between speakers',
@@ -192,7 +285,16 @@ function buildIntention(fn: SceneFunction, action: string): string {
   return `${map[fn]} — beat: ${action.slice(0, 80)}`;
 }
 
-export function compileSeedancePrompt(input: SeedanceCompileInput): SeedanceCompileResult {
+export interface SeedanceCompileInputV2 extends SeedanceCompileInput {
+  /** User Media Config beat — multishot budget preference */
+  secondsPerBeat?: number;
+  /** Prefer multishot labels even at shorter durations when true */
+  forceMultishot?: boolean;
+}
+
+export function compileSeedancePrompt(
+  input: SeedanceCompileInput | SeedanceCompileInputV2,
+): SeedanceCompileResult {
   const mode: SeedanceMode =
     input.mode ||
     (input.hasStartImage && input.hasEndImage
@@ -211,8 +313,15 @@ export function compileSeedancePrompt(input: SeedanceCompileInput): SeedanceComp
   const scene =
     input.environmentHint?.trim() ||
     'environment implied by the chapter lore — no generic empty backdrop';
-  const style = input.styleHint?.trim() || input.genre || 'dark survival realism, matte world, grounded debris';
-  const duration = input.durationSec && input.durationSec > 0 ? input.durationSec : 5;
+  const style = requireDirectorStyle(input);
+  const duration =
+    input.durationSec && input.durationSec > 0 ? input.durationSec : 0;
+  if (!duration) {
+    throw new Error(
+      'Thieu durationSec hop le cho compileSeedancePrompt. App khong tu gan 5s.',
+    );
+  }
+  const secondsPerBeat = (input as SeedanceCompileInputV2).secondsPerBeat;
 
   const i2vLead =
     mode === 'I2V' || mode === 'FLF2V'
@@ -224,30 +333,53 @@ export function compileSeedancePrompt(input: SeedanceCompileInput): SeedanceComp
       ? ' @Image2 is the final visual target; continuous transition only.'
       : '';
 
-  const promptParts = [
-    i2vLead + subjects + '.',
-    `Action (${duration}s, one visible beat): ${cleanAction}.`,
-    `Scene: ${scene}.`,
-    `Camera: ${stack.camera}.`,
-    `Lighting/Style: ${stack.lighting}; ${style}.`,
-    `Performance: ${stack.performance}.`,
-    `Sound: sparse ambient bed; one motivated cue; no wall-to-wall score.`,
-    `Constraints: one main subject focus; one camera move; no time-skip montage; refuse ${stack.refuse}; keep character consistency locks; do not invent logos or celebrity likeness.`,
-    flf,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  // Multishot grammar (multishot-grammar.md) when duration supports cuts
+  const plan = planMultishot({ durationSec: duration, secondsPerBeat });
+  const forceMs = Boolean((input as SeedanceCompileInputV2).forceMultishot);
+  const useMultishot = forceMs || plan.shotCount >= 2;
+
+  let promptParts: string;
+  if (useMultishot) {
+    const beats = splitActionBeats(cleanAction, plan.shotCount);
+    promptParts = formatMultishotProse({
+      plan,
+      subject: subjects,
+      actionBeats: beats.map((b) => `${b} (Scene: ${scene})`),
+      cameraStack: stack.camera,
+      lighting: stack.lighting,
+      performance: stack.performance,
+      style,
+      refuse: stack.refuse,
+      i2vLead,
+    });
+    if (flf) promptParts = `${promptParts} ${flf}`.trim();
+  } else {
+    promptParts = [
+      i2vLead + subjects + '.',
+      `Action (${duration}s, one visible beat): ${cleanAction}.`,
+      `Scene: ${scene}.`,
+      `Camera: ${stack.camera}.`,
+      `Lighting/Style: ${stack.lighting}; ${style}.`,
+      `Performance: ${stack.performance}.`,
+      `Sound: sparse ambient bed; one motivated cue; no wall-to-wall score.`,
+      `Constraints: one main subject focus; one camera move; no time-skip montage; refuse ${stack.refuse}; keep character consistency locks; do not invent logos or celebrity likeness.`,
+      flf,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
 
   const intention = buildIntention(fn, cleanAction);
 
-  // Optional compact Chinese variant for models that respond better to 中文 craft terms
   const promptZh = [
     mode === 'I2V' || mode === 'FLF2V' ? '严格保持@Image1人物身份与构图。' : '',
-    `主体：${subjects}。动作（${duration}秒，单节拍）：${cleanAction.slice(0, 160)}。`,
+    useMultishot
+      ? `主体：${subjects}。多镜头${plan.shotCount}段（约${plan.secondsPerShot}秒/镜）。`
+      : `主体：${subjects}。动作（${duration}秒，单节拍）：${cleanAction.slice(0, 160)}。`,
     `场景：${scene}。镜头：${stack.camera}。光影：${stack.lighting}；风格：${style}。`,
-    '音频：低环境音+一个动机音效。约束：单主体、单运镜、禁止堆叠形容词与时间跳跃。',
+    '音频：低环境音+一个动机音效。约束：单主体、禁止堆叠形容词与时间跳跃。',
   ]
     .filter(Boolean)
     .join('');
@@ -261,11 +393,13 @@ export function compileSeedancePrompt(input: SeedanceCompileInput): SeedanceComp
     camera: stack.camera,
     lighting: stack.lighting,
     audio: 'sparse ambient + one motivated cue',
-    constraints: `refuse: ${stack.refuse}`,
+    constraints: `refuse: ${stack.refuse}; shot_structure=${plan.shotStructure}; shots=${plan.shotCount}`,
     antiSlopNotes: removed.length
       ? removed.map((w) => `stripped slop word: ${w}`)
       : ['no hollow quality boosters detected'],
-    source: 'seedance-bridge-v1',
+    source: 'seedance-bridge-v2',
+    shotStructure: plan.shotStructure,
+    shotCount: plan.shotCount,
   };
 }
 
@@ -288,10 +422,7 @@ export function compileStillImagePrompt(input: {
   const subjects =
     (input.characterHints || []).filter(Boolean).slice(0, 4).join(', ') ||
     'the primary character established in the novel';
-  const style =
-    input.styleHint?.trim() ||
-    input.genre ||
-    'dark survival realism, matte debris world, grounded materials';
+  const style = requireDirectorStyle(input);
 
   // Still framing language (no time-based Action slot — still frame only)
   const body = [
@@ -361,6 +492,8 @@ export function applyDirectorFormulasToPromptPair(input: {
   styleHint?: string;
   genre?: string;
   durationSec?: number;
+  /** User Media Config — drives multishot density */
+  secondsPerBeat?: number;
 }): {
   image_prompt: string;
   video_prompt: string;
@@ -382,6 +515,7 @@ export function applyDirectorFormulasToPromptPair(input: {
     genre: input.genre,
     hasStartImage: true,
     durationSec: input.durationSec,
+    secondsPerBeat: input.secondsPerBeat,
   });
   return {
     image_prompt: imageMeta.prompt,
@@ -390,6 +524,67 @@ export function applyDirectorFormulasToPromptPair(input: {
     videoMeta,
   };
 }
+
+/**
+ * Full clip compile: contract + prompt-spec + directed NL prompt (Seedance v2 pipeline).
+ */
+export function compileDirectedClip(input: {
+  projectId?: string;
+  chapterNum: number;
+  sceneIndex: number;
+  promptIndex?: number;
+  sceneText: string;
+  videoPrompt?: string;
+  characterHints?: string[];
+  environmentHint?: string;
+  styleHint?: string;
+  genre?: string;
+  durationSec?: number;
+  secondsPerBeat?: number;
+  hasStartImage?: boolean;
+  hasEndImage?: boolean;
+  parentClipId?: string | null;
+  alreadyHappened?: string[];
+  reservedLater?: string[];
+}) {
+  const projectId =
+    input.projectId || `ainovel_ch${input.chapterNum}_${Date.now().toString(36)}`;
+  const contract = buildClipContract({
+    projectId,
+    chapterNum: input.chapterNum,
+    sceneIndex: input.sceneIndex,
+    promptIndex: input.promptIndex,
+    sceneText: input.sceneText,
+    durationSec: input.durationSec,
+    secondsPerBeat: input.secondsPerBeat,
+    hasStartImage: input.hasStartImage,
+    parentClipId: input.parentClipId,
+    alreadyHappened: input.alreadyHappened,
+    reservedLater: input.reservedLater,
+  });
+  const directed = compileSeedancePrompt({
+    sceneText: input.videoPrompt || input.sceneText,
+    characterHints: input.characterHints,
+    environmentHint: input.environmentHint,
+    styleHint: input.styleHint,
+    genre: input.genre,
+    hasStartImage: input.hasStartImage,
+    hasEndImage: input.hasEndImage,
+    durationSec: input.durationSec,
+    secondsPerBeat: input.secondsPerBeat,
+  });
+  const promptSpec = buildPromptSpec({
+    contract,
+    naturalLanguagePrompt: directed.prompt,
+    shotCount: directed.shotCount,
+    sequenceRelation: contract.parent_clip_id
+      ? 'seamless_continuation'
+      : 'sequence_first_clip',
+  });
+  return { projectId, contract, directed, promptSpec };
+}
+
+
 
 const DEFAULT_ANGLE_FRAMING: Record<string, string> = {
   front:
@@ -431,10 +626,11 @@ export function applyCharacterSheetFormulas(input: {
   expression_prompts: Record<string, string>;
 } {
   const name = (input.name || 'character').trim();
-  const style =
-    input.styleHint ||
-    'dark survival realism, matte debris world, grounded costume materials, identity lock';
-  const genre = input.genre || 'dark survival / mạt thế';
+  const style = requireDirectorStyle({
+    styleHint: input.styleHint,
+    genre: input.genre,
+  });
+  const genre = String(input.genre || '').trim() || style;
   const angleFraming = { ...DEFAULT_ANGLE_FRAMING, ...(input.angleFraming || {}) };
   const emotionFace = { ...DEFAULT_EMOTION_FACE, ...(input.emotionFace || {}) };
 
@@ -521,7 +717,11 @@ export function compileSeedanceBatch(
 }
 
 export function persistSeedanceCompile(
-  result: SeedanceCompileResult | Array<SeedanceCompileResult & { id?: string }>,
+  result:
+    | SeedanceCompileResult
+    | Array<SeedanceCompileResult & { id?: string }>
+    | Record<string, unknown>
+    | object,
   label = 'compile',
 ): string {
   const paths = getIntegrationPaths();

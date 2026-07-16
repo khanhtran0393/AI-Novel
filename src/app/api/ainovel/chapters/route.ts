@@ -18,14 +18,19 @@ export async function GET() {
     });
   }
 
-  // Fallback: outline chapters from project store (chưa draft)
+  // IRON B10: disk rỗng → trả rỗng + cờ, không giả làm engine chapters từ outline store
   const ctx = loadProjectContext();
-  const chapters = (ctx.danh_sach_chuong || []).map((c) => ({
+  const outline = (ctx.danh_sach_chuong || []).map((c) => ({
     id: c.so_chuong,
     title: c.tieu_de || `Chương ${c.so_chuong}`,
-    status: c.noi_dung?.trim() ? 'draft' : 'empty',
+    status: c.noi_dung?.trim() ? 'workspace_draft' : 'empty',
     wordCount: 0,
   }));
 
-  return NextResponse.json({ chapters });
+  return NextResponse.json({
+    chapters: [],
+    outlineOnly: outline,
+    warning:
+      'Chưa có chương engine (.ainovel-app). Không fallback outline thành chapters. Chạy writer/commit trước.',
+  });
 }

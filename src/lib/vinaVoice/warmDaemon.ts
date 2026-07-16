@@ -8,6 +8,7 @@ import path from 'path';
 import { getVinaInferScript, resolveVinaPython } from './paths';
 import {
   noteVinaRestart,
+  vinaRssMinUptimeS,
   vinaWorkerRssSoftMb,
   withGpuTtsSlot,
 } from '@/lib/tts/gpuTtsGuard';
@@ -51,11 +52,18 @@ type Worker = {
   alive: boolean;
   /** true after JSON event:ready (models loaded) */
   ready: boolean;
+  /** epoch ms when process spawned */
+  startedAt: number;
+  /** epoch ms when event:ready received */
+  readyAt: number;
 };
 
 let workers: Worker[] = [];
 let seq = 0;
 let starting: Promise<void> | null = null;
+/** Last RSS recycle time — prevent thrash loops */
+let lastRssRecycleAt = 0;
+const RSS_RECYCLE_COOLDOWN_MS = 5 * 60 * 1000;
 /** After first successful synth/load, stick to working EP (avoid CUDA spam next boot). */
 let lastGoodProvider: 'auto' | 'cuda' | 'dml' | 'cpu' = readCachedProvider();
 
@@ -179,6 +187,7 @@ function handleWorkerLine(w: Worker, line: string) {
   }
   if (msg.event === 'ready') {
     w.ready = true;
+    w.readyAt = Date.now();
     const prov = msg.providers || [];
     console.log(`[vina_daemon] worker#${w.id} ready`, prov);
     const p0 = String(prov[0] || '').toLowerCase();
@@ -309,6 +318,8 @@ function spawnOneWorker(cwd: string, id: number): Worker | null {
     buf: '',
     pending: new Map(),
     inflight: 0,
+    startedAt: Date.now(),
+    readyAt: 0,
     alive: true,
     ready: false,
   };
@@ -376,11 +387,11 @@ export async function ensureVinaDaemon(cwd = process.cwd()): Promise<boolean> {
 function pickWorker(): Worker | null {
   const live = workers.filter((w) => w.alive && w.child.stdin.writable);
   if (!live.length) return null;
-  // Prefer ready workers; fall back to any live (job queues until brain.ensure)
+  // IRON B10: chỉ worker ready — không giao job cho process chưa load brain
   const ready = live.filter((w) => w.ready);
-  const pool = ready.length ? ready : live;
-  pool.sort((a, b) => a.inflight - b.inflight || a.id - b.id);
-  return pool[0];
+  if (!ready.length) return null;
+  ready.sort((a, b) => a.inflight - b.inflight || a.id - b.id);
+  return ready[0];
 }
 
 function workerRssMb(pid: number | undefined): number | null {
@@ -398,22 +409,48 @@ function workerRssMb(pid: number | undefined): number | null {
   }
 }
 
-/** Recycle daemon if any worker WorkingSet ≥ soft threshold (VRAM/RAM bloat). */
+/**
+ * Recycle daemon only when truly bloated — never thrash right after load.
+ * Steady Vina after ONNX load is often 2.8–4.0GB WorkingSet; that is normal.
+ */
 export async function recycleVinaDaemonIfHeavy(cwd = process.cwd()): Promise<boolean> {
   const soft = vinaWorkerRssSoftMb();
+  const minUp = vinaRssMinUptimeS();
+  const now = Date.now();
+  if (now - lastRssRecycleAt < RSS_RECYCLE_COOLDOWN_MS) {
+    return false;
+  }
+
   let heavy = false;
   for (const w of workers) {
     if (!w.alive || !w.child.pid) continue;
+    // Never kill mid-job
+    if (w.inflight > 0) continue;
+    // Wait for ready + min uptime (default 180s)
+    const uptimeS =
+      w.readyAt > 0
+        ? (now - w.readyAt) / 1000
+        : (now - (w.startedAt || now)) / 1000;
+    if (uptimeS < minUp) {
+      const rssEarly = workerRssMb(w.child.pid);
+      if (rssEarly != null && rssEarly >= soft) {
+        console.log(
+          `[vina_daemon] worker#${w.id} RSS ${rssEarly.toFixed(0)}MB ≥ soft ${soft}MB but uptime ${uptimeS.toFixed(0)}s < ${minUp}s — skip recycle`,
+        );
+      }
+      continue;
+    }
     const rss = workerRssMb(w.child.pid);
     if (rss != null && rss >= soft) {
       console.warn(
-        `[vina_daemon] worker#${w.id} RSS ${rss.toFixed(0)}MB ≥ soft ${soft}MB — recycle`,
+        `[vina_daemon] worker#${w.id} RSS ${rss.toFixed(0)}MB ≥ soft ${soft}MB (uptime ${uptimeS.toFixed(0)}s) — recycle`,
       );
       heavy = true;
       break;
     }
   }
   if (!heavy) return false;
+  lastRssRecycleAt = now;
   noteVinaRestart();
   killAllDaemons();
   await ensureVinaDaemon(cwd);
@@ -426,9 +463,10 @@ export async function daemonSynth(
 ): Promise<DaemonSynthResult> {
   // Exclusive GPU: unload Omni when Vina runs; serial with Omni
   // Job timeout stays on the JSON job (not outer race that leaks the mutex)
-  const jobTimeout = job.timeoutMs ?? 150_000;
-  // Slot budget = load daemon + synth
-  const slotTimeout = Math.max(jobTimeout + 60_000, 180_000);
+  // Preview first-load on 4GB CUDA often 90–180s; default was 150s → false timeout → stacked one-shots.
+  const jobTimeout = job.timeoutMs ?? 240_000;
+  // Slot budget = load daemon + synth (+ respawn headroom)
+  const slotTimeout = Math.max(jobTimeout + 90_000, 330_000);
 
   return withGpuTtsSlot(
     'vina',
@@ -465,11 +503,21 @@ export async function daemonSynth(
       w.inflight += 1;
       return new Promise<DaemonSynthResult>((resolve) => {
         const timer = setTimeout(() => {
+          // CRITICAL: hung CUDA/ORT jobs leave the worker deadlocked.
+          // Must kill + drop worker so the next request can respawn clean brain.
+          // (Previously only resolved error → next jobs queued into a stuck worker.)
+          console.error(
+            `[vina_daemon] worker#${w.id} TIMEOUT ${jobTimeout}ms id=${id} — killing hung worker`,
+          );
+          // Remove self first so killWorker only fails *other* pending jobs
           w.pending.delete(id);
           w.inflight = Math.max(0, w.inflight - 1);
+          noteVinaRestart();
+          killWorker(w);
+          workers = workers.filter((x) => x.id !== w.id);
           resolve({
             ok: false,
-            error: `Daemon timeout ${jobTimeout}ms`,
+            error: `Daemon timeout ${jobTimeout}ms (worker killed)`,
             workerId: w.id,
           });
         }, jobTimeout);
@@ -520,8 +568,9 @@ export function resolveNfeStep(opts: {
   const envPreview = Number(process.env.VINA_NFE_PREVIEW);
   const envChapter = Number(process.env.VINA_NFE_CHAPTER);
   if (opts.isPreview) {
+    // Preview: low NFE for nghe-thử speed (CPU ~1–2min; CUDA 4GB often OOMs higher NFE)
     if (Number.isFinite(envPreview) && envPreview > 0) return Math.trunc(envPreview);
-    return 12;
+    return 4;
   }
   if (opts.isChapter) {
     if (Number.isFinite(envChapter) && envChapter > 0) return Math.trunc(envChapter);

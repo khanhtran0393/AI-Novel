@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Novel & Script Generator - Trình Sinh Kịch Bản Tiểu Thuyết Mạt Thế",
-  description: "Trợ lý Biên kịch Sản xuất chuyên nghiệp tối ưu hóa cho tác phẩm sinh tồn, mạt thế áp dụng AI.",
+  title: "AI Novel & Script Generator - Trình Sinh Kịch Bản / Narration YouTube",
+  description: "Trợ lý Biên kịch Sản xuất chuyên nghiệp — bám Setup chủ đề/phong cách, tối ưu kịch bản narration YouTube với AI.",
 };
 
 export default function RootLayout({

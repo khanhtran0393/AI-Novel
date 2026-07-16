@@ -3,6 +3,13 @@ import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
+import {
+  clearNvencProbeCache,
+  probeH264Nvenc,
+} from '@/lib/ffmpeg/nvencProbe';
+import { resolveNvidiaDriverForGpu } from '@/lib/ffmpeg/nvidiaDriverLookup';
+import { resolveFfmpegPath } from '@/lib/capassistant/core';
+import { spawnSync } from 'child_process';
 
 const execAsync = util.promisify(exec);
 
@@ -125,6 +132,44 @@ export async function GET(req: Request) {
       console.error('[System Info] GPU scan failed:', err);
     }
 
+    // Prefer nvidia-smi product name (cleaner than OEM WMIC strings)
+    try {
+      const smi = spawnSync(
+        'nvidia-smi',
+        ['--query-gpu=name,driver_version', '--format=csv,noheader'],
+        { encoding: 'utf8', windowsHide: true, timeout: 4000 },
+      );
+      if (smi.status === 0 && String(smi.stdout || '').trim()) {
+        const line = String(smi.stdout).split(/\r?\n/).map((l) => l.trim()).find(Boolean);
+        if (line) {
+          const parts = line.split(',').map((s) => s.trim());
+          const smiName = parts[0];
+          const smiDrv = parts[1] || '';
+          if (smiName) {
+            primaryGpu = {
+              ...primaryGpu,
+              name: smiName.startsWith('NVIDIA') ? smiName : `NVIDIA ${smiName}`,
+              driverVersion: smiDrv || primaryGpu.driverVersion,
+              vendor: 'nvidia',
+              hasNvidia: true,
+            };
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // Exact NVIDIA driver package for this GPU (AjaxDriverService)
+    let nvidiaDriver: Awaited<ReturnType<typeof resolveNvidiaDriverForGpu>> | null = null;
+    if (primaryGpu.hasNvidia || primaryGpu.vendor === 'nvidia') {
+      try {
+        nvidiaDriver = await resolveNvidiaDriverForGpu(primaryGpu.name, { force: true });
+      } catch (err) {
+        console.error('[System Info] NVIDIA driver lookup failed:', err);
+      }
+    }
+
     // 2. Determine python path
     const localPython = 'D:\\SuperAudioTools\\omnivoice-python\\python.exe';
     const pythonExe = fs.existsSync(localPython) ? localPython : 'python';
@@ -148,13 +193,22 @@ export async function GET(req: Request) {
     }
 
     // 4. Test FFmpeg GPU encoders (real yuv420p frames — nullsrc is unreliable)
-    const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
-    const coreFfmpeg = path.join(process.cwd(), 'python_core', 'ffmpeg', 'ffmpeg.exe');
-    const ffmpegCmd = fs.existsSync(localFfmpeg)
-      ? `"${localFfmpeg}"`
-      : fs.existsSync(coreFfmpeg)
-        ? `"${coreFfmpeg}"`
-        : 'ffmpeg';
+    // h264_nvenc: shared probe with Phantom-X (force refresh on full scan)
+    const ffmpegPath = resolveFfmpegPath();
+    const ffmpegCmd = `"${ffmpegPath}"`;
+
+    clearNvencProbeCache();
+    // Probe all candidate FFmpeg (bin + python_core) — GTX 10xx often needs older binary
+    const nvencProbe = probeH264Nvenc({ force: true });
+    const nvenc = {
+      supported: nvencProbe.ok,
+      error: nvencProbe.ok ? '' : nvencProbe.errorDetail || nvencProbe.message,
+      message: nvencProbe.message,
+      bf2Ok: nvencProbe.bf2Ok,
+      ffmpegPath: nvencProbe.ffmpegPath,
+      usedCompatFfmpeg: nvencProbe.usedCompatFfmpeg,
+      preset: nvencProbe.preset,
+    };
 
     const testEncoder = async (codecName: string) => {
       try {
@@ -180,7 +234,6 @@ export async function GET(req: Request) {
       }
     };
 
-    const nvenc = await testEncoder('h264_nvenc');
     const amf = await testEncoder('h264_amf');
     const qsv = await testEncoder('h264_qsv');
 
@@ -211,6 +264,8 @@ export async function GET(req: Request) {
       scannedAt: new Date().toISOString(),
       gpus,
       gpu: primaryGpu,
+      /** Exact driver for scanned GPU — Phantom-X / NVENC install CTA */
+      nvidiaDriver,
       python: {
         path: pythonExe,
         version: pythonStatus.python,
@@ -223,12 +278,19 @@ export async function GET(req: Request) {
       ffmpeg: {
         nvencSupported: nvenc.supported,
         nvencError: nvenc.error,
+        nvencMessage: nvenc.message,
+        nvencBf2Ok: nvenc.bf2Ok,
+        nvencFfmpegPath: nvenc.ffmpegPath,
+        nvencUsedCompatFfmpeg: nvenc.usedCompatFfmpeg,
+        nvencPreset: nvenc.preset,
         amfSupported: amf.supported,
         amfError: amf.error,
         qsvSupported: qsv.supported,
         qsvError: qsv.error,
         nvencSupportedOld: nvenc.supported,
         error: nvenc.error || amf.error || qsv.error || '',
+        /** Primary app FFmpeg (may differ from NVENC-capable binary) */
+        ffmpegPath,
       },
       readiness: {
         /** PyTorch CUDA / ONNX GPU / DirectML — AI local acceleration */

@@ -2,7 +2,7 @@ import { postGenerate } from './apiClient';
 /**
  * Module quản lý các thao tác tương tác phân cảnh (Scene Card Interactivity Manager)
  */
-import type { Chuong } from '@/store/useNovelStore';
+import { useNovelStore, type Chuong } from '@/store/useNovelStore';
 import { parseScenes } from '../utils/stringUtils';
 
 
@@ -59,6 +59,14 @@ export async function expandSceneAction(params: ExpandSceneParams): Promise<stri
   void apiKey;
   void apiKeys;
 
+  const store = useNovelStore.getState();
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi mo rong canh.',
+    );
+  }
   const data = await postGenerate('EXPAND_SCENE', {
     ten_tac_pham,
     chuong_hien_tai: currentChapter,
@@ -71,8 +79,15 @@ export async function expandSceneAction(params: ExpandSceneParams): Promise<stri
         ? scenes[idx + 1].content
         : '',
     is_hook: !!isHook,
+    chu_de,
+    phong_cach,
+    genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
   });
-  return String(data.expanded_content || sceneToExpand.content).normalize('NFC');
+  const expanded = String(data.expanded_content || '').trim();
+  if (!expanded) {
+    throw new Error('API mo rong canh tra rong. Khong dung fill cuc bo.');
+  }
+  return expanded.normalize('NFC');
 }
 
 interface RewriteSceneParams {
@@ -107,6 +122,14 @@ export async function rewriteSceneAction(params: RewriteSceneParams): Promise<st
   void apiKey;
   void apiKeys;
 
+  const store = useNovelStore.getState();
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  if (!chu_de && !phong_cach) {
+    throw new Error(
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi viet lai canh.',
+    );
+  }
   const data = await postGenerate('REWRITE_SCENE', {
     ten_tac_pham,
     chuong_hien_tai: currentChapter,
@@ -120,6 +143,13 @@ export async function rewriteSceneAction(params: RewriteSceneParams): Promise<st
         : '',
     is_hook: !!isHook,
     humanize_script: humanize !== false,
+    chu_de,
+    phong_cach,
+    genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
   });
-  return String(data.rewritten_content || sceneToRewrite.content).normalize('NFC');
+  const rewritten = String(data.rewritten_content || '').trim();
+  if (!rewritten) {
+    throw new Error('API viet lai canh tra rong. Khong dung fill cuc bo.');
+  }
+  return rewritten.normalize('NFC');
 }

@@ -4,7 +4,6 @@
  */
 import type { NhanVatProfile } from './characterProfile';
 import {
-  STATIC_VOICE_CATALOG,
   getCharacterVoiceOptions as getCatalogCharacterVoices,
   type VoiceOption as CatalogVoiceOption,
   type VoiceCatalog,
@@ -19,10 +18,10 @@ export type VoiceOption = CatalogVoiceOption;
  */
 export function getCharacterVoiceOptions(
   platform: string,
-  language = 'vi',
+  language = '',
   opts?: { includeAllLanguages?: boolean; catalog?: VoiceCatalog },
 ): VoiceOption[] {
-  const catalog = opts?.catalog || getCachedPreparedCatalog() || STATIC_VOICE_CATALOG;
+  const catalog = opts?.catalog || getCachedPreparedCatalog();
   return getCatalogCharacterVoices(platform, language, {
     includeAllLanguages: opts?.includeAllLanguages !== false,
     catalog,
@@ -64,18 +63,13 @@ function profileQuirkBlob(profile: Partial<NhanVatProfile> | undefined): string 
 export function suggestVoiceFromProfile(
   profile: Partial<NhanVatProfile> | undefined,
   platform: string,
-  language = 'vi',
+  language = '',
 ): string {
+  if (!platform.trim() || !language.trim()) return '';
   const options = getCharacterVoiceOptions(platform, language, {
-    // Ưu tiên language hiện tại khi gợi ý (tránh gán EN voice cho truyện VI)
     includeAllLanguages: false,
   });
-  // Nếu language rỗng giọng → full list
-  const pool =
-    options.length > 0
-      ? options
-      : getCharacterVoiceOptions(platform, language, { includeAllLanguages: true });
-  if (pool.length === 0) return '';
+  if (options.length === 0) return '';
 
   const gender = isFemaleGender(profile?.gioi_tinh || '');
   const quirk = profileQuirkBlob(profile);
@@ -87,64 +81,15 @@ export function suggestVoiceFromProfile(
     gender === false ||
     /(cộc|khàn|trầm|thô|lạnh|cộc lốc|đàn ông|nam|gằn|cứng)/i.test(quirk);
 
-  // Platform-specific classic picks (stable defaults)
-  // vina_voice: profile names are zero-shot speakers (catalog WAV mồi)
-  if (platform === 'vina_voice') {
-    if (femaleBias && !maleBias) {
-      const f = pool.find(
-        (o) =>
-          o.gender === 'female' ||
-          /nữ|nu |female|cô |chị /i.test(o.name || o.id),
-      );
-      if (f) return f.id;
-    }
-    if (maleBias && !femaleBias) {
-      const m = pool.find(
-        (o) =>
-          o.gender === 'male' ||
-          /nam |già|male|ông |chú /i.test(o.name || o.id),
-      );
-      if (m) return m.id;
-    }
-    return pool[0]?.id || '';
-  }
-  if (platform === 'edge_tts') {
-    if (maleBias && !femaleBias) return 'vi-VN-NamMinhNeural';
-    if (femaleBias) return 'vi-VN-HoaiMyNeural';
-  }
-  if (platform === 'openai_tts') {
-    if (maleBias && !femaleBias) {
-      return /(trầm|khàn|cộc)/i.test(quirk) ? 'onyx' : 'echo';
-    }
-    if (femaleBias) {
-      return /(ngọt|mềm|nhẹ)/i.test(quirk) ? 'shimmer' : 'nova';
-    }
-    return 'alloy';
-  }
-  if (platform === 'gemini_tts') {
-    if (maleBias && !femaleBias) {
-      return /(trầm|cộc)/i.test(quirk) ? 'Charon' : 'Orus';
-    }
-    if (femaleBias) {
-      return /(trẻ|nhẹ|dí)/i.test(quirk) ? 'Leda' : 'Kore';
-    }
-    return 'Puck';
-  }
-  if (platform === 'tiktok_tts' || platform === 'capcut_tts') {
-    if (maleBias && !femaleBias) return 'BV075_streaming';
-    return 'BV074_streaming';
-  }
-
-  // Generic: pick by VoiceOption.gender metadata
   if (femaleBias && !maleBias) {
-    const f = pool.find((o) => o.gender === 'female');
+    const f = options.find((o) => o.gender === 'female');
     if (f) return f.id;
   }
   if (maleBias && !femaleBias) {
-    const m = pool.find((o) => o.gender === 'male');
+    const m = options.find((o) => o.gender === 'male');
     if (m) return m.id;
   }
-  return pool[0].id;
+  return '';
 }
 
 export type SuggestedProsody = {
@@ -448,9 +393,15 @@ export function parseScriptVoiceSegments(params: {
     .map((seg) => {
       const cleaned = cleanSegmentText(seg.text);
       if (!cleaned) return null;
-      const voice =
-        (seg.speaker && characterVoices[seg.speaker]?.trim()) ||
-        defaultVoice;
+      const voice = seg.speaker
+        ? (characterVoices[seg.speaker] || '').trim()
+        : defaultVoice.trim();
+      if (seg.speaker && !voice) {
+        throw new Error(`Nhan vat "${seg.speaker}" chua gan tts_voice. App khong tu gan voice.`);
+      }
+      if (!seg.speaker && !voice) {
+        throw new Error('Nguoi ke chua co defaultVoice. App khong tu gan voice.');
+      }
       return {
         speaker: seg.speaker,
         text: cleaned,

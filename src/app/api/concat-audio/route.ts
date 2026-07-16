@@ -43,6 +43,17 @@ function resolvePublicAudioPath(audioPath: string): string | null {
   return abs;
 }
 
+function isDisposableMultiPart(absPath: string): boolean {
+  const audioRoot = path.join(process.cwd(), 'public', 'audio');
+  const multiRoot = path.join(audioRoot, 'multi');
+  const base = path.basename(absPath);
+  const normalized = path.resolve(absPath);
+  return (
+    normalized.startsWith(path.resolve(multiRoot)) &&
+    /^part_[a-zA-Z0-9_-]+\.(mp3|wav)$/i.test(base)
+  );
+}
+
 function probeDurationSec(filePath: string): number {
   try {
     const ffprobeLocal = path.join(process.cwd(), 'bin', 'ffprobe.exe');
@@ -221,7 +232,7 @@ export async function POST(req: Request) {
       for (const abs of absPaths) {
         try {
           const base = path.basename(abs);
-          if (/scene_99\d+/.test(base) || /_multi_part_/.test(base)) {
+          if (/scene_99\d+/.test(base) || /_multi_part_/.test(base) || isDisposableMultiPart(abs)) {
             fs.unlinkSync(abs);
           }
         } catch {

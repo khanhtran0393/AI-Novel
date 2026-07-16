@@ -92,8 +92,7 @@ export function getTTSApiCredentials(state: NovelStoreSnapshot) {
 }
 
 /**
- * Default voice when user never opened TTS Config.
- * Empty voice blocks chapter preflight → buttons look "dead".
+ * Voice must be selected explicitly in TTS Config.
  */
 export function resolveDefaultTtsVoice(state: NovelStoreSnapshot): {
   voice: string;
@@ -102,22 +101,10 @@ export function resolveDefaultTtsVoice(state: NovelStoreSnapshot): {
   const current = (state.ttsConfig?.voice || '').trim();
   if (current) return { voice: current, autoFilled: false };
 
-  const platform = (state.ttsConfig?.platform || 'edge_tts').toLowerCase();
-  const lang = (state.ttsConfig?.language || 'vi').toLowerCase();
-  let fallback = 'vi-VN-HoaiMyNeural';
-  if (platform.includes('openai')) fallback = 'alloy';
-  else if (platform.includes('gemini')) fallback = 'Kore';
-  else if (platform.includes('piper'))
-    fallback = lang.startsWith('en') ? 'en_US-lessac-medium' : 'vi_VN-vivos-x_low';
-  else if (platform.includes('tiktok')) fallback = 'vi_female_1';
-  else if (lang.startsWith('en')) fallback = 'en-US-JennyNeural';
-
-  try {
-    state.updateTTSConfig?.({ voice: fallback }, { mirrorChannel: false });
-  } catch {
-    /* ignore */
-  }
-  return { voice: fallback, autoFilled: true };
+  const platform = (state.ttsConfig?.platform || '').trim() || '(chua chon platform)';
+  throw new Error(
+    `Chua chon voice TTS cho platform "${platform}". App khong tu gan voice.`,
+  );
 }
 
 export interface SceneAutomationOptions {

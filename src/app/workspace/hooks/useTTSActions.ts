@@ -63,20 +63,26 @@ export function useTTSActions() {
 
   const handlePlayTTS = async (text: string, sceneIndex: number, voice: string) => {
     handleStopTTS();
-    const state = useNovelStore.getState();
-    resolveDefaultTtsVoice(state);
-    const live = useNovelStore.getState();
-    const finalVoice = (voice || live.ttsConfig.voice || '').trim();
-    const ttsApiCredentials = getTTSApiCredentials(live);
-
     try {
+      const state = useNovelStore.getState();
+      const voiceRes = voice?.trim()
+        ? { voice: voice.trim(), autoFilled: false }
+        : resolveDefaultTtsVoice(state);
+      const live = useNovelStore.getState();
+      const finalVoice = voiceRes.voice.trim();
+      const ttsApiCredentials = getTTSApiCredentials(live);
+      const title = (live.ten_tac_pham || '').trim();
+      if (!title) {
+        throw new Error('Chua nhap ten_tac_pham. App khong tu gan ten truyen.');
+      }
+
       await playTTSAction({
         text,
         voice: finalVoice,
         ttsConfig: live.ttsConfig,
         apiKeys: ttsApiCredentials.apiKeys,
         apiKey: ttsApiCredentials.apiKey,
-        ten_tac_pham: live.ten_tac_pham || 'Kịch Bản Vô Danh',
+        ten_tac_pham: title,
         onStart: () => {
           setIsPlayingTTS(prev => ({ ...prev, [sceneIndex]: true }));
         },
@@ -114,7 +120,14 @@ export function useTTSActions() {
   ): Promise<number | undefined> => {
     const state = useNovelStore.getState();
     const chapterNumber = options.chapterNumber || state.chuong_dang_chon;
-    const finalVoice = voice || state.ttsConfig.voice;
+    let finalVoice = '';
+    try {
+      finalVoice = (voice || resolveDefaultTtsVoice(state).voice).trim();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!options.silent) toast.error('TTS', msg);
+      throw err;
+    }
     const ttsApiCredentials = getTTSApiCredentials(state);
     const cost = 1;
 
@@ -157,7 +170,7 @@ export function useTTSActions() {
         nhanVatPrompts: state.nhan_vat_prompts || {},
         defaultVoice: finalVoice || state.ttsConfig.voice || '',
         platform: state.ttsConfig.platform,
-        language: state.ttsConfig.language || 'vi',
+        language: (state.ttsConfig.language || '').trim(),
         globalSpeed: state.ttsConfig.speed ?? 1,
         globalPitch: state.ttsConfig.pitch ?? 0,
       });
@@ -197,6 +210,10 @@ export function useTTSActions() {
     state.addGeneratedAudio(assetKey, '', 0);
 
     try {
+      const title = (state.ten_tac_pham || '').trim();
+      if (!title) {
+        throw new Error('Chua nhap ten_tac_pham. App khong tu gan ten truyen.');
+      }
       const { audioPath, duration, selfRepair, multi, segmentCount } = await generateTTSAction({
         apiKey: ttsApiCredentials.apiKey,
         apiKeys: ttsApiCredentials.apiKeys,
@@ -206,7 +223,7 @@ export function useTTSActions() {
         savePathTTS: state.savePathTTS || '',
         googleDrivePath: state.googleDrivePath || '',
         voice: finalVoice,
-        ten_tac_pham: state.ten_tac_pham || 'Kịch Bản Vô Danh',
+        ten_tac_pham: title,
         ttsConfig: state.ttsConfig,
         targetDuration,
         syncMode: state.ttsConfig.syncMode,

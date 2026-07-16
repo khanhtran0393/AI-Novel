@@ -163,8 +163,8 @@ export async function POST(req: Request) {
       engine.online
         ? engine.xtts_available
           ? 'engine=xtts'
-          : 'engine=online_edge_match'
-        : 'engine=offline_builtin',
+          : 'engine=online_http'
+        : 'engine=offline_onnx_only',
     );
 
     // Persist profile

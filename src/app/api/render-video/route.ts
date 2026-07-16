@@ -141,17 +141,14 @@ export async function POST(req: Request) {
         currentSeconds += durationPerImage;
       });
     } else {
-      // Nếu không có ảnh nào, tạo 1 cut text cảnh báo
-      cuts.push({
-        id: `empty-scene`,
-        type: 'text_card',
-        in_seconds: currentSeconds,
-        out_seconds: currentSeconds + 5,
-        text: "Bạn chưa tạo ảnh nào cho chương này.",
-        color: "#F8FAFC",
-        backgroundColor: "#991B1B"
-      });
-      currentSeconds += 5;
+      // IRON B10: không render video giả / text card che thiếu ảnh
+      return NextResponse.json(
+        {
+          error:
+            'Chưa có ảnh nào cho chương này. Không tạo video placeholder. Gen ảnh storyboard trước rồi render lại.',
+        },
+        { status: 400 },
+      );
     }
 
     const propsPayload = {

@@ -54,17 +54,10 @@ export const provider_vieneu_tts: TTSProvider = {
     }
 
     if (!available.includes(modelName)) {
-      const female = /nu|female|huyen|chi|my|mai|thao|van|linh|yen/i.test(
-        rawVoice + key,
+      throw new Error(
+        `VieNeu: voice "${rawVoice}" khong map duoc sang model Piper .onnx. ` +
+          `Co san: ${available.join(', ') || '(trong)'}. Khong fallback sang voice khac.`,
       );
-      const prefer = female ? 'ngochuyen.onnx' : 'manhdung.onnx';
-      if (available.includes(prefer)) modelName = prefer;
-      else if (available[0]) modelName = available[0];
-      else {
-        throw new Error(
-          'VieNeu: không có model Piper .onnx trong bin/piper_vn (không fallback Edge).',
-        );
-      }
     }
 
     console.log(`[VieNeu-TTS] Piper: ${modelName}`);

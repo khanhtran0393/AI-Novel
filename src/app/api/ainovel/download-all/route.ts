@@ -14,20 +14,14 @@ export async function GET() {
   const chapters = listChapters().filter((c) => c.content.trim());
 
   if (chapters.length === 0) {
-    // Fallback store outline content
-    const fromStore = (ctx.danh_sach_chuong || []).filter((c) => c.noi_dung?.trim());
-    if (fromStore.length === 0) {
-      return NextResponse.json({ error: 'Chưa có chương nào để tải.' }, { status: 404 });
-    }
-    const md = buildMarkdown(
-      ctx.ten_tac_pham,
-      fromStore.map((c) => ({
-        id: c.so_chuong,
-        title: c.tieu_de,
-        content: c.noi_dung,
-      })),
+    // IRON B10: không xuất workspace outline thay engine commit
+    return NextResponse.json(
+      {
+        error:
+          'Chưa có chương engine đã commit để tải. Không fallback nội dung workspace/outline. Chạy AI Novel writer/commit trước.',
+      },
+      { status: 404 },
     );
-    return markdownResponse(md, ctx.ten_tac_pham);
   }
 
   const md = buildMarkdown(

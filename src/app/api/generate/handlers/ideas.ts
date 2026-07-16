@@ -1,41 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
-  buildContinueContext,
-  evaluateWordGate,
-  formatCharacterBible,
-  formatSpentEntities,
-  formatWorldState,
-  normalizeSceneTags,
-  truncateOutline,
-  DEFAULT_WORD_GOAL,
-  MIN_SCENE_COUNT,
-} from '@/lib/storyWriting';
-import {
-  buildHumanizeScriptBlock,
-  buildNarrativePsychBlock,
-  buildShotDiversityBlock,
-  buildSpeechFingerprintBlock,
-  buildAudioReadabilityBlock,
-  enforceShotGraphOnPrompts,
-  resolveUserRules,
-  scoreNarrativePsychScript,
-  injectHumanJokeAsides,
-  countHumanJokeAsides,
-} from '@/lib/youtubeSafe';
-import {
-  applyCharacterSheetFormulas,
-  applyDirectorFormulasToPromptPair,
-  compileStillImagePrompt,
-} from '@/lib/integrations/seedance';
-import {
-  CHAR_ANGLE_CAMERA,
-  CHAR_EMOTION_FACE,
-} from '@/lib/characterProfile';
-import {
   callActiveModel,
-  callActiveVision,
-  cleanAndParseJson,
-  generateJsonWithRetry,
   getLastWorkingApiKey,
 } from '../modelClients';
 import type { GenerateHandlerContext } from './types';
@@ -52,11 +17,34 @@ export async function handleIdeas(
 
   if (requestType === 'GENERATE_IDEAS' || requestType === 'GENERATE_IDEA') {
     const { chu_de, phong_cach } = payload || {};
+    const de = String(chu_de || '').trim();
+    const pc = String(phong_cach || '').trim();
+    if (!de || !pc) {
+      return NextResponse.json(
+        {
+          error:
+            'Thieu Setup Chu de va Phong cach. Chon ca hai truoc khi sinh y tuong. App khong tu gan mat the.',
+        },
+        { status: 400 },
+      );
+    }
     const prompt = `Bạn là Trợ lý Biên kịch sáng tạo chuyên nghiệp bậc nhất.
-  Với Khối Chủ đề: "${chu_de || 'Sinh tồn mạt thế'}" và Khối Phong cách: "${phong_cach || 'Kịch tính, Tăm tối'}".
-  Hãy sáng tạo ra một ý tưởng cốt truyện/bối cảnh (khoảng 4-6 câu) thật độc đáo, chi tiết, có chiều sâu, mô tả nghịch cảnh mà nhân vật chính đang phải đối mặt. Hãy để trí tưởng tượng bay bổng, không bị gò bó vào bất kỳ lối mòn nào. Không trả về Markdown, chỉ trả về văn bản thuần túy.`;
+  Với Khối Chủ đề: "${de}" và Khối Phong cách: "${pc}".
+  Hãy sáng tạo ra một ý tưởng cốt truyện/bối cảnh (khoảng 4-6 câu) thật độc đáo, chi tiết, có chiều sâu, mô tả nghịch cảnh mà nhân vật chính đang phải đối mặt — BẮT BUỘC bám đúng Chủ đề + Phong cách trên, KHÔNG ép mạt thế/sinh tồn nếu Setup khác.
+  Hãy để trí tưởng tượng bay bổng trong khung Setup. Không trả về Markdown, chỉ trả về văn bản thuần túy.`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
-    return NextResponse.json({ idea: aiResponse.trim(), mo_ta: aiResponse.trim(), usedApiKey: getLastWorkingApiKey() });
+    const text = String(aiResponse || '').trim();
+    if (!text) {
+      return NextResponse.json(
+        { error: 'AI tra y tuong rong. Khong dung fill cuc bo.' },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json({
+      idea: text,
+      mo_ta: text,
+      usedApiKey: getLastWorkingApiKey(),
+    });
   }
 
   if (requestType === 'ANALYZE_YOUTUBE_PLOT') {
@@ -73,7 +61,10 @@ export async function handleIdeas(
     const excerpt = source.trim().slice(0, 12000);
     if (excerpt.length < 40) {
       return NextResponse.json(
-        { error: 'Thiếu bản chép lời (phụ đề) để phân tích cốt truyện — không dùng mô tả video.' },
+        {
+          error:
+            'Thiếu bản chép lời (phụ đề) để phân tích cốt truyện — không dùng mô tả video.',
+        },
         { status: 400 },
       );
     }
@@ -97,15 +88,22 @@ Nhiệm vụ: Bóc cốt truyện lõi thành 1 khối "mo_ta" tiếng Việt (h
 CẤM: copy nguyên câu phụ đề; CẤM tóm tắt kiểu spoiler list dài dòng.
 Chỉ trả về văn bản thuần (không markdown fence).`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
-    const mo_ta = aiResponse.trim();
+    const mo_ta = String(aiResponse || '').trim();
+    if (!mo_ta) {
+      return NextResponse.json(
+        {
+          error:
+            'AI tra mo_ta rong khi phan tich YouTube. Khong dung fill cuc bo.',
+        },
+        { status: 502 },
+      );
+    }
     return NextResponse.json({
       mo_ta,
       idea: mo_ta,
       usedApiKey: getLastWorkingApiKey(),
     });
   }
-  
-  // --- NODE: GENERATE_IMAGE_PROMPT (Phân tách theo từng câu + cảm xúc) ---
 
   return null;
 }

@@ -37,13 +37,19 @@ import {
 } from '@/lib/tts/sceneAudioCache';
 import { loadVinaProfiles, resolveSamplePath, mergeSettings } from '@/lib/vinaVoice';
 import { resolveNfeStep } from '@/lib/vinaVoice/warmDaemon';
+import {
+  findOmniLibraryEntry,
+  resolveOmniRefAudioPath,
+} from '@/lib/omnivoiceLocal';
+import { buildTtsCacheVariantKey } from '@/lib/tts/prosodyVariant';
 
 export const dynamic = 'force-dynamic';
 
 export const runtime = 'nodejs';
 
 /** OmniVoice first-load model + clone can exceed 60s */
-export const maxDuration = 180;
+/** Preview Zero-Shot ONNX can take 60–180s/job on low-VRAM GPUs; chapter longer. */
+export const maxDuration = 600;
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
@@ -234,14 +240,21 @@ export async function POST(req: Request) {
       };
     };
 
-    // Resolve sample path for Zero-Shot so cache invalidates when WAV changes
-    let vinaSamplePath = '';
+    // Resolve sample path for Zero-Shot/clone engines so cache invalidates when refs change
+    let cacheSamplePath = '';
     if (platform === 'vina_voice' && voice) {
       try {
         const hit = loadVinaProfiles().find((p) => p.name === voice);
         if (hit) {
-          vinaSamplePath = resolveSamplePath(hit, mergeSettings({}), process.cwd()) || '';
+          cacheSamplePath = resolveSamplePath(hit, mergeSettings({}), process.cwd()) || '';
         }
+      } catch {
+        /* ignore */
+      }
+    } else if (platform === 'omnivoice_local' && voice) {
+      try {
+        const entry = findOmniLibraryEntry(voice, process.cwd());
+        cacheSamplePath = resolveOmniRefAudioPath(entry || voice, process.cwd()) || '';
       } catch {
         /* ignore */
       }
@@ -255,6 +268,16 @@ export async function POST(req: Request) {
         ? resolveNfeStep({ isPreview: !!isPreview, isChapter: isChapterJob })
         : undefined;
     const prosody = normalizePreviewProsody(speed, pitch);
+    const variantKey = buildTtsCacheVariantKey({
+      platform,
+      vinaGender: ttsConfig?.vinaGender,
+      vinaArea: ttsConfig?.vinaArea,
+      vinaGroup: ttsConfig?.vinaGroup,
+      vinaEmotion: ttsConfig?.vinaEmotion,
+      vinaReferenceAudio: ttsConfig?.vinaReferenceAudio,
+      vinaReferenceAudioB64: ttsConfig?.vinaReferenceAudioB64,
+      vinaReferenceText: ttsConfig?.vinaReferenceText,
+    });
     const previewCacheInput: PreviewCacheKeyInput = {
       platform,
       voice: voice || 'default',
@@ -274,7 +297,8 @@ export async function POST(req: Request) {
             ? 4125
             : undefined,
       nfeStep: nfeForCache,
-      samplePath: vinaSamplePath || undefined,
+      variantKey,
+      samplePath: cacheSamplePath || undefined,
     };
     const sceneCacheInput: SceneCacheKeyInput = {
       platform,
@@ -285,7 +309,8 @@ export async function POST(req: Request) {
       speakerSeed: previewCacheInput.speakerSeed,
       styleSeed: previewCacheInput.styleSeed,
       nfeStep: nfeForCache,
-      samplePath: vinaSamplePath || undefined,
+      variantKey,
+      samplePath: cacheSamplePath || undefined,
       multiSig: useMulti
         ? multiSegs.map((s) => `${s.voice}:${(s.text || '').slice(0, 40)}`).join('|').slice(0, 500)
         : undefined,
@@ -340,10 +365,16 @@ export async function POST(req: Request) {
     } else if (
       !skipSceneCache &&
       !useMulti &&
-      (platform === 'vina_voice' || platform === 'piper' || platform === 'edge_tts')
+      (platform === 'vina_voice' ||
+        platform === 'piper' ||
+        platform === 'edge_tts' ||
+        platform === 'omnivoice_local')
     ) {
       // Full scene (kịch bản): reuse WAV if same text+voice already generated
-      const isWavScene = platform === 'vina_voice' || platform === 'piper';
+      const isWavScene =
+        platform === 'vina_voice' ||
+        platform === 'piper' ||
+        platform === 'omnivoice_local';
       const sceneHit = tryReadSceneCache(sceneCacheInput, isWavScene ? 'wav' : 'mp3');
       if (sceneHit) {
         const abs = path.join(
@@ -485,7 +516,7 @@ export async function POST(req: Request) {
 
         const partBuffers = results.map((r) => r.buffer);
         const methods = results.map((r) => r.method);
-        const preferWav = methods.some((m) => /Gemini|Piper|VieNeu|Vina/i.test(m));
+        const preferWav = methods.some((m) => /Gemini|Piper|VieNeu|Vina|OmniVoice/i.test(m));
         audioBuffer = await concatAudioBuffers(partBuffers, preferWav);
         methodUsed = `Multi-voice (${multiSegs.length} segs×${concurrency}) · ${methods[0] || provider.name}`;
         nativeSpeedApplied = true;
@@ -583,9 +614,11 @@ export async function POST(req: Request) {
       methodUsed.includes('Vina') ||
       methodUsed.includes('UVE') ||
       methodUsed.includes('ONNX') ||
+      methodUsed.includes('OmniVoice') ||
       platform === 'vina_voice' ||
       platform === 'piper' ||
       platform === 'vieneu_tts' ||
+      platform === 'omnivoice_local' ||
       platform === 'vbee';
     let filename = '';
     let localSavePath = '';
@@ -632,7 +665,10 @@ export async function POST(req: Request) {
         !skipSceneCache &&
         !useMulti &&
         audioBuffer &&
-        (platform === 'vina_voice' || platform === 'piper' || platform === 'edge_tts')
+        (platform === 'vina_voice' ||
+          platform === 'piper' ||
+          platform === 'edge_tts' ||
+          platform === 'omnivoice_local')
       ) {
         try {
           writeSceneCache(sceneCacheInput, isWav ? 'wav' : 'mp3', audioBuffer);

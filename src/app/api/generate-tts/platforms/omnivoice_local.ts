@@ -49,8 +49,8 @@ export const provider_omnivoice_local: TTSProvider = {
     const pitch =
       typeof opts.pitch === 'number' && Number.isFinite(opts.pitch) ? opts.pitch : 0;
 
-    // Timeout inside GPU exclusive slot (always releases lock; no Edge fallback)
-    const timeoutMs = DESIGN_PRESETS.has(voice.toLowerCase()) ? 150_000 : 180_000;
+    // Cold model + GPU queue can exceed 3 min; no Edge fallback (B10).
+    const timeoutMs = DESIGN_PRESETS.has(voice.toLowerCase()) ? 320_000 : 360_000;
 
     try {
       const result = await synthesizeOmniVoiceLocal({

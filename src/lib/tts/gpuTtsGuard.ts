@@ -127,9 +127,21 @@ export function omniRssMinUptimeS(): number {
   return Number.isFinite(n) && n >= 0 ? n : 90;
 }
 
+/**
+ * Soft RSS for Vina warm daemon recycle.
+ * Brain ~1.3–1.5GB on disk; Windows WorkingSet after load often 2.8–4.0GB (mapped pages).
+ * Old default 2200MB caused thrash: ready → recycle → exit -1 → respawn loop → app destabilize.
+ * Override: VINA_RSS_SOFT_MB=6000
+ */
 export function vinaWorkerRssSoftMb(): number {
   const n = Number(process.env.VINA_RSS_SOFT_MB);
-  return Number.isFinite(n) && n > 400 ? n : 2200;
+  return Number.isFinite(n) && n > 400 ? n : 4800;
+}
+
+/** Min seconds a worker must stay warm before RSS soft recycle. */
+export function vinaRssMinUptimeS(): number {
+  const n = Number(process.env.VINA_RSS_MIN_UPTIME_S);
+  return Number.isFinite(n) && n >= 0 ? n : 180;
 }
 
 /**

@@ -87,7 +87,7 @@ export function parseCastDialogue(params: {
       continue;
     }
 
-    // 3) Fallback: whole line narrator
+    // 3) Không gán được speaker/quote → narrator (cùng kịch bản, không đổi engine)
     raw.push({ speaker: null, text: line, source: 'narrator' });
   }
 

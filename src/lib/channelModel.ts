@@ -202,9 +202,10 @@ export function defaultOutputDna(
     imageAspectRatio: partial?.imageAspectRatio || '16:9',
     imageCount: Math.max(1, Math.min(4, Number(partial?.imageCount) || 1)),
     videoProvider: partial?.videoProvider || 'flow',
-    videoModel: partial?.videoModel || 'veo_3_1_t2v_fast_ultra',
+    videoModel: partial?.videoModel || 'veo_3_1_t2v_fast',
     videoAspectRatio: partial?.videoAspectRatio || '16:9',
-    videoDuration: Math.max(1, Math.min(15, Number(partial?.videoDuration) || 6)),
+    /** Flow: 4|6|8; other providers may allow up to 15 */
+    videoDuration: Math.max(1, Math.min(15, Number(partial?.videoDuration) || 8)),
   };
 }
 

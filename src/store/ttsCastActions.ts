@@ -183,7 +183,7 @@ export function createTtsCastActions(
         set((state) => {
           const name = (characterName || '').trim().normalize('NFC');
           if (!name) return state;
-          const platform = state.ttsConfig.platform || 'edge_tts';
+          const platform = state.ttsConfig.platform || '';
           const prompts = { ...(state.nhan_vat_prompts || {}) };
           const prev = normalizeNhanVatProfile(prompts[name]);
           prompts[name] = normalizeNhanVatProfile({

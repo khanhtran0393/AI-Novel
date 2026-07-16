@@ -7,36 +7,19 @@
  *
  * Edge is only valid when the user explicitly selects platform `edge_tts`.
  */
+/** @deprecated IRON B10 — không map giọng dự phòng */
 export function pickEdgeVoice(hint: string | undefined | null): string {
-  const h = String(hint || '');
+  const h = String(hint || '').trim();
+  if (!h) {
+    throw new Error('pickEdgeVoice: thiếu voice hint. Không gán giọng mặc định dự phòng.');
+  }
+  // Chỉ chấp nhận id đã là Edge Neural tường minh
   if (/^[a-z]{2}-[A-Z]{2}-.+Neural$/i.test(h) || /Neural$/i.test(h)) {
     return h;
   }
-  if (/^en[-_]|_en_|english|jenny|guy|aria/i.test(h)) {
-    return /female|nu|nữ|jenny|aria|bella|rachel|nova|shimmer|coral/i.test(h)
-      ? 'en-US-JennyNeural'
-      : 'en-US-GuyNeural';
-  }
-  if (/^zh|xiaoxiao|yunxi|chinese/i.test(h)) {
-    return /female|nu|nữ|xiao/i.test(h) ? 'zh-CN-XiaoxiaoNeural' : 'zh-CN-YunxiNeural';
-  }
-  if (/^ja|nanami|keita|japanese/i.test(h)) {
-    return /female|nu|nữ|nanami|mayu|aoi/i.test(h) ? 'ja-JP-NanamiNeural' : 'ja-JP-KeitaNeural';
-  }
-  if (/^ko|sunhi|injoon|korean/i.test(h)) {
-    return /female|nu|nữ|sunhi|jimin/i.test(h) ? 'ko-KR-SunHiNeural' : 'ko-KR-InJoonNeural';
-  }
-  if (/^fr|denise|henri|french/i.test(h)) {
-    return /female|nu|nữ|denise|eloise/i.test(h) ? 'fr-FR-DeniseNeural' : 'fr-FR-HenriNeural';
-  }
-  if (/^de|katja|conrad|german/i.test(h)) {
-    return /female|nu|nữ|katja|amala/i.test(h) ? 'de-DE-KatjaNeural' : 'de-DE-ConradNeural';
-  }
-  const female =
-    /female|nu|nữ|my|huyen|huong|mai|hoa|thao|linh|chi|phuong|trinh|bella|rachel|nova|shimmer|coral|jenny|aria|hoaimy/i.test(
-      h,
-    );
-  return female ? 'vi-VN-HoaiMyNeural' : 'vi-VN-NamMinhNeural';
+  throw new Error(
+    `pickEdgeVoice: "${h}" không phải Edge Neural id. Không map sang giọng khác. Chọn voice tường minh.`,
+  );
 }
 
 /**

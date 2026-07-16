@@ -11,6 +11,7 @@
  * 3. Sinh kịch bản → dùng cache captions để canh %, rồi xóa cache
  */
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   AlertCircle,
@@ -28,10 +29,12 @@ import {
   resolveWpm,
   totalScaleMinutes,
 } from './setupScaleDuration';
+import { closeSetupModal, setupModalNoDragStyle } from './closeSetupModal';
 
 interface YoutubeSetupPhaseProps {
   promptError: string;
   isGeneratingIdea: boolean;
+  isGeneratingOutline?: boolean;
   isAnalyzingPlot: boolean;
   /** Nút Phân tích: captions → cache + cốt truyện → ô 3 */
   handlePhanTichYoutube: (url?: string) => Promise<void>;
@@ -42,6 +45,7 @@ interface YoutubeSetupPhaseProps {
 export default function YoutubeSetupPhase({
   promptError,
   isGeneratingIdea,
+  isGeneratingOutline = false,
   isAnalyzingPlot,
   handlePhanTichYoutube,
   handleGenerateOutline,
@@ -49,9 +53,11 @@ export default function YoutubeSetupPhase({
 }: YoutubeSetupPhaseProps) {
   const store = useNovelStore();
 
-  const handleClose = () => {
-    if (onClose) onClose();
-    else store.setGiaiDoan(2);
+  const handleClose = (e?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    closeSetupModal(onClose);
+    console.info('[YoutubeSetup] close → giai_doan=', useNovelStore.getState().giai_doan);
   };
 
   const handleAdjustChapters = (amount: number) => {
@@ -61,15 +67,22 @@ export default function YoutubeSetupPhase({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleClose(e);
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onClose]);
 
   const sim = store.youtubeSimilarityTarget ?? 80;
-  const busy = store.dang_tai || isGeneratingIdea || isAnalyzingPlot;
+  // Mỗi nút busy riêng — không dang_tai global
+  const analyzeBusy = isAnalyzingPlot;
+  const outlineBusy = isGeneratingOutline;
+  const busy = analyzeBusy || outlineBusy || isGeneratingIdea;
   const captionCached = (store.youtubeSourceText || '').trim().length >= 40;
   const captionWords = captionCached
     ? (store.youtubeSourceText || '').trim().split(/\s+/).filter(Boolean).length
@@ -79,26 +92,32 @@ export default function YoutubeSetupPhase({
     !(store.setup.mo_ta || '').trim().startsWith('[NGUỒN YOUTUBE') &&
     !(store.setup.mo_ta || '').trim().startsWith('[RAW YOUTUBE');
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-x-0 bottom-0 z-[80] flex items-stretch justify-center p-2 sm:p-3 md:p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
-      style={{ top: 'var(--app-chrome-h, 32px)' }}
+      className="fixed inset-0 z-[9999] flex items-stretch justify-center bg-black/75 p-2 sm:p-3 md:p-4"
+      style={
+        {
+          paddingTop: 'calc(var(--app-chrome-h, 32px) + 8px)',
+          ...setupModalNoDragStyle,
+        } as React.CSSProperties
+      }
       role="dialog"
       aria-modal="true"
       aria-labelledby="yt-setup-title"
+      data-setup-modal="youtube"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleClose(e);
+      }}
     >
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Đóng"
-        onClick={handleClose}
-      />
-
       <div
-        className="relative z-[1] flex h-full w-full max-w-[min(96rem,100%)] flex-col overflow-hidden rounded-[var(--app-radius-lg)] border border-zinc-800/90 bg-zinc-950/97 shadow-2xl shadow-red-500/10"
+        className="relative flex h-full w-full max-w-[min(96rem,100%)] flex-col overflow-hidden rounded-[var(--app-radius-lg)] border border-zinc-800/90 bg-zinc-950 shadow-2xl shadow-red-500/10"
+        style={setupModalNoDragStyle}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800/80 bg-zinc-950/95 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div
+          className="relative flex shrink-0 items-center gap-3 border-b border-zinc-800/80 bg-zinc-950 px-3 py-2.5 sm:px-4 sm:py-3"
+          style={setupModalNoDragStyle}
+        >
           <div className="min-w-0 flex-1">
             <h2
               id="yt-setup-title"
@@ -112,12 +131,24 @@ export default function YoutubeSetupPhase({
           </div>
           <button
             type="button"
-            onClick={handleClose}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/60 text-zinc-400 transition-colors hover:border-red-900/50 hover:bg-red-950/30 hover:text-red-400"
-            title="Đóng"
+            id="yt-setup-modal-close-x"
+            data-testid="setup-close-x"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClose(e);
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClose(e);
+            }}
+            className="relative z-[100] inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-600 bg-zinc-800 text-white transition-colors hover:border-red-500 hover:bg-red-950/50 hover:text-red-400 cursor-pointer select-none"
+            style={setupModalNoDragStyle}
+            title="Đóng (Esc)"
             aria-label="Đóng"
           >
-            <X className="h-4 w-4" />
+            <X className="pointer-events-none h-5 w-5" strokeWidth={2.5} />
           </button>
         </div>
 
@@ -507,7 +538,10 @@ export default function YoutubeSetupPhase({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-zinc-800/80 bg-zinc-950/95 p-3 sm:px-4 space-y-2">
+        <div
+          className="relative z-20 shrink-0 border-t border-zinc-800/80 bg-zinc-950/95 p-3 sm:px-4 space-y-2"
+          style={setupModalNoDragStyle}
+        >
           {promptError ? (
             <p className="flex items-start gap-1.5 text-xs text-red-400 leading-snug">
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -521,11 +555,13 @@ export default function YoutubeSetupPhase({
           )}
           <button
             type="button"
-            disabled={busy}
+            disabled={outlineBusy}
             onClick={() => void handleGenerateOutline()}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={setupModalNoDragStyle}
+            title="Nút riêng — không khóa Phân tích / gen NV / viết chương"
           >
-            {store.dang_tai ? (
+            {outlineBusy ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 Đang thiết lập dàn ý...
@@ -538,4 +574,7 @@ export default function YoutubeSetupPhase({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modal;
+  return createPortal(modal, document.body);
 }

@@ -4,6 +4,19 @@
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    const err = event.error;
+    const stack = err?.stack || err?.message || String(err);
+    ipcRenderer.send('renderer-error', `Uncaught Exception: ${stack}`);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const stack = reason instanceof Error ? reason.stack : String(reason);
+    ipcRenderer.send('renderer-error', `Unhandled Rejection: ${stack}`);
+  });
+}
+
 const STORE_KEY = 'novel_generator_v2_store';
 
 function scoreRaw(raw) {

@@ -60,6 +60,18 @@ export async function runSilentChapterTimeline(opts?: {
     const store = useNovelStore.getState();
     const chapterNum = opts?.chapterNum ?? store.chuong_dang_chon;
     const ch = store.danh_sach_chuong.find((c) => c.so_chuong === chapterNum);
+    const title = (ch?.tieu_de || '').trim();
+    if (!title) {
+      throw new Error(`Chuong ${chapterNum} thieu tieu_de.`);
+    }
+    const styleHint = (store.visualDnaPrompt || store.mediaStylePreset || '').trim();
+    if (!styleHint) {
+      throw new Error('Chua cau hinh Visual DNA / Media Style.');
+    }
+    const aspect = (store.videoAspectRatio || '').trim();
+    if (!aspect) {
+      throw new Error('Chua chon videoAspectRatio.');
+    }
 
     const generatedPrompts: Record<string, unknown[]> = {};
     const chPrefix = chapterAssetPrefix(chapterNum);
@@ -73,12 +85,11 @@ export async function runSilentChapterTimeline(opts?: {
       body: JSON.stringify({
         action: 'pipeline',
         chapterNum,
-        title: ch?.tieu_de || `Chương ${chapterNum}`,
+        title,
         ten_tac_pham: store.ten_tac_pham,
         sceneTexts: sceneTextsForChapter(store, chapterNum),
         characterNames: characterNamesFromStore(store),
-        styleHint: store.visualDnaPrompt || store.mediaStylePreset,
-        genre: 'dark survival / mạt thế',
+        styleHint,
         generatedImages: store.generatedImages,
         generatedAudioPaths: store.generatedAudioPaths,
         generatedVideos: store.generatedVideos,
@@ -88,7 +99,7 @@ export async function runSilentChapterTimeline(opts?: {
         runFableCut: true,
         liveEditor: true,
         autoStartFableCut: false,
-        aspect: '9:16',
+        aspect,
       }),
     });
     const data = await res.json();

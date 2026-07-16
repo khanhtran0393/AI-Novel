@@ -55,17 +55,26 @@ function applyProsodyFromProfile(
 }
 
 export function seedRolesFromProject(state: CastSeedSnapshot): VoiceRole[] {
-  const platform = state.ttsConfig.platform || 'edge_tts';
-  const language = state.ttsConfig.language || 'vi';
+  const platform = (state.ttsConfig.platform || '').trim();
+  const language = (state.ttsConfig.language || '').trim();
+  if (!platform) {
+    throw new Error('Chua chon engine TTS (platform).');
+  }
+  if (!language) {
+    throw new Error('Chua chon ngon ngu TTS.');
+  }
   const defaultVoice = (state.ttsConfig.voice || '').trim();
-  const baseSpeed =
-    typeof state.ttsConfig.speed === 'number' && Number.isFinite(state.ttsConfig.speed)
-      ? state.ttsConfig.speed
-      : 1;
-  const basePitch =
-    typeof state.ttsConfig.pitch === 'number' && Number.isFinite(state.ttsConfig.pitch)
-      ? state.ttsConfig.pitch
-      : 0;
+  if (!defaultVoice) {
+    throw new Error('Chua chon voice TTS narrator.');
+  }
+  if (typeof state.ttsConfig.speed !== 'number' || !Number.isFinite(state.ttsConfig.speed)) {
+    throw new Error('TTS speed khong hop le.');
+  }
+  if (typeof state.ttsConfig.pitch !== 'number' || !Number.isFinite(state.ttsConfig.pitch)) {
+    throw new Error('TTS pitch khong hop le.');
+  }
+  const baseSpeed = state.ttsConfig.speed;
+  const basePitch = state.ttsConfig.pitch;
   const existing = normalizeVoiceCast(state.voiceCast).roles;
   const existingByChar = new Map<string, VoiceRole>();
   let narrator = existing.find((r) => r.id === NARRATOR_ROLE_ID);
@@ -135,10 +144,7 @@ export function seedRolesFromProject(state: CastSeedSnapshot): VoiceRole[] {
       continue;
     }
     const explicit = (profile?.tts_voice || '').trim();
-    const voiceId =
-      explicit ||
-      suggestVoiceFromProfile(profile, platform, language) ||
-      defaultVoice;
+    const voiceId = explicit;
     const prosody = suggestProsodyFromProfile(profile, { baseSpeed, basePitch });
     roles.push({
       id: characterRoleId(n),
@@ -204,15 +210,22 @@ export function migrateRolesForPlatform(
   defaultVoice: string,
   opts?: { baseSpeed?: number; basePitch?: number },
 ): VoiceRole[] {
-  const baseSpeed = opts?.baseSpeed ?? 1;
-  const basePitch = opts?.basePitch ?? 0;
+  void language;
+  if (typeof opts?.baseSpeed !== 'number' || !Number.isFinite(opts.baseSpeed)) {
+    throw new Error('TTS speed khong hop le.');
+  }
+  if (typeof opts?.basePitch !== 'number' || !Number.isFinite(opts.basePitch)) {
+    throw new Error('TTS pitch khong hop le.');
+  }
+  const baseSpeed = opts.baseSpeed;
+  const basePitch = opts.basePitch;
   return roles.map((r) => {
     const cached = r.voicesByPlatform?.[newPlatform]?.trim();
     if (cached) {
       return { ...r, voiceId: cached };
     }
     if (r.kind === 'narrator') {
-      const v = defaultVoice || r.voiceId;
+      const v = defaultVoice;
       return {
         ...r,
         voiceId: v,
@@ -221,11 +234,7 @@ export function migrateRolesForPlatform(
     }
     if (r.kind === 'character' && r.characterName) {
       const profile = prompts[r.characterName];
-      const v =
-        (profile?.tts_voice || '').trim() ||
-        suggestVoiceFromProfile(profile, newPlatform, language) ||
-        defaultVoice ||
-        r.voiceId;
+      const v = (profile?.tts_voice || '').trim();
       const withVoice = {
         ...r,
         voiceId: v,
@@ -237,10 +246,10 @@ export function migrateRolesForPlatform(
     }
     return {
       ...r,
-      voiceId: defaultVoice || r.voiceId,
+      voiceId: '',
       voicesByPlatform: {
         ...(r.voicesByPlatform || {}),
-        [newPlatform]: defaultVoice || r.voiceId,
+        [newPlatform]: '',
       },
     };
   });

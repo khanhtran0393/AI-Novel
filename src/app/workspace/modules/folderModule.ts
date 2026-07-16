@@ -41,18 +41,6 @@ export async function openFolderAction(folderPath: string): Promise<{ opened?: s
     };
 
     if (!res.ok || data.success === false) {
-      // Electron fallback if Next API fails
-      const electronPath = data.path || '';
-      const tools = typeof window !== 'undefined' ? window.ainovelTools : undefined;
-      if (
-        tools?.openPath &&
-        tools.isElectron &&
-        electronPath &&
-        pathLooksAbsolute(electronPath)
-      ) {
-        const r = await tools.openPath(electronPath);
-        if (r?.ok) return { opened: electronPath };
-      }
       throw new Error(data.error || 'Thư mục cục bộ không tồn tại.');
     }
 
@@ -62,8 +50,4 @@ export async function openFolderAction(folderPath: string): Promise<{ opened?: s
       `Không thể mở thư mục: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-}
-
-function pathLooksAbsolute(p: string): boolean {
-  return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\') || p.startsWith('/');
 }

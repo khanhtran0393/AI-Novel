@@ -104,7 +104,7 @@ function stripDialogueStyle(text: string): string {
 
 /**
  * Template Title CTR — 55 quy luật tâm lý (youtubePsych55).
- * Fallback 6 motif cũ chỉ khi pack 55 rỗng.
+ * IRON B10: không nhồi title clickbait giả khi pack rỗng — caller hard-fail.
  */
 function applySeoTitleFormula(
   kind: 'curiosity' | 'loss' | 'open' | 'fomo' | 'question' | 'stake',
@@ -280,10 +280,9 @@ export function pickBestSeoTitle(
 ): { title: string; lawId?: number; lawName?: string } {
   const cands = generateSeoTitleCandidates(hook, novelTitle, opts);
   if (!cands.length) {
-    const fallback = stripDialogueStyle(hook || '').slice(0, 100);
-    return {
-      title: clipAtWordBoundary(fallback, 100) || 'Sự thật không ai dám kể… xem đến cuối',
-    };
+    throw new Error(
+      'SEO title: khong sinh duoc candidate tu hook. Sua hook/kich ban roi gen lai.',
+    );
   }
   const scored = cands.map((c) => {
     const cleaned = sanitizeSeoTitle(c);
@@ -425,7 +424,7 @@ export function extractHookFromScript(
       break;
     }
   }
-  // Nếu cả nửa đầu đều flat, vẫn mở từ câu 0 (fallback)
+  // Nếu cả nửa đầu đều flat, mở từ câu 0 để giữ đúng dữ liệu gốc.
   if (bestOpenScore < 2) startIdx = 0;
 
   const picked: string[] = [];
@@ -1020,7 +1019,7 @@ export function buildSeoDescription(params: {
 
   const seriesLine = title
     ? `Tác phẩm: ${title}${ch ? ` · Chương ${ch}` : ''}`
-    : 'Series kể chuyện đêm — mạt thế · sinh tồn · drama';
+    : 'Series kể chuyện đêm — drama · narration';
 
   const lines = [
     lead,
@@ -1097,13 +1096,19 @@ export function buildThumbnailPrompt(params: {
   /** Optional competitor thumb DNA — preferred over visualDna when set */
   competitorThumbDna?: string;
 }): string {
-  const mood = (params.thumbnailLine || params.hook || 'post-apocalyptic tension').slice(0, 120);
+  const mood = (params.thumbnailLine || params.hook || '').trim().slice(0, 120);
+  if (!mood) {
+    throw new Error('Thieu hook/thumbnailLine de tao thumbnail prompt.');
+  }
   const competitor = params.competitorThumbDna?.trim() || '';
   const dna =
     competitor ||
     params.visualDna?.trim() ||
-    'cinematic natural realism, grounded production design';
-  const char = params.characterHint?.trim() || 'lone survivor figure';
+    '';
+  if (!dna) {
+    throw new Error('Thieu visualDna de tao thumbnail prompt.');
+  }
+  const char = params.characterHint?.trim() || '';
   const bias = params.psychBias || 'curiosity';
   const biasLook: Record<ThumbBias, string> = {
     threat: 'high-stakes danger cue, clenched jaw, edge of frame threat shadow',
@@ -1119,11 +1124,15 @@ export function buildThumbnailPrompt(params: {
     loss: 'empty hands, broken object, aftermath silence',
     open: 'composition leads eye off-frame, unfinished action',
   };
+  const biasText = biasLook[bias];
+  if (!biasText) {
+    throw new Error(`Thumbnail psychBias khong hop le: ${bias}`);
+  }
   const core = [
     `YouTube thumbnail still, 16:9, high contrast, readable negative space for bold text overlay`,
     `dramatic key light, shallow depth, emotional face readable at small size`,
-    `click-curiosity bias (${bias}): ${biasLook[bias] || biasLook.curiosity}`,
-    char,
+    `click-curiosity bias (${bias}): ${biasText}`,
+    char || undefined,
     `scene mood / overlay intent: ${mood}`,
     competitor
       ? undefined

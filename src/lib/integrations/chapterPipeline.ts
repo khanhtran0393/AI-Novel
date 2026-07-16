@@ -107,10 +107,18 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
           const compiled = compileSeedancePrompt({
             sceneText: text,
             characterHints: input.characterNames,
-            genre: input.genre || 'dark survival / mạt thế',
+            genre: input.genre,
             styleHint: input.styleHint,
             hasStartImage: images.length > 0,
-            durationSec: input.secondsPerImage || 5,
+            durationSec: (() => {
+              const d = Number(input.secondsPerImage);
+              if (!Number.isFinite(d) || d <= 0) {
+                throw new Error(
+                  'Thieu secondsPerImage hop le cho Seedance chapter pipeline. App khong tu gan 5s.',
+                );
+              }
+              return d;
+            })(),
           });
           samples.push({ id: `scene_${i}`, ...compiled });
         });
@@ -131,13 +139,19 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
             if (!base.trim()) {
               return { video_prompt: '', intention: undefined };
             }
+            const sec = Number(input.secondsPerImage);
+            if (!Number.isFinite(sec) || sec <= 0) {
+              throw new Error(
+                'Thieu secondsPerImage hop le cho Seedance enhance prompts. App khong tu gan 5s.',
+              );
+            }
             const compiled = compileSeedancePrompt({
               sceneText: base,
               characterHints: input.characterNames,
-              genre: input.genre || 'dark survival / mạt thế',
+              genre: input.genre,
               styleHint: input.styleHint,
               hasStartImage: true,
-              durationSec: input.secondsPerImage || 5,
+              durationSec: sec,
             });
             // assetKey is scene key "ch_sc" — sample id = image key for that prompt
             const [chStr, scStr] = assetKey.split('_');
@@ -186,7 +200,12 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
         const useVideos = videoPaths.length > 0;
 
         let audioPath: string | undefined;
-        let secondsPerImage = input.secondsPerImage || 5;
+        let secondsPerImage = Number(input.secondsPerImage);
+        if (!Number.isFinite(secondsPerImage) || secondsPerImage <= 0) {
+          throw new Error(
+            'Thieu secondsPerImage hop le cho FableCut rebuild. App khong tu gan 5s.',
+          );
+        }
 
         if (audios.length > 0) {
           // Longest audio or first chapter-level audio

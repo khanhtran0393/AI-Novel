@@ -100,8 +100,8 @@ Export CapCut / một số video path gọi `assertProAccess` server-side.
 |--------|----------------|
 | FFmpeg | `bin/ffmpeg.exe` (và/hoặc `python_core/ffmpeg/`) |
 | Piper TTS | `bin/piper/piper.exe` |
-| Edge TTS | luôn available (fallback free) |
-| CapCut desktop | optional — detect `LOCALAPPDATA/CapCut/Apps` |
+| Edge TTS | chỉ khi user **chọn** platform `edge_tts` — **không** là fallback ngầm |
+| CapCut desktop | optional — detect `LOCALAPPDATA/CapCut/Apps`; thiếu → **báo lỗi**, không nhảy Edge |
 
 ### A8. Vietnamese text
 
@@ -170,6 +170,29 @@ Nguồn: `src/lib/voiceCast.ts` + `docs/design-multi-character-voice-cast.md`
 2. Trước khi báo xong: chạy lệnh thật (`npm run smoke:core`, `typecheck`, script verify liên quan) — có log terminal.
 3. Output media (mp3/mp4/png) phải **tồn tại trên đĩa** nếu task là gen media.
 
+### B10. CẤM FALLBACK NỘI DUNG / LOGIC (chỉ ngoại lệ API)
+
+**Nguyên tắc:** User (CISO) muốn **lỗi hiện thẳng** để sửa — không “cứu” bằng đường vòng che hỏng.
+
+| Được phép | Cấm tuyệt đối |
+|-----------|----------------|
+| **Xoay API key** cùng provider (Gemini key1→key2, OpenAI keys pool) khi 429/401 | Đổi **platform/engine/provider** khi fail (CapCut→Edge, Flow→Gemini, Vina→Edge, Omni→Piper…) |
+| Retry **cùng** endpoint / cùng model / cùng voice đã chọn | Gen “mẫu”, “demo”, “giả”, heuristic nội dung thay API |
+| Báo lỗi rõ: thiếu key, thiếu browser, thiếu file, engine offline | Soft-success / toast mơ hồ / log ignore rồi trả audio/ảnh giả |
+| Hard-fail + message hành động (cài browser, chọn platform, thêm key) | Stock Chrome “tạm dùng” khi `engine=auto` cần Chromium sạch |
+| | Self-heal **đổi** TTS platform / image provider / voice ngầm |
+| | SEO/hook/script fallback template khi extract fail (log + fail, không bịa) |
+
+**Áp dụng mọi domain:** script, TTS, gen ảnh/video, Flow bridge, NAV, export, ship-pack, cast, preview.
+
+**Checklist agent khi sửa code:**
+
+1. `catch` → **rethrow / return error JSON** có `error` message thật — không `return ok + fake`.
+2. Không `generateEdgeTTS` / `edge_tts` trừ khi `platform === 'edge_tts'`.
+3. Không `imageProvider` swap trong route khi provider user chọn fail.
+4. Browser `auto`: chỉ Chromium sạch; **không** fallback Google Chrome (user phải chọn `engine=chrome` tường minh hoặc bấm «Cài browser gen ảnh»).
+5. Comment code kiểu `// fallback to X` cho **nội dung** = vi phạm — xóa hoặc hard-fail.
+
 ---
 
 ## C. BẢNG CHỐNG NHẦM (hay tái phạm)
@@ -182,7 +205,8 @@ Nguồn: `src/lib/voiceCast.ts` + `docs/design-multi-character-voice-cast.md`
 | “sceneEmotion điều khiển multi-gate” | Cấm — chỉ ttsConfig defaults |
 | “Import chéo features cho nhanh” | Chỉ contracts/API |
 | “Render store ngay trên SSR” | Phải `isHydrated` |
-| “CapCut TTS bắt buộc” | Optional; Edge TTS fallback free |
+| “CapCut fail thì Edge thế” | **Cấm** — báo lỗi CapCut; user tự chọn platform |
+| “Auto browser = Chrome nếu không có Ungoogled” | **Cấm** — hard-fail + nút cài browser |
 | “Đổi cấu trúc folder domain hàng loạt” | Ownership logical — không mass-move |
 
 ---

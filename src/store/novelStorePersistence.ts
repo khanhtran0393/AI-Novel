@@ -51,9 +51,20 @@ export function createNovelStorePersistOptions(storeAccess: {
         if (aa && bb) return aa.length >= bb.length ? aa : bb;
         return aa || bb || '';
       };
+      // Prefer workspace (2) if user already left Setup this session — late rehydrate
+      // must not yank them back to Setup with stale disk giai_doan:1 (X "does nothing").
+      const mergedPhase = (() => {
+        const fromP = p.giai_doan;
+        const fromC = current.giai_doan;
+        if (fromC === 2 || fromP === 2) return 2 as const;
+        if (fromP === 1 || fromC === 1) return 1 as const;
+        return (fromP ?? fromC ?? 1) as 1 | 2;
+      })();
+
       return {
         ...current,
         ...p,
+        giai_doan: mergedPhase,
         // Owner local build: always PRO + unlimited credits (never locked by old free snapshots)
         is_vip: true,
         is_pro: true,
@@ -242,7 +253,8 @@ export function createNovelStorePersistOptions(storeAccess: {
             '';
           return legacy.trim() ? [legacy.trim()] : [];
         })(),
-        isHydrated: false,
+        // Keep UI unblocked; rehydrate may still replace fields from disk
+        isHydrated: true,
       } as NovelStore;
     },
     partialize: (state: NovelStore) => ({
@@ -345,6 +357,22 @@ export function createNovelStorePersistOptions(storeAccess: {
       if (error) {
         console.error('[NovelStore] Không thể nạp dữ liệu đã lưu:', error);
       }
+
+      // ALWAYS unstick UI first — even if channel bootstrap throws
+      const forceHydrated = () => {
+        try {
+          storeAccess.setState({ isHydrated: true } as Partial<NovelStore>);
+        } catch {
+          /* ignore */
+        }
+        try {
+          state?.setHydrated?.(true);
+        } catch {
+          /* ignore */
+        }
+      };
+      forceHydrated();
+
       // Force unlimited entitlement after every rehydrate (owner local)
       try {
         state?.setVipStatus?.(true, true);
@@ -382,28 +410,27 @@ export function createNovelStorePersistOptions(storeAccess: {
         } else if (!channels[activeChannelId]) {
           activeChannelId = Object.keys(channels)[0];
         }
-        storeAccess.setState({ channels, activeChannelId });
+        storeAccess.setState({ channels, activeChannelId, isHydrated: true });
       } catch (e) {
         console.warn('[NovelStore] channel bootstrap skipped', e);
+        forceHydrated();
       }
-      state?.setHydrated(true);
-      // After rehydrate, force durable multi-path snapshot
+
+      // After rehydrate, force durable multi-path snapshot (never block UI)
       if (typeof window !== 'undefined') {
-        try {
-          // Ensure PRO flags persist into localStorage + durable backup
+        queueMicrotask(() => {
           try {
             const live = storeAccess.getState();
             if (!live.is_pro || !live.is_vip || (live.credits ?? 0) < 999_999_999) {
-              live.setVipStatus(true, true);
-              live.setCredits(999_999_999);
+              live.setVipStatus?.(true, true);
+              live.setCredits?.(999_999_999);
             }
+            syncLocalStoreToDurable();
           } catch {
             // ignore
           }
-          syncLocalStoreToDurable();
-        } catch {
-          // ignore
-        }
+          forceHydrated();
+        });
       }
     },
   };

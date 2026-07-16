@@ -46,8 +46,10 @@ export default function EmptyWorkspaceHint({ onWriteChapter }: Props) {
         {hasOutline && onWriteChapter && (
           <button
             type="button"
-            disabled={store.dang_tai}
-            onClick={() => void onWriteChapter()}
+            // Không khóa theo dang_tai global (gen NV / job khác) — chỉ client gate khi đang viết
+            onClick={() => {
+              void onWriteChapter();
+            }}
             className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-black shadow hover:bg-amber-400 transition-colors cursor-pointer disabled:opacity-40 animate-pulse"
           >
             <Sparkles className="h-3.5 w-3.5" />

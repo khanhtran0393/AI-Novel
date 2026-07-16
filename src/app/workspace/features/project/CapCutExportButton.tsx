@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { API, chapterAssetPrefix } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
@@ -12,15 +12,18 @@ import {
 } from '@/lib/outputCriteria';
 import { evaluateShipGate, healthInputFromStore } from '@/lib/shipGate';
 
-/** Project export — tách khỏi Header chrome; nhận chỉ tiêu Ảnh/Video + TTS */
+/** Project export — busy riêng; không dang_tai global (không khóa nút khác) */
 export default function CapCutExportButton() {
-  const store = useNovelStore();
+  const isPro = useNovelStore((s) => s.is_pro);
+  const isVip = useNovelStore((s) => s.is_vip);
+  const [exporting, setExporting] = useState(false);
 
   return (
     <button
       type="button"
-      disabled={store.dang_tai || (!store.is_pro && !store.is_vip)}
+      disabled={exporting || (!isPro && !isVip)}
       onClick={async () => {
+        const store = useNovelStore.getState();
         if (!store.is_pro && !store.is_vip) {
           toast.info('Notice', '⚠️ Tính năng này yêu cầu nâng cấp gói Pro/VIP!');
           return;
@@ -33,7 +36,7 @@ export default function CapCutExportButton() {
           return;
         }
         try {
-          store.setDangTai(true);
+          setExporting(true);
 
           const channel = store.getActiveChannel();
           const merged = channel
@@ -65,10 +68,24 @@ export default function CapCutExportButton() {
             ? resolveOutputCriteria(merged, merged.defaultShipMode || 'longform')
             : null;
 
-          const imageAspect =
-            store.imageAspectRatio || criteria?.imageAspectRatio || '16:9';
-          const videoAspect =
-            store.videoAspectRatio || criteria?.videoAspectRatio || '16:9';
+          const imageAspect = (store.imageAspectRatio || '').trim();
+          const videoAspect = (store.videoAspectRatio || '').trim();
+          if (!imageAspect) {
+            throw new Error('Chua chon imageAspectRatio. App khong tu gan ty le anh.');
+          }
+          if (!videoAspect) {
+            throw new Error('Chua chon videoAspectRatio. App khong tu gan ty le video.');
+          }
+          const videoDuration = Number(store.videoDuration);
+          if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+            throw new Error('Chua chon videoDuration hop le. App khong tu gan thoi luong.');
+          }
+          if (!store.imageProvider?.trim()) {
+            throw new Error('Chua chon imageProvider. App khong tu gan provider.');
+          }
+          if (!store.videoProvider?.trim()) {
+            throw new Error('Chua chon videoProvider. App khong tu gan provider.');
+          }
           const capCutAspect =
             criteria?.capCutAspect || toCapCutAspect(videoAspect);
 
@@ -148,11 +165,11 @@ export default function CapCutExportButton() {
               imageAspectRatio: imageAspect,
               videoAspectRatio: videoAspect,
               aspect: capCutAspect,
-              videoDuration: store.videoDuration || criteria?.videoDuration || 6,
-              imageProvider: store.imageProvider || criteria?.imageProvider,
-              videoProvider: store.videoProvider || criteria?.videoProvider,
-              mediaStylePreset: store.mediaStylePreset || criteria?.mediaStylePreset,
-              visualDna: store.visualDnaPrompt || criteria?.visualDna,
+              videoDuration,
+              imageProvider: store.imageProvider,
+              videoProvider: store.videoProvider,
+              mediaStylePreset: store.mediaStylePreset,
+              visualDna: store.visualDnaPrompt,
               // Chỉ tiêu từ TTS
               ttsConfig: {
                 platform: store.ttsConfig.platform,
@@ -183,12 +200,12 @@ export default function CapCutExportButton() {
             `❌ Lỗi xuất CapCut: ${error instanceof Error ? error.message : String(error)}`,
           );
         } finally {
-          store.setDangTai(false);
+          setExporting(false);
         }
       }}
       className="flex items-center justify-center gap-1 rounded-2xl border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-sky-400 shadow-lg transition-all duration-300 hover:bg-sky-500 hover:text-black cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
     >
-      {store.dang_tai ? (
+      {exporting ? (
         <>
           <RefreshCw className="h-3.5 w-3.5 animate-spin" />
           <span className="hidden sm:inline">XUẤT…</span>

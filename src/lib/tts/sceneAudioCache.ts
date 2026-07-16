@@ -16,6 +16,7 @@ export type SceneCacheKeyInput = {
   speakerSeed?: number;
   styleSeed?: number;
   nfeStep?: number;
+  variantKey?: string;
   samplePath?: string;
   /** multi-voice fingerprint optional */
   multiSig?: string;
@@ -41,6 +42,7 @@ export function buildSceneCacheId(input: SceneCacheKeyInput): string {
     String(input.speakerSeed ?? ''),
     String(input.styleSeed ?? ''),
     String(input.nfeStep ?? ''),
+    String(input.variantKey ?? ''),
     sampleFingerprint(input.samplePath),
     String(input.multiSig || ''),
   ].join('|');

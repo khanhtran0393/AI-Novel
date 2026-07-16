@@ -4,12 +4,9 @@ import { sendNotification } from '../modules/notifyModule';
 import { recordEngineCheckpoint, recordEngineSnapshot } from '../modules/engineModule';
 import { evaluateWordGate, normalizeSceneTags } from '@/lib/storyWriting';
 import {
-  extractHookFromScript,
   generateYoutubeMetaWithQA,
   mergeYoutubeSafe,
-  buildSeoDescription,
   buildThumbnailPrompt,
-  buildSeoTitleFromHook,
   scoreNarrativePsychScript,
 } from '@/lib/youtubeSafe';
 import {
@@ -78,6 +75,8 @@ export async function finishChapterWrite(
     // Memory must not share write abort signal — content already saved
     await commitChapterMemory(updatedChapter, updatedChapter.noi_dung, updatedChapters);
 
+    // Superseded write: parent finally releases dang_tai if still owner.
+    // Do NOT leave global lock stuck (blocks "Sinh chương" while char gen still works).
     if (!isCurrentGen(params.genId)) return;
 
     const afterMemoryState = useNovelStore.getState();
@@ -105,8 +104,8 @@ export async function finishChapterWrite(
       } else if (psych.flags.includes('poetic_open') || psych.flags.includes('weak_open_pattern_interrupt')) {
         console.warn('[NarrativePsych] Mở chương yếu (pattern interrupt) — Editor hook sẽ trừ điểm.');
       }
-    } catch {
-      /* non-fatal */
+    } catch (psychErr) {
+      throw new Error(`Narrative psych failed: ${psychErr instanceof Error ? psychErr.message : String(psychErr)}`);
     }
 
     // Auto one-shot revise if editor demands rewrite OR polish (YouTube-safe: don't ship raw AI)
@@ -204,64 +203,67 @@ export async function finishChapterWrite(
               await animateText(audioRev.noi_dung, params.genId);
             }
           } catch (arErr) {
-            console.warn('[Editor] audio-readability skipped:', arErr);
+            throw new Error(`Audio readability failed: ${arErr instanceof Error ? arErr.message : String(arErr)}`);
           }
         }
       } catch (e) {
-        console.warn('[Editor] auto-revise skipped:', e);
+        throw new Error(`Auto revise failed: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
     if (!isCurrentGen(params.genId)) return;
 
     // Hook + YouTube meta (55 psych laws) after write — same quality bar as YouTube Studio
-    try {
-      const finalCh = useNovelStore.getState().danh_sach_chuong.find(
-        (c) => c.so_chuong === params.chapterNumber,
-      );
-      if (finalCh?.noi_dung) {
-        const live = useNovelStore.getState();
-        const chProfile = live.channels?.[live.activeChannelId || ''];
-        const pack = generateYoutubeMetaWithQA({
-          script: finalCh.noi_dung,
-          novelTitle: live.ten_tac_pham,
-          chapter: params.chapterNumber,
-          maxRounds: 4,
-          usedTitles: chProfile?.usedHooks || [],
-          usedThumbLines: chProfile?.usedThumbnailNotes || [],
-        });
-        live.setChapterHook(params.chapterNumber, {
+    const finalCh = useNovelStore.getState().danh_sach_chuong.find(
+      (c) => c.so_chuong === params.chapterNumber,
+    );
+    if (finalCh?.noi_dung) {
+      const live = useNovelStore.getState();
+      const visualDna = (live.visualDnaPrompt || live.mediaStylePreset || '').trim();
+      if (!visualDna) {
+        throw new Error('Thieu Visual DNA / Media Style de tao thumbnailPrompt.');
+      }
+      const chProfile = live.channels?.[live.activeChannelId || ''];
+      const pack = generateYoutubeMetaWithQA({
+        script: finalCh.noi_dung,
+        novelTitle: live.ten_tac_pham,
+        chapter: params.chapterNumber,
+        maxRounds: 4,
+        usedTitles: chProfile?.usedHooks || [],
+        usedThumbLines: chProfile?.usedThumbnailNotes || [],
+      });
+      live.setChapterHook(params.chapterNumber, {
+        hook: pack.hook,
+        thumbnailLine: pack.thumbnailLine.slice(0, 30),
+        seoTitle: pack.seoTitle.slice(0, 100),
+        seoDescription: pack.seoDescription,
+        seoTags: pack.seoTags,
+        thumbnailPrompt: buildThumbnailPrompt({
           hook: pack.hook,
-          thumbnailLine: pack.thumbnailLine.slice(0, 30),
-          seoTitle: pack.seoTitle.slice(0, 100),
-          seoDescription: pack.seoDescription,
-          seoTags: pack.seoTags,
-          thumbnailPrompt: buildThumbnailPrompt({
-            hook: pack.hook,
-            thumbnailLine: pack.thumbnailLine,
-            visualDna: live.visualDnaPrompt || live.mediaStylePreset,
-            characterHint: (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
-          }),
-        });
-        try {
-          live.rememberChannelMotif?.('hook', pack.seoTitle.slice(0, 120));
-          live.rememberChannelMotif?.('thumb', pack.thumbnailLine.slice(0, 80));
-        } catch {
-          /* ignore */
-        }
+          thumbnailLine: pack.thumbnailLine,
+          visualDna,
+          characterHint: (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+        }),
+      });
+      try {
+        live.rememberChannelMotif?.('hook', pack.seoTitle.slice(0, 120));
+        live.rememberChannelMotif?.('thumb', pack.thumbnailLine.slice(0, 80));
+      } catch (motifErr) {
+        throw new Error(`Khong luu duoc channel motif: ${motifErr instanceof Error ? motifErr.message : String(motifErr)}`);
       }
       // New AI draft → require human pass again
       useNovelStore.getState().setHumanEditFlag(params.chapterNumber, {
         edited: false,
         note: 'reset after AI write',
       });
-    } catch (hookErr) {
-      // No silent hook/SEO fallback — log only
-      console.warn('[Hook] extract failed (no fallback):', hookErr);
     }
 
-    setIsStreaming(false);
-    useNovelStore.getState().setDangTai(false);
+    // Loading release is owned by useWriteChapter finally (avoids double-clear races).
+    // Still clear here if we remain current — defensive for callers that skip finally.
+    if (isCurrentGen(params.genId)) {
+      setIsStreaming(false);
+      useNovelStore.getState().setDangTai(false);
+    }
     useNovelStore.getState().setTabHienTai('noi_dung');
 
     sendNotification(

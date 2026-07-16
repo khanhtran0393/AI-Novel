@@ -68,14 +68,41 @@ export function toErrorJson(err: unknown, correlationId?: string): ErrorJson {
           code: err.code,
           ...(err.details !== undefined ? { details: err.details } : {}),
         }
-      : err instanceof Error
-        ? { error: err.message, code: 'UNKNOWN' as ErrorCode }
-        : { error: String(err || 'Unknown error'), code: 'UNKNOWN' as ErrorCode };
+      : err &&
+          typeof err === 'object' &&
+          ((err as { name?: string }).name === 'KeyQuotaWaitError' ||
+            (err as { code?: string }).code === 'QUOTA')
+        ? {
+            error: err instanceof Error ? err.message : String(err),
+            code: 'QUOTA' as ErrorCode,
+            ...((err as { details?: unknown }).details !== undefined
+              ? { details: (err as { details?: unknown }).details }
+              : {}),
+          }
+        : err instanceof Error
+          ? { error: err.message, code: 'UNKNOWN' as ErrorCode }
+          : { error: String(err || 'Unknown error'), code: 'UNKNOWN' as ErrorCode };
   return correlationId ? { ...base, correlationId } : base;
 }
 
 export function httpStatusFromError(err: unknown): number {
   if (err instanceof AppError) return err.status;
+  if (
+    err &&
+    typeof err === 'object' &&
+    (err as { name?: string; status?: number }).name === 'KeyQuotaWaitError' &&
+    typeof (err as { status?: number }).status === 'number'
+  ) {
+    return (err as { status: number }).status;
+  }
+  if (
+    err &&
+    typeof err === 'object' &&
+    (err as { code?: string }).code === 'QUOTA' &&
+    typeof (err as { status?: number }).status === 'number'
+  ) {
+    return (err as { status: number }).status;
+  }
   return 500;
 }
 

@@ -30,5 +30,12 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "OpenMontage", "Voice Studio", "ainovel-cli-main", "scratch"]
+  "exclude": [
+    "node_modules",
+    "OpenMontage",
+    "Voice Studio",
+    "ainovel-cli-main",
+    "scratch",
+    "scripts"
+  ]
 }

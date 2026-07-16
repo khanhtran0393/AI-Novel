@@ -1,0 +1,891 @@
+[
+  {
+    "id": "BV421_vivn_streaming",
+    "name": "Nhỏ Ngọt Ngào",
+    "resource_id": "7252594014782755330",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "vi_female_huong",
+    "name": "Giọng Nữ Phổ Thông",
+    "resource_id": "7264854897953083905",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "BV074_streaming_dsp",
+    "name": "Giọng Bé",
+    "resource_id": "7550087831092251920",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "BV074_streaming",
+    "name": "Cô Gái Hoạt Ngôn",
+    "resource_id": "7102355709945188865",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "vi-VN-HoaiMyNeural",
+    "name": "Hoai My",
+    "resource_id": "7371666434650280464",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "vi-VN-NamMinhNeural",
+    "name": "Nam Minh",
+    "resource_id": "7371666524727153168",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "BV075_streaming_vibrato_dsp",
+    "name": "Việt Méo",
+    "resource_id": "7569450639810465040",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "BV562_streaming",
+    "name": "Mai",
+    "resource_id": "7483736254694035984",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_yangguangnv_uranus_bigtts",
+    "name": "Ban Mai",
+    "resource_id": "7637456432522218773",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_richgirl_uranus_bigtts",
+    "name": "Review Phim new",
+    "resource_id": "7637460351541447956",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_quanweinv_uranus_bigtts",
+    "name": "Bản Tin 1",
+    "resource_id": "7637458743197732117",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_stokie_uranus_bigtts",
+    "name": "Review Phim 4",
+    "resource_id": "7637456729696996628",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_sisi_uranus_bigtts",
+    "name": "B���n Tin nữ",
+    "resource_id": "7637455857285860629",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_daqi_uranus_bigtts",
+    "name": "Review Phim 3",
+    "resource_id": "7637451983389019409",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_xyf04auto_uranus_bigtts",
+    "name": "Review Phim 2",
+    "resource_id": "7637458743197732117",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_kiwi_uranus_bigtts",
+    "name": "Sunny Idol",
+    "resource_id": "7637457995882089749",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "BV075_streaming_demon_dsp",
+    "name": "Kenny Đại Đế",
+    "resource_id": "7569442422665661712",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "th",
+    "name": "ThaiLand 3",
+    "resource_id": "7371666742055014913",
+    "lan": "th",
+    "lang": "th-TH"
+  },
+  {
+    "id": "en_us_006",
+    "name": "EN US 2",
+    "resource_id": "7114563482518819329",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_us_002",
+    "name": "EN US",
+    "resource_id": "7130515992936976897",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_female_janeamber_mars_bigtts",
+    "name": "Janeamber",
+    "resource_id": "7538652405005700369",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_female_emotional_moon_bigtts",
+    "name": "Emotional",
+    "resource_id": "7114563483257016833",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "BV452_streaming",
+    "name": "Vũ hán",
+    "resource_id": "7543766515837848833",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "id_female_icha_uranus_bigtts",
+    "name": "Icathian",
+    "resource_id": "7587328219989249296",
+    "lan": "id",
+    "lang": "id-ID"
+  },
+  {
+    "id": "zh_female_xiaonan_lv_clone2",
+    "name": "旅遊主播",
+    "resource_id": "7554226531451833617",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "ICL_ja_female_zhiyu",
+    "name": "Lovely Idol",
+    "resource_id": "7579078759446285584",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "ICL_ja_male_xinggan",
+    "name": "Xinggan",
+    "resource_id": "7522965008020540688",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "BV510_streaming",
+    "name": "English",
+    "resource_id": "7081169180120060418",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_fr_male_wit",
+    "name": "Wit",
+    "resource_id": "7573964692587023617",
+    "lan": "fr",
+    "lang": "fr-FR"
+  },
+  {
+    "id": "ICL_ja_male_rap",
+    "name": "Rap",
+    "resource_id": "7573959040657591553",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "en_female_sherry",
+    "name": "Sherry",
+    "resource_id": "7278146554844680706",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_jp_male_wutiaowu",
+    "name": "クールな青年",
+    "resource_id": "7527837025815334161",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "DiT_es_male_bilunan",
+    "name": "Señor entusiasta",
+    "resource_id": "7597943534309690641",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "DiT_es_male_agenting",
+    "name": "Agenting",
+    "resource_id": "7597890302053010704",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "DiT_de_male_koubo",
+    "name": "Koubo",
+    "resource_id": "7584344912276114704",
+    "lan": "de",
+    "lang": "de-DE"
+  },
+  {
+    "id": "en_us_010",
+    "name": "Chrming Male",
+    "resource_id": "7114563482359435778",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "BV433_streaming",
+    "name": "電視廣告",
+    "resource_id": "7436608032152228353",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "ICL_jp_female_hatunemiku",
+    "name": "Hatunemiku",
+    "resource_id": "749455601346334",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "ICL_ja_male_paoxiao",
+    "name": "Ơaoxiao",
+    "resource_id": "7584702432115019009",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "DiT_pt_male_wenrou",
+    "name": "Wenrou",
+    "resource_id": "7576131428711255297",
+    "lan": "pt",
+    "lang": "pt-BR"
+  },
+  {
+    "id": "ICL_jp_female_tanhua",
+    "name": "Tanhua",
+    "resource_id": "7522976550736760065",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "en_male_deadpool",
+    "name": "Deadpool",
+    "resource_id": "7231025912261644802",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "BV421_thth_streaming_vibrato_dsp",
+    "name": "ThaiLand 2",
+    "resource_id": "7569439521352338689",
+    "lan": "th",
+    "lang": "th-TH"
+  },
+  {
+    "id": "en-US-JennyMultilingualNeural",
+    "name": "Jenny",
+    "resource_id": "7569439521352338689",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en",
+    "name": "Male Eng",
+    "resource_id": "7337657863390630401",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_male_m03_classical",
+    "name": "Classical Music",
+    "resource_id": "7245192458206712322",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_male_dramaqueen_zachk",
+    "name": "Dramaaa",
+    "resource_id": "733719524381032",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "BV213_streaming",
+    "name": "Dramaaa",
+    "resource_id": "7372474337594446337",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "BV503_streaming",
+    "name": "Energetic Famale",
+    "resource_id": "7081168775646548482",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_id_female_hantuperempuan",
+    "name": "Hantuperempuan",
+    "resource_id": "7469006620379320848",
+    "lan": "id",
+    "lang": "id-ID"
+  },
+  {
+    "id": "zh_female_guaiqiaogirl",
+    "name": "Guaiqiaogirl",
+    "resource_id": "7473014336223449616",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "en_female_nail_artist",
+    "name": "Artist",
+    "resource_id": "7393228944540963344",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_es_female_bilunv",
+    "name": "Female Bilunv",
+    "resource_id": "7598080655146192144",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "zh_male_tangsengdsp",
+    "name": "Tangsengdsp",
+    "resource_id": "7520150587619478801",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "DiT_de_female_jiangshi",
+    "name": "TieFE Dozen",
+    "resource_id": "7584344912292777232",
+    "lan": "de",
+    "lang": "de-DE"
+  },
+  {
+    "id": "zh_female_naying",
+    "name": "Naying",
+    "resource_id": "7436607833887478289",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "ICL_en_female_little_cute_dsp",
+    "name": "Cute Girl",
+    "resource_id": "7605129105306111233",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_fr_female_soothing",
+    "name": "Douce",
+    "resource_id": "7573961077009042689",
+    "lan": "fr",
+    "lang": "fr-FR"
+  },
+  {
+    "id": "en_male_trickster_stream",
+    "name": "Trickster",
+    "resource_id": "7189462618589893121",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "multi_male_M092_conversation_wvae_bigtts_cc",
+    "name": "conversation",
+    "resource_id": "7483453668117713425",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "en_male_artistic_layne",
+    "name": "Mentor",
+    "resource_id": "7337195454980952577",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_ja_male_bobao2",
+    "name": "穏やかな声優",
+    "resource_id": "7579090923636755729",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "BV567_streaming_dsp",
+    "name": "เด็กเสียง",
+    "resource_id": "7550069260152818960",
+    "lan": "th",
+    "lang": "th-TH"
+  },
+  {
+    "id": "ICL_jp_male_yangguang",
+    "name": "Yangguang",
+    "resource_id": "752572180004351515",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "en_male_death_rock",
+    "name": "Grim Rock",
+    "resource_id": "7372472588859085313",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_ja_female_lengjingnv",
+    "name": "女性AI",
+    "resource_id": "7571602819283701009",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "ICL_es_male_emo",
+    "name": "Diablomalo",
+    "resource_id": "7568807675337723137",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "ICL_en_male_philosopher_dsp",
+    "name": "Narrator",
+    "resource_id": "7525722920161725712",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_ja_female_kuaizui02",
+    "name": "マネージャー",
+    "resource_id": "7522976550736678145",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "en_us_007",
+    "name": "Male Profess",
+    "resource_id": "7114563482472681986",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_en_female_ditie_dsp",
+    "name": "Creepy female",
+    "resource_id": "7572089965652315393",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_female_soothing_mars_bigtts",
+    "name": "Female Teacher",
+    "resource_id": "7526754143369760016",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "BV072_streaming",
+    "name": "Suaraaa",
+    "resource_id": "7028847457089884674",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_es_male_jiqiren",
+    "name": "Male Jiqiren",
+    "resource_id": "7568807473923099920",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "ICL_jp_male_zhenfennan",
+    "name": "少年ヒーロー",
+    "resource_id": "7538698409633516816",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "BV075_streaming_robot_dsp",
+    "name": "Robot VN",
+    "resource_id": "7538698409633516816",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_male_felipe_uranus_bigtts",
+    "name": "Giọng Nam Trầm",
+    "resource_id": "7637456729696996628",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_peiqi_uranus_bigtts",
+    "name": "Giọng Gái Mới Lớn",
+    "resource_id": "7637458789033151751",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_xinwenjieshuo_uranus_bigtts",
+    "name": "Nam bản tin",
+    "resource_id": "7637455039719640327",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "multi_female_tianmeijieshuo_uranus_bigtts",
+    "name": "Quên Tên Tự Test",
+    "resource_id": "7637460417295469832",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "BV075_streaming",
+    "name": "Thanh Niên Tự Tin",
+    "resource_id": "7102355803792740865",
+    "lan": "vi",
+    "lang": "vi-VN"
+  },
+  {
+    "id": "DiT_pt_male_shangren",
+    "name": "Empresário Frio",
+    "resource_id": "7576131970103643408",
+    "lan": "pt",
+    "lang": "pt-BR"
+  },
+  {
+    "id": "ICL_jp_female_araisan",
+    "name": "天真爛漫な娘",
+    "resource_id": "7527796800649055489",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "ICL_jp_male_dashu",
+    "name": "Dashu",
+    "resource_id": "7527814111502077201",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "DiT_en_female_jessie",
+    "name": "Jessie",
+    "resource_id": "7564325260414160129",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "zh_female_xiaoyue",
+    "name": "Xiaoyue",
+    "resource_id": "7543792542727425281",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "zh_female_angela",
+    "name": "暗夜蘿莉",
+    "resource_id": "7473014770862395905",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "multi_zh_male_youyoujunzi_moon_bigtts_cc",
+    "name": "Rizki",
+    "resource_id": "7501234950042030608",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "BV540_streaming",
+    "name": "Desti",
+    "resource_id": "7477925128651674113",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_zh_male_xionger",
+    "name": "XiaoChao",
+    "resource_id": "7564318793716059409",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "ICL_id_male_deep_god_dsp",
+    "name": "Deep God",
+    "resource_id": "7605123605034208513",
+    "lan": "id",
+    "lang": "id-ID"
+  },
+  {
+    "id": "zh_female_inspirational",
+    "name": "溫柔姐姐",
+    "resource_id": "7473013595417088528",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "en_female_loba_apex",
+    "name": "Robaa",
+    "resource_id": "7360986396594541057",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_ja_male_reborn",
+    "name": "厳しい先生",
+    "resource_id": "7573954050379566337",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "DiT_de_female_qingsong",
+    "name": "Sanfte Führerin",
+    "resource_id": "7584344912292760848",
+    "lan": "de",
+    "lang": "de-DE"
+  },
+  {
+    "id": "ICL_br_male_212M_LuizS",
+    "name": "Contra",
+    "resource_id": "7501618011829178896",
+    "lan": "br",
+    "lang": "pt-BR"
+  },
+  {
+    "id": "DiT_en_male_trickster",
+    "name": "Trickster",
+    "resource_id": "7564317234814848273",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_female_caroline_clone2",
+    "name": "Excited",
+    "resource_id": "7232136837861478913",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_en_male_305M_JamieTr",
+    "name": "Tinn",
+    "resource_id": "7501615071068426768",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_en_male_kevin2",
+    "name": "Mischief",
+    "resource_id": "7438551246824280592",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "en_us_002_dsp",
+    "name": "Dolly famle",
+    "resource_id": "7519722328935140624",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "zh_female_sistermango",
+    "name": "語音助理",
+    "resource_id": "7588056140685036817",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "BV507_streaming",
+    "name": "Cute Boy",
+    "resource_id": "7081168994673103362",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "BV029_streaming",
+    "name": "American Female",
+    "resource_id": "6898240012404396546",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_en_female_cc_bluetooth",
+    "name": "Bluetooth",
+    "resource_id": "7427072447129588225",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_pt_female_youya",
+    "name": "Youya",
+    "resource_id": "7576144104547945729",
+    "lan": "pt",
+    "lang": "pt-BR"
+  },
+  {
+    "id": "ICL_en_female_lisa",
+    "name": "Lisa",
+    "resource_id": "7491194157852004881",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_ja_male_huolinan2",
+    "name": "爽やかメンズ",
+    "resource_id": "7510072022672624913",
+    "lan": "jp",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "BV567_streaming_demon_dsp",
+    "name": "Thailand",
+    "resource_id": "7569443462295178512",
+    "lan": "th",
+    "lang": "th-TH"
+  },
+  {
+    "id": "BV568_streaming",
+    "name": "นภา",
+    "resource_id": "7569443462295178512",
+    "lan": "th",
+    "lang": "th-TH"
+  },
+  {
+    "id": "multi_female_zendaya_uranus_bigtts",
+    "name": "สุนิสา",
+    "resource_id": "7569443462295178512",
+    "lan": "th",
+    "lang": "th-TH"
+  },
+  {
+    "id": "ICL_en_male_317M_BrianJW",
+    "name": "BrianJW",
+    "resource_id": "7501615796456526352",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_fr_female_sharp",
+    "name": "sharp",
+    "resource_id": "7573963007588371728",
+    "lan": "fr",
+    "lang": "fr-FR"
+  },
+  {
+    "id": "ICL_en_male_310M_CoreyK",
+    "name": "Kai",
+    "resource_id": "7501615396093432337",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_en_male_captain",
+    "name": "Captain",
+    "resource_id": "7510080106199665937",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "ICL_ja_female_narrator",
+    "name": "narrator",
+    "resource_id": "7573956962279361809",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "multi_female_wenjingmaomao_moon_bigtts_cc",
+    "name": "Daiana",
+    "resource_id": "7501234865447113233",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "DiT_zh_male_paoxiaoge",
+    "name": "paoxiaoge",
+    "resource_id": "7564296190074948865",
+    "lan": "zh",
+    "lang": "zh-CN"
+  },
+  {
+    "id": "ICL_ja_male_gaoxiao",
+    "name": "gaoxiao",
+    "resource_id": "7522976550736661761",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "ICL_ja_male_cute",
+    "name": "cute",
+    "resource_id": "7573955139086667009",
+    "lan": "ja",
+    "lang": "ja-JP"
+  },
+  {
+    "id": "ICL_es_female_tt_Vivi",
+    "name": "Lía",
+    "resource_id": "7501616990008644113",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "ICL_es_male_tt_EdgarRu",
+    "name": "EdgarRu",
+    "resource_id": "7501616889173381633",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "ICL_es_female_tt_RosaW",
+    "name": "Lina",
+    "resource_id": "75016171499039011",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "ICL_es_male_shenchen",
+    "name": "Lavana",
+    "resource_id": "7568807534438468865",
+    "lan": "es",
+    "lang": "es-ES"
+  },
+  {
+    "id": "ICL_en_male_oogie2",
+    "name": "Oogie",
+    "resource_id": "7438551608746578449",
+    "lan": "en",
+    "lang": "en-US"
+  },
+  {
+    "id": "id_male_putra_uranus_bigtts",
+    "name": "Uranus",
+    "resource_id": "7587328479071309073",
+    "lan": "id",
+    "lang": "id-ID"
+  },
+  {
+    "id": "BV560_streaming",
+    "name": "Alex Đại Đế",
+    "resource_id": "7483736167565758992",
+    "lan": "vi",
+    "lang": "vi-VN"
+  }
+]

@@ -6,9 +6,9 @@ import {
   imageAssetKey,
   sceneAssetKey,
   videoAssetKey,
-  videoAssetKeyFromImageKey,
 } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useFolderActions } from '../../hooks/useFolderActions';
 import { getWordCount } from '../../utils/stringUtils';
 import {
@@ -25,6 +25,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from '@/lib/toastBus';
+import FloatingMenu from '../../shared/FloatingMenu';
 import ScenePromptRow from './ScenePromptRow';
 import SceneTtsBar from './SceneTtsBar';
 
@@ -35,6 +36,9 @@ interface SceneCardProps {
   handleCopyScene: (text: string) => void;
   handleExpandScene: (idx: number) => Promise<void>;
   handleRewriteScene: (idx: number) => Promise<void>;
+  /** Busy chỉ của NÚT này (không dùng dang_tai global) */
+  expandingThis?: boolean;
+  rewritingThis?: boolean;
   handlePlayTTS: (text: string, sceneIndex: number, voice: string) => Promise<void>;
   handleStopTTS: () => void;
   handleGenerateTTS: (
@@ -49,6 +53,7 @@ interface SceneCardProps {
   handleGenerateImage: (sceneIndex: number, promptIndex: number, prompt: string, sentence: string) => Promise<void>;
   handleGenerateAllImages: (sceneIndex: number) => Promise<void>;
   handleGenerateVideo: (sceneIndex: number, startPromptIndex: number, endPromptIndex: number, prompt: string) => Promise<void>;
+  handleExtendVideo?: (sceneIndex: number, promptIndex: number) => Promise<void>;
   handleGenerateAllVideos: (sceneIndex: number) => Promise<void>;
   isPlayingTTS: boolean;
   generatingTTS: boolean;
@@ -56,8 +61,6 @@ interface SceneCardProps {
   ttsStatus?: string;
   generatingPrompt: boolean;
   regeneratingSinglePrompt: Record<string, boolean>;
-  generatingImage: Record<string, boolean>;
-  generatingVideo: Record<string, boolean>;
   onImageZoom: (url: string) => void;
 }
 
@@ -69,13 +72,15 @@ type ScenePromptItem = {
   video_prompt?: string;
 };
 
-export default function SceneCard({
+function SceneCard({
   scene,
   sceneIndex,
   handleSceneChange,
   handleCopyScene,
   handleExpandScene,
   handleRewriteScene,
+  expandingThis = false,
+  rewritingThis = false,
   handlePlayTTS,
   handleStopTTS,
   handleGenerateTTS,
@@ -84,6 +89,7 @@ export default function SceneCard({
   handleGenerateImage,
   handleGenerateAllImages,
   handleGenerateVideo,
+  handleExtendVideo,
   handleGenerateAllVideos,
   isPlayingTTS,
   generatingTTS,
@@ -91,21 +97,44 @@ export default function SceneCard({
   ttsStatus = '',
   generatingPrompt,
   regeneratingSinglePrompt,
-  generatingImage,
-  generatingVideo,
   onImageZoom
 }: SceneCardProps) {
-  const store = useNovelStore();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { handleOpenFolder } = useFolderActions();
   
   const [openSceneTab, setOpenSceneTab] = useState<'tts' | 'studio' | null>('studio');
   const [manualDuration, setManualDuration] = useState('');
-  const chapterNum = store.chuong_dang_chon || 1;
+  
+  const chapterNum = useNovelStore(state => state.chuong_dang_chon) || 1;
+  const assetKey = sceneAssetKey(chapterNum, sceneIndex);
+  
+  const audioAsset = useNovelStore(state => state.generatedAudioPaths[assetKey]);
+  const promptsAsset = useNovelStore(state => state.generatedPrompts[assetKey]);
+  const isHook = isHookSceneIndex(sceneIndex);
+  const hookEdited = useNovelStore(state => state.humanEditFlags?.[chapterNum]?.edited);
+  const chapterHookRaw = useNovelStore(state => state.chapterHooks?.[chapterNum]?.hook);
+  const addGeneratedImage = useNovelStore(state => state.addGeneratedImage);
+  const setChapterHook = useNovelStore(state => state.setChapterHook);
+  const updateChuong = useNovelStore(state => state.updateChuong);
+  const setHumanEditFlag = useNovelStore(state => state.setHumanEditFlag);
 
   const [upscalingImage, setUpscalingImage] = useState<Record<string, boolean>>({});
   const [removingBg, setRemovingBg] = useState<Record<string, boolean>>({});
   const [collapsed, setCollapsed] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportBtnRef = React.useRef<HTMLButtonElement>(null);
+
+  const downloadTextFile = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleUpscaleImage = async (imagePath: string, key: string) => {
     setUpscalingImage(prev => ({ ...prev, [key]: true }));
@@ -118,7 +147,7 @@ export default function SceneCard({
       });
       const data = await res.json();
       if (data.success) {
-        store.addGeneratedImage(key, data.outPath);
+        addGeneratedImage(key, data.outPath);
       } else {
         toast.info('Notice', "Upscale failed: " + data.error);
       }
@@ -140,7 +169,7 @@ export default function SceneCard({
       });
       const data = await res.json();
       if (data.success) {
-        store.addGeneratedImage(key, data.outPath);
+        addGeneratedImage(key, data.outPath);
       } else {
         toast.info('Notice', "Xóa nền thất bại: " + data.error);
       }
@@ -151,24 +180,24 @@ export default function SceneCard({
     }
   };
 
-
-  const assetKey = sceneAssetKey(store.chuong_dang_chon, sceneIndex);
-  const audioAsset = store.generatedAudioPaths[assetKey];
-  const promptsAsset = store.generatedPrompts[assetKey];
-  const isHook = isHookSceneIndex(sceneIndex);
+  const { imageDone, videoDone } = useNovelStore(useShallow(state => {
+    let iDone = 0;
+    let vDone = 0;
+    const prompts = state.generatedPrompts[assetKey];
+    if (prompts && prompts.length > 0) {
+      for (let pIdx = 0; pIdx < prompts.length; pIdx++) {
+        const imgKey = imageAssetKey(chapterNum, sceneIndex, pIdx);
+        const vidKey = videoAssetKey(chapterNum, sceneIndex, pIdx);
+        if (state.generatedImages?.[imgKey]) iDone++;
+        if (state.generatedVideos?.[vidKey]) vDone++;
+      }
+    }
+    return { imageDone: iDone, videoDone: vDone };
+  }));
 
   // Tiến độ ảnh + video theo từng prompt
   const promptCount = promptsAsset?.length || 0;
-  let imageDone = 0;
-  let videoDone = 0;
-  if (promptsAsset && promptCount > 0) {
-    for (let pIdx = 0; pIdx < promptCount; pIdx++) {
-      const imgKey = imageAssetKey(store.chuong_dang_chon, sceneIndex, pIdx);
-      const vidKey = videoAssetKey(store.chuong_dang_chon, sceneIndex, pIdx);
-      if (store.generatedImages?.[imgKey]) imageDone++;
-      if (store.generatedVideos?.[vidKey]) videoDone++;
-    }
-  }
+  
   // Xanh chỉ khi đã có prompt và đủ 100% ảnh + video
   const mediaComplete =
     promptCount > 0 && imageDone === promptCount && videoDone === promptCount;
@@ -185,10 +214,16 @@ export default function SceneCard({
 
   // Tự động quét và lấy thời gian voice bên TTS để làm tham chiếu
   const voiceDurationReference = audioAsset ? audioAsset.duration : null;
-  // Hook cold-open mặc định ~30s; cảnh thường ước từ số từ
-  const defaultDuration = isHook
-    ? YOUTUBE_HOOK_DEFAULT_DURATION_SEC
-    : Math.max(5, Math.round(getWordCount(scene.content) / 2.5));
+  const storeWpm = useNovelStore((s) => s.wpm);
+  // Hook cold-open ~30s; cảnh thường ước từ số từ / WPM Media Config (không hardcode /2.5)
+  const defaultDuration = (() => {
+    if (isHook) return YOUTUBE_HOOK_DEFAULT_DURATION_SEC;
+    const words = getWordCount(scene.content);
+    const wpm = Number(storeWpm);
+    if (!Number.isFinite(wpm) || wpm <= 0) return 0;
+    if (words <= 0) return 0;
+    return Math.max(1, Math.ceil((words / wpm) * 60));
+  })();
 
   return (
     <div
@@ -292,7 +327,7 @@ export default function SceneCard({
           {isHook && (
             <label
               className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1.5 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-sans transition-colors ${
-                store.humanEditFlags?.[store.chuong_dang_chon]?.edited
+                hookEdited
                   ? 'border-emerald-700 bg-emerald-500/15 text-emerald-400'
                   : 'border-zinc-800 bg-black/40 text-zinc-400 hover:border-emerald-900/60 hover:text-emerald-400/80'
               }`}
@@ -301,26 +336,26 @@ export default function SceneCard({
               <input
                 type="checkbox"
                 className="accent-emerald-500 h-3 w-3"
-                checked={!!store.humanEditFlags?.[store.chuong_dang_chon]?.edited}
+                checked={!!hookEdited}
                 onChange={(e) => {
                   const checked = e.target.checked;
-                  const ch = store.chuong_dang_chon;
+                  const ch = chapterNum;
                   if (checked) {
                     // 1) Hook ~30s: chèn ≥1 câu đùa giữa nhịp thoại
-                    const hookRaw = (scene.content || store.chapterHooks?.[ch]?.hook || '').trim();
+                    const hookRaw = (scene.content || chapterHookRaw || '').trim();
                     if (hookRaw) {
                       const hookJoked = injectHumanJokeAsides(hookRaw, {
                         minCount: 1,
                         enabled: true,
                       });
                       handleSceneChange(sceneIndex, hookJoked);
-                      store.setChapterHook(ch, { hook: hookJoked });
+                      setChapterHook(ch, { hook: hookJoked });
                     }
                     // 2) Toàn chương: bảo đảm có câu đùa (nếu AI chưa chèn)
-                    const chapter = store.danh_sach_chuong.find((c) => c.so_chuong === ch);
+                    const chapter = useNovelStore.getState().danh_sach_chuong.find((c) => c.so_chuong === ch);
                     const body = (chapter?.noi_dung || '').trim();
                     if (body && countHumanJokeAsides(body) < 1) {
-                      store.updateChuong(ch, {
+                      updateChuong(ch, {
                         noi_dung: injectHumanJokeAsides(body, {
                           minCount: 1,
                           enabled: true,
@@ -328,7 +363,7 @@ export default function SceneCard({
                       });
                     }
                   }
-                  store.setHumanEditFlag(ch, {
+                  setHumanEditFlag(ch, {
                     edited: checked,
                     note: checked
                       ? 'human pass + joke asides activated'
@@ -349,31 +384,35 @@ export default function SceneCard({
           </button>
           <button
             type="button"
-            disabled={store.dang_tai || !scene.content.trim()}
-            onClick={() => handleRewriteScene(sceneIndex)}
+            disabled={rewritingThis || !scene.content.trim()}
+            onClick={() => void handleRewriteScene(sceneIndex)}
             title={
               isHook
-                ? 'Viết lại Hook ~30s (tính người / humanize) — giữ cốt lõi cold-open'
-                : 'Viết lại nhẹ nội dung cảnh — giữ cốt lõi, điều hòa nối tiếp cảnh trước/sau'
+                ? 'Viết lại Hook ~30s — nút riêng, không khóa gen NV/chương'
+                : 'Viết lại nhẹ — chỉ khóa nút này'
             }
             className="flex items-center gap-1 rounded bg-sky-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-400 border border-sky-800/40 hover:bg-sky-500 hover:text-black transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${store.dang_tai ? 'animate-spin' : ''}`} />
-            Viết lại
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${rewritingThis ? 'animate-spin' : ''}`}
+            />
+            {rewritingThis ? '…' : 'Viết lại'}
           </button>
           <button
             type="button"
-            disabled={store.dang_tai || !scene.content.trim()}
-            onClick={() => handleExpandScene(sceneIndex)}
+            disabled={expandingThis || !scene.content.trim()}
+            onClick={() => void handleExpandScene(sceneIndex)}
             title={
               isHook
-                ? 'Mở rộng Hook cold-open (~30–45s) — thêm chi tiết, giữ open loop'
-                : 'Mở rộng nội dung cảnh bằng AI (Expart)'
+                ? 'Expart Hook — nút riêng, không khóa nút khác'
+                : 'Expart — chỉ khóa nút này'
             }
             className="flex items-center gap-1 rounded bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 border border-amber-800/40 hover:bg-amber-500 hover:text-black transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            Expart
+            <Sparkles
+              className={`h-3.5 w-3.5 ${expandingThis ? 'animate-spin' : ''}`}
+            />
+            {expandingThis ? '…' : 'Expart'}
           </button>
         </div>
       </div>
@@ -452,16 +491,26 @@ export default function SceneCard({
                 type="number"
                 min="5"
                 placeholder="VD: 15"
-                value={manualDuration !== '' ? manualDuration : (voiceDurationReference || defaultDuration)}
+                value={
+                  manualDuration !== ''
+                    ? manualDuration
+                    : voiceDurationReference
+                      ? String(voiceDurationReference)
+                      : defaultDuration > 0
+                        ? String(defaultDuration)
+                        : ''
+                }
                 onChange={(e) => {
                   setManualDuration(e.target.value);
                 }}
                 className="h-8 w-20 bg-zinc-900 border border-zinc-800 rounded px-2 text-xs text-zinc-300 outline-none focus:border-emerald-500 text-center font-sans"
               />
               <span className="text-[10px] text-zinc-500 italic font-sans">
-                {voiceDurationReference 
-                  ? `(Quét từ TTS: ${voiceDurationReference} giây)` 
-                  : `(Khuyên dùng: ${defaultDuration} giây)`}
+                {voiceDurationReference
+                  ? `(Quét từ TTS: ${voiceDurationReference} giây)`
+                  : defaultDuration > 0
+                    ? `(Ước WPM ${storeWpm}: ${defaultDuration} giây)`
+                    : '(Cần TTS duration hoặc cấu hình WPM + nội dung cảnh)'}
               </span>
             </div>
             
@@ -469,14 +518,26 @@ export default function SceneCard({
               type="button"
               disabled={generatingPrompt}
               onClick={() => {
-                const durationVal = manualDuration !== '' 
-                  ? Math.max(5, parseInt(manualDuration) || 5) 
-                  : (voiceDurationReference || defaultDuration);
+                let durationVal = 0;
+                if (manualDuration !== '') {
+                  durationVal = Math.max(1, parseInt(manualDuration, 10) || 0);
+                } else if (voiceDurationReference && voiceDurationReference > 0) {
+                  durationVal = voiceDurationReference;
+                } else if (defaultDuration > 0) {
+                  durationVal = defaultDuration;
+                }
+                if (!durationVal) {
+                  toast.error(
+                    'Thiếu thời lượng',
+                    'Chạy TTS trước, nhập thời lượng tay, hoặc cấu hình WPM (Media Config) + nội dung cảnh. App không tự gán duration.',
+                  );
+                  return;
+                }
                 // Chỉ sinh prompt — Seedance/công thức nằm trong API, không gộp ảnh/video
                 void handleGenerateImagePrompt(scene.content, sceneIndex, durationVal);
               }}
               className="w-full h-9 rounded bg-emerald-500 text-black text-xs font-bold hover:bg-emerald-400 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-sans"
-              title="Sinh prompt shot. Công thức đạo diễn (Seedance) áp trong backend."
+              title="Sinh prompt shot. Công thức đạo diễn (Seedance) áp trong backend — style từ Visual DNA, genre từ Setup."
             >
               {generatingPrompt ? (
                 <>
@@ -518,49 +579,106 @@ export default function SceneCard({
                     🎬 Gen toàn bộ Video
                   </button>
                   
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleCopyScene(
-                        promptsAsset
-                          .map((p: ScenePromptItem) => p.image_prompt || p.prompt || '')
-                          .filter(Boolean)
-                          .join('\n'),
-                      )
-                    }
-                    className="text-[9px] font-bold uppercase tracking-wider text-zinc-300 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 hover:text-white px-2.5 py-0.5 rounded transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
-                    title={`Copy toàn bộ prompt ảnh của ${isHook ? 'Hook' : `cảnh ${sceneIndex + 1}`}, mỗi dòng một prompt`}
-                  >
-                    📋 Copy All
-                  </button>
+                  <div className="relative">
+                    <button
+                      ref={exportBtnRef}
+                      type="button"
+                      onClick={() => setExportMenuOpen(v => !v)}
+                      className="text-[9px] font-bold uppercase tracking-wider text-zinc-300 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 hover:text-white px-2.5 py-0.5 rounded transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                      title="Xuất (Copy/Download) Prompt"
+                    >
+                      📋 Export...
+                    </button>
+                    <FloatingMenu
+                      open={exportMenuOpen}
+                      anchorRef={exportBtnRef}
+                      onClose={() => setExportMenuOpen(false)}
+                      align="right"
+                      width="200px"
+                      className="rounded border border-zinc-800 bg-zinc-950 p-1 shadow-xl flex flex-col gap-1"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleCopyScene(
+                            promptsAsset
+                              .map((p: ScenePromptItem) => p.image_prompt || p.prompt || '')
+                              .filter(Boolean)
+                              .join('\n')
+                          );
+                          setExportMenuOpen(false);
+                        }}
+                        className="w-full text-left rounded px-2 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                      >
+                        📋 Copy Prompts Ảnh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleCopyScene(
+                            promptsAsset
+                              .map((p: ScenePromptItem) => p.video_prompt || p.image_prompt || p.prompt || '')
+                              .filter(Boolean)
+                              .join('\n')
+                          );
+                          setExportMenuOpen(false);
+                        }}
+                        className="w-full text-left rounded px-2 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                      >
+                        📋 Copy Prompts Video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const content = promptsAsset
+                            .map((p: ScenePromptItem) => p.image_prompt || p.prompt || '')
+                            .filter(Boolean)
+                            .join('\n');
+                          downloadTextFile(`prompts_image_c${sceneIndex + 1}.txt`, content);
+                          setExportMenuOpen(false);
+                        }}
+                        className="w-full text-left rounded px-2 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                      >
+                        ⬇️ Tải Prompts Ảnh (.txt)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const content = promptsAsset
+                            .map((p: ScenePromptItem) => p.video_prompt || p.image_prompt || p.prompt || '')
+                            .filter(Boolean)
+                            .join('\n');
+                          downloadTextFile(`prompts_video_c${sceneIndex + 1}.txt`, content);
+                          setExportMenuOpen(false);
+                        }}
+                        className="w-full text-left rounded px-2 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                      >
+                        ⬇️ Tải Prompts Video (.txt)
+                      </button>
+                    </FloatingMenu>
+                  </div>
                 </div>
               </div>
 
               {promptsAsset.map((promptItem: ScenePromptItem, pIdx: number) => {
                 const singlePromptKey = imageAssetKey(
-                  store.chuong_dang_chon,
+                  chapterNum,
                   sceneIndex,
                   pIdx,
                 );
                 const scriptPromptText = promptItem.script_prompt || promptItem.sentence || '';
                 const imagePromptText = promptItem.image_prompt || promptItem.prompt || '';
                 const videoPromptText = promptItem.video_prompt || imagePromptText;
-                const videoKey = videoAssetKeyFromImageKey(singlePromptKey);
                 return (
                   <ScenePromptRow
                     key={pIdx}
                     promptItem={promptItem}
                     pIdx={pIdx}
-                    chapter={store.chuong_dang_chon}
+                    chapter={chapterNum}
                     sceneIndex={sceneIndex}
                     isHook={isHook}
                     promptsLen={promptsAsset.length}
                     regenerating={!!regeneratingSinglePrompt[singlePromptKey]}
-                    imageGenerating={!!generatingImage[singlePromptKey]}
-                    videoGenerating={!!generatingVideo[videoKey]}
-                    generatedImg={store.generatedImages?.[singlePromptKey]}
-                    generatedVideo={store.generatedVideos?.[videoKey]}
-                    projectUrl={store.projectUrls?.[singlePromptKey]}
                     upscaling={!!upscalingImage[singlePromptKey]}
                     removingBg={!!removingBg[singlePromptKey]}
                     onOpenProjectUrl={(url) => window.open(url, '_blank')}
@@ -574,17 +692,22 @@ export default function SceneCard({
                         handleGenerateVideo(sceneIndex, pIdx - 1, pIdx, videoPromptText);
                       }
                     }}
+                    onExtendVideo={
+                      handleExtendVideo
+                        ? () => void handleExtendVideo(sceneIndex, pIdx)
+                        : undefined
+                    }
                     onRegenPrompt={() =>
                       handleRegenPrompt(sceneIndex, pIdx, scriptPromptText, imagePromptText)
                     }
                     onCopy={handleCopyScene}
                     onZoom={onImageZoom}
                     onUpscale={() => {
-                      const img = store.generatedImages?.[singlePromptKey];
+                      const img = useNovelStore.getState().generatedImages?.[singlePromptKey];
                       if (img) void handleUpscaleImage(img, singlePromptKey);
                     }}
                     onBgRemove={() => {
-                      const img = store.generatedImages?.[singlePromptKey];
+                      const img = useNovelStore.getState().generatedImages?.[singlePromptKey];
                       if (img) void handleBgRemoveImage(img, singlePromptKey);
                     }}
                   />
@@ -600,3 +723,44 @@ export default function SceneCard({
     </div>
   );
 }
+
+function regeneratingKeysForScene(
+  map: Record<string, boolean> | undefined,
+  sceneIndex: number,
+): string {
+  if (!map) return '';
+  // imageAssetKey = `${ch}_${sc}_${pi}` — match any chapter for this scene index
+  const needle = `_${sceneIndex}_`;
+  return Object.keys(map)
+    .filter((k) => map[k] && k.includes(needle))
+    .sort()
+    .join('|');
+}
+
+function areScenePropsEqual(prev: SceneCardProps, next: SceneCardProps) {
+  if (
+    prev.scene.content !== next.scene.content ||
+    prev.scene.title !== next.scene.title ||
+    prev.sceneIndex !== next.sceneIndex ||
+    prev.isPlayingTTS !== next.isPlayingTTS ||
+    prev.generatingTTS !== next.generatingTTS ||
+    prev.ttsProgress !== next.ttsProgress ||
+    prev.ttsStatus !== next.ttsStatus ||
+    prev.generatingPrompt !== next.generatingPrompt ||
+    prev.expandingThis !== next.expandingThis ||
+    prev.rewritingThis !== next.rewritingThis
+  ) {
+    return false;
+  }
+  // Only re-render this card when *its* regen flags change (not whole map ref)
+  if (
+    regeneratingKeysForScene(prev.regeneratingSinglePrompt, prev.sceneIndex) !==
+    regeneratingKeysForScene(next.regeneratingSinglePrompt, next.sceneIndex)
+  ) {
+    return false;
+  }
+  // ScenePromptRow handles image/video progress via mediaGenSlotStore.
+  return true;
+}
+
+export default React.memo(SceneCard, areScenePropsEqual);

@@ -1,15 +1,43 @@
 /**
  * Content script — bridge between background.js and injected.js
  * Injects injected.js into MAIN world to access window.grecaptcha
+ * Also harvests labs.google auth/session with page cookies (SW fetch often misses them).
  */
 (function () {
   const s = document.createElement('script');
   s.src = chrome.runtime.getURL('injected.js');
   s.onload = () => s.remove();
   (document.head || document.documentElement).appendChild(s);
+
+  // After page load: push session once (không spam 3 lần → tránh logout/login loop)
+  if (location.hostname === 'labs.google') {
+    let pushed = false;
+    const pushSession = () => {
+      if (pushed) return;
+      pushed = true;
+      fetch('/fx/api/auth/session', { credentials: 'include', cache: 'no-store' })
+        .then((r) => r.json().catch(() => ({})))
+        .then((data) => {
+          chrome.runtime
+            .sendMessage({ type: 'PAGE_SESSION', data, url: location.href })
+            .catch(() => {});
+        })
+        .catch(() => {});
+    };
+    if (document.readyState === 'complete') setTimeout(pushSession, 1200);
+    else window.addEventListener('load', () => setTimeout(pushSession, 1200));
+  }
 })();
 
 chrome.runtime.onMessage.addListener((msg, _, reply) => {
+  if (msg.type === 'FETCH_SESSION') {
+    fetch('/fx/api/auth/session', { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => reply({ ok: true, data }))
+      .catch((e) => reply({ ok: false, error: e.message || String(e) }));
+    return true;
+  }
+
   if (msg.type !== 'GET_CAPTCHA') return;
 
   const { requestId, pageAction } = msg;

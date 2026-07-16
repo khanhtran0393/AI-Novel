@@ -16,6 +16,18 @@ export async function generateCharPromptAction(
   params: GenCharPromptParams,
 ): Promise<Partial<NhanVatProfile>> {
   const { char, dan_y_tong_the, lorebook, profile } = params;
+  const store = useNovelStore.getState();
+  const styleHint = String(
+    store.visualDnaPrompt || store.mediaStylePreset || '',
+  ).trim();
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  const genre = [chu_de, phong_cach].filter(Boolean).join(' / ');
+  if (!styleHint && !genre) {
+    throw new Error(
+      'Thieu Visual DNA / Media Style va Setup (Chu de + Phong cach) khi gen prompt nhan vat. App khong tu gan mat the.',
+    );
+  }
   const data = await postGenerate(
     'GENERATE_CHARACTER_PROMPT',
     {
@@ -34,6 +46,12 @@ export async function generateCharPromptAction(
         ngoai_hinh: profile.ngoai_hinh || '',
         dac_diem_nhan_dang: profile.dac_diem_nhan_dang || '',
         khuet_tat: profile.khuet_tat || '',
+        styleHint,
+        style: styleHint,
+        visualDnaPrompt: store.visualDnaPrompt || '',
+        chu_de,
+        phong_cach,
+        genre,
       },
   );
   return data as Partial<NhanVatProfile>;
@@ -43,6 +61,18 @@ export async function regenerateCharPromptOnlyAction(
   params: { char: string; profile: Partial<NhanVatProfile> },
 ): Promise<string> {
   const { char, profile } = params;
+  const store = useNovelStore.getState();
+  const styleHint = String(
+    store.visualDnaPrompt || store.mediaStylePreset || '',
+  ).trim();
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
+  const genre = [chu_de, phong_cach].filter(Boolean).join(' / ');
+  if (!styleHint && !genre) {
+    throw new Error(
+      'Thieu Visual DNA / Setup khi gen character prompt only. App khong tu gan mat the.',
+    );
+  }
   const data = await postGenerate(
     'GENERATE_CHARACTER_PROMPT_ONLY',
     {
@@ -56,9 +86,19 @@ export async function regenerateCharPromptOnlyAction(
         ngoai_hinh: profile.ngoai_hinh || '',
         dac_diem_nhan_dang: profile.dac_diem_nhan_dang || '',
         khuet_tat: profile.khuet_tat || '',
+        styleHint,
+        style: styleHint,
+        visualDnaPrompt: store.visualDnaPrompt || '',
+        chu_de,
+        phong_cach,
+        genre,
       },
   );
-  return String((data as { prompt?: string }).prompt || '');
+  const out = String((data as { prompt?: string }).prompt || '').trim();
+  if (!out) {
+    throw new Error('API character prompt only tra rong. Khong dung fill cuc bo.');
+  }
+  return out;
 }
 
 interface GenCharImageParams {
@@ -111,6 +151,18 @@ async function generateCharImageCore(params: {
   promptIndex: number;
 }): Promise<{ imagePath: string; projectUrl?: string }> {
   const store = useNovelStore.getState();
+  const imageProvider = (store.imageProvider || '').trim();
+  const model = (store.imageModel || '').trim();
+  const imageAspectRatio = (store.imageAspectRatio || '').trim();
+  if (!imageProvider) {
+    throw new Error('Chua chon imageProvider. App khong tu gan provider.');
+  }
+  if (!model) {
+    throw new Error('Chua chon imageModel. App khong tu gan model.');
+  }
+  if (!imageAspectRatio) {
+    throw new Error('Chua chon imageAspectRatio. App khong tu gan ty le anh.');
+  }
   const cookie =
     (params.googleStudioCookies && params.googleStudioCookies[0]) ||
     params.googleStudioCookie ||
@@ -127,10 +179,10 @@ async function generateCharImageCore(params: {
       drivePath: params.savePathCharacter || params.googleDrivePath || '',
       ten_tac_pham: params.ten_tac_pham,
       cookie,
-      imageProvider: store.imageProvider || 'gemini',
-      model: store.imageModel || 'whisk',
+      imageProvider,
+      model,
       imageApiKey: store.imageApiKey || '',
-      imageAspectRatio: store.imageAspectRatio || '1:1',
+      imageAspectRatio,
       imageCount: 1,
       aiMasterApiKey: store.aiMasterApiKey || '',
     }),

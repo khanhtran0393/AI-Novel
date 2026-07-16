@@ -9,22 +9,20 @@ function resolvePiperModel(voice: string): string {
     ? fs.readdirSync(piperDir).filter((f) => f.endsWith('.onnx'))
     : [];
   let name = (voice || '').trim();
+  if (!name) {
+    throw new Error('Piper: chua chon model .onnx.');
+  }
   if (!name.endsWith('.onnx')) name = `${name}.onnx`;
   if (available.includes(name)) return name;
-  const key = name.replace(/\.onnx$/i, '').toLowerCase();
-  const fuzzy = available.find(
-    (f) => f.toLowerCase().includes(key) || key.includes(f.replace(/\.onnx$/i, '').toLowerCase()),
+  const exactCaseInsensitive = available.find((f) => f.toLowerCase() === name.toLowerCase());
+  if (exactCaseInsensitive) return exactCaseInsensitive;
+  throw new Error(
+    `Piper: model "${voice}" khong ton tai trong bin/piper_vn. ` +
+      `Co san: ${available.join(', ') || '(trong)'}.`,
   );
-  if (fuzzy) return fuzzy;
-  if (/nu|female|huyen|my|chi/i.test(voice || '')) {
-    if (available.includes('ngochuyen.onnx')) return 'ngochuyen.onnx';
-  }
-  if (available.includes('manhdung.onnx')) return 'manhdung.onnx';
-  if (available[0]) return available[0];
-  throw new Error('Piper: không có model .onnx trong bin/piper_vn');
 }
 
-/** Owner: TTS platform `piper` — hard-fail if models missing */
+/** Owner: TTS platform `piper` - hard-fail if the selected model is missing. */
 export const provider_piper: TTSProvider = {
   name: 'Piper TTS',
   supportsNativeSpeed: true,

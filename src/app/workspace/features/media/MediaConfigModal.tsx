@@ -1,7 +1,7 @@
 'use client';
 import { API } from '@/contracts';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import { X, Palette, Camera, Copy, ChevronDown, ImagePlus, Loader2 } from 'lucide-react';
 import { toast } from '@/lib/toastBus';
@@ -50,16 +50,23 @@ const IMAGE_RATIOS = [
   ['4:5', '4:5 Social'],
 ];
 
+/** Non-Flow providers may accept extra ratios; Flow video = 16:9 | 9:16 only. */
 const VIDEO_RATIOS = [
-  ['16:9', '16:9 YouTube'],
-  ['9:16', '9:16 Shorts'],
-  ['1:1', '1:1 Square'],
-  ['4:5', '4:5 Social'],
-  ['21:9', '21:9 Cinema'],
+  ['16:9', '16:9 YouTube / Flow Landscape'],
+  ['9:16', '9:16 Shorts / Flow Portrait'],
+  ['1:1', '1:1 Square (non-Flow)'],
+  ['4:5', '4:5 Social (non-Flow)'],
+  ['21:9', '21:9 Cinema (non-Flow)'],
 ];
 
+const FLOW_VIDEO_RATIOS = [
+  ['16:9', '16:9 Landscape (Flow)'],
+  ['9:16', '9:16 Portrait (Flow)'],
+];
+
+/** Flow Veo clip lengths are 4|6|8 only (labs.google). */
 const VIDEO_DURATIONS: Record<string, number[]> = {
-  flow: [4, 6, 8, 10],
+  flow: [4, 6, 8],
   sora: [5, 10, 15],
   veo: [4, 6, 8],
   grok: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15],
@@ -96,37 +103,133 @@ function readImageFile(file: File): Promise<{ name: string; mimeType: string; da
   });
 }
 
+type FlowModelOpt = {
+  id: string;
+  label: string;
+  credits?: number;
+  creditsUltra?: number;
+  note?: string;
+  family?: string;
+  durationsSec?: number[];
+  defaultDurationSec?: number;
+  nativeScale?: string;
+};
+
 export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalProps) {
   const store = useNovelStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
-  const effectiveImageProvider = IMAGE_PROVIDERS.includes(store.imageProvider) ? store.imageProvider : 'flow';
-  const effectiveVideoProvider = VIDEO_PROVIDERS.includes(store.videoProvider) ? store.videoProvider : 'flow';
-  const durationOptions = VIDEO_DURATIONS[effectiveVideoProvider] || VIDEO_DURATIONS.flow;
+  const [flowImageModels, setFlowImageModels] = useState<FlowModelOpt[]>([]);
+  const [flowVideoModels, setFlowVideoModels] = useState<FlowModelOpt[]>([]);
+  const [flowVideoDurations, setFlowVideoDurations] = useState<number[]>([4, 6, 8]);
+  const [flowCreditNote, setFlowCreditNote] = useState('');
+  const [flowQuality, setFlowQuality] = useState('hd');
+  const [autoRelogin, setAutoRelogin] = useState(true);
+  const [minHealth, setMinHealth] = useState(20);
+  const effectiveImageProvider = IMAGE_PROVIDERS.includes(store.imageProvider) ? store.imageProvider : '';
+  const effectiveVideoProvider = VIDEO_PROVIDERS.includes(store.videoProvider) ? store.videoProvider : '';
 
-  // Only normalize invalid provider values once on open — do NOT depend on whole `store`
-  // (that re-ran on every DNA keystroke and could thrash persist).
-  useEffect(() => {
+  const selectedFlowVideo = flowVideoModels.find((m) => m.id === store.videoModel);
+  const durationOptions = (() => {
+    if (effectiveVideoProvider === 'flow') {
+      if (selectedFlowVideo?.durationsSec?.length) return selectedFlowVideo.durationsSec;
+      return flowVideoDurations.length ? flowVideoDurations : VIDEO_DURATIONS.flow;
+    }
+    return effectiveVideoProvider ? (VIDEO_DURATIONS[effectiveVideoProvider] || []) : [];
+  })();
+  const videoRatioOptions =
+    effectiveVideoProvider === 'flow' ? FLOW_VIDEO_RATIOS : VIDEO_RATIOS;
+
+  React.useEffect(() => {
     if (!isOpen) return;
-    const s = useNovelStore.getState();
-    if (s.imageProvider !== effectiveImageProvider) {
-      s.setImageProvider(effectiveImageProvider);
-      if (effectiveImageProvider === 'flow') s.setImageModel('GEM_PIX_2');
-      else if (effectiveImageProvider === 'gemini' && !['banana', 'whisk'].includes(s.imageModel)) {
-        s.setImageModel('banana');
+    void (async () => {
+      try {
+        const [modelsRes, opsRes] = await Promise.all([
+          fetch(API.flowModels, { cache: 'no-store' }),
+          fetch(API.flowOps, { cache: 'no-store' }),
+        ]);
+        const models = await modelsRes.json().catch(() => ({}));
+        const opsData = await opsRes.json().catch(() => ({}));
+        if (Array.isArray(models.imageModels)) {
+          setFlowImageModels(
+            models.imageModels.map((m: FlowModelOpt & { id: string; label: string }) => ({
+              id: m.id,
+              label: m.label,
+              credits: m.credits,
+              creditsUltra: m.creditsUltra,
+              note: m.note,
+              nativeScale: m.nativeScale,
+            })),
+          );
+        }
+        if (Array.isArray(models.videoModels)) {
+          setFlowVideoModels(
+            models.videoModels.map((m: FlowModelOpt & { id: string; label: string }) => ({
+              id: m.id,
+              label: m.label,
+              credits: m.credits,
+              creditsUltra: m.creditsUltra,
+              note: m.note,
+              family: m.family,
+              durationsSec: m.durationsSec,
+              defaultDurationSec: m.defaultDurationSec,
+              nativeScale: m.nativeScale,
+            })),
+          );
+        }
+        if (Array.isArray(models.videoDurationsSec) && models.videoDurationsSec.length) {
+          setFlowVideoDurations(models.videoDurationsSec.map(Number).filter((n: number) => n > 0));
+        }
+        if (typeof models.creditNote === 'string') setFlowCreditNote(models.creditNote);
+        if (opsData?.ops?.defaultQuality) setFlowQuality(String(opsData.ops.defaultQuality));
+        if (typeof opsData?.ops?.autoRelogin === 'boolean') {
+          setAutoRelogin(opsData.ops.autoRelogin);
+        }
+        if (opsData?.ops?.minHealthScore != null) {
+          setMinHealth(Number(opsData.ops.minHealthScore));
+        }
+      } catch {
+        /* offline */
+      }
+    })();
+  }, [isOpen]);
+
+  // Clamp persisted / legacy values to Flow-legal output when provider is flow
+  React.useEffect(() => {
+    if (effectiveVideoProvider !== 'flow') return;
+    // Duration: only 4|6|8
+    if (durationOptions.length) {
+      const cur = Number(store.videoDuration);
+      if (!durationOptions.includes(cur)) {
+        const def = selectedFlowVideo?.defaultDurationSec ?? 8;
+        store.setVideoDuration(
+          durationOptions.includes(def) ? def : durationOptions[durationOptions.length - 1],
+        );
       }
     }
-    if (s.videoProvider !== effectiveVideoProvider) {
-      s.setVideoProvider(effectiveVideoProvider);
-      if (effectiveVideoProvider === 'flow') s.setVideoModel('veo_3_1_t2v_fast_ultra');
-      else if (effectiveVideoProvider === 'veo') s.setVideoModel('veo');
+    // Aspect: Flow video only 16:9 | 9:16
+    const ar = String(store.videoAspectRatio || '').trim();
+    if (ar && ar !== '16:9' && ar !== '9:16') {
+      store.setVideoAspectRatio('16:9');
     }
-    const durs = VIDEO_DURATIONS[effectiveVideoProvider] || VIDEO_DURATIONS.flow;
-    if (!durs.includes(s.videoDuration || 6)) {
-      s.setVideoDuration(durs[0]);
+    // Legacy ingredients key still works; prefer r2v if user still has blank model after load
+    const vm = String(store.videoModel || '').trim();
+    if (vm === 'veo_3_1_reference_fast') {
+      store.setVideoModel('veo_3_1_r2v_fast');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open-only normalize
-  }, [isOpen, effectiveImageProvider, effectiveVideoProvider]);
+  }, [effectiveVideoProvider, store.videoModel, store.videoDuration, store.videoAspectRatio, durationOptions.join(',')]);
+
+  const persistFlowOps = async (patch: Record<string, unknown>) => {
+    try {
+      await fetch(API.flowOps, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+    } catch {
+      /* ignore */
+    }
+  };
 
   const handleClose = () => {
     // Force durable snapshot of all media settings (DNA, ratios, providers, …)
@@ -204,22 +307,10 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
 
   const setImageProvider = (provider: string) => {
     store.setImageProvider(provider);
-    if (provider === 'flow') store.setImageModel('GEM_PIX_2');
-    else if (provider === 'openai') store.setImageModel('gpt-image-1');
-    else if (provider === 'grok') store.setImageModel('grok-imagine-image-quality');
-    else if (!['banana', 'whisk'].includes(store.imageModel)) store.setImageModel('banana');
   };
 
   const setVideoProvider = (provider: string) => {
     store.setVideoProvider(provider);
-    if (provider === 'flow') store.setVideoModel('veo_3_1_t2v_fast_ultra');
-    else if (provider === 'sora') store.setVideoModel('sora');
-    else if (provider === 'grok') store.setVideoModel('grok-imagine-video-1.5');
-    else store.setVideoModel('veo');
-    const nextDurations = VIDEO_DURATIONS[provider] || VIDEO_DURATIONS.flow;
-    if (!nextDurations.includes(store.videoDuration || 6)) {
-      store.setVideoDuration(nextDurations[0]);
-    }
   };
 
   // Keep current custom style in the dropdown so it doesn't snap to first option
@@ -270,53 +361,39 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
               Cau hinh dong co sinh anh & video (Flow-first)
             </h3>
 
-            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/40 p-3 lg:grid-cols-[110px_1fr_150px_120px_120px]">
+            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/40 p-3 lg:grid-cols-[110px_1fr_150px_120px]">
               <span className="flex items-center text-xs font-bold text-zinc-300">IMAGE AI:</span>
               <SelectShell>
                 <select
-                  value={effectiveImageProvider}
-                  onChange={(e) => setImageProvider(e.target.value)}
+                  value={store.imageModel || ''}
+                  onChange={(e) => {
+                    if (store.imageProvider !== 'flow') store.setImageProvider('flow');
+                    store.setImageModel(e.target.value);
+                  }}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  <option value="flow">Google Flow (Imagen)</option>
-                  <option value="openai">OpenAI Images</option>
-                  <option value="gemini">Google Studio (legacy)</option>
-                  <option value="grok">Grok Imagine</option>
+                  {(flowImageModels.length
+                    ? flowImageModels
+                    : [
+                        { id: 'GEM_PIX_2', label: 'GEM_PIX_2 (Flow default)' },
+                        { id: 'NARWHAL', label: 'NARWHAL (Nano Banana 2)' },
+                      ]
+                  ).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                      {m.credits != null ? ` · ~${m.credits}cr` : ''}
+                      {m.nativeScale ? ` · ${m.nativeScale}` : ''}
+                    </option>
+                  ))}
                 </select>
               </SelectShell>
-              {effectiveImageProvider === 'flow' ? (
-                <SelectShell>
-                  <select
-                    value={store.imageModel || 'GEM_PIX_2'}
-                    onChange={(e) => store.setImageModel(e.target.value)}
-                    className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
-                  >
-                    <option value="GEM_PIX_2">Imagen / GEM_PIX_2</option>
-                    <option value="GEM_PIX">GEM_PIX</option>
-                  </select>
-                </SelectShell>
-              ) : effectiveImageProvider === 'gemini' ? (
-                <SelectShell>
-                  <select
-                    value={['banana', 'whisk'].includes(store.imageModel) ? store.imageModel : 'banana'}
-                    onChange={(e) => store.setImageModel(e.target.value)}
-                    className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
-                  >
-                    <option value="banana">Banana API</option>
-                    <option value="whisk">Whisk Cookie</option>
-                  </select>
-                </SelectShell>
-              ) : (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-400">
-                  {effectiveImageProvider === 'openai' ? 'OpenAI API' : 'xAI API'}
-                </div>
-              )}
               <SelectShell>
                 <select
-                  value={store.imageAspectRatio || '16:9'}
+                  value={store.imageAspectRatio || ''}
                   onChange={(e) => store.setImageAspectRatio(e.target.value)}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
+                  <option value="">Chọn tỷ lệ ảnh</option>
                   {IMAGE_RATIOS.map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
@@ -324,10 +401,11 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
               </SelectShell>
               <SelectShell>
                 <select
-                  value={store.imageCount || 1}
+                  value={store.imageCount || ''}
                   onChange={(e) => store.setImageCount(Number(e.target.value))}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
+                  <option value="">Chọn số ảnh</option>
                   {[1, 2, 3, 4].map((count) => (
                     <option key={count} value={count}>{count} anh</option>
                   ))}
@@ -336,106 +414,144 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
             </div>
 
             {effectiveImageProvider === 'flow' || effectiveVideoProvider === 'flow' ? (
-              <div className="grid gap-3 rounded-lg border border-indigo-800/40 bg-indigo-950/20 p-3 lg:grid-cols-[110px_1fr_1fr]">
-                <span className="flex items-center text-xs font-bold text-indigo-300">
-                  FLOW QUALITY:
-                </span>
-                <SelectShell>
-                  <select
-                    id="flow-image-quality"
-                    defaultValue={
-                      typeof window !== 'undefined'
-                        ? localStorage.getItem('ainovel_flow_image_quality') || '1k'
-                        : '1k'
-                    }
-                    onChange={(e) => {
-                      try {
-                        localStorage.setItem(
-                          'ainovel_flow_image_quality',
-                          e.target.value,
-                        );
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                    className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-indigo-500"
-                  >
-                    <option value="1k">Ảnh 1K</option>
-                    <option value="2k">Ảnh 2K (upscale)</option>
-                    <option value="4k">Ảnh 4K (upscale)</option>
-                  </select>
-                </SelectShell>
-                <SelectShell>
-                  <select
-                    id="flow-video-quality"
-                    defaultValue={
-                      typeof window !== 'undefined'
-                        ? localStorage.getItem('ainovel_flow_video_quality') || 'hd'
-                        : 'hd'
-                    }
-                    onChange={(e) => {
-                      try {
-                        localStorage.setItem(
-                          'ainovel_flow_video_quality',
-                          e.target.value,
-                        );
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                    className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-indigo-500"
-                  >
-                    <option value="hd">Video HD</option>
-                    <option value="fhd">Video FHD (upscale)</option>
-                    <option value="4k">Video 4K (upscale)</option>
-                  </select>
-                </SelectShell>
+              <div className="space-y-3 rounded-lg border border-indigo-800/40 bg-indigo-950/20 p-3">
+                <div className="grid gap-3 lg:grid-cols-[110px_1fr_1fr]">
+                  <span className="flex items-center text-xs font-bold text-indigo-300">
+                    FLOW QUALITY:
+                  </span>
+                  <SelectShell>
+                    <select
+                      value={flowQuality}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFlowQuality(v);
+                        try {
+                          localStorage.setItem('ainovel_flow_image_quality', v);
+                          localStorage.setItem('ainovel_flow_video_quality', v);
+                        } catch {
+                          /* ignore */
+                        }
+                        void persistFlowOps({ defaultQuality: v });
+                      }}
+                      className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none focus:border-indigo-500"
+                    >
+                      <option value="1k">1K native (không upscale)</option>
+                      <option value="hd">HD / 1080 (mặc định P1)</option>
+                      <option value="2k">2K image upsample</option>
+                      <option value="4k">4K upsample</option>
+                    </select>
+                  </SelectShell>
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] text-zinc-400">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="accent-indigo-500"
+                        checked={autoRelogin}
+                        onChange={(e) => {
+                          setAutoRelogin(e.target.checked);
+                          void persistFlowOps({ autoRelogin: e.target.checked });
+                        }}
+                      />
+                      Auto-relogin (P3)
+                    </label>
+                    <label className="flex items-center gap-1">
+                      Min health
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={minHealth}
+                        onChange={(e) => {
+                          const n = Number(e.target.value) || 0;
+                          setMinHealth(n);
+                          void persistFlowOps({ minHealthScore: n });
+                        }}
+                        className="w-14 rounded border border-zinc-800 bg-zinc-950 px-1 py-0.5 text-center text-zinc-300"
+                      />
+                    </label>
+                  </div>
+                </div>
+                <p className="text-[10px] text-zinc-500">
+                  Quality = scale sau gen (native Flow video 720p → HD 1080 / 4K upsample). Credit theo gói Pro @ 8s; Ultra rẻ hơn Lite/Fast.
+                  {flowCreditNote ? ` ${flowCreditNote}` : ''}
+                </p>
               </div>
             ) : null}
 
-            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/40 p-3 lg:grid-cols-[110px_1fr_150px_120px_120px]">
+            <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/40 p-3 lg:grid-cols-[110px_1fr_150px_120px]">
               <span className="flex items-center text-xs font-bold text-zinc-300">VIDEO AI:</span>
               <SelectShell>
                 <select
-                  value={effectiveVideoProvider}
-                  onChange={(e) => setVideoProvider(e.target.value)}
+                  value={store.videoModel || ''}
+                  onChange={(e) => {
+                    if (store.videoProvider !== 'flow') store.setVideoProvider('flow');
+                    const id = e.target.value;
+                    store.setVideoModel(id);
+                    const m = flowVideoModels.find((x) => x.id === id);
+                    if (m?.defaultDurationSec && (!store.videoDuration || store.videoProvider === 'flow')) {
+                      store.setVideoDuration(m.defaultDurationSec);
+                    }
+                  }}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  <option value="flow">Google Flow (Veo)</option>
-                  <option value="sora">OpenAI Sora</option>
-                  <option value="veo">Google API Key (legacy)</option>
-                  <option value="grok">Grok Imagine Video</option>
+                  {(flowVideoModels.length
+                    ? flowVideoModels
+                    : [
+                        { id: 'veo_3_1_t2v_fast', label: 'Veo 3.1 T2V Fast', credits: 20 },
+                        { id: 'veo_3_1_i2v_s_fast', label: 'Veo 3.1 I2V Fast', credits: 20 },
+                        { id: 'veo_3_1_r2v_fast', label: 'Veo 3.1 R2V / Ingredients', credits: 20 },
+                        { id: 'veo_3_1_extend_fast', label: 'Extend Fast', credits: 20 },
+                        { id: 'veo_3_1_i2v_lite_low_priority', label: 'I2V Lite Low Priority (0 cr)', credits: 0 },
+                      ]
+                  ).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                      {m.family ? ` [${m.family}]` : ''}
+                      {m.credits != null ? ` · Pro~${m.credits}cr` : ''}
+                      {m.creditsUltra != null && m.creditsUltra !== m.credits
+                        ? `/Ultra~${m.creditsUltra}`
+                        : ''}
+                      {m.nativeScale ? ` · ${m.nativeScale}` : ''}
+                    </option>
+                  ))}
                 </select>
               </SelectShell>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs font-semibold text-zinc-400">
-                {effectiveVideoProvider === 'flow' && 'Extension bridge'}
-                {effectiveVideoProvider === 'sora' && 'OpenAI video'}
-                {effectiveVideoProvider === 'veo' && 'API key Veo'}
-                {effectiveVideoProvider === 'grok' && 'Image-to-video'}
-              </div>
               <SelectShell>
                 <select
-                  value={store.videoAspectRatio || '16:9'}
+                  value={store.videoAspectRatio || ''}
                   onChange={(e) => store.setVideoAspectRatio(e.target.value)}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
-                  {VIDEO_RATIOS.map(([value, label]) => (
+                  <option value="">Chọn tỷ lệ video</option>
+                  {videoRatioOptions.map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
               </SelectShell>
               <SelectShell>
                 <select
-                  value={store.videoDuration || durationOptions[0]}
+                  value={store.videoDuration || ''}
                   onChange={(e) => store.setVideoDuration(Number(e.target.value))}
                   className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 pr-8 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 >
+                  <option value="">Chọn thời lượng</option>
                   {durationOptions.map((duration) => (
-                    <option key={duration} value={duration}>{duration}s</option>
+                    <option key={duration} value={duration}>
+                      {duration}s{duration === 8 ? ' (Flow default)' : ''}
+                    </option>
                   ))}
                 </select>
               </SelectShell>
             </div>
+            {effectiveVideoProvider === 'flow' && selectedFlowVideo ? (
+              <p className="text-[10px] text-zinc-500 -mt-3 px-1">
+                Model: <span className="text-cyan-400/90 font-mono">{selectedFlowVideo.id}</span>
+                {' · '}family {selectedFlowVideo.family || '—'}
+                {' · '}duration {durationOptions.join('/') }s
+                {' · '}scale {selectedFlowVideo.nativeScale || '720p'}
+                {selectedFlowVideo.note ? ` · ${selectedFlowVideo.note}` : ''}
+              </p>
+            ) : null}
 
             <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/30 p-3 lg:grid-cols-[110px_1fr]">
               <span className="flex items-center text-xs font-bold text-zinc-300">KIEU ANH:</span>
@@ -462,8 +578,15 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                   type="number"
                   min={100}
                   max={300}
-                  value={store.wpm || 140}
-                  onChange={(e) => store.setWpm(Math.max(100, Math.min(300, Number(e.target.value) || 140)))}
+                  value={store.wpm || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      store.setWpm(0);
+                      return;
+                    }
+                    store.setWpm(Math.max(100, Math.min(300, Number(raw))));
+                  }}
                   className="w-20 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500"
                 />
               </div>
@@ -473,8 +596,15 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                   type="number"
                   min={3}
                   max={30}
-                  value={store.secondsPerBeat || 6}
-                  onChange={(e) => store.setSecondsPerBeat(Math.max(3, Math.min(30, Number(e.target.value) || 6)))}
+                  value={store.secondsPerBeat || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      store.setSecondsPerBeat(0);
+                      return;
+                    }
+                    store.setSecondsPerBeat(Math.max(3, Math.min(30, Number(raw))));
+                  }}
                   className="w-16 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-300 outline-none transition-colors focus:border-cyan-500 text-center"
                 />
                 <span className="text-[10px] font-semibold text-zinc-500">giây</span>

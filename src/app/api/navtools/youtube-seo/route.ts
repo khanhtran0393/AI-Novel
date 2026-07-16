@@ -11,7 +11,7 @@ const GEMINI_MODELS = [
   'gemini-2.5-pro',
 ] as const;
 
-/** Max Gemini attempts before local QA fallback */
+/** Max Gemini attempts (cùng API — hết round thì hard-fail) */
 const MAX_AI_ROUNDS = 3;
 
 function collectKeys(body: Record<string, unknown>): string[] {
@@ -491,9 +491,17 @@ export async function POST(req: NextRequest) {
     }
 
     const keys = collectKeys(body);
-    // Allow local-only when no key? Prefer still asking for key when user expects AI,
-    // but if keys missing → local fallback so Meta never hard-fails empty-handed.
-    const allowLocalOnly = keys.length === 0;
+    // IRON B10: SEO meta bắt buộc Gemini khi có/không key — không nhồi local che lỗi AI
+    if (keys.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'YouTube SEO: thiếu Gemini API Key. Thêm key rồi gen lại — app không fallback engine local che lỗi.',
+        },
+        { status: 400 },
+      );
+    }
 
     const novelTitle = String(body.novelTitle ?? body.novel_title ?? '').trim();
     const randomSeed = String(
@@ -528,128 +536,61 @@ export async function POST(req: NextRequest) {
     let lastAiErr: Error | null = null;
     let lastRaw = '';
 
-    if (!allowLocalOnly) {
-      for (let round = 0; round < MAX_AI_ROUNDS; round++) {
-        const prompt = buildSeoPrompt({
-          text,
-          novelTitle,
-          randomSeed: `${randomSeed}-r${round}`,
-          usedTitles,
-          usedThumbLines,
-          chapter,
-          strictJson: round > 0,
-        });
-
-        // Slightly lower temp on retries for cleaner JSON
-        const temp = round === 0 ? temperature : Math.max(0.7, temperature - 0.15 * round);
-
-        try {
-          const { text: raw, provider } = await callGeminiJson(prompt, keys, temp);
-          lastRaw = raw;
-          const parsed = parseJsonLoose(raw);
-          const pack = normalizePack(parsed, novelTitle || 'Truyện audio');
-
-          if (!pack.title && !pack.description) {
-            lastAiErr = new Error('API trả về gói SEO rỗng');
-            continue;
-          }
-
-          // If title still empty, fill from local QA but keep AI description/tags
-          if (!pack.title || pack.title === (novelTitle || 'Truyện audio')) {
-            const local = packFromLocalQa({
-              text,
-              novelTitle,
-              usedTitles,
-              usedThumbLines,
-              chapter,
-              randomSeed,
-            });
-            if (!pack.title || pack.title === (novelTitle || 'Truyện audio')) {
-              pack.title = local.title;
-              pack.seoTitle = local.seoTitle;
-            }
-            if (!pack.thumbnailLine) {
-              pack.thumbnailLine = local.thumbnailLine;
-              pack.thumbnail_line = local.thumbnail_line;
-            }
-            if (!pack.description) {
-              pack.description = local.description;
-              pack.seoDescription = local.seoDescription;
-            }
-            if (!pack.tags) {
-              pack.tags = local.tags;
-              pack.hashtags = local.hashtags;
-            }
-            if (!pack.hook) pack.hook = local.hook;
-            if (!pack.thumbnailPrompt) pack.thumbnailPrompt = local.thumbnailPrompt;
-          }
-
-          return NextResponse.json({
-            success: true,
-            provider,
-            source: 'gemini',
-            parseRound: round + 1,
-            randomSeed,
-            data: pack,
-            result: pack,
-            formatted: buildFormatted(pack),
-          });
-        } catch (e) {
-          lastAiErr = e instanceof Error ? e : new Error(String(e));
-          // JSON parse fail or empty → next round with stricter prompt
-          continue;
-        }
-      }
-    }
-
-    // —— Local QA fallback (always succeeds if script has content) ——
-    try {
-      const pack = packFromLocalQa({
+    for (let round = 0; round < MAX_AI_ROUNDS; round++) {
+      const prompt = buildSeoPrompt({
         text,
         novelTitle,
+        randomSeed: `${randomSeed}-r${round}`,
         usedTitles,
         usedThumbLines,
         chapter,
-        randomSeed,
+        strictJson: round > 0,
       });
 
-      if (!pack.title && !pack.description) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: lastAiErr?.message || 'Không sinh được SEO meta',
-            raw: lastRaw.slice(0, 400),
-          },
-          { status: 502 },
-        );
+      // Slightly lower temp on retries for cleaner JSON
+      const temp = round === 0 ? temperature : Math.max(0.7, temperature - 0.15 * round);
+
+      try {
+        const { text: raw, provider } = await callGeminiJson(prompt, keys, temp);
+        lastRaw = raw;
+        const parsed = parseJsonLoose(raw);
+        const pack = normalizePack(parsed, novelTitle || 'Truyện audio');
+
+        if (!pack.title || !pack.description) {
+          lastAiErr = new Error(
+            'Gemini trả SEO thiếu title/description — không nhồi local. Sửa prompt/key hoặc gen lại.',
+          );
+          continue;
+        }
+
+        return NextResponse.json({
+          success: true,
+          provider,
+          source: 'gemini',
+          parseRound: round + 1,
+          randomSeed,
+          data: pack,
+          result: pack,
+          formatted: buildFormatted(pack),
+        });
+      } catch (e) {
+        lastAiErr = e instanceof Error ? e : new Error(String(e));
+        // JSON parse fail or empty → next round with stricter prompt (cùng Gemini API)
+        continue;
       }
-
-      return NextResponse.json({
-        success: true,
-        provider: allowLocalOnly ? 'local-qa' : 'local-qa-fallback',
-        source: allowLocalOnly ? 'local' : 'local-fallback',
-        warning: allowLocalOnly
-          ? 'Không có Gemini API Key — dùng engine SEO local.'
-          : `Gemini lỗi/JSON hỏng → fallback local. (${lastAiErr?.message || 'unknown'})`,
-        randomSeed,
-        data: pack,
-        result: pack,
-        formatted: buildFormatted(pack),
-      });
-    } catch (fallbackErr) {
-      const err = fallbackErr as Error;
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            lastAiErr?.message ||
-            err.message ||
-            'AI không trả JSON hợp lệ cho YouTube SEO',
-          raw: lastRaw.slice(0, 400),
-        },
-        { status: 500 },
-      );
     }
+
+    // IRON B10: hết round Gemini → hard-fail (không local-qa-fallback)
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          lastAiErr?.message ||
+          'YouTube SEO: Gemini fail sau mọi round — không fallback local. Kiểm tra API key / JSON output.',
+        raw: lastRaw.slice(0, 400),
+      },
+      { status: 502 },
+    );
   } catch (error: unknown) {
     const err = error as Error;
     return NextResponse.json(

@@ -241,3 +241,94 @@ export function filterOutChapterKeys<T>(
   }
   return next;
 }
+
+// ── Setup genre (chu_de + phong_cach) — B10: no silent "mạt thế" defaults ──
+
+export type SetupGenreInput = {
+  genre?: string;
+  chu_de?: string;
+  phong_cach?: string;
+};
+
+/** Join Setup fields into a single genre label. Empty if not configured. */
+export function buildGenreLabelFromSetup(input: SetupGenreInput): string {
+  const explicit = String(input.genre || '').trim();
+  if (explicit) return explicit;
+  return [input.chu_de, input.phong_cach]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean)
+    .join(' / ');
+}
+
+/**
+ * Require Setup genre for write/prompt engines.
+ * Throws Error with actionable message (callers map to 400 / toast).
+ */
+export function requireGenreLabelFromSetup(input: SetupGenreInput): string {
+  const label = buildGenreLabelFromSetup(input);
+  if (!label) {
+    throw new Error(
+      'Thieu Setup Chu de + Phong cach. Mo Setup chon truoc khi viet/gen. App khong tu gan mat the.',
+    );
+  }
+  return label;
+}
+
+/**
+ * Lorebook for system prompts — never invent "Luật thế giới mạt thế…".
+ * Empty lore is allowed (blank project); AI must not fabricate a default world.
+ */
+export function lorebookForPrompt(lorebook?: string | null): string {
+  const lb = String(lorebook || '').trim();
+  if (lb) return lb;
+  return (
+    'Chưa có lorebook. Chỉ bám dàn ý + Setup (chủ đề/phong cách) đã cho — ' +
+    'TUYỆT ĐỐI KHÔNG tự bịa luật thế giới mặc định (không ép mạt thế/sinh tồn nếu Setup khác).'
+  );
+}
+
+/** Role line for LLM system prompts — genre-aware, no hard-coded mat-the. */
+export function writeEngineRoleLine(
+  genreLabel: string,
+  kind:
+    | 'writer'
+    | 'editor'
+    | 'reviewer'
+    | 'memory'
+    | 'hook_writer'
+    | 'hook_editor'
+    | 'scene_writer'
+    | 'scene_editor',
+): string {
+  const g = genreLabel.trim() || 'theo Setup user';
+  switch (kind) {
+    case 'writer':
+      return `Bạn là Trợ lý Biên kịch Sản xuất kịch bản tiểu thuyết / narration YouTube chuyên nghiệp — thể loại: ${g}.`;
+    case 'editor':
+      return `Bạn là Biên kịch kiêm Editor (chuẩn YouTube-safe narration) — thể loại: ${g}.`;
+    case 'reviewer':
+      return `Bạn là Tổng biên tập khắt khe — thể loại: ${g}.`;
+    case 'memory':
+      return `Bạn là Trợ lý Biên kịch kiêm Bộ Nén Ký Ức logic — thể loại: ${g}.`;
+    case 'hook_writer':
+      return `Bạn là Biên kịch cold-open YouTube (~30–45 giây đọc) — thể loại: ${g}.`;
+    case 'hook_editor':
+      return `Bạn là Biên tập viên cold-open YouTube (~30 giây đọc) — thể loại: ${g}.`;
+    case 'scene_writer':
+      return `Bạn là Trợ lý Biên kịch Sản xuất kịch bản — thể loại: ${g}.`;
+    case 'scene_editor':
+      return `Bạn là Biên tập viên kịch bản chuyên nghiệp — thể loại: ${g}.`;
+    default:
+      return `Bạn là Trợ lý Biên kịch — thể loại: ${g}.`;
+  }
+}
+
+/** Extract setup genre fields from a loose API payload. */
+export function setupGenreFromPayload(payload: Record<string, unknown> | null | undefined): SetupGenreInput {
+  const p = payload || {};
+  return {
+    genre: typeof p.genre === 'string' ? p.genre : undefined,
+    chu_de: typeof p.chu_de === 'string' ? p.chu_de : undefined,
+    phong_cach: typeof p.phong_cach === 'string' ? p.phong_cach : undefined,
+  };
+}

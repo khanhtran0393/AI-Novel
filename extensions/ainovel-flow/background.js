@@ -80,31 +80,41 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-/** Open/reload Flow and poke network so webRequest can catch ya29 Bearer. */
+/** Harvest session/token — KHÔNG reload/spam tab nếu đã có token. */
 async function forceTokenHarvest() {
   console.log('[AI Novel Flow] forceTokenHarvest…');
-  await captureTokenFromFlowTab();
+  await pollSessionAndNotify();
+  if (flowKey) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+    }
+    return;
+  }
+  // Chưa token: chỉ mở/focus tab Flow (không reload liên tục)
   const tabs = await chrome.tabs.query({
     url: ['https://labs.google/fx/tools/flow*', 'https://labs.google/fx/*/tools/flow*'],
   });
-  if (tabs.length) {
-    try {
-      await chrome.tabs.reload(tabs[0].id);
-      console.log('[AI Novel Flow] Reloaded Flow tab to trigger auth headers');
-    } catch (e) {
-      console.warn('[AI Novel Flow] reload failed', e);
-    }
-  } else {
+  if (!tabs.length) {
     try {
       await chrome.tabs.create({
         url: 'https://labs.google/fx/tools/flow',
         active: true,
       });
+      await sleep(3000);
     } catch (e) {
       console.warn('[AI Novel Flow] open Flow failed', e);
     }
+  } else {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        files: ['content.js'],
+      });
+    } catch {
+      /* ignore */
+    }
   }
-  // If we already had a stored token from previous session, push it
+  await pollSessionAndNotify();
   if (flowKey && ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
   }
@@ -121,10 +131,31 @@ async function init() {
 
 // ─── Token Capture ──────────────────────────────────────────
 
+function acceptBearerToken(raw, source) {
+  if (!raw || typeof raw !== 'string') return false;
+  const token = raw.replace(/^Bearer\s+/i, '').trim();
+  // Accept ya29 and other OAuth access tokens (not only ya29.)
+  if (token.length < 20) return false;
+  if (token === flowKey) {
+    // still refresh age
+    metrics.tokenCapturedAt = Date.now();
+    chrome.storage.local.set({ metrics });
+    return true;
+  }
+  flowKey = token;
+  metrics.tokenCapturedAt = Date.now();
+  chrome.storage.local.set({ flowKey, metrics });
+  console.log('[AI Novel Flow] Bearer token captured via', source || 'unknown', token.slice(0, 12) + '…');
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+  }
+  return true;
+}
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
     if (!details?.requestHeaders?.length) return;
-    
+
     const match = details.url.match(/\/v1\/projects\/([0-9a-fA-F-]+)\//);
     if (match) {
       const projectId = match[1];
@@ -138,21 +169,8 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       (h) => h.name?.toLowerCase() === 'authorization',
     );
     const value = authHeader?.value || '';
-    if (!value.startsWith('Bearer ya29.')) return;
-
-    const token = value.replace(/^Bearer\s+/i, '').trim();
-    if (!token) return;
-
-    // Always update — even if same token string, refresh the timestamp
-    flowKey = token;
-    metrics.tokenCapturedAt = Date.now();
-    chrome.storage.local.set({ flowKey, metrics });
-    console.log('[Flow Agent] Bearer token captured');
-
-    // Notify agent
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
-    }
+    if (!/^bearer\s+/i.test(value)) return;
+    acceptBearerToken(value, 'webRequest:' + (details.url || '').slice(0, 60));
   },
   {
     urls: [
@@ -164,6 +182,19 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   },
   ['requestHeaders', 'extraHeaders'],
 );
+
+// When user finishes Google login, Flow pages load — poll session (more reliable than webRequest)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return;
+  const u = tab?.url || '';
+  if (!u.includes('labs.google') && !u.includes('accounts.google.com')) return;
+  // After redirect back to Flow, harvest session + token
+  if (u.includes('labs.google')) {
+    pollSessionAndNotify().catch((e) =>
+      console.warn('[AI Novel Flow] tab poll session', e),
+    );
+  }
+});
 
 let _openingFlowTab = false;
 
@@ -231,24 +262,34 @@ function connectToAgent() {
     chrome.alarms.clear('reconnect');
     setState('idle');
 
-    // Token refresh alarm — 45 min gives buffer before ~60 min expiry
+    // Token refresh alarm — 45 min (không harvest 12s — gây spam reload/login)
     chrome.alarms.create('token-refresh', { periodInMinutes: 45 });
-    // Aggressive harvest while logged-in but token not seen yet
-    chrome.alarms.create('token-harvest', { periodInMinutes: 0.2 }); // ~12s
+    chrome.alarms.clear('token-harvest');
 
-    // Send current state + resend token if we have one
+    // Send ready once; only resend token if present (không force harvest loop)
     ws.send(JSON.stringify({
       type: 'extension_ready',
       flowKeyPresent: !!flowKey,
       tokenAge: flowKey && metrics.tokenCapturedAt ? Date.now() - metrics.tokenCapturedAt : null,
     }));
     if (flowKey) {
-      ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+      // Debounce re-broadcast token on reconnect (tránh bridge close/relaunch)
+      const now = Date.now();
+      if (!globalThis.__lastTokenBroadcast || now - globalThis.__lastTokenBroadcast > 120000) {
+        globalThis.__lastTokenBroadcast = now;
+        ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+      }
+      chrome.storage.local.get(['projectId'], (data) => {
+        if (data.projectId && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'project_id_captured', projectId: data.projectId }));
+        }
+      });
+    } else {
+      // Chỉ harvest nhẹ 1 lần khi chưa có token (không tạo alarm lặp)
+      pollSessionAndNotify().catch((e) =>
+        console.warn('[AI Novel Flow] initial session poll failed', e),
+      );
     }
-    // Force open/reload Flow tab so Authorization: Bearer ya29 is emitted
-    forceTokenHarvest().catch((e) =>
-      console.warn('[AI Novel Flow] initial harvest failed', e),
-    );
   };
 
   ws.onmessage = async ({ data }) => {
@@ -259,11 +300,27 @@ function connectToAgent() {
         await handleApiRequest(msg);
       } else if (msg.method === 'trpc_request') {
         await handleTrpcRequest(msg);
+      } else if (msg.method === 'download_binary') {
+        // App nhận đúng bytes account browser mở được (cookie + Bearer)
+        await handleDownloadBinary(msg);
       } else if (msg.method === 'upload_video') {
         await handleUploadVideo(msg);
       } else if (msg.method === 'solve_captcha') {
         await handleSolveCaptcha(msg);
       } else if (msg.method === 'get_status') {
+        if (!flowKey) {
+          try {
+            const stored = await chrome.storage.local.get(['flowKey']);
+            if (stored.flowKey) {
+              flowKey = stored.flowKey;
+              if (ws?.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         sendToAgent({
           id: msg.id,
           result: {
@@ -274,6 +331,18 @@ function connectToAgent() {
             metrics,
           },
         });
+      } else if (msg.method === 'inject_flow_key') {
+        // Bridge re-hydrates extension SW after restart / multi-profile drift
+        try {
+          const k = msg.params?.flowKey || msg.params?.accessToken || '';
+          const ok = acceptBearerToken(String(k), 'bridge:inject_flow_key');
+          sendToAgent({
+            id: msg.id,
+            result: { ok: !!ok || !!flowKey, flowKeyPresent: !!flowKey },
+          });
+        } catch (e) {
+          sendToAgent({ id: msg.id, error: e.message || 'INJECT_FAILED' });
+        }
       } else if (msg.method === 'force_token_harvest') {
         try {
           await forceTokenHarvest();
@@ -285,14 +354,17 @@ function connectToAgent() {
           sendToAgent({ id: msg.id, error: e.message || 'HARVEST_FAILED' });
         }
       } else if (msg.method === 'close_login_session') {
-        // AI Novel: after token/cookie captured — minimize then agent kills process
-        console.log('[AI Novel Flow] close_login_session — minimize all windows');
+        // AI Novel: after token captured — minimize; Node kills login process shortly after
+        console.log('[AI Novel Flow] close_login_session — minimize + blur windows');
         try {
           chrome.alarms.clear('token-harvest');
-          const wins = await chrome.windows.getAll();
+          const wins = await chrome.windows.getAll({ populate: false });
           for (const w of wins) {
             try {
-              await chrome.windows.update(w.id, { state: 'minimized' });
+              await chrome.windows.update(w.id, {
+                state: 'minimized',
+                focused: false,
+              });
             } catch (e) {
               /* ignore */
             }
@@ -351,6 +423,39 @@ function connectToAgent() {
               console.log('[Flow Agent] Sent token from storage after refresh');
             }
           }
+        }
+      } else if (msg.method === 'sync_account') {
+        // Full identity: session email + credits + projects (same as browser account)
+        try {
+          const result = await syncAccountIdentity();
+          sendToAgent({ id: msg.id, result });
+          // Push projects + identity to bridge for durable store
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(
+              JSON.stringify({
+                type: 'account_identity',
+                ...result,
+              }),
+            );
+          }
+        } catch (e) {
+          sendToAgent({ id: msg.id, error: e.message || 'SYNC_FAILED' });
+        }
+      } else if (msg.method === 'open_project') {
+        // Mirror UI: open the same Flow project the user selected in app
+        try {
+          const projectId = msg.params?.projectId || '';
+          const r = await openFlowProject(projectId);
+          sendToAgent({ id: msg.id, result: r });
+        } catch (e) {
+          sendToAgent({ id: msg.id, error: e.message || 'OPEN_PROJECT_FAILED' });
+        }
+      } else if (msg.method === 'list_projects') {
+        try {
+          const projects = await listFlowProjects();
+          sendToAgent({ id: msg.id, result: { projects } });
+        } catch (e) {
+          sendToAgent({ id: msg.id, error: e.message || 'LIST_PROJECTS_FAILED' });
         }
       } else if (msg.type === 'callback_secret') {
         callbackSecret = msg.secret;
@@ -655,8 +760,36 @@ async function handleApiRequest(msg) {
       }
     }
 
-    // Step 3: Use flowKey for auth
-    const activeFlowKey = flowKey;
+    // Step 3: Use flowKey for auth (memory → storage → bridge-supplied → harvest)
+    let activeFlowKey = flowKey;
+    if (!activeFlowKey) {
+      try {
+        const stored = await chrome.storage.local.get(['flowKey']);
+        if (stored.flowKey) {
+          flowKey = stored.flowKey;
+          activeFlowKey = flowKey;
+          console.log('[AI Novel Flow] Restored flowKey from storage before api_request');
+        }
+      } catch (e) {
+        console.warn('[AI Novel Flow] storage restore failed', e);
+      }
+    }
+    // Bridge may still hold a captured Bearer while SW memory was wiped
+    if (!activeFlowKey && (params.flowKey || params.accessToken)) {
+      const fromBridge = String(params.flowKey || params.accessToken || '').trim();
+      if (fromBridge.length >= 20) {
+        acceptBearerToken(fromBridge, 'bridge:api_request');
+        activeFlowKey = flowKey || fromBridge;
+      }
+    }
+    if (!activeFlowKey) {
+      try {
+        await forceTokenHarvest();
+        activeFlowKey = flowKey;
+      } catch (e) {
+        console.warn('[AI Novel Flow] harvest before api_request failed', e);
+      }
+    }
     if (!activeFlowKey) {
       sendToAgent({ id, status: 503, error: 'NO_FLOW_KEY' });
       if (hasCaptcha) { metrics.failedCount++; metrics.lastError = 'NO_FLOW_KEY'; }
@@ -711,6 +844,558 @@ async function handleApiRequest(msg) {
 
   chrome.storage.local.set({ metrics });
   setState('idle');
+}
+
+/**
+ * Download binary as the logged-in account (cookies + Bearer).
+ * App uses this when Node fetch cannot access fife/media URLs the browser can.
+ * Returns base64 for files ≤ 28MB; larger → stream to local bridge HTTP sink.
+ */
+async function handleDownloadBinary(msg) {
+  const id = msg.id;
+  const params = msg.params || {};
+  const url = String(params.url || '').trim();
+  if (!url) {
+    sendToAgent({ id, error: 'url required' });
+    return;
+  }
+  try {
+    let activeFlowKey = flowKey;
+    if (!activeFlowKey) {
+      try {
+        const stored = await chrome.storage.local.get(['flowKey']);
+        if (stored.flowKey) {
+          flowKey = stored.flowKey;
+          activeFlowKey = flowKey;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!activeFlowKey && (params.flowKey || params.accessToken)) {
+      const fromBridge = String(params.flowKey || params.accessToken || '').trim();
+      if (fromBridge.length >= 20) {
+        acceptBearerToken(fromBridge, 'bridge:download_binary');
+        activeFlowKey = flowKey || fromBridge;
+      }
+    }
+    const headers = { ...(params.headers || {}) };
+    if (activeFlowKey && !headers.authorization && !headers.Authorization) {
+      headers.authorization = `Bearer ${activeFlowKey}`;
+    }
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+    });
+    if (!response.ok) {
+      sendToAgent({
+        id,
+        status: response.status,
+        error: `DOWNLOAD_HTTP_${response.status}`,
+      });
+      return;
+    }
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const ab = await response.arrayBuffer();
+    const byteLength = ab.byteLength;
+    const MAX_B64 = 28 * 1024 * 1024;
+    if (byteLength > MAX_B64) {
+      // Stream large file to bridge sink so app still receives the media
+      const sink =
+        String(params.sinkUrl || '').trim() ||
+        'http://127.0.0.1:8101/internal/receive-binary';
+      const destHint = String(params.destPath || '').trim();
+      try {
+        const sinkRes = await fetch(sink, {
+          method: 'POST',
+          headers: {
+            'Content-Type': contentType,
+            'X-Dest-Path': destHint,
+            'X-Callback-Secret': callbackSecret || '',
+            'X-Byte-Length': String(byteLength),
+          },
+          body: ab,
+        });
+        const sinkText = await sinkRes.text();
+        let sinkData = null;
+        try {
+          sinkData = JSON.parse(sinkText);
+        } catch {
+          sinkData = { raw: sinkText.slice(0, 200) };
+        }
+        sendToAgent({
+          id,
+          status: 200,
+          result: {
+            ok: sinkRes.ok,
+            status: response.status,
+            contentType,
+            byteLength,
+            via: 'sink',
+            destPath: sinkData?.destPath || destHint || null,
+            sink: sinkData,
+          },
+        });
+      } catch (e) {
+        sendToAgent({
+          id,
+          error: `LARGE_DOWNLOAD_SINK_FAILED: ${e.message || e}`,
+          result: { byteLength, contentType },
+        });
+      }
+      return;
+    }
+    // base64 encode
+    const bytes = new Uint8Array(ab);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    const base64 = btoa(binary);
+    sendToAgent({
+      id,
+      status: 200,
+      result: {
+        ok: true,
+        status: response.status,
+        contentType,
+        byteLength,
+        base64,
+        via: 'base64',
+      },
+    });
+  } catch (e) {
+    sendToAgent({
+      id,
+      error: e.message || 'DOWNLOAD_BINARY_FAILED',
+    });
+  }
+}
+
+// ─── Account identity (RPA ký sinh = cùng session browser) ───
+
+const API_KEY_PUBLIC = API_KEY;
+
+async function fetchJsonSafe(url, opts = {}) {
+  const res = await fetch(url, {
+    credentials: 'include',
+    ...opts,
+    headers: {
+      Accept: 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text?.slice?.(0, 500) };
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+function parseSessionPayload(d) {
+  if (!d || typeof d !== 'object') {
+    return { email: '', name: '', accessToken: '', expires: null };
+  }
+  const user = d.user || {};
+  const accessToken = d.access_token || d.accessToken || '';
+  if (accessToken) acceptBearerToken(String(accessToken), 'auth/session');
+  return {
+    email: user.email || d.email || '',
+    name: user.name || d.name || '',
+    image: user.image || '',
+    accessToken: flowKey || accessToken || '',
+    expires: d.expires || null,
+  };
+}
+
+/** Prefer page/tab cookies (content script) over SW fetch. */
+async function fetchSessionFromActiveTab() {
+  try {
+    const tabs = await chrome.tabs.query({
+      url: ['https://labs.google/*'],
+    });
+    if (!tabs.length) return null;
+    for (const tab of tabs.slice(0, 3)) {
+      try {
+        // Ensure content script is present
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js'],
+          });
+        } catch {
+          /* may already be injected */
+        }
+        const res = await chrome.tabs.sendMessage(tab.id, {
+          type: 'FETCH_SESSION',
+        });
+        if (res?.ok && res.data) {
+          return parseSessionPayload(res.data);
+        }
+      } catch (e) {
+        console.warn('[AI Novel Flow] tab session', tab.id, e.message || e);
+      }
+    }
+  } catch (e) {
+    console.warn('[AI Novel Flow] fetchSessionFromActiveTab', e);
+  }
+  return null;
+}
+
+/** NextAuth session on labs.google — email + access_token (same as browser). */
+async function fetchLabsSession() {
+  // 1) Tab context first (has full cookie jar for labs.google)
+  const fromTab = await fetchSessionFromActiveTab();
+  if (fromTab && (fromTab.email || fromTab.accessToken)) {
+    return { ...fromTab, status: 200, source: 'tab' };
+  }
+  // 2) Fallback: service worker fetch
+  const r = await fetchJsonSafe('https://labs.google/fx/api/auth/session');
+  if (!r.ok || !r.data) {
+    return {
+      email: '',
+      name: '',
+      accessToken: '',
+      expires: null,
+      status: r.status,
+      source: 'sw',
+      raw: r,
+    };
+  }
+  return { ...parseSessionPayload(r.data), status: r.status, source: 'sw' };
+}
+
+/** Poll session and push identity to bridge — call after login / tab load. */
+async function pollSessionAndNotify() {
+  const session = await fetchLabsSession();
+  if (session.email || session.accessToken || flowKey) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: 'session_poll',
+          email: session.email || '',
+          name: session.name || '',
+          flowKeyPresent: !!flowKey,
+          flowKey: flowKey || session.accessToken || '',
+          expires: session.expires || null,
+          source: session.source || 'unknown',
+        }),
+      );
+    }
+  }
+  return session;
+}
+
+// Content script → PAGE_SESSION (auto after Flow tab loads)
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === 'PAGE_SESSION' && msg.data) {
+    const session = parseSessionPayload(msg.data);
+    console.log(
+      '[AI Novel Flow] PAGE_SESSION email=',
+      session.email || '—',
+      'token=',
+      !!(session.accessToken || flowKey),
+    );
+    if (session.email || session.accessToken || flowKey) {
+      pollSessionAndNotify().catch(() => undefined);
+    }
+    reply?.({ ok: true });
+    return true;
+  }
+  return false;
+});
+
+async function fetchCredits() {
+  if (!flowKey) return { credits: null, tier: null };
+  const url = `https://aisandbox-pa.googleapis.com/v1/credits?key=${API_KEY_PUBLIC}`;
+  const r = await fetchJsonSafe(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${flowKey}`,
+      Origin: 'https://labs.google',
+      Referer: 'https://labs.google/',
+    },
+  });
+  if (!r.ok || !r.data) return { credits: null, tier: null, status: r.status };
+  const d = r.data;
+  const credits =
+    typeof d.credits === 'number'
+      ? d.credits
+      : typeof d.remainingCredits === 'number'
+        ? d.remainingCredits
+        : typeof d.userCredits === 'number'
+          ? d.userCredits
+          : typeof d.creditBalance === 'number'
+            ? d.creditBalance
+            : null;
+  const tier =
+    d.userPaygateTier ||
+    d.paygateTier ||
+    d.tier ||
+    d.subscriptionTier?.[0] ||
+    null;
+  return { credits, tier, raw: d, status: r.status };
+}
+
+function unwrapTrpc(data) {
+  try {
+    return data?.result?.data?.json ?? data?.result?.data ?? data;
+  } catch {
+    return data;
+  }
+}
+
+/** Harvest project ids/titles from user history (same account as browser). */
+async function listProjectsFromHistory() {
+  const found = new Map();
+  const types = ['PINHOLE', 'ASSET_MANAGER'];
+  for (const type of types) {
+    const input = JSON.stringify({
+      json: {
+        type,
+        pageSize: 40,
+        responseScope: 'RESPONSE_SCOPE_UNSPECIFIED',
+        cursor: null,
+      },
+      meta: { values: { cursor: ['undefined'] } },
+    });
+    const url =
+      'https://labs.google/fx/api/trpc/media.fetchUserHistoryDirectly?input=' +
+      encodeURIComponent(input);
+    const r = await fetchJsonSafe(url, {
+      method: 'GET',
+      headers: flowKey
+        ? { Authorization: `Bearer ${flowKey}` }
+        : {},
+    });
+    if (!r.ok) continue;
+    const inner = unwrapTrpc(r.data);
+    const workflows =
+      inner?.result?.userWorkflows ||
+      inner?.userWorkflows ||
+      inner?.workflows ||
+      [];
+    if (!Array.isArray(workflows)) continue;
+    for (const wf of workflows) {
+      const media = wf?.media || {};
+      const mg = media.mediaGenerationId || media.mediaGeneration || {};
+      const pid =
+        mg.projectId ||
+        media.projectId ||
+        wf.projectId ||
+        wf.metadata?.projectId ||
+        '';
+      if (!pid || typeof pid !== 'string') continue;
+      const title =
+        wf.metadata?.displayName ||
+        media.displayName ||
+        wf.displayName ||
+        `Project ${String(pid).slice(0, 8)}`;
+      if (!found.has(pid)) {
+        found.set(pid, {
+          id: pid,
+          title: String(title).slice(0, 120),
+          source: 'capture',
+        });
+      }
+    }
+  }
+  return [...found.values()];
+}
+
+/** Try official-ish project list tRPC variants (best-effort). */
+async function listProjectsViaTrpc() {
+  const candidates = [
+    {
+      path: 'projectSearch.searchProjects',
+      body: { json: { query: '', pageSize: 50, toolName: 'PINHOLE' } },
+    },
+    {
+      path: 'project.listUserProjects',
+      body: { json: { toolName: 'PINHOLE', pageSize: 50 } },
+    },
+    {
+      path: 'project.searchProjects',
+      body: { json: { query: '', toolName: 'PINHOLE' } },
+    },
+  ];
+  const found = new Map();
+  for (const c of candidates) {
+    try {
+      const url = `https://labs.google/fx/api/trpc/${c.path}`;
+      const r = await fetchJsonSafe(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(flowKey ? { Authorization: `Bearer ${flowKey}` } : {}),
+        },
+        body: JSON.stringify(c.body),
+      });
+      if (!r.ok) continue;
+      const inner = unwrapTrpc(r.data);
+      const list =
+        inner?.result?.projects ||
+        inner?.projects ||
+        inner?.result?.items ||
+        inner?.items ||
+        (Array.isArray(inner) ? inner : null);
+      if (!Array.isArray(list)) continue;
+      for (const p of list) {
+        const id = p.projectId || p.id || p.name || '';
+        if (!id) continue;
+        const title =
+          p.projectTitle ||
+          p.title ||
+          p.projectInfo?.projectTitle ||
+          p.displayName ||
+          `Project ${String(id).slice(0, 8)}`;
+        found.set(String(id), {
+          id: String(id),
+          title: String(title).slice(0, 120),
+          source: 'capture',
+        });
+      }
+      if (found.size) break;
+    } catch {
+      /* try next */
+    }
+  }
+  return [...found.values()];
+}
+
+async function listFlowProjects() {
+  const fromTrpc = await listProjectsViaTrpc();
+  const fromHistory = await listProjectsFromHistory();
+  const map = new Map();
+  for (const p of [...fromTrpc, ...fromHistory]) {
+    if (!p?.id) continue;
+    const prev = map.get(p.id);
+    if (!prev || (p.title && p.title.length > (prev.title || '').length)) {
+      map.set(p.id, p);
+    }
+  }
+  // Merge stored projectId from extension storage
+  try {
+    const stored = await chrome.storage.local.get(['projectId', 'projectsCache']);
+    if (stored.projectId && !map.has(stored.projectId)) {
+      map.set(stored.projectId, {
+        id: stored.projectId,
+        title: `Project ${String(stored.projectId).slice(0, 8)}`,
+        source: 'capture',
+      });
+    }
+    if (Array.isArray(stored.projectsCache)) {
+      for (const p of stored.projectsCache) {
+        if (p?.id && !map.has(p.id)) map.set(p.id, p);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const projects = [...map.values()];
+  chrome.storage.local.set({ projectsCache: projects });
+  return projects;
+}
+
+async function openFlowProject(projectId) {
+  const pid = String(projectId || '').trim();
+  const url = pid
+    ? `https://labs.google/fx/tools/flow/project/${pid}`
+    : 'https://labs.google/fx/tools/flow';
+  const tabs = await chrome.tabs.query({
+    url: ['https://labs.google/fx/*tools/flow*', 'https://labs.google/fx/tools/flow*'],
+  });
+  if (tabs.length) {
+    await chrome.tabs.update(tabs[0].id, { url, active: false });
+    return { ok: true, tabId: tabs[0].id, url, action: 'navigated' };
+  }
+  const tab = await chrome.tabs.create({ url, active: false });
+  return { ok: true, tabId: tab.id, url, action: 'created' };
+}
+
+async function syncAccountIdentity() {
+  console.log('[AI Novel Flow] sync_account — harvest session/credits/projects');
+  // Ensure we have a Flow context (cookies) when possible
+  try {
+    const tabs = await chrome.tabs.query({
+      url: ['https://labs.google/*'],
+    });
+    if (!tabs.length) {
+      await chrome.tabs.create({
+        url: 'https://labs.google/fx/tools/flow',
+        active: true,
+      });
+      await sleep(3500);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Retry session a few times (login redirect may lag)
+  let session = await fetchLabsSession();
+  for (let i = 0; i < 5 && !session.email; i++) {
+    await sleep(1500);
+    session = await fetchLabsSession();
+  }
+  // Trigger network so webRequest can also catch Bearer if session token empty
+  if (!flowKey) {
+    try {
+      await forceTokenHarvest();
+      await sleep(2000);
+      session = await fetchLabsSession();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const creditsInfo = await fetchCredits();
+  const projects = await listFlowProjects();
+
+  // Prefer active project from storage if still in list
+  let activeProjectId = null;
+  try {
+    const st = await chrome.storage.local.get(['projectId']);
+    activeProjectId = st.projectId || null;
+  } catch {
+    /* ignore */
+  }
+  if (!activeProjectId && projects[0]) activeProjectId = projects[0].id;
+
+  const identity = {
+    ok: true,
+    email: session.email || '',
+    name: session.name || '',
+    image: session.image || '',
+    sessionExpires: session.expires || null,
+    flowKeyPresent: !!flowKey,
+    credits:
+      typeof creditsInfo.credits === 'number' ? creditsInfo.credits : null,
+    paygateTier: creditsInfo.tier || null,
+    projects,
+    projectId: activeProjectId,
+    syncedAt: Date.now(),
+    steps: [
+      session.email
+        ? `Session: ${session.email}`
+        : `Session HTTP ${session.status || '?'} (chưa email — mở tab Flow login)`,
+      typeof creditsInfo.credits === 'number'
+        ? `Credits: ${creditsInfo.credits}`
+        : `Credits: n/a (HTTP ${creditsInfo.status || '?'})`,
+      `Projects: ${projects.length}`,
+    ],
+  };
+
+  chrome.storage.local.set({
+    accountIdentity: identity,
+    projectId: activeProjectId || undefined,
+  });
+  console.log('[AI Novel Flow] sync_account done', identity.steps);
+  return identity;
 }
 
 // ─── State & Popup ──────────────────────────────────────────

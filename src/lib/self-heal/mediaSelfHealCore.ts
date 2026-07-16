@@ -330,152 +330,28 @@ async function probeAvailableProviders(credentials: MediaSelfHealCredentials) {
   return checks;
 }
 
-function providerOk(checks: ProviderProbeResult[], provider: string) {
-  return checks.some((check) => check.provider === provider && check.ok);
-}
-
-function hasCredential(checks: ProviderProbeResult[], provider: string) {
-  // Key/cookie was supplied even if live probe failed (network/timeout).
-  return checks.some((check) => check.provider === provider && check.reason !== 'missing_key');
-}
-
 function buildImagePatch(
   request: MediaSelfHealRequest,
   checks: ProviderProbeResult[],
   issueKind: MediaSelfHealIssueKind,
 ): MediaSelfHealPatch {
-  const currentProvider = request.config.routeProvider || request.config.imageProvider || '';
-  const currentModel = request.config.routeModel || request.config.imageModel || '';
-  const normalizedError = request.error.toLowerCase();
-  const currentProviderBillingBlocked =
-    issueKind === 'quota' &&
-    (
-      normalizedError.includes('no credits') ||
-      normalizedError.includes('credits or licenses') ||
-      normalizedError.includes('licenses yet') ||
-      normalizedError.includes('purchase those') ||
-      normalizedError.includes('billing') ||
-      normalizedError.includes('payment required') ||
-      normalizedError.includes('insufficient balance')
-    );
-  const currentBroken =
-    issueKind === 'invalid_key' ||
-    issueKind === 'missing_key' ||
-    issueKind === 'quota' ||
-    issueKind === 'model_mismatch' ||
-    issueKind === 'network';
-
-  const prefer = (provider: string, model: string) => ({ imageProvider: provider, imageModel: model });
-
-  // 1) Prefer live-ok providers, switching away from broken current route.
-  if (currentBroken || currentProviderBillingBlocked) {
-    if (currentProvider !== 'gemini' && providerOk(checks, 'gemini')) return prefer('gemini', 'banana');
-    if (currentProvider !== 'gemini' && hasCookie(request.credentials)) return prefer('gemini', 'whisk');
-    if (currentProvider !== 'openai' && providerOk(checks, 'openai')) return prefer('openai', 'gpt-image-1');
-    if (currentProvider !== 'grok' && providerOk(checks, 'grok') && !currentProviderBillingBlocked) {
-      return prefer('grok', 'grok-imagine-image-quality');
-    }
-  }
-
-  // 2) Same-provider model salvage
-  if (currentProvider === 'gemini' && providerOk(checks, 'gemini')) {
-    return prefer('gemini', currentModel === 'whisk' ? 'banana' : 'banana');
-  }
-  if (currentProvider === 'gemini' && currentModel === 'whisk' && hasCookie(request.credentials)) {
-    return prefer('gemini', 'whisk');
-  }
-  if (currentProvider === 'openai' && providerOk(checks, 'openai')) {
-    return prefer('openai', 'gpt-image-1');
-  }
-  if (currentProvider === 'grok' && providerOk(checks, 'grok') && !currentProviderBillingBlocked) {
-    return prefer('grok', 'grok-imagine-image-quality');
-  }
-
-  // 3) Any live-ok provider
-  if (providerOk(checks, 'gemini')) return prefer('gemini', 'banana');
-  if (providerOk(checks, 'google_studio_cookie') || hasCookie(request.credentials)) return prefer('gemini', 'whisk');
-  if (providerOk(checks, 'openai')) return prefer('openai', 'gpt-image-1');
-  if (providerOk(checks, 'grok') && !currentProviderBillingBlocked) return prefer('grok', 'grok-imagine-image-quality');
-
-  // 4) Credential-present fallbacks (probe may have timed out)
-  if (currentProvider !== 'gemini' && hasCredential(checks, 'gemini')) return prefer('gemini', 'banana');
-  if (hasCookie(request.credentials)) return prefer('gemini', 'whisk');
-  if (currentProvider !== 'openai' && hasCredential(checks, 'openai')) return prefer('openai', 'gpt-image-1');
-  if (currentProvider !== 'grok' && hasCredential(checks, 'grok') && !currentProviderBillingBlocked) {
-    return prefer('grok', 'grok-imagine-image-quality');
-  }
-
-  // 5) Last-ditch suggestion so client cascade still engages
-  if (currentProvider === 'grok' || currentProvider === 'openai') return prefer('gemini', 'banana');
-  if (currentProvider === 'gemini' && currentModel !== 'banana') return prefer('gemini', 'banana');
-  return prefer('gemini', 'banana');
+  void request;
+  void checks;
+  void issueKind;
+  return {};
 }
 
 function buildVideoPatch(request: MediaSelfHealRequest, checks: ProviderProbeResult[]): MediaSelfHealPatch {
-  const currentProvider = request.config.routeProvider || request.config.videoProvider || '';
-
-  // Switch away from broken current provider when possible.
-  if (currentProvider === 'veo' && providerOk(checks, 'openai')) return { videoProvider: 'sora', videoModel: 'sora' };
-  if (currentProvider === 'veo' && providerOk(checks, 'grok')) return { videoProvider: 'grok', videoModel: 'grok-imagine-video-1.5' };
-  if (currentProvider === 'sora' && providerOk(checks, 'gemini')) return { videoProvider: 'veo', videoModel: 'veo' };
-  if (currentProvider === 'sora' && providerOk(checks, 'grok')) return { videoProvider: 'grok', videoModel: 'grok-imagine-video-1.5' };
-  if (currentProvider === 'grok' && providerOk(checks, 'gemini')) return { videoProvider: 'veo', videoModel: 'veo' };
-  if (currentProvider === 'grok' && providerOk(checks, 'openai')) return { videoProvider: 'sora', videoModel: 'sora' };
-
-  if (currentProvider === 'veo' && providerOk(checks, 'gemini')) return { videoProvider: 'veo', videoModel: 'veo' };
-  if (currentProvider === 'sora' && providerOk(checks, 'openai')) return { videoProvider: 'sora', videoModel: 'sora' };
-  if (currentProvider === 'grok' && providerOk(checks, 'grok')) return { videoProvider: 'grok', videoModel: 'grok-imagine-video-1.5' };
-
-  if (providerOk(checks, 'gemini')) return { videoProvider: 'veo', videoModel: 'veo' };
-  if (providerOk(checks, 'openai')) return { videoProvider: 'sora', videoModel: 'sora' };
-  if (providerOk(checks, 'grok')) return { videoProvider: 'grok', videoModel: 'grok-imagine-video-1.5' };
-  // Always offer offline FFmpeg as last-resort self-heal for video.
-  return { videoProvider: 'ffmpeg', videoModel: 'ffmpeg-basic' };
+  void request;
+  void checks;
+  return {};
 }
 
 function buildAudioPatch(request: MediaSelfHealRequest, checks: ProviderProbeResult[], issueKind: MediaSelfHealIssueKind): MediaSelfHealPatch {
-  const currentPlatform = request.config.ttsPlatform || '';
-
-  // Cloud key/quota issues → switch to local Universal ONNX brain (not silent Edge).
-  if (issueKind === 'quota' || issueKind === 'invalid_key' || issueKind === 'missing_key' || issueKind === 'missing_module') {
-    if (currentPlatform !== 'vina_voice') {
-      return {
-        ttsConfig: {
-          platform: 'vina_voice',
-          voice: request.config.ttsVoice || '',
-          vinaUseClone: true,
-        },
-      };
-    }
-  }
-
-  if (currentPlatform === 'vina_voice') {
-    // Already on UVE — only then allow Advanced / emergency routes
-    if (providerOk(checks, 'gemini') && issueKind !== 'quota') {
-      return { ttsConfig: { platform: 'gemini_tts', voice: request.config.ttsVoice || 'Kore' } };
-    }
-    return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };
-  }
-
-  if (currentPlatform === 'gemini_tts' && providerOk(checks, 'gemini') && issueKind !== 'model_mismatch' && issueKind !== 'quota') {
-    return { ttsConfig: { platform: 'gemini_tts', voice: request.config.ttsVoice || 'Kore' } };
-  }
-  if (currentPlatform === 'openai_tts' && providerOk(checks, 'openai') && issueKind !== 'model_mismatch' && issueKind !== 'quota') {
-    return { ttsConfig: { platform: 'openai_tts', voice: request.config.ttsVoice || 'alloy' } };
-  }
-
-  // Default self-heal target: Universal Zero-Shot ONNX
-  if (currentPlatform !== 'vina_voice') {
-    return {
-      ttsConfig: {
-        platform: 'vina_voice',
-        voice: request.config.ttsVoice || '',
-        vinaUseClone: true,
-      },
-    };
-  }
-
-  return { ttsConfig: { platform: 'edge_tts', voice: 'vi-VN-HoaiMyNeural' } };
+  void request;
+  void checks;
+  void issueKind;
+  return {};
 }
 
 function hasPatch(patch: MediaSelfHealPatch) {
@@ -544,7 +420,7 @@ export async function diagnoseMediaSelfHeal(input: MediaSelfHealRequest | unknow
           : { pickerStrategy: 'compat_dialog' as const };
 
   const logId = `heal_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const shouldRetry = hasPatch(patch) || request.domain === 'ui_click';
+  const shouldRetry = hasPatch(patch);
   const summary = shouldRetry
     ? `Self-heal brain prepared repair for ${request.domain}: ${JSON.stringify(patch)} | issue=${issue.kind} | probes=${checkedProviders.map((p) => `${p.provider}:${p.ok ? 'ok' : 'fail'}`).join(',')}`
     : request.domain === 'ui_click'

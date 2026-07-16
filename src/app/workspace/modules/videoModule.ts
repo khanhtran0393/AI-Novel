@@ -1,5 +1,6 @@
 import { API } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
+import { ensureFlowSessionReady } from './flowSessionPreflight';
 
 export interface CharacterJSON {
   id: string;
@@ -88,10 +89,24 @@ export interface GenerateVideoParams {
   videoApiKey?: string;
   videoAspectRatio?: string;
   useGpuAcceleration?: boolean;
-  /** Passed through to /api/generate-video (Seedance runs server-side) */
+  /** Passed through to /api/generate-video (Seedance v2 runs server-side) */
   characterHints?: string[];
   environmentHint?: string;
   genre?: string;
+  styleHint?: string;
+  /** User Media Config — Seedance multishot budget */
+  secondsPerBeat?: number;
+  /** B — cast concept sheets (1–3) for ingredients-to-video */
+  ingredientPaths?: string[];
+  /** B — extend existing Flow clip */
+  extendMediaId?: string;
+  videoMode?: 'auto' | 't2v' | 'i2v' | 'ingredients' | 'extend';
+  camera?: {
+    move?: string;
+    angle?: string;
+    focal?: string;
+    scaleIndex?: number;
+  };
 }
 
 async function postVideoGeneration(params: GenerateVideoParams) {
@@ -111,15 +126,72 @@ async function postVideoGeneration(params: GenerateVideoParams) {
     characterHints,
     environmentHint,
     genre,
+    styleHint,
+    secondsPerBeat,
+    ingredientPaths,
+    extendMediaId,
+    videoMode,
+    camera,
   } = params;
 
-  let videoQuality = 'hd';
+  let videoQuality = '';
   try {
     if (typeof localStorage !== 'undefined') {
-      videoQuality = localStorage.getItem('ainovel_flow_video_quality') || 'hd';
+      videoQuality = localStorage.getItem('ainovel_flow_video_quality') || '';
     }
   } catch {
-    /* ignore */
+    videoQuality = '';
+  }
+
+  const storeLive = useNovelStore.getState();
+  // Continuity for Seedance sequence at generate-video (prior/later shots in same scene)
+  let priorSentences: string[] = [];
+  let laterSentences: string[] = [];
+  try {
+    const { sceneAssetKey } = await import('@/contracts');
+    const key = sceneAssetKey(chapterNum, sceneIndex);
+    const list = storeLive.generatedPrompts?.[key] || [];
+    priorSentences = list
+      .slice(0, promptIndex)
+      .map((p) => String(p.sentence || p.script_prompt || '').trim())
+      .filter(Boolean);
+    laterSentences = list
+      .slice(promptIndex + 1)
+      .map((p) => String(p.sentence || p.script_prompt || '').trim())
+      .filter(Boolean);
+  } catch {
+    /* optional */
+  }
+
+  const resolvedStyle = String(
+    styleHint ||
+      storeLive.visualDnaPrompt ||
+      storeLive.mediaStylePreset ||
+      '',
+  ).trim();
+  const setupGenre = [
+    storeLive.setup?.chu_de,
+    storeLive.setup?.phong_cach,
+  ]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean)
+    .join(' / ');
+  const resolvedGenre = String(genre || setupGenre || '').trim();
+  if (!resolvedStyle && !resolvedGenre) {
+    throw new Error(
+      'Thieu Visual DNA / Media Style va Setup (Chu de + Phong cach) khi gen video. App khong tu gan mat the.',
+    );
+  }
+  const resolvedBeat =
+    Number(secondsPerBeat) > 0
+      ? Number(secondsPerBeat)
+      : Number(storeLive.secondsPerBeat) > 0
+        ? Number(storeLive.secondsPerBeat)
+        : 0;
+  if (!resolvedBeat) {
+    throw new Error(
+      'Thieu secondsPerBeat (Media Config) khi gen video. App khong tu gan beat.',
+    );
   }
 
   const response = await fetch(API.generateVideo, {
@@ -140,8 +212,18 @@ async function postVideoGeneration(params: GenerateVideoParams) {
       useGpuAcceleration,
       characterHints,
       environmentHint,
-      genre,
-      quality: videoQuality,
+      genre: resolvedGenre || undefined,
+      styleHint: resolvedStyle || undefined,
+      secondsPerBeat: resolvedBeat,
+      ten_tac_pham: storeLive.ten_tac_pham,
+      projectTitle: storeLive.ten_tac_pham,
+      priorSentences,
+      laterSentences,
+      quality: videoQuality || undefined,
+      ingredientPaths,
+      extendMediaId,
+      videoMode,
+      camera,
     })
   });
 
@@ -153,14 +235,34 @@ async function postVideoGeneration(params: GenerateVideoParams) {
   return data;
 }
 
-export async function generateVideoAction(params: GenerateVideoParams): Promise<{ videoPath: string; method?: string }> {
+export async function generateVideoAction(
+  params: GenerateVideoParams,
+  opts?: {
+    /** When caller already ran ensureFlowSessionReady (avoid double toast) */
+    skipFlowPreflight?: boolean;
+  },
+): Promise<{
+  videoPath: string;
+  method?: string;
+  mediaIds?: string[];
+  mediaId?: string;
+}> {
   const storeState = useNovelStore.getState();
-  const routeProvider = params.videoProvider || storeState.videoProvider || 'flow';
-  const routeModel =
-    params.model ||
-    storeState.videoModel ||
-    (routeProvider === 'flow' ? 'veo_3_1_t2v_fast_ultra' : 'veo');
+  const routeProvider = (params.videoProvider || storeState.videoProvider || '').trim();
+  if (!routeProvider) {
+    throw new Error('Chua chon videoProvider. App khong tu gan provider.');
+  }
+  const routeModel = (params.model || storeState.videoModel || '').trim();
+  if (!routeModel) {
+    throw new Error('Chua chon videoModel. App khong tu gan model.');
+  }
   const routeKey = params.videoApiKey || storeState.videoApiKey || '';
+
+  // Lần đầu gen video Flow: check status + mở browser + toast
+  // (Flow Agent Studio / bất kỳ caller không preflight riêng)
+  if (routeProvider === 'flow' && !opts?.skipFlowPreflight) {
+    await ensureFlowSessionReady({ kind: 'video', notify: true });
+  }
 
   // Seedance director runs inside /api/generate-video — client only routes params
   const baseParams: GenerateVideoParams = {
@@ -170,7 +272,7 @@ export async function generateVideoAction(params: GenerateVideoParams): Promise<
     videoApiKey: routeKey,
   };
 
-  // No provider swap fallback — only multi-key rotation inside API.
+  // Provider/model are explicit; multi-key rotation stays inside API.
   return await postVideoGeneration(baseParams);
 }
 

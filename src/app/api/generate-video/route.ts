@@ -199,27 +199,81 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Thiếu thông tin chương hoặc phân cảnh.' }, { status: 400 });
     }
 
+    seedanceGenCtx = {
+      chapterNum: Number(chapterNum),
+      sceneIndex: Number(sceneIndex),
+      promptIndex: Number(promptIndex) || 0,
+      projectSlug:
+        typeof body.projectTitle === 'string'
+          ? body.projectTitle
+          : typeof body.ten_tac_pham === 'string'
+            ? body.ten_tac_pham
+            : undefined,
+    };
+
     let promptText = typeof prompt === 'string' ? prompt.trim() : '';
     if (!promptText) {
       return NextResponse.json({ error: '[Video API] Thieu prompt video thuc te. He thong khong tu chen prompt mau.' }, { status: 400 });
     }
 
-    // Seedance director — always applied at generation core (I2V-aware)
+    // Seedance 2.0 — sequence-aware video_prompt (continuation / directed clip) baked in
     try {
-      const { compileSeedancePrompt } = await import('@/lib/integrations/seedance');
-      const directed = compileSeedancePrompt({
-        sceneText: promptText,
-        characterHints: Array.isArray(body.characterHints) ? body.characterHints : undefined,
-        environmentHint: typeof body.environmentHint === 'string' ? body.environmentHint : undefined,
-        genre: typeof body.genre === 'string' ? body.genre : 'dark survival / mạt thế',
+      const { resolveVideoPromptWithSequence } = await import(
+        '@/lib/integrations/seedanceAuto'
+      );
+      const durationSec = Number(duration) > 0 ? Number(duration) : 5;
+      const secondsPerBeat =
+        Number(body.secondsPerBeat) > 0 ? Number(body.secondsPerBeat) : undefined;
+      const chNum = Number(chapterNum);
+      const scIdx = Number(sceneIndex);
+      const pIdx = Number(promptIndex) || 0;
+      const prior = Array.isArray(body.priorSentences)
+        ? body.priorSentences.map(String)
+        : [];
+      const later = Array.isArray(body.laterSentences)
+        ? body.laterSentences.map(String)
+        : [];
+      const resolved = resolveVideoPromptWithSequence({
+        chapterNum: Number.isFinite(chNum) ? chNum : 1,
+        sceneIndex: Number.isFinite(scIdx) ? scIdx : 0,
+        promptIndex: pIdx,
+        promptText,
+        characterHints: Array.isArray(body.characterHints)
+          ? body.characterHints
+          : undefined,
+        environmentHint:
+          typeof body.environmentHint === 'string' ? body.environmentHint : undefined,
+        styleHint:
+          typeof body.styleHint === 'string' ? body.styleHint : undefined,
+        genre:
+          typeof body.genre === 'string' && body.genre.trim()
+            ? body.genre.trim()
+            : undefined,
         hasStartImage: Boolean(startImage),
         hasEndImage: Boolean(endImage),
-        durationSec: Number(duration) > 0 ? Number(duration) : 5,
+        durationSec,
+        secondsPerBeat,
+        title:
+          typeof body.projectTitle === 'string'
+            ? body.projectTitle
+            : typeof body.ten_tac_pham === 'string'
+              ? body.ten_tac_pham
+              : undefined,
+        projectSlug:
+          typeof body.projectTitle === 'string'
+            ? body.projectTitle
+            : typeof body.ten_tac_pham === 'string'
+              ? body.ten_tac_pham
+              : undefined,
+        priorSentences: prior,
+        laterSentences: later,
       });
-      promptText = directed.prompt;
-      console.log(`[Video API] Seedance mode=${directed.mode} fn=${directed.function}`);
+      promptText = resolved.promptText;
+      console.log(
+        `[Video API] Seedance sequence relation=${resolved.sequenceRelation} cont=${resolved.usedContinuation} clip=${resolved.clipId}`,
+      );
     } catch (e) {
-      console.warn('[Video API] Seedance compile skipped:', e);
+      console.warn('[Video API] Seedance sequence compile skipped:', e);
     }
 
     const videoDuration = Number(duration);
@@ -272,27 +326,73 @@ export async function POST(req: Request) {
         } = await import('@/lib/flow-bridge');
         await ensureBridgeStarted();
         let snap = await getBridgeSnapshotAsync();
-        if (!snap.flowKeyPresent || !snap.extensionConnected) {
-          console.log('[Flow Video] Session incomplete — auto bootstrap…');
-          await bootstrapFlow({
-            forceChrome: !snap.extensionConnected,
+        // Need BOTH extension socket + token. Stale flowKeyPresent alone = false green.
+        const sessionReady =
+          Boolean(snap.extensionConnected) && Boolean(snap.flowKeyPresent);
+        if (!sessionReady) {
+          console.log(
+            `[Flow Video] Session incomplete ext=${snap.extensionConnected} key=${snap.flowKeyPresent} — auto bootstrap…`,
+          );
+          const boot = await bootstrapFlow({
+            forceChrome: !snap.extensionConnected || !snap.flowKeyPresent,
             engine: 'auto',
-            waitExtensionMs: 35000,
-            waitLoginMs: 15000,
+            waitExtensionMs: 40000,
+            waitLoginMs: 25000,
           });
           snap = await getBridgeSnapshotAsync();
+          if (!snap.flowKeyPresent || !snap.extensionConnected) {
+            const detail =
+              boot.message ||
+              (!snap.extensionConnected
+                ? 'Extension chưa nối — browser có thể chưa mở hoặc chưa load extension.'
+                : 'Browser đã mở nhưng chưa harvest Bearer — đăng nhập Google trên cửa sổ Flow của app.');
+            return NextResponse.json(
+              {
+                error: `[Google Flow Video] ${detail}`,
+                loginRequired: Boolean(boot.loginRequired) || !snap.flowKeyPresent,
+                extensionConnected: snap.extensionConnected,
+                flowKeyPresent: snap.flowKeyPresent,
+                chromeLaunched: boot.chromeLaunched,
+                steps: boot.steps?.slice(-12),
+              },
+              { status: 503 },
+            );
+          }
         }
         if (!snap.flowKeyPresent) {
           return NextResponse.json(
             {
               error:
-                '[Google Flow Video] Chưa có token. Ảnh/Video → Engine Auto → Đăng nhập Google.',
+                '[Google Flow Video] Chưa có token. Ảnh/Video → Engine Auto → Đăng nhập Google trên browser profile app, đợi token xanh rồi gen lại.',
+              loginRequired: true,
+              extensionConnected: snap.extensionConnected,
+              flowKeyPresent: false,
             },
             { status: 503 },
           );
         }
+        const endResolved = resolveLocalImagePath(endImage) || undefined;
+        const ingredientPaths = Array.isArray(body.ingredientPaths)
+          ? (body.ingredientPaths as unknown[])
+              .map((x) => resolveLocalImagePath(String(x)))
+              .filter(Boolean)
+          : [];
+        // Auto ingredients: start + end frames as multi-ref when both present
+        if (sourceImagePath && endResolved) {
+          for (const p of [sourceImagePath, endResolved]) {
+            if (p && !ingredientPaths.includes(p)) ingredientPaths.push(p);
+          }
+        }
+        const videoMode =
+          typeof body.videoMode === 'string'
+            ? body.videoMode
+            : body.extendMediaId
+              ? 'extend'
+              : ingredientPaths.length >= 2
+                ? 'ingredients'
+                : 'auto';
         const result = await runGenerateOne({
-          kind: 'video',
+          kind: body.extendMediaId || videoMode === 'extend' ? 'extend' : 'video',
           prompt: promptText,
           chapterNum,
           sceneIndex,
@@ -301,8 +401,24 @@ export async function POST(req: Request) {
           durationSec: videoDuration,
           videoModel: typeof body.model === 'string' ? body.model : undefined,
           startImagePath: sourceImagePath || undefined,
-          endImagePath: resolveLocalImagePath(endImage) || undefined,
+          endImagePath: endResolved,
           referenceImagePath: sourceImagePath || undefined,
+          ingredientPaths: ingredientPaths.length ? ingredientPaths : undefined,
+          extendMediaId: body.extendMediaId
+            ? String(body.extendMediaId)
+            : undefined,
+          videoMode,
+          camera:
+            body.camera && typeof body.camera === 'object'
+              ? body.camera
+              : body.promptIndex != null
+                ? {
+                    scaleIndex: Number(body.promptIndex) % 6,
+                    move: 'dolly_in',
+                    angle: 'eye',
+                    focal: 'normal',
+                  }
+                : undefined,
           quality:
             typeof body.quality === 'string'
               ? body.quality
@@ -311,9 +427,14 @@ export async function POST(req: Request) {
                 : 'hd',
         });
         if (!result.ok || !result.resultPaths?.length) {
+          const raw = result.error || 'Sinh video thất bại. Kiểm tra extension + đăng nhập Flow.';
+          const err =
+            /NO_FLOW_KEY/i.test(raw)
+              ? 'Extension không còn Bearer token (NO_FLOW_KEY). Mở Ảnh/Video → Engine Auto → Đăng nhập Google trên browser profile của app, đợi token xanh, rồi gen lại. (UI xanh nhưng extension trống = token lệch.)'
+              : raw;
           return NextResponse.json(
             {
-              error: `[Google Flow Video] ${result.error || 'Sinh video thất bại. Kiểm tra extension + đăng nhập Flow.'}`,
+              error: `[Google Flow Video] ${err}`,
             },
             { status: 500 },
           );
@@ -325,6 +446,22 @@ export async function POST(req: Request) {
         } catch {
           /* ignore */
         }
+        // Persist Flow mediaId for Extend (B)
+        try {
+          const { setFlowMediaIdsFromTask } = await import(
+            '@/lib/flow-bridge/mediaIdIndex'
+          );
+          setFlowMediaIdsFromTask({
+            chapterNum,
+            sceneIndex,
+            promptIndex:
+              body.promptIndex != null ? Number(body.promptIndex) : 0,
+            kind: 'video',
+            mediaIds: result.mediaIds,
+          });
+        } catch {
+          /* ignore */
+        }
         return createSuccessResponse(
           localSavePath,
           filename,
@@ -332,6 +469,7 @@ export async function POST(req: Request) {
           drivePath,
           chapterNum,
           'flow',
+          result.mediaIds,
         );
       } catch (e: unknown) {
         return NextResponse.json(
@@ -683,8 +821,63 @@ async function pollOperation(operationName: string, apiKey: string, timeoutMs: n
   return null;
 }
 
+/** Seedance sequence context for the in-flight generate-video request */
+let seedanceGenCtx: {
+  chapterNum: number;
+  sceneIndex: number;
+  promptIndex: number;
+  projectSlug?: string;
+} | null = null;
+
+function tryMarkSeedanceGenerated(opts: {
+  chapterNum: number;
+  sceneIndex: number;
+  promptIndex: number;
+  videoPath?: string;
+  mediaId?: string;
+  projectSlug?: string;
+}) {
+  try {
+    const {
+      loadSeedanceProject,
+      saveSeedanceProject,
+    } = require('@/lib/integrations/seedancePersist') as typeof import('@/lib/integrations/seedancePersist');
+    const { markClipGenerated } = require('@/lib/integrations/seedanceTakeReview') as typeof import('@/lib/integrations/seedanceTakeReview');
+    const state = loadSeedanceProject(opts.chapterNum, opts.projectSlug);
+    if (!state?.clips?.length) return;
+    const clip =
+      state.clips.find(
+        (c) =>
+          c.scene_index === opts.sceneIndex &&
+          (c.prompt_index ?? 0) === opts.promptIndex,
+      ) ||
+      state.clips.find((c) => c.scene_index === opts.sceneIndex) ||
+      state.clips.find((c) => c.clip_id === state.current_clip_id) ||
+      state.clips[0];
+    if (!clip) return;
+    const next = markClipGenerated(state, clip.clip_id, {
+      videoPath: opts.videoPath,
+      mediaId: opts.mediaId,
+    });
+    saveSeedanceProject(next, opts.projectSlug);
+    console.log(
+      `[Video API] Seedance mark_generated clip=${clip.clip_id} ch=${opts.chapterNum} sc=${opts.sceneIndex}`,
+    );
+  } catch (e) {
+    console.warn('[Video API] Seedance mark_generated skipped:', e);
+  }
+}
+
 // Tạo response thành công
-function createSuccessResponse(localSavePath: string, filename: string, duration: number, drivePath: string, chapterNum: number, method: string) {
+function createSuccessResponse(
+  localSavePath: string,
+  filename: string,
+  duration: number,
+  drivePath: string,
+  chapterNum: number,
+  method: string,
+  mediaIds?: string[],
+) {
   // Lưu vào Drive nếu có
   let driveSaved = false;
   let driveFilePath = '';
@@ -698,14 +891,28 @@ function createSuccessResponse(localSavePath: string, filename: string, duration
     } catch {}
   }
 
+  const mids = Array.isArray(mediaIds) ? mediaIds.filter(Boolean) : [];
+  const videoPath = `/video/${filename}`;
+  if (seedanceGenCtx) {
+    tryMarkSeedanceGenerated({
+      chapterNum: seedanceGenCtx.chapterNum,
+      sceneIndex: seedanceGenCtx.sceneIndex,
+      promptIndex: seedanceGenCtx.promptIndex,
+      videoPath,
+      mediaId: mids[0],
+      projectSlug: seedanceGenCtx.projectSlug,
+    });
+  }
   return NextResponse.json({
     success: true,
-    videoPath: `/video/${filename}`,
+    videoPath,
     driveSaved,
     driveFilePath,
     filename,
     duration,
-    method
+    method,
+    mediaIds: mids.length ? mids : undefined,
+    mediaId: mids[0] || undefined,
   });
 }
 
@@ -730,35 +937,65 @@ async function createFfmpegVideoResponse(localSavePath: string, filename: string
     }
     fs.copyFileSync(sourceImagePath, tempImagePath);
 
-    console.log(`[FFmpeg Video Builder] 2. Xác định đường dẫn FFmpeg...`);
-    const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
-    const ffmpegExecutable = fs.existsSync(localFfmpeg) ? localFfmpeg : 'ffmpeg';
+    console.log(`[FFmpeg Video Builder] 2. Xác định đường dẫn FFmpeg / NVENC...`);
+    // Shared probe: bin/ffmpeg may need driver 610+; python_core/7.x often works on GTX 10xx
+    const { resolveFfmpegForEncode } = await import('@/lib/ffmpeg/nvencProbe');
+    const { buildH264NvencArgs } = await import('@/lib/ffmpeg/nvencEncoderArgs');
+    const { getPrimaryFfmpegPath } = await import('@/lib/ffmpeg/ffmpegPaths');
 
-    console.log(`[FFmpeg Video Builder] 3. Tạo video pan/zoom chất lượng cao bằng FFmpeg...`);
+    let ffmpegExecutable = getPrimaryFfmpegPath();
+    let codec = 'libx264';
+    let encodeOptions: string[] = ['-preset', 'veryfast', '-crf', '20'];
+
+    if (useGpu) {
+      const enc = resolveFfmpegForEncode({ preferGpu: true });
+      if (enc.usedNvenc && enc.probe) {
+        ffmpegExecutable = enc.ffmpegPath;
+        codec = 'h264_nvenc';
+        encodeOptions = buildH264NvencArgs({
+          mode: 'turbo',
+          cq: 23,
+          bf: enc.probe.bf2Ok ? 2 : 0,
+          presetHint: enc.probe.preset,
+        });
+        console.log(
+          `[FFmpeg Video Builder] NVENC OK · ${ffmpegExecutable}` +
+            (enc.probe.usedCompatFfmpeg ? ' (compat)' : ''),
+        );
+      } else {
+        // Try AMD/Intel hardware only on primary binary (short probe)
+        const { execSync } = require('child_process');
+        const ffmpegTestExecutable = quoteCmdArg(ffmpegExecutable);
+        for (const c of ['h264_amf', 'h264_qsv'] as const) {
+          try {
+            execSync(
+              `${ffmpegTestExecutable} -hide_banner -loglevel error -y -f lavfi -i testsrc=s=64x64:d=0.2 -c:v ${c} -f null -`,
+              { stdio: 'ignore', timeout: 15000 },
+            );
+            codec = c;
+            encodeOptions = [];
+            console.log(`[FFmpeg Video Builder] GPU acceleration (${c}) enabled.`);
+            break;
+          } catch {
+            /* next */
+          }
+        }
+        if (codec === 'libx264') {
+          throw new Error(
+            '[FFmpeg Video Builder] GPU encode được bật nhưng NVENC/AMF/QSV không khả dụng. ' +
+              'Cài đặt → Quét lại NVENC, hoặc tắt GPU acceleration. ' +
+              (enc.probe?.message || ''),
+          );
+        }
+      }
+    } else {
+      console.log(`[FFmpeg Video Builder] FFmpeg: ${ffmpegExecutable} · libx264`);
+    }
+
+    console.log(`[FFmpeg Video Builder] 3. Tạo video pan/zoom bằng FFmpeg...`);
     const frameCount = Math.max(1, Math.ceil(duration * 25));
     const filterComplex = `[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,zoompan=z='min(zoom+0.0015,1.5)':d=${frameCount}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720,framerate=25,format=yuv420p[v]`;
-    
-    let codec = 'libx264';
-    if (useGpu) {
-      const codecsToTry = ['h264_nvenc', 'h264_amf', 'h264_qsv'];
-      const { execSync } = require('child_process');
-      const ffmpegTestExecutable = quoteCmdArg(ffmpegExecutable);
-      let gpuCodec = '';
-      for (const c of codecsToTry) {
-        try {
-          execSync(`${ffmpegTestExecutable} -y -f lavfi -i nullsrc=s=64x64:d=1 -c:v ${c} -f null -`, { stdio: 'ignore' });
-          gpuCodec = c;
-          console.log(`[FFmpeg Video Builder] GPU acceleration (${c}) enabled successfully.`);
-          break;
-        } catch {}
-      }
-      if (!gpuCodec) {
-        throw new Error('[FFmpeg Video Builder] GPU encoder requested but no supported GPU codec is available.');
-      }
-      codec = gpuCodec;
-    }
-    
-    const encodeOptions = codec === 'libx264' ? ['-preset', 'veryfast', '-crf', '20'] : [];
+
     const ffmpegArgs = [
       '-y',
       '-framerate', '25',

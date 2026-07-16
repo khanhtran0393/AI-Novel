@@ -138,34 +138,31 @@ function loadOmnivoiceLibrary(cwd: string): VoiceOption[] & { _byLang?: Record<s
 function loadVinaAsVoices(cwd: string): VoiceOption[] {
   try {
     const profiles = loadVinaProfiles(cwd);
-    if (!profiles.length) {
-      return [
-        { id: 'vi-VN-NamMinhNeural', name: 'Nam Minh (builtin Edge map)', gender: 'male' },
-        { id: 'vi-VN-HoaiMyNeural', name: 'Hoài My (builtin Edge map)', gender: 'female' },
-      ];
-    }
-    return profiles.map((p) => {
+    return profiles.flatMap((p) => {
       const sample = resolveSamplePath(p, {}, cwd);
+      if (!sample) return [];
       const label = p.name;
-      const gender: VoiceOption['gender'] = /nữ|nu |female|cô |chị |bà /i.test(label)
+      const plain = label
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+      const gender: VoiceOption['gender'] = /nu |female|co |chi |ba /.test(plain)
         ? 'female'
-        : /nam |male|ông |anh /i.test(label)
+        : /nam |male|ong |anh /.test(plain)
           ? 'male'
           : undefined;
       return {
         id: p.name,
-        name: `${sample ? '🎤' : '○'} ${p.name}`,
+        name: p.name,
         gender,
       };
     });
   } catch {
-    return [
-      { id: 'vi-VN-NamMinhNeural', name: 'Nam Minh (builtin Edge map)', gender: 'male' },
-      { id: 'vi-VN-HoaiMyNeural', name: 'Hoài My (builtin Edge map)', gender: 'female' },
-    ];
+    return [];
   }
 }
-
 function setLangList(catalog: VoiceCatalog, platform: string, language: string, list: VoiceOption[]) {
   if (!catalog[platform]) catalog[platform] = {};
   catalog[platform][language] = list;
@@ -176,6 +173,29 @@ export async function GET(req: NextRequest) {
     const cwd = process.cwd();
     const sources: string[] = ['static'];
     const catalog = cloneVoiceCatalog(STATIC_VOICE_CATALOG);
+
+    // CapCut: re-merge full matrix + install diagnose (sscronet)
+    let capcutDiag: {
+      ok: boolean;
+      dllPath: string | null;
+      version: string | null;
+      voiceCount: number;
+      message: string;
+    } | null = null;
+    try {
+      const { diagnoseCapCutInstall } = await import(
+        '@/app/api/generate-tts/engines/capcut'
+      );
+      const { buildCapCutVoiceCatalog, listCapCutVoicesSummary } = await import(
+        '@/lib/capcutVoices'
+      );
+      const capMap = buildCapCutVoiceCatalog();
+      catalog.capcut_tts = capMap;
+      sources.push(`capcut-voices:${listCapCutVoicesSummary().total}`);
+      capcutDiag = diagnoseCapCutInstall();
+    } catch {
+      capcutDiag = null;
+    }
 
     // Piper disk models
     const piper = loadPiperModels(cwd);
@@ -194,15 +214,26 @@ export async function GET(req: NextRequest) {
       sources.push('piper-disk');
     }
 
-    // OmniVoice library
+    // OmniVoice library — keep design presets (alloy/nova/…) at top of each lang
+    // so UI can always preview presets without relying only on clone library.
     const omni = loadOmnivoiceLibrary(cwd);
     const byLang = omni._byLang || {};
     if (Object.keys(byLang).length) {
       if (!catalog.omnivoice_local) catalog.omnivoice_local = {};
+      const staticOmni = cloneVoiceCatalog(STATIC_VOICE_CATALOG).omnivoice_local || {};
       for (const [lang, list] of Object.entries(byLang)) {
-        catalog.omnivoice_local[lang] = list;
+        const presets = staticOmni[lang] || staticOmni.vi || [];
+        const presetIds = new Set(presets.map((p) => p.id));
+        const libOnly = (list || []).filter((v) => !presetIds.has(v.id));
+        catalog.omnivoice_local[lang] = [...presets, ...libOnly];
       }
-      sources.push('omnivoice-library');
+      // langs only in static (no library entries)
+      for (const [lang, presets] of Object.entries(staticOmni)) {
+        if (!catalog.omnivoice_local[lang]?.length) {
+          catalog.omnivoice_local[lang] = presets;
+        }
+      }
+      sources.push('omnivoice-library+presets');
     }
 
     // Vina profiles
@@ -237,6 +268,7 @@ export async function GET(req: NextRequest) {
       preparedAt: new Date().toISOString(),
       refresh,
       totalPlatforms: Object.keys(catalog).length,
+      capcut: capcutDiag,
     });
   } catch (err: unknown) {
     console.error('[TTS Voices Prep] failed:', err);

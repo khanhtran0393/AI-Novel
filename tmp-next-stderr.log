@@ -1,0 +1,8 @@
+[31m[1m⨯[22m[39m Another [36mnext dev[39m server is already running.
+
+- Local:        [36mhttp://localhost:3000[39m
+- PID:          43332
+- Dir:          D:\My app\AI Novel
+- Log:          .next\dev\logs\next-development.log
+
+Run [36mtaskkill /PID 43332 /F[39m to stop it.

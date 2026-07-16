@@ -8,10 +8,7 @@ import {
   Volume2,
   RefreshCw,
 } from 'lucide-react';
-import {
-  getVoiceList,
-  getDefaultVoiceConfig,
-} from '@/lib/voiceCatalog';
+import { getVoiceList } from '@/lib/voiceCatalog';
 import { filterCloneProfilesByFields } from '@/lib/vinaVoice/profileFilter';
 import RoleCastStudioModal from './RoleCastStudioModal';
 import { isCastActive, normalizeVoiceCast } from '@/lib/voiceCast';
@@ -69,7 +66,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
   const { dynamicVoices, prepMeta, runVoicePrep } = useVoiceCatalogPrep(isOpen);
   const currentVoices = getVoiceList(dynamicVoices, config.platform, config.language);
-  const selectedVoice = currentVoices.find(v => v.id === config.voice) || currentVoices[0] || null;
+  const selectedVoice = currentVoices.find(v => v.id === config.voice) || null;
   const activeVoiceId = selectedVoice?.id || config.voice || '';
   const {
     cloneProfiles,
@@ -100,10 +97,13 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
 
   const filteredCloneProfiles = filterCloneProfilesByFields(cloneProfiles, {
     gender: config.vinaGender || 'male',
-    area: config.vinaArea || 'southern',
+    // Không lọc vùng miền (Bắc/Trung/Nam)
     group: config.vinaGroup || 'story',
     emotion: config.vinaEmotion || 'neutral',
   });
+  const firstUsableCloneProfile = (
+    profiles: typeof cloneProfiles,
+  ) => profiles.find((p) => p.hasSample !== false) || null;
 
   const applyCloneProfile = (profileName: string) => {
     const p = cloneProfiles.find((x) => x.name === profileName);
@@ -130,7 +130,8 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     if (!ok) return;
     if (store.ttsConfig.voice === name) {
       const remaining = cloneProfiles.filter((p) => p.name !== name);
-      if (remaining[0]) applyCloneProfile(remaining[0].name);
+      const next = firstUsableCloneProfile(remaining);
+      if (next) applyCloneProfile(next.name);
       else {
         store.updateTTSConfig({
           voice: '',
@@ -151,7 +152,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     if (!ok) return;
     if (wasUser) {
       const catalogFirst = cloneProfiles.find(
-        (p) => !p.isUser && !/^USER/i.test(p.name),
+        (p) => !p.isUser && !/^USER/i.test(p.name) && p.hasSample !== false,
       );
       if (catalogFirst) applyCloneProfile(catalogFirst.name);
       else {
@@ -170,12 +171,12 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     store.updateTTSConfig(partial);
     const filtered = filterCloneProfilesByFields(cloneProfiles, {
       gender: next.vinaGender || 'male',
-      area: next.vinaArea || 'southern',
       group: next.vinaGroup || 'story',
       emotion: next.vinaEmotion || 'neutral',
     });
     if (filtered.length && !filtered.some((p) => p.name === next.voice)) {
-      applyCloneProfile(filtered[0].name);
+      const first = firstUsableCloneProfile(filtered);
+      if (first) applyCloneProfile(first.name);
     }
   };
 
@@ -207,13 +208,6 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!isOpen || currentVoices.length === 0) return;
-    if (!currentVoices.some(v => v.id === config.voice)) {
-      store.updateTTSConfig({ voice: currentVoices[0].id });
-    }
-  }, [isOpen, config.platform, config.language, config.voice, currentVoices, store]);
 
   const stopPreviewAudio = () => {
     if (audioRef.current) {
@@ -283,6 +277,13 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       pitch,
       speakerSeed: ttsCfg.vinaSpeakerSeed,
       styleSeed: ttsCfg.vinaStyleSeed,
+      vinaGender: ttsCfg.vinaGender,
+      vinaArea: ttsCfg.vinaArea,
+      vinaGroup: ttsCfg.vinaGroup,
+      vinaEmotion: ttsCfg.vinaEmotion,
+      vinaReferenceAudio: ttsCfg.vinaReferenceAudio,
+      vinaReferenceAudioB64: ttsCfg.vinaReferenceAudioB64,
+      vinaReferenceText: ttsCfg.vinaReferenceText,
     });
 
     // 1) Session / Cache API — có MP3 rồi thì phát ngay, không gọi API
@@ -447,7 +448,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
         return;
       }
       console.error('[TTS Preview]', error);
-      // No platform/engine fallback — surface error only (API key rotation stays server-side).
+      // Platform/engine are explicit — surface error only (API key rotation stays server-side).
       const msg = error instanceof Error ? error.message : String(error);
       if (!ac.signal.aborted) {
         toast.info('Notice', 'Không thể nghe thử: ' + msg);
@@ -491,7 +492,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
         try {
           await startCloneEngine();
         } catch {
-          /* tiếp tục builtin */
+          /* synth path will surface the selected engine/profile error */
         }
       }
 
@@ -692,8 +693,9 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
               onClick={() => {
                 setVoiceUiTab('clone');
                 store.updateTTSConfig({ platform: 'vina_voice', vinaUseClone: true });
-                if (cloneProfiles[0] && !cloneProfiles.some((p) => p.name === config.voice)) {
-                  applyCloneProfile(cloneProfiles[0].name);
+                const first = firstUsableCloneProfile(cloneProfiles);
+                if (first && !cloneProfiles.some((p) => p.name === config.voice)) {
+                  applyCloneProfile(first.name);
                 }
               }}
               className={`flex-1 px-2 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${
@@ -709,19 +711,8 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
               type="button"
               onClick={() => {
                 setVoiceUiTab('engine');
-                const nextPlatform =
-                  config.platform === 'vina_voice'
-                    ? ('edge_tts' as const)
-                    : config.platform;
-                const nextVoiceConfig = getDefaultVoiceConfig(
-                  dynamicVoices,
-                  nextPlatform,
-                  config.language || 'vi',
-                );
                 store.updateTTSConfig({
-                  platform: nextPlatform,
-                  language: nextVoiceConfig.language,
-                  voice: nextVoiceConfig.voice,
+                  voice: '',
                   vinaUseClone: false,
                 });
               }}

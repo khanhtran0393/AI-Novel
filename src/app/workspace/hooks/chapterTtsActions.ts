@@ -82,12 +82,16 @@ export async function generateChapterTts(
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
-    // Auto-fill empty voice so preflight is not 100% blocked
-    const voiceRes = resolveDefaultTtsVoice(state);
-    state = useNovelStore.getState();
-    const defaultVoice = voiceRes.voice || state.ttsConfig.voice || 'vi-VN-HoaiMyNeural';
-    if (voiceRes.autoFilled) {
-      notice(`ℹ️ Chưa chọn giọng → tự gán ${defaultVoice}`);
+    // Hard fail when no TTS voice is configured.
+    let defaultVoice = '';
+    try {
+      defaultVoice = resolveDefaultTtsVoice(state).voice;
+      state = useNovelStore.getState();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notice(`❌ ${msg}`);
+      if (!silent) toast.error('TTS chuong', msg);
+      return { ok: 0, fail: 0, skipped: 0 };
     }
 
     let jobs = buildChapterTtsJobs({
@@ -149,18 +153,12 @@ export async function generateChapterTts(
       nhanVatPrompts: state.nhan_vat_prompts || {},
       defaultVoice,
       platform: state.ttsConfig.platform,
-      language: state.ttsConfig.language || 'vi',
+      language: (state.ttsConfig.language || '').trim(),
       globalSpeed: state.ttsConfig.speed ?? 1,
       globalPitch: state.ttsConfig.pitch ?? 0,
     };
 
-    let chPf = runChapterCastPreflight(preflightParams);
-    let castBypassNote = '';
-    // If cast resolution blocks everything, fall back to mono default voice
-    if (!chPf.runnable.length) {
-      chPf = runChapterCastPreflight({ ...preflightParams, cast: null });
-      castBypassNote = ' · Cast OFF tạm (mono)';
-    }
+    const chPf = runChapterCastPreflight(preflightParams);
 
     if (!chPf.runnable.length) {
       const why =
@@ -177,10 +175,10 @@ export async function generateChapterTts(
         hasGeneratedAudio(useNovelStore.getState(), chapterNumber, j.sceneIndex),
       );
       if (allHaveAudio) {
-        effectiveSkip = false;
         notice(
-          `ℹ️ ${chPf.runnable.length} cảnh đã có audio → tự gen đè (tránh bỏ qua 100%)`,
+          `Info: ${chPf.runnable.length} canh da co audio. Khong tu gen de; bat force/gen lai toan bo neu muon.`,
         );
+        return { ok: 0, fail: 0, skipped: chPf.runnable.length };
       }
     }
 
@@ -193,7 +191,11 @@ export async function generateChapterTts(
         }`,
     );
 
-    const platform = state.ttsConfig.platform || 'edge_tts';
+    const platform = (state.ttsConfig.platform || '').trim();
+    if (!platform) {
+      notice('❌ Chưa chọn engine TTS (platform).');
+      return { ok: 0, fail: 0, skipped: 0 };
+    }
     let concurrency = resolveChapterTtsConcurrency(platform);
 
     // Pre-warm Zero-Shot ONNX worker pool (multi-process → true parallel + later concat)
@@ -208,13 +210,18 @@ export async function generateChapterTts(
             Math.min(3, Math.trunc(Number(wj.workers))),
           );
         }
-        notice(
-          wj?.ok
-            ? `✅ Pool ×${concurrency} · ~${wj?.brain?.totalGB || '?'}GB/worker — chia đoạn → gen song song → ghép`
-            : `⚠️ Warm: ${wj?.error || wj?.message || 'fallback one-shot'}`,
-        );
+        const warmMessage = wj?.ok
+          ? 'Pool x' + concurrency + ' - ' + (wj?.brain?.totalGB || '?') + 'GB/worker - split parallel concat'
+          : 'Warm pool error: ' + (wj?.error || wj?.message || 'unknown');
+        notice(warmMessage);
+        if (!wj?.ok) {
+          throw new Error(wj?.error || wj?.message || 'Vina warm pool failed');
+        }
       } catch (e) {
-        notice(`⚠️ Warm fail: ${e instanceof Error ? e.message : String(e)}`);
+        const msg = e instanceof Error ? e.message : String(e);
+        notice('Warm fail: ' + msg);
+        if (!silent) toast.error('Vina warm pool', msg);
+        return { ok: 0, fail: jobs.length, skipped: 0 };
       }
     }
 
@@ -223,8 +230,7 @@ export async function generateChapterTts(
         (effectiveSkip ? ' · skip có audio' : ' · gen đè') +
         (concurrency > 1
           ? ` · song song ×${concurrency} (ghép trong từng cảnh dài)`
-          : ' · tuần tự') +
-        castBypassNote,
+          : ' · tuần tự')
     );
 
     // Mirror into global Jobs panel (status + retry failed)
@@ -242,8 +248,14 @@ export async function generateChapterTts(
     const genOneScene = async (job: TtsSceneJob) => {
       const st = useNovelStore.getState();
       const creds = getTTSApiCredentials(st);
-      const voice =
-        (st.ttsConfig.voice || '').trim() || defaultVoice || 'vi-VN-HoaiMyNeural';
+      const voice = (st.ttsConfig.voice || '').trim();
+      if (!voice) {
+        throw new Error('Chua chon voice TTS. App khong tu gan voice.');
+      }
+      const title = (st.ten_tac_pham || '').trim();
+      if (!title) {
+        throw new Error('Chua nhap ten_tac_pham. App khong tu gan ten truyen.');
+      }
       const ttsCfg = { ...st.ttsConfig, voice };
       const { audioPath, duration, multi, segmentCount } = await generateTTSAction({
         apiKey: creds.apiKey,
@@ -254,11 +266,10 @@ export async function generateChapterTts(
         savePathTTS: st.savePathTTS || '',
         googleDrivePath: st.googleDrivePath || '',
         voice,
-        ten_tac_pham: st.ten_tac_pham || 'Kịch Bản Vô Danh',
+        ten_tac_pham: title,
         ttsConfig: ttsCfg,
         syncMode: st.ttsConfig.syncMode,
         forceFullMulti: force === true,
-        forceMono: Boolean(castBypassNote),
       });
       if (!audioPath) throw new Error('API TTS không trả path audio');
       const assetKey = getGeneratedAudioAssetKey(chapterNumber, job.sceneIndex);
@@ -389,8 +400,15 @@ export async function runChapterCastPreflightReport(
       return null;
     }
 
-    const voiceRes = resolveDefaultTtsVoice(state);
-    state = useNovelStore.getState();
+    let defaultVoice = '';
+    try {
+      defaultVoice = resolveDefaultTtsVoice(state).voice;
+      state = useNovelStore.getState();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error('Preflight TTS', msg);
+      return null;
+    }
 
     let pruned = 0;
     for (const j of jobs) {
@@ -421,9 +439,9 @@ export async function runChapterCastPreflightReport(
       cast: state.voiceCast,
       characterNames: state.nhan_vat || [],
       nhanVatPrompts: state.nhan_vat_prompts || {},
-      defaultVoice: voiceRes.voice,
+      defaultVoice,
       platform: state.ttsConfig.platform,
-      language: state.ttsConfig.language || 'vi',
+      language: (state.ttsConfig.language || '').trim(),
       globalSpeed: state.ttsConfig.speed ?? 1,
       globalPitch: state.ttsConfig.pitch ?? 0,
     });
@@ -438,7 +456,7 @@ export async function runChapterCastPreflightReport(
       `# AI Novel — Cast / TTS Preflight Report\n` +
       `# Chương ${chapterNumber} · ${new Date().toISOString()}\n` +
       `# Tác phẩm: ${state.ten_tac_pham || '(chưa đặt)'}\n` +
-      `# Platform: ${state.ttsConfig.platform || '?'} · Voice: ${voiceRes.voice}${voiceRes.autoFilled ? ' (auto)' : ''}\n` +
+      `# Platform: ${state.ttsConfig.platform || '?'} - Voice: ${defaultVoice}\n` +
       `# Jobs: ${jobs.length} · Đã có audio: ${withAudio} · Fail-log: ${failLog.length}\n\n` +
       report;
 

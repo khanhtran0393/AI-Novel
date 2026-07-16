@@ -41,6 +41,11 @@ export type BatchJob = {
   updatedAt: number;
   items: BatchJobItem[];
   concurrency: number;
+  /**
+   * Quiet gap after each item (ms). Flow/labs: use ≥4s to avoid spam.
+   * Applied even when concurrency=1.
+   */
+  itemGapMs: number;
   /** Index cursor for sequential runners */
   cursor: number;
 };
@@ -82,10 +87,15 @@ export function createBatchJob(params: {
   kind: JobKind;
   items: Array<{ label: string; kind?: JobKind; meta?: Record<string, unknown> }>;
   concurrency?: number;
+  /** Gap between items (ms). Anti-spam for Flow. Default 0. */
+  itemGapMs?: number;
   correlationId?: string;
 }): BatchJob {
   const id = `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const correlationId = params.correlationId || newCorrelationId('job');
+  // Cap concurrency hard — never stampede media providers (max 2 non-Flow; Flow uses 1)
+  const concurrency = Math.max(1, Math.min(2, params.concurrency ?? 1));
+  const itemGapMs = Math.max(0, Math.min(60_000, Number(params.itemGapMs) || 0));
   const job: BatchJob = {
     id,
     title: params.title,
@@ -94,7 +104,8 @@ export function createBatchJob(params: {
     correlationId,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    concurrency: Math.max(1, Math.min(6, params.concurrency || 2)),
+    concurrency,
+    itemGapMs,
     cursor: 0,
     items: params.items.map((it, i) => ({
       id: `${id}_${i}`,
@@ -238,6 +249,18 @@ export async function runBatchJob(
       }
       job.updatedAt = Date.now();
       emit();
+      // Anti-spam: quiet gap before next item (Flow / labs)
+      const gap = Number(job.itemGapMs) || 0;
+      if (gap > 0 && !flags.cancel) {
+        const until = Date.now() + gap;
+        while (Date.now() < until && !flags.cancel) {
+          if (flags.pause) {
+            await sleep(120);
+            continue;
+          }
+          await sleep(Math.min(200, until - Date.now()));
+        }
+      }
     }
   };
 

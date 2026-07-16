@@ -1,41 +1,16 @@
 import { NextResponse } from 'next/server';
 import {
-  buildContinueContext,
-  evaluateWordGate,
-  formatCharacterBible,
-  formatSpentEntities,
-  formatWorldState,
-  normalizeSceneTags,
-  truncateOutline,
-  DEFAULT_WORD_GOAL,
-  MIN_SCENE_COUNT,
+  lorebookForPrompt,
+  requireGenreLabelFromSetup,
+  setupGenreFromPayload,
+  writeEngineRoleLine,
 } from '@/lib/storyWriting';
 import {
-  buildHumanizeScriptBlock,
-  buildNarrativePsychBlock,
-  buildShotDiversityBlock,
-  buildSpeechFingerprintBlock,
-  buildAudioReadabilityBlock,
-  enforceShotGraphOnPrompts,
-  resolveUserRules,
-  scoreNarrativePsychScript,
   injectHumanJokeAsides,
   countHumanJokeAsides,
 } from '@/lib/youtubeSafe';
 import {
-  applyCharacterSheetFormulas,
-  applyDirectorFormulasToPromptPair,
-  compileStillImagePrompt,
-} from '@/lib/integrations/seedance';
-import {
-  CHAR_ANGLE_CAMERA,
-  CHAR_EMOTION_FACE,
-} from '@/lib/characterProfile';
-import {
   callActiveModel,
-  callActiveVision,
-  cleanAndParseJson,
-  generateJsonWithRetry,
   getLastWorkingApiKey,
 } from '../modelClients';
 import type { GenerateHandlerContext } from './types';
@@ -60,15 +35,27 @@ export async function handleScene(
       next_scene_content,
       is_hook,
     } = payload;
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
   
     const isHook = !!is_hook;
+    const lore = lorebookForPrompt(lorebook);
   
     const prompt = isHook
-      ? `Bạn là Biên kịch cold-open YouTube (~30–45 giây đọc) cho tiểu thuyết mạt thế.
+      ? `${writeEngineRoleLine(genreLabel, 'hook_writer')}
   Tác phẩm "${ten_tac_pham}", Chương ${chuong_hien_tai?.so_chuong || '?'}: "${chuong_hien_tai?.tieu_de || '?'}".
+  Setup thể loại: ${genreLabel}.
   
   --- LOREBOOK ---
-  ${lorebook || 'Luật thế giới mạt thế cực lạnh.'}
+  ${lore}
   
   --- HOOK / MỞ ĐẦU HIỆN TẠI (CẦN MỞ RỘNG) ---
   ${current_scene_content}
@@ -79,16 +66,17 @@ export async function handleScene(
   NHIỆM VỤ — MỞ RỘNG HOOK:
   1. Mở rộng bản hook thêm khoảng 40–80% độ dài so với gốc, vẫn giữ nhịp cold-open (ước đọc ~30–45 giây, khoảng 80–130 từ tiếng Việt).
   2. GIỮ cốt xung đột / pattern interrupt / open loop; không spoiler hết chương; không biến hook thành cả cảnh dài.
-  3. Bổ sung: chi tiết giác quan chọn lọc, nhịp thở, 1–2 câu thoại đời, áp lực thời gian/cạn kiệt.
-  4. Câu đầu vẫn phải căng (đe dọa / câu hỏi) — CẤM mở thơ phong cảnh.
+  3. Bổ sung: chi tiết giác quan chọn lọc, nhịp thở, 1–2 câu thoại đời, áp lực thời gian/cạn kiệt phù hợp thể loại Setup.
+  4. Câu đầu vẫn phải căng (đe dọa / câu hỏi / xung đột) — CẤM mở thơ phong cảnh.
   5. Cuối hook: open loop nối mượt sang cảnh 1.
   6. Nếu trong hook gốc đã có câu đùa ngoặc đơn “người nói với người”: GIỮ phải VUI (có punchline) + bâng quơ, KHÔNG đổi thành bình luận cốt truyện hay nhắc nhở nhạt. Nếu chưa có: có thể chèn 1 joke vui không dính chủ đề/nhân vật/twist, ví dụ (Đề nghị mọi người đi vệ sinh nhớ chùi đít) — CẤM SFX (Cười)/(thở dài).
   7. Chỉ trả về NỘI DUNG HOOK thuần — không tag [CẢNH], không markdown, không giải thích.`
-      : `Bạn là Trợ lý Biên kịch Sản xuất kịch bản tiểu thuyết mạt thế chuyên nghiệp bậc nhất.
+      : `${writeEngineRoleLine(genreLabel, 'scene_writer')}
   Bạn đang viết tác phẩm "${ten_tac_pham}", thuộc Chương ${chuong_hien_tai?.so_chuong || '?'}: "${chuong_hien_tai?.tieu_de || '?'}".
+  Setup thể loại: ${genreLabel}.
   
   1. LÕI BẤT BIẾN (LOREBOOK):
-  ${lorebook || 'Luật thế giới mạt thế cực lạnh.'}
+  ${lore}
   
   --- CẢNH TRƯỚC ĐÓ ---
   ${previous_scene_content || 'Không có cảnh trước đó.'}
@@ -101,7 +89,7 @@ export async function handleScene(
   
   NHIỆM VỤ:
   Bạn hãy mở rộng và viết sâu hơn nội dung của "CẢNH HIỆN TẠI" thêm khoảng 50-100% độ dài so với bản gốc. 
-  Hãy bổ sung chi tiết: miêu tả biểu cảm nhân vật, suy nghĩ nội tâm, không gian xung quanh, bối cảnh thời tiết và cách các vật dụng sinh tồn được sử dụng.
+  Hãy bổ sung chi tiết: miêu tả biểu cảm nhân vật, suy nghĩ nội tâm, không gian xung quanh, bối cảnh thời tiết và vật dụng/đạo cụ đặc trưng theo thể loại Setup (không ép "sinh tồn mạt thế" nếu Setup khác).
   Đặc biệt quan trọng: NỘI DUNG MỞ RỘNG PHẢI KẾT NỐI MƯỢT MÀ, HỢP LÝ VỚI CẢNH TRƯỚC VÀ CẢNH TIẾP THEO (nếu có). Tránh thay đổi mạch truyện hay tạo ra tình tiết vô lý lệch pha với cảnh kế tiếp.
   Chỉ trả về nội dung thuần túy của cảnh hiện tại đã được mở rộng. TUYỆT ĐỐI KHÔNG trả về Tên Cảnh (như [CẢNH X...]) hay bất kỳ định dạng nào khác. Không kèm cảnh trước hay cảnh sau vào kết quả.`;
   
@@ -122,16 +110,28 @@ export async function handleScene(
       is_hook,
       humanize_script,
     } = payload;
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
   
     const humanizeOn = humanize_script !== false;
     const isHook = !!is_hook;
+    const lore = lorebookForPrompt(lorebook);
   
     const prompt = isHook
-      ? `Bạn là Biên tập viên cold-open YouTube (~30 giây đọc) cho tiểu thuyết mạt thế.
+      ? `${writeEngineRoleLine(genreLabel, 'hook_editor')}
   Tác phẩm "${ten_tac_pham}", Chương ${chuong_hien_tai?.so_chuong || '?'}: "${chuong_hien_tai?.tieu_de || '?'}".
+  Setup thể loại: ${genreLabel}.
   
   --- LOREBOOK ---
-  ${lorebook || 'Luật thế giới mạt thế cực lạnh.'}
+  ${lore}
   
   --- HOOK / MỞ ĐẦU HIỆN TẠI (CẦN VIẾT LẠI) ---
   ${current_scene_content}
@@ -147,11 +147,12 @@ export async function handleScene(
   5. Thoại đời, nhịp audio-friendly (câu ngắn vừa miệng đọc).
   ${humanizeOn ? '6. TÍNH NGƯỜI: chèn đúng 1 câu đùa "người nói với người" trong ngoặc đơn giữa nhịp thoại. Giọng hội bạn đời (bẩn nhẹ/absurde/đề nghị vớ vẩn), VUI, bâng quơ — KHÔNG dính cốt truyện. Ví dụ: "...mệt." (Đề nghị mọi người đi vệ sinh nhớ chùi đít) "Mệt hả?..." — CẤM mùi AI (lương/crush/gym/Google); CẤM nhắc nhạt; CẤM meta plot; CẤM SFX (Cười)/(thở dài).' : ''}
   7. Chỉ trả về NỘI DUNG HOOK thuần — không tag [CẢNH], không markdown, không giải thích.`
-      : `Bạn là Biên tập viên kịch bản tiểu thuyết mạt thế chuyên nghiệp.
+      : `${writeEngineRoleLine(genreLabel, 'scene_editor')}
   Bạn đang chỉnh sửa tác phẩm "${ten_tac_pham}", Chương ${chuong_hien_tai?.so_chuong || '?'}: "${chuong_hien_tai?.tieu_de || '?'}".
+  Setup thể loại: ${genreLabel}.
   
   1. LÕI BẤT BIẾN (LOREBOOK):
-  ${lorebook || 'Luật thế giới mạt thế cực lạnh.'}
+  ${lore}
   
   --- CẢNH TRƯỚC ĐÓ ---
   ${previous_scene_content || 'Không có cảnh trước đó.'}

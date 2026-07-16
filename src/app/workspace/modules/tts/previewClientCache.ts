@@ -4,7 +4,13 @@
  * platform/voice/text/prosody was already heard in this session or Cache API.
  */
 
-const CACHE_NAME = 'tts-prelisten-cache-v2';
+import {
+  buildTtsCacheVariantKey,
+  type TtsCacheVariantConfig,
+} from '@/lib/tts/prosodyVariant';
+
+const CACHE_NAME = 'tts-prelisten-cache-v3';
+const MAX_SESSION_BLOBS = 16;
 
 /** Session memory: key → blob URL (instant replay, no network) */
 const sessionBlobByKey = new Map<string, string>();
@@ -29,7 +35,8 @@ export function buildClientPreviewKey(params: {
   pitch?: number;
   speakerSeed?: number;
   styleSeed?: number;
-}): string {
+  variantKey?: string;
+} & TtsCacheVariantConfig): string {
   const { speed, pitch } = normalizeProsodyClient(params.speed, params.pitch);
   const text = String(params.text || '').normalize('NFC').trim().slice(0, 300);
   const platform = String(params.platform || '').toLowerCase();
@@ -45,6 +52,10 @@ export function buildClientPreviewKey(params: {
         ? Number(params.styleSeed)
         : 4125
       : '';
+  const variantKey =
+    params.variantKey !== undefined
+      ? String(params.variantKey || '')
+      : buildTtsCacheVariantKey(params);
   return [
     platform,
     String(params.voice || '').trim(),
@@ -53,6 +64,7 @@ export function buildClientPreviewKey(params: {
     String(pitch),
     String(seedS),
     String(seedY),
+    variantKey,
   ].join('|');
 }
 
@@ -72,7 +84,12 @@ function cacheRequestUrl(key: string): string {
 
 /** Instant hit from session Map (blob:) */
 export function getSessionPreviewBlob(key: string): string | null {
-  return sessionBlobByKey.get(key) || null;
+  const hit = sessionBlobByKey.get(key) || null;
+  if (hit) {
+    sessionBlobByKey.delete(key);
+    sessionBlobByKey.set(key, hit);
+  }
+  return hit;
 }
 
 export function putSessionPreviewBlob(key: string, blobUrl: string): void {
@@ -85,6 +102,19 @@ export function putSessionPreviewBlob(key: string, blobUrl: string): void {
     }
   }
   sessionBlobByKey.set(key, blobUrl);
+  while (sessionBlobByKey.size > MAX_SESSION_BLOBS) {
+    const oldest = sessionBlobByKey.keys().next().value as string | undefined;
+    if (!oldest) break;
+    const oldUrl = sessionBlobByKey.get(oldest);
+    sessionBlobByKey.delete(oldest);
+    if (oldUrl?.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(oldUrl);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 /** Cache Storage hit → blob URL */

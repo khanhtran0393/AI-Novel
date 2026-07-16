@@ -6,7 +6,7 @@
  *   2. Load session (rules, pauses, seeds)
  *   3. Apply text rules
  *   4. Chunk + pause schedule
- *   5. Synth (engine clone OR builtin Edge)
+ *   5. Synth (selected Zero-Shot/clone engine; no builtin Edge fallback)
  *   6. Post-process prosody
  *   7. Concat with pauses
  *

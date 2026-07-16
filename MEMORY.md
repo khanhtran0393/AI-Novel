@@ -1,16 +1,51 @@
 # Project memory (AI Novel)
 
+## IRON B10 — No content/logic fallback (except API keys)
+
+- **CẤM** đổi platform/engine/provider/voice ngầm khi fail (CapCut→Edge, Flow→Gemini, auto→Chrome…).
+- **CẤM** gen mẫu / fake success / silent catch che lỗi.
+- **ĐƯỢC** xoay API key cùng provider (429/401).
+- Lỗi → message thẳng để CISO sửa. Spec: `docs/IRON_LAWS.md` §B10.
+- Browser `engine=auto`: chỉ Chromium sạch; stock Chrome chỉ khi user chọn `engine=chrome`.
+- **Audit B10 purge:** `docs/B10_FALLBACK_AUDIT.md` — Edge không đổi voice; youtube 1 nguồn transcript; sampleOptimize/profileFilter/warmDaemon/render-video/open-folder/downloadText/CapAssist; runtime không `|| edge_tts`.
+
 ## Google Flow Bridge (FlowAgent deep-dive applied)
 
 - **Default:** `imageProvider=flow`, `videoProvider=flow`
 - **4 blocks:** queue multi-worker · WS 9223 · face-lock inject · retry 5×/30s + slide account + token 45′
 - **Face-lock:** `promptInjector.ts` (nguyên văn FlowAgent English system prompt)
+- **Gen Prompt (2026-07-15):** Cấm hardcode genre/style mạt thế trong director/Seedance. Style = Visual DNA/Media Style; genre = Setup `chu_de`+`phong_cach`. B10: không local-fill prompt; thiếu config/AI fail → toast/API error rõ. Timestamp unified `start-end s`. Shot graph chỉ server.
+- **Write engine (2026-07-15):** `storyWriting.requireGenreLabelFromSetup` + `lorebookForPrompt` + `writeEngineRoleLine`. WRITE/REVISE/EVALUATE/EXPAND/REWRITE/OUTLINE/IDEAS bám Setup; không fallback “Luật thế giới mạt thế”. Initial setup `chu_de`/`phong_cach` rỗng — user phải chọn.
+- **Pass 3 (2026-07-15):** novel-engine `setupGenrePayload`; OUTLINE/PLAN_ARC/COMMIT hard-require Setup; INITIAL_LOREBOOK production-only; NV **khuyết điểm** bắt buộc (không “khuyết tật mạt thế”); seedance duration hard-fail; soft idea/noi_dung fallback removed.
+- **AGENTS.md (2026-07-15):** viết lại toàn bộ theo runtime hiện tại — native engine, B10, Setup genre, khuyết điểm, Gen Prompt pipeline, domain tree, checklist 30s; gỡ nội dung cũ (CapCut→Edge, path hooks sai, mạt thế hardcode).
+- **UI lag (2026-07-15):** full `useNovelStore()` trên YoutubeSafeChecklist / SceneTtsBar / EditorPanel / CharacterProfileForm gây re-render toàn cây; fix selectors/shallow. Persist debounce 450ms cho localStorage+durable (flush on leave). SceneCard memo so sánh regen theo scene.
 - **Upscale:** 2K/4K image + FHD/4K video · output `public/*` + `image_output` / `veo_output`
 - **Login UX:** kill profile trước khi launch (tránh Chrome bỏ --load-extension) → login → harvest token (reload Flow) → đóng login + background
+- **1 profile = 1 phiên login:** UI bấm Đăng nhập trên card → `accountId` vào bootstrap; Chrome `--user-data-dir=accounts_data/<id>` + extension inject `?accountId=`; cấm bootstrap global “chạy ra ngoài” profile
+- **1 profile = 1 unit quản lý:** Bridge/Extension/Token/Project/Login nằm trên card profile (snapshot fields `bridgeRunning|extensionConnected|loginSessionOpen|projectReady` per account) — không dải status global
+- **Thêm trình duyệt mới:** `freshSession` + `prepareBlankLoginProfile` wipe cookies → browser trống; `flowKeyAccountId` cấm sơn token profile A lên B; UI không gọi “đăng nhập lại account cũ”
+- **Write lock:** `useWriteChapter` finally nhả `dang_tai` khi genId còn sở hữu; nút Sinh chương khóa theo `isStreaming` (không theo dang_tai global) — gen hồ sơ NV không chặn viết chương
+- **Button independence:** mỗi API button busy riêng (isStreaming / expanding / rewriting / generatingChar* / isGeneratingOutline / CapCut exporting) — CẤM dang_tai khóa chéo
+- **API key rotate:** `src/lib/apiKeyRotate.ts` RR mỗi request + cooldown RPM(~70s)/RPD(~45m); wire `modelClients` Gemini/OpenAI/Grok/Groq (B10: chỉ xoay key cùng provider)
+- **Edge voice catalog (2026-07-15):** purge 94 dead ShortNames vs MS list; remain 116; live probe 115/116 OK (Dmitry flaky timeout). Scripts: `scripts/fix-edge-catalog.mjs`, `scripts/probe-edge-voices.mjs`, `scripts/audit-global-tts-voices.mjs`. Vina 76/76 samples OK.
+- **TTS Engine preview audit (2026-07-16):** Edge/Gemini/Piper/VieNeu/Vina 100% nghe thử OK. Omni: trim ref >450KB→12s clip + `request_timeout_s` 360 (server default 120→504); Vina prefer CPU on GTX 1050 Ti 4GB (`data/cache/vina_ort_ep.json`). CapCut: thiếu sscronet.dll (cài CapCut PC Apps). TikTok: cần SessionID. Probe: `scripts/probe-voices-resume.mjs` → `scratch/voice-probe-progress.json`.
+- **Flow video upload (2026-07-15):** API reject `imageInput` on `/v1/flow/uploadImage`. Schema = FlowAgent `upload_image`: `{ clientContext:{tool,projectId}, imageBytes, fileName, isHidden:false, isUserUploaded:true, mimeType }` → media.name. Purge `.next` legacy-imageInput chunks when fixing.
 - **Stuck spinner:** Chrome 120+ chặn --load-extension → dùng Ungoogled/Brave/portable (FlowAgent), không CDP
 - **Engine:** auto|ungoogled|brave|chrome|mullvad · `browserResolver.ts` · `tools/browsers/README.md`
 - **Auto bootstrap:** `/api/flow/bootstrap` · docs `flow-bridge.md` + `flow-agent-architecture.md`
 - Smoke: `npx tsx scripts/smoke-flow-payload.mts` · `smoke-flow-bootstrap.mts`
+- **NO_FLOW_KEY (2026-07-15):** Bridge `flowKeyPresent=true` nhưng extension SW `flowKey=null` → gen video fail. Fix: (1) extension restore storage + nhận `params.flowKey` từ bridge; (2) `requestViaExtension` luôn gửi Bearer; (3) `inject_flow_key` + hot-sync `background.js` profile; (4) queue ưu tiên account giữ live token. Cần reload Chrome profile / Đăng nhập lại sau patch.
+- **Key quota preventive (2026-07-15):** `apiKeyRotate.ts` — **tránh chạm trần** không burst: (1) dãn lượt `minInterval = 60s/RPM` (mặc định 6s), (2) headroom 85% soft, (3) RR ưu tiên key ít dùng, (4) hard ceiling RPM 10 / RPD 250, (5) hết pool → `KeyQuotaWaitError` CHỜ. Env: `AI_NOVEL_KEY_RPM_LIMIT`, `AI_NOVEL_KEY_RPD_LIMIT`, `AI_NOVEL_KEY_MIN_INTERVAL_MS`, `AI_NOVEL_KEY_HEADROOM`. Panel Credential + `/api/key-quota`.
+- **Flow video first-gen preflight:** `flowSessionPreflight.ts` — GET status → toast → bootstrap forceChrome nếu thiếu ext/token → toast login/ready. Gắn `generateVideoAction` + hooks. Server gen-video/image: bắt buộc extensionConnected **và** flowKeyPresent (cấm xanh ảo).
+- **Prompt-only video:** queue pure T2V only (B10 — không auto-still→I2V). Default model `veo_3_1_t2v_fast` (không ultra).
+- **Flow model matrix (2026-07-15):** `modelCatalog.ts` align labs.google — duration **4|6|8s** (default 8), native **720p**, HD/4K via upsampler; credits Pro Lite≈10 Fast≈20 / Ultra Lite≈5 Fast≈10 / LP=0; keys R2V `veo_3_1_r2v_*`, I2V lite/LP/fl, image `GEM_PIX_2`/`NARWHAL`. API `GET /api/flow/models` + Media Config dropdown. Smoke: `node scripts/smoke-flow-model-catalog.mjs`.
+- **Desktop crash fix (2026-07-16):** Electron `requestSingleInstanceLock` + port adopt/free (`ensurePortReady`); `Khoi_Dong_App.bat` + `scratch/clean_startup.js` free 3000/8101/9223; normal window close → exit 0; crash log `%APPDATA%\ai-novel-script-generator\electron-crash.log`. **Vina thrash:** soft RSS **4800MB** (was 2200), min uptime 180s, recycle cooldown 5m, skip if inflight — stops ready→recycle→exit -1 loop.
+- **GUI stuck spinner (2026-07-16):** Splash window early (trước `next.prepare`); load **`/workspace`** trực tiếp (skip `/` redirect); place + focus **primary display** (tránh màn 2); `did-fail-load` retry; hydrate timeout Electron 1.5s; không adopt orphan Next mặc định.
+- **Stuck “Đang nạp trạng thái bộ nhớ” (2026-07-16):** **GỠ GATE** — `isHydrated: true` default; merge rehydrate không set false; workspace **không** return spinner chờ hydrate. `dualStorage.getItem` cấm `getStoreSync`. Rehydrate chạy nền, UI vào ngay.
+- **Stuck Setup modal (2026-07-16):** Root cause = late rehydrate **ghi đè `giai_doan:2` → `1`**. Fix: merge prefer phase 2; close patches localStorage; page `setupDismissed` latch; INITIAL `giai_doan:2` (Setup chỉ mở từ Sidebar); portal X `onPointerDown`.
+- **Project per profile (2026-07-15 fix sync):** mỗi account có `projects[]` + `projectId` riêng. Sync harvest → bind profile (không paint all). UI dropdown từ `a.projects` / `projectsByAccount`. API trả `accountProjects`. Cấm `abc-111` (`isPlausibleProjectId`); boot sanitize clear fake. Re-sync không đè selection user nếu payload thiếu projectId thật. Gen **không** mượn project account khác (B10).
+- **Session inherit (2026-07-15):** 1 profile = 1 Chrome `user-data-dir` (cookies/cache/fingerprint). Login xong → `inheritAccountSession`: harvest token+email+credits+projects → `SESSION_BUNDLE.json` + `flowKeysByAccount`. Gen/API **chỉ** socket+Bearer của đúng accountId (B10). API `POST /api/flow/accounts` action=`inherit`. UI nút **Inherit** + auto sau login.
+- **Account capability parity (2026-07-15):** *Account làm được → app làm & nhận được.* `accountProxy.proxyAsAccount` + `downloadAsAccount` (Bearer/cookie qua extension `download_binary` + sink `:8101/internal/receive-binary`). Queue gen download media bằng account; sau gen refresh credits. API `POST /api/flow/proxy`. `capabilities` trên account (canImage/Video, proxyParity, cookies).
 
 ## Nút Làm Mới Dự Án — RESET POINT (locked)
 

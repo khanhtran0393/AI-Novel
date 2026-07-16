@@ -349,17 +349,6 @@
     "_source": "vina_goc_import",
     "_dir": "d:\\My app\\AI Novel\\data\\vina-voices\\samples"
   },
-  "Giọng Bảo Lồng Tiếng Già 1": {
-    "filename": "Giong_Bao_Long_Tieng_Gia_1.wav",
-    "text": "Cảnh tổng. Anh đi đâu vậy? Tại sao mấy nay không ghé thăm tôi? Có biết tôi tìm anh mệt lắm không?",
-    "speed": 100,
-    "speaker_seed": 2336,
-    "style_seed": 4125,
-    "pitch_shift": 0,
-    "treble_boost": 0,
-    "_source": "vina_goc_import",
-    "_dir": "d:\\My app\\AI Novel\\data\\vina-voices\\samples"
-  },
   "Tiếng Anh - Nam Trẻ 3": {
     "filename": "Tieng_Anh_Nam_Tre_3.wav",
     "text": "Everything is exactly where we left it. The shadows haven't moved an inch since this morning.",
@@ -367,17 +356,6 @@
     "speaker_seed": 2336,
     "style_seed": 4125,
     "pitch_shift": 0,
-    "treble_boost": 0,
-    "_source": "vina_goc_import",
-    "_dir": "d:\\My app\\AI Novel\\data\\vina-voices\\samples"
-  },
-  "Bảo - Giả giọng nữ": {
-    "filename": "Bao_Gia_giong_nu.wav",
-    "text": "Xin chào bạn, tôi xác nhận giọng nói này là của chính tôi. Tôi cam kết không sử dụng \"công nghệ sao chép giọng nói\" vào các mục đích vi phạm pháp luật.",
-    "speed": 100,
-    "speaker_seed": 2336,
-    "style_seed": 4125,
-    "pitch_shift": 3,
     "treble_boost": 0,
     "_source": "vina_goc_import",
     "_dir": "d:\\My app\\AI Novel\\data\\vina-voices\\samples"
@@ -427,17 +405,6 @@
   "Thuyết Minh 2 - Nữ Trung Niên 1": {
     "filename": "Thuyet_Minh_2_Nu_Trung_Nien_1.wav",
     "text": "Nắng trên miền núi không phải để phô bày cái đẹp, mà là để sưởi ấm cho những đôi vai lam lũ. Ở thành phố người ta che nắng, ở đây người ta đón nắng.",
-    "speed": 100,
-    "speaker_seed": 2336,
-    "style_seed": 4125,
-    "pitch_shift": 0,
-    "treble_boost": 0,
-    "_source": "vina_goc_import",
-    "_dir": "d:\\My app\\AI Novel\\data\\vina-voices\\samples"
-  },
-  "USER-Lồng Tiếng Nam 1": {
-    "filename": "USER_Long_Tieng_Nam_1.wav",
-    "text": "Cảnh tổng, chị không thể đi được! Giờ này vẫn chưa đến giờ nghỉ trưa. Gan chị ngày càng lớn thật đấy!",
     "speed": 100,
     "speaker_seed": 2336,
     "style_seed": 4125,

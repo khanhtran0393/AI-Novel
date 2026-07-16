@@ -105,8 +105,8 @@ async function runStt(
   const srtPath = path.join(workDir, `${baseName(videoPath)}_origin.srt`);
   ensureDir(workDir);
 
-  // 1) Prefer local Whisper/subtitle gateway (python_core)
-  log('[STT] Trying python_core subtitle gateway...');
+  // IRON B10: chỉ python_core subtitle — không fallback Gemini STT che lỗi Whisper
+  log('[STT] python_core subtitle gateway (no Gemini STT fallback)...');
   try {
     const gateway = await callNavGateway({
       action: 'subtitle',
@@ -125,23 +125,14 @@ async function runStt(
         return { srtPath, srt };
       }
     }
-    log(`[STT] Gateway miss: ${gateway.error || 'empty srt'}`);
+    throw new Error(gateway.error || 'subtitle gateway empty srt');
   } catch (err) {
-    log(`[STT] Gateway error: ${err instanceof Error ? err.message : String(err)}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `CapAssistant STT: python_core/Whisper thất bại — không fallback Gemini online. ${msg}. ` +
+        `Sửa Whisper model / video path / python_core gateway.`,
+    );
   }
-
-  // 2) Fallback: extract audio + Gemini online STT
-  log('[STT] Fallback: FFmpeg extract + Gemini transcription...');
-  const wavPath = path.join(workDir, `${baseName(videoPath)}_audio.wav`);
-  const mp3Path = path.join(workDir, `${baseName(videoPath)}_audio.mp3`);
-  await extractAudioWav(videoPath, wavPath, log);
-  const compressed = await compressAudioToMp3(wavPath, mp3Path);
-  const audioForGemini = compressed ? mp3Path : wavPath;
-  const srt = await transcribeAudioViaGemini(audioForGemini, language === 'en' ? 'en' : 'vi');
-  if (!srt.trim()) throw new Error('Gemini STT returned empty SRT');
-  fs.writeFileSync(srtPath, srt, 'utf8');
-  log(`[STT] Gemini OK -> ${srtPath}`);
-  return { srtPath, srt };
 }
 
 async function translateSrtWithGemini(
@@ -225,7 +216,7 @@ function extractSpokenFromSrt(srtText: string): string {
 
 /**
  * VI voiceover: Universal Zero-Shot ONNX brain (default narrator / profile).
- * Falls back to Edge only if UVE fails (logged as EMERGENCY).
+ * IRON B10: không EMERGENCY Edge — return null để caller hard-fail.
  */
 async function generateUniversalTtsFromSrt(
   srtText: string,
@@ -243,7 +234,9 @@ async function generateUniversalTtsFromSrt(
     const { inspectVinaOnnxBrain } = await import('@/lib/vinaVoice/paths');
     const brain = inspectVinaOnnxBrain(process.cwd());
     if (!brain.ok) {
-      log(`[TTS] UVE brain not ready (${brain.totalGB}GB) — skip to Edge emergency`);
+      log(
+        `[TTS] UVE brain not ready (${brain.totalGB}GB missing=${(brain.missing || []).join(',')}) — no Edge emergency`,
+      );
       return null;
     }
     const isEdgeNeural = /Neural$/i.test(voice || '');
@@ -317,15 +310,26 @@ async function generateEdgeTtsFromSrt(
     !voice ||
     /vi-VN|vi_|vietnamese|nữ|nam|lồng|truyện|tin tức/i.test(voice) ||
     !/Neural$/i.test(voice);
+  // IRON B10: không EMERGENCY_EDGE / CLI fallback ngầm.
+  // VI: bắt buộc UVE (ONNX). EN Neural: Edge chỉ khi voice là Edge Neural tường minh.
   if (tgtLooksVi) {
     const uve = await generateUniversalTtsFromSrt(srtText, outPath, voice, speed, log);
     if (uve) return uve;
-    log('[TTS] EMERGENCY_EDGE: UVE unavailable — falling back to Edge (labeled)');
+    throw new Error(
+      'CapAssistant TTS: Universal Zero-Shot (UVE/ONNX) thất bại — không fallback Edge. ' +
+        'Sửa Vina/ONNX brain, profile sample, hoặc chọn voice Edge Neural tường minh (…Neural).',
+    );
   }
 
-  log(`[TTS] Edge TTS voice=${voice} speed=${speed}`);
+  if (!/Neural$/i.test(voice)) {
+    throw new Error(
+      `CapAssistant TTS: voice "${voice}" không phải Edge Neural và UVE không chạy — không fallback. ` +
+        'Chọn voice dạng vi-VN-…Neural hoặc profile Vina hợp lệ.',
+    );
+  }
 
-  // Use node-edge-tts via dynamic import if available, else call generate-tts route logic inline
+  log(`[TTS] Edge TTS (explicit Neural, node-edge-tts only) voice=${voice} speed=${speed}`);
+
   try {
     const { EdgeTTS } = await import('node-edge-tts');
     const lang = voice.startsWith('vi') ? 'vi-VN' : voice.startsWith('en') ? 'en-US' : 'vi-VN';
@@ -340,25 +344,11 @@ async function generateEdgeTtsFromSrt(
     });
     await tts.ttsPromise(spoken, outPath);
   } catch (err) {
-    log(`[TTS] node-edge-tts direct failed (${err instanceof Error ? err.message : err}), using edge-tts CLI fallback`);
-    const pyCandidates = ['edge-tts', 'python', 'py'];
-    let ok = false;
-    for (const bin of pyCandidates) {
-      const args =
-        bin === 'edge-tts'
-          ? ['--voice', voice, '--text', spoken, '--write-media', outPath]
-          : ['-m', 'edge_tts', '--voice', voice, '--text', spoken, '--write-media', outPath];
-      const r = spawnSync(bin, args, { encoding: 'utf8', windowsHide: true, timeout: 180_000 });
-      if (r.status === 0 && fs.existsSync(outPath)) {
-        ok = true;
-        break;
-      }
-    }
-    if (!ok) {
-      throw new Error(
-        `TTS failed. Install/use node-edge-tts or edge-tts. Last: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    // IRON B10: không CLI dự phòng — cùng engine cũng một đường duy nhất
+    throw new Error(
+      `Edge TTS (node-edge-tts) fail — không fallback CLI. ${err instanceof Error ? err.message : String(err)}. ` +
+        `Cài/sửa package node-edge-tts.`,
+    );
   }
 
   if (!fs.existsSync(outPath)) throw new Error('TTS output missing');
@@ -516,7 +506,12 @@ export async function runAutoMaster(
   let ttsPath = '';
   if (enableTts && (translatedSrt || originSrt) && srtMode !== 'none') {
     log('[STEP 3/4] Generating TTS voiceover...');
-    const voice = request.ttsVoice || 'vi-VN-HoaiMyNeural';
+    const voice = String(request.ttsVoice || '').trim();
+    if (!voice) {
+      throw new Error(
+        'CapAssistant: thiếu ttsVoice. Không gán vi-VN-HoaiMyNeural dự phòng. Chọn giọng TTS tường minh.',
+      );
+    }
     const speed = Number(request.ttsSpeed) || 1.2;
     const outAudio = path.join(workDir, `voice_${stamp}.mp3`);
     const tts = await generateEdgeTtsFromSrt(translatedSrt || originSrt, outAudio, voice, speed, log);

@@ -57,12 +57,23 @@ Không cần để cửa sổ Chrome hiện trên màn hình sau khi login xong.
 
 | Cách | Hành động |
 |------|-----------|
-| Mở app desktop | `main.js` → `POST /api/flow/bootstrap` sau 2.5s |
-| Vào Workspace | `FlowAutoBootstrap` (1 lần / session) |
-| Media Config | nút **Tự cấu hình tất cả** (force mở Chrome) |
-| File bat | `KHOI_DONG_FLOW.bat` |
+| Mở app desktop | `main.js` → **chỉ** `GET /api/flow/status` (bật bridge, **không** mở Chrome) |
+| Vào Workspace | `FlowAutoBootstrap` warm-up bridge only (1 lần / session) |
+| Media Config | nút **Đăng nhập Google** / **Mở Chrome login** (user chủ động) |
+| File bat | `KHOI_DONG_FLOW.bat` (nếu có force bootstrap) |
 
-API: `POST /api/flow/bootstrap` body `{ forceChrome?: boolean }`
+API: `POST /api/flow/bootstrap` body `{ forceChrome?: boolean }` — **chỉ gọi khi user bấm đăng nhập**.
+
+### Project dropdown
+
+Khi Bridge + Extension + Token xanh: UI cho **chọn project** hoặc **tạo project mới** (`POST /api/flow/projects` → tRPC `project.createProject`). Project id lưu `data/flow-bridge/`.
+
+### Cookie vs Token
+
+| | Vai trò |
+|--|---------|
+| **Cookie** Google session | Nằm trong profile browser; giúp trang Flow / reCAPTCHA / reload tab. **Không** phải đèn Token. |
+| **Token** Bearer `ya29…` | Bắt từ header API; **dùng thật** khi gen ảnh/video qua bridge. |
 
 Profile Chrome riêng: `scratch/flow-profiles/<accountId>/` — login một lần, lần sau tái dùng.
 
@@ -78,8 +89,12 @@ Profile Chrome riêng: `scratch/flow-profiles/<accountId>/` — login một lầ
 
 ## Provider mặc định
 
-- `imageProvider: 'flow'`, `imageModel: 'GEM_PIX_2'`
-- `videoProvider: 'flow'`, `videoModel: 'veo_3_1_t2v_fast_ultra'`
+- `imageProvider: 'flow'`, `imageModel: 'GEM_PIX_2'` (alias Nano Banana Pro; `NARWHAL` = Nano Banana 2)
+- `videoProvider: 'flow'`, `videoModel: 'veo_3_1_t2v_fast'` (TIER_ONE-safe; ultra optional)
+- **Duration Flow Veo:** `4 | 6 | 8` giây (default **8**). Không dùng 10s.
+- **Scale:** native **720p**; HD/4K = `veo_3_1_upsampler_1080p` / `_4k` sau gen.
+- **Credits (Pro @8s):** Lite≈10, Fast≈20, Quality≈100; Ultra Lite≈5 Fast≈10; `*_low_priority` / `*_relaxed` = 0 (tier-gated).
+- **Families:** T2V · I2V (+ `_fl` first+last) · R2V/ingredients (`veo_3_1_r2v_*`) · Extend · Upsample. Matrix: `src/lib/flow-bridge/modelCatalog.ts` · `GET /api/flow/models`.
 - Legacy: OpenAI / Grok / Gemini banana+whisk / API-key Veo vẫn chọn được trong dropdown.
 
 ## Lưu ý an toàn tài khoản
@@ -88,6 +103,27 @@ Profile Chrome riêng: `scratch/flow-profiles/<accountId>/` — login một lầ
 - Không spam multi-thread không proxy
 - Token Bearer hết hạn ~1h → refresh tab Flow
 
+## P0–P3 (Flow parity layer)
+
+| Tier | Nội dung | Module / API |
+|------|----------|--------------|
+| **P0** | Model matrix + credit estimate; Ingredients-to-video (1–3 ref); Extend clip; quality default HD | `modelCatalog.ts`, `payloadBuilder` ingredients/extend, queue `videoMode` |
+| **P1** | Auto upscale theo quality; light edit (base+prompt); camera structured | `cameraPrompt.ts`, quality presets, `buildImageEditBody` |
+| **P2** | In-app Flow Agent chat → plan shots → enqueue queue; Agent Instructions | `flowAgent.ts`, `opsStore`, `/api/flow/agent`, `FlowAgentPanel` |
+| **P3** | Health score, proxy, credit budget, auto-relogin on 401 | `accountStore` health/budget, queue pick + bootstrap re-login |
+
+API: `GET/POST /api/flow/models` · `GET/POST /api/flow/ops` · `POST /api/flow/agent` · `GET/POST /api/flow/media-id`  
+UI: Media Config → Flow Agent panel + model/quality/farm policy; account row HP · budget · proxy.
+
+### Chuẩn B (creative UX) — đã wire
+
+| Tính năng | Cách dùng |
+|-----------|-----------|
+| **Auto cast ingredients** | Gen ảnh/video: quét tên cast trong prompt → `face_ref` + concept `char_Name` (max 3) |
+| **Extend trên shot** | Nút **⏩ Extend** cạnh Gen Video (khi đã có clip + mediaId) |
+| **Agent → Studio** | Flow Agent: **Áp Studio** ghi prompt vào scene · **Enqueue Flow** + ingredients cast |
+| **mediaId index** | `data/flow-bridge/media-index.json` + localStorage — Extend sau reload |
+
 ## File chính
 
 - `extensions/ainovel-flow/*`
@@ -95,3 +131,4 @@ Profile Chrome riêng: `scratch/flow-profiles/<accountId>/` — login một lầ
 - `src/app/api/flow/*`
 - `src/app/api/generate-image/providers/flow.ts`
 - `src/app/workspace/features/media/FlowAccountsPanel.tsx`
+- `src/app/workspace/features/media/FlowAgentPanel.tsx`

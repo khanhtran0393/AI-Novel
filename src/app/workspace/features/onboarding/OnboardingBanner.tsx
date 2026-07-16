@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
+import { selectIsHydrated } from '@/store/useNovelStoreSelectors';
 import {
   CORE_LOOP_STEPS,
   buildDemoProjectPatch,
@@ -17,14 +18,14 @@ import { toast } from '@/lib/toastBus';
 import { X, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function OnboardingBanner() {
-  const store = useNovelStore();
+  const isHydrated = useNovelStore(selectIsHydrated);
   const [state, setState] = useState<OnboardingState | null>(null);
 
   useEffect(() => {
     setState(loadOnboarding());
   }, []);
 
-  if (!state || state.dismissed || !store.isHydrated) return null;
+  if (!state || state.dismissed || !isHydrated) return null;
 
   const done = new Set(state.completedSteps);
 
@@ -35,7 +36,7 @@ export default function OnboardingBanner() {
   const handleLoadDemo = () => {
     try {
       const patch = buildDemoProjectPatch();
-      useNovelStore.setState(patch as Partial<typeof store>);
+      useNovelStore.setState(patch as Partial<ReturnType<typeof useNovelStore.getState>>);
       const next = {
         ...loadOnboarding(),
         demoLoaded: true,

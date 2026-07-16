@@ -1,13 +1,10 @@
 'use client';
 
-import { useNovelStore } from '@/store/useNovelStore';
 import { openFolderAction } from '../modules/folderModule';
 import { toast } from '@/lib/toastBus';
 
+/** Folder actions — no store subscription. */
 export function useFolderActions() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const store = useNovelStore();
-
   const handleOpenFolder = async (folderPath: string) => {
     const target = (folderPath || 'project').trim() || 'project';
     try {

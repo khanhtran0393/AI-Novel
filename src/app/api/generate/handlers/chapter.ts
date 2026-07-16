@@ -5,8 +5,12 @@ import {
   formatCharacterBible,
   formatSpentEntities,
   formatWorldState,
+  lorebookForPrompt,
   normalizeSceneTags,
+  requireGenreLabelFromSetup,
+  setupGenreFromPayload,
   truncateOutline,
+  writeEngineRoleLine,
   DEFAULT_WORD_GOAL,
   MIN_SCENE_COUNT,
 } from '@/lib/storyWriting';
@@ -71,6 +75,16 @@ export async function handleChapter(
       force_word_gate_continue,
       humanize_script,
     } = payload;
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
   
     const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : DEFAULT_WORD_GOAL;
     const wordMin = Math.round(wordGoal * 0.92);
@@ -97,12 +111,15 @@ export async function handleChapter(
       ? `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ: Bản trước CHƯA ĐẠT tối thiểu ${wordMin} từ và/hoặc chưa đủ ${MIN_SCENE_COUNT} phân cảnh. Hãy viết DÀI HƠN, thêm cảnh mới nếu thiếu, miêu tả chi tiết hơn. Chỉ trả về phần MỚI.`
       : '';
   
-    const prompt = `Bạn là Trợ lý Biên kịch Sản xuất kịch bản tiểu thuyết mạt thế chuyên nghiệp bậc nhất.
+    const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
   Hãy viết kịch bản chi tiết văn học đa giác quan cho Chương ${chuong_hien_tai.so_chuong}: "${chuong_hien_tai.tieu_de}" thuộc tác phẩm "${ten_tac_pham}".
+  
+  --- SETUP THỂ LOẠI (BẮT BUỘC BÁM) ---
+  ${genreLabel}
   
   --- BỐI CẢNH VÀ TRÍ NHỚ VĨ MÔ (ROLLING CONTEXT SYSTEM) ---
   1. LÕI BẤT BIẾN (LOREBOOK):
-  ${lorebook || 'Luật thế giới mạt thế cực lạnh.'}
+  ${lorebookForPrompt(lorebook)}
   
   2. DÀN Ý TỔNG THỂ (RÚT GỌN — chỉ định hướng arc, KHÔNG chép vào kịch bản):
   ${outlineBlock || 'Chưa có dàn ý tổng thể.'}
@@ -113,7 +130,7 @@ export async function handleChapter(
   4. TRÍ NHỚ NGẮN HẠN (3 CHƯƠNG GẦN NHẤT):
   ${(tri_nho_ngan_han && tri_nho_ngan_han.length > 0) ? tri_nho_ngan_han.join('\n') : 'Chưa có trí nhớ ngắn hạn.'}
   
-  5. HỒ SƠ NHÂN VẬT (BIBLE — giữ tính cách/hành vi/ngoại hình nhất quán):
+  5. HỒ SƠ NHÂN VẬT (BIBLE — giữ tính cách/hành vi/ngoại hình/khuyết điểm nhất quán; khuyết điểm = điểm yếu, không ép khuyết tật mạt thế):
   ${charBible}
   
   6. WORLD STATE (trạng thái hiện tại — tôn trọng inventory/clue/location):
@@ -126,7 +143,7 @@ export async function handleChapter(
   ${beat}
   - Beat A (Discovery): khám phá manh mối, bối cảnh, bí ẩn mới.
   - Beat B (Confrontation): đối đầu, va chạm lợi ích, căng thẳng leo thang.
-  - Beat C (Survival Crisis): khủng hoảng sinh tồn, áp lực thời gian/cạn kiệt.
+  - Beat C (Crisis): khủng hoảng cốt lõi theo thể loại Setup (không ép sinh tồn/mạt thế nếu Setup khác), áp lực thời gian/cạn kiệt tài nguyên hoặc mối quan hệ.
   - Beat D (Insight): bẻ gãy nhận thức, twist logic, hậu quả cảm xúc.
   
   DÀN Ý SỰ KIỆN CHƯƠNG HIỆN TẠI:
@@ -202,6 +219,16 @@ export async function handleChapter(
       nhan_vat_prompts,
       humanize_script,
     } = payload;
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
   
     const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : DEFAULT_WORD_GOAL;
     const wordMin = Math.round(wordGoal * 0.92);
@@ -221,12 +248,13 @@ export async function handleChapter(
         ? 'REWRITE (viết lại mạnh, sửa triệt để các điểm yếu)'
         : 'POLISH (giữ cốt truyện, trau chuốt văn phong/nhịp/thoại đời)';
   
-    const prompt = `Bạn là Biên kịch kiêm Editor tiểu thuyết mạt thế (chuẩn YouTube-safe narration).
+    const prompt = `${writeEngineRoleLine(genreLabel, 'editor')}
   Tác phẩm: "${ten_tac_pham}" — Chương ${chuong_hien_tai?.so_chuong}: "${chuong_hien_tai?.tieu_de}".
   Chế độ: ${modeLabel}.
+  Setup thể loại: ${genreLabel}.
   
   --- LOREBOOK ---
-  ${lorebook || 'Không có'}
+  ${lorebookForPrompt(lorebook)}
   
   --- HỒ SƠ NHÂN VẬT ---
   ${charBible}
@@ -286,8 +314,19 @@ export async function handleChapter(
       noi_dung_kich_ban, 
       userRules
     } = payload;
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
   
-    const prompt = `Bạn là một Tổng biên tập khắt khe của tòa soạn tiểu thuyết mạt thế.
+    const prompt = `${writeEngineRoleLine(genreLabel, 'reviewer')}
+  Setup thể loại cần bám khi chấm: ${genreLabel}.
   Hãy đọc kỹ nội dung Chương ${chuong_hien_tai.so_chuong} vừa được viết dưới đây và tiến hành CHẤM ĐIỂM 7 CHIỀU.
   
   --- NỘI DUNG CHƯƠNG VỪA VIẾT ---
@@ -366,15 +405,26 @@ export async function handleChapter(
       );
     }
   
-    const prompt = `Bạn là Trợ lý Biên kịch kiêm Bộ Nén Ký Ức logic mạt thế xuất sắc.
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreLabelFromSetup(setupGenreFromPayload(payload));
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
+
+    const prompt = `${writeEngineRoleLine(genreLabel, 'memory')}
   Hãy đọc kỹ nội dung kịch bản Chương ${chapterNum}${chapterObj.tieu_de ? ` (${chapterObj.tieu_de})` : ''} vừa viết dưới đây và thực hiện cập nhật toàn bộ trạng thái Trí nhớ vĩ mô của hệ thống.
+  Setup thể loại (BẮT BUỘC bám): ${genreLabel}.
   
   --- NỘI DUNG CHƯƠNG VỪA VIẾT ---
   ${scriptBody}
   
   --- TRẠNG THÁI BỘ NHỚ VĨ MÔ TRƯỚC ĐÓ ---
   - Tóm tắt cuốn chiếu cũ: ${tom_tat_cuon_chieu}
-  - Lorebook cũ: ${lorebook || '(trống)'}
+  - Lorebook cũ: ${lorebookForPrompt(lorebook)}
   - World state cũ: ${JSON.stringify(world_state || {})}
   - Entities đã dùng cũ: ${JSON.stringify(da_dien_ra_entities || {})}
   

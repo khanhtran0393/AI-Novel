@@ -50,7 +50,7 @@ export function bindableFromState(state: NovelState): ChannelBindableState {
     pipeline_step: state.pipeline_step,
     ttsConfig: {
       voice: t?.voice || '',
-      platform: t?.platform || 'edge_tts',
+      platform: t?.platform || '',
       language: t?.language,
       speed: t?.speed,
       pitch: t?.pitch,

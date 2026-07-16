@@ -3,24 +3,25 @@ import { EMPTY_VOICE_CAST } from '@/lib/voiceCast';
 import type { NovelState, SetupData } from './novelTypes';
 
 const INITIAL_SETUP: SetupData = {
-  chu_de: 'Sinh tồn mạt thế',
-  phong_cach: 'Kịch tính, Tăm tối',
+  // Empty — user must pick Setup (B10: no silent mat-the default)
+  chu_de: '',
+  phong_cach: '',
   mo_ta: '',
   so_chuong: 2,
   so_tu_chuong: 4250,
   ngon_ngu: 'Tiếng Việt',
 };
 
-const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến
+/** Production rules only — world laws come from Setup + user lore (B10: no mat-the world seed). */
+const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến (khung sản xuất)
 
 ## 1. Quy luật thế giới
-- Môi trường khắc nghiệt: tài nguyên khan hiếm, luật pháp sụp đổ từng phần, niềm tin xã hội mong manh.
-- Sinh tồn đặt lên trước: mỗi lựa chọn có giá; không có “win miễn phí”.
-- Siêu nhiên / công nghệ (nếu có) phải có giới hạn rõ và cái giá đi kèm.
+- (Chưa nạp) Điền theo Setup Chủ đề + Phong cách, hoặc dán lore khi Kế thừa di sản / Sinh dàn ý.
+- Mọi quy luật siêu nhiên/công nghệ (nếu có) phải có giới hạn và cái giá đi kèm — do user/Setup quyết, không ép mạt thế.
 
 ## 2. Nguyên tắc kể chuyện
 - Real-time pacing: cấm time-skip tóm tắt tuần/tháng.
-- Nhân vật phải có khuyết tật / nỗi ám ảnh cụ thể (thể chất, tâm lý, hoặc xã hội).
+- Nhân vật PHẢI có khuyết điểm (điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế xã hội/tâm lý — không bắt buộc "khuyết tật mạt thế").
 - Tên nhân vật: Hán Việt sắc sảo, tránh tên mòn (Lâm Khuyết, …).
 
 ## 3. Ghi chú sản xuất
@@ -28,7 +29,8 @@ const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến
 - Ưu tiên hành động + thoại; miêu tả giác quan có chọn lọc.`;
 
 export const INITIAL_STATE: NovelState = {
-  giai_doan: 1,
+  /** Workspace by default — Setup opens only via Sidebar (avoids stuck modal on boot). */
+  giai_doan: 2,
   setup: INITIAL_SETUP,
   ten_tac_pham: 'Dự án mới',
   dan_y_tong_the: '',
@@ -72,7 +74,8 @@ export const INITIAL_STATE: NovelState = {
   googleStudioCookie: '',
   googleStudioCookies: [],
   tiktokSessionIds: [],
-  isHydrated: false,
+  /** true ngay từ đầu — cấm kẹt màn "Đang nạp trạng thái bộ nhớ" (rehydrate chạy nền). */
+  isHydrated: true,
 
   googleDrivePath: '',
   googleDriveConnected: false,
@@ -98,7 +101,8 @@ export const INITIAL_STATE: NovelState = {
   pipeline_step: 'outline',
   nhan_vat_prompts: {},
   imageModel: 'GEM_PIX_2',
-  videoModel: 'veo_3_1_t2v_fast_ultra',
+  /** Non-ultra first — TIER_ONE Flow accounts often reject *_ultra */
+  videoModel: 'veo_3_1_t2v_fast',
 
   aiMasterModel: 'aistudio',
   aiMasterApiKey: '',
@@ -112,7 +116,8 @@ export const INITIAL_STATE: NovelState = {
   videoProvider: 'flow',
   videoApiKey: '',
   videoAspectRatio: '16:9',
-  videoDuration: 6,
+  /** Flow Veo clip length: 4 | 6 | 8 (default 8s matches labs.google) */
+  videoDuration: 8,
   wpm: 140,
   secondsPerBeat: 6,
 

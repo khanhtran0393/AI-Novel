@@ -71,10 +71,19 @@ export async function generateWithOpenAI(
               }
             } else {
               const t = await editRes.text();
-              console.warn('[generate-image] OpenAI edit face-ref failed, fallback generations:', t.slice(0, 200));
+              // IRON B10: face-ref bắt buộc edit — không fallback generations (mất identity)
+              lastError = t.slice(0, 300);
+              throw new Error(
+                `OpenAI face-ref edit fail HTTP ${editRes.status}: ${lastError.slice(0, 160)}. Không fallback DALL-E 3 generations (mất face-lock).`,
+              );
             }
           } catch (editErr: unknown) {
-            console.warn('[generate-image] OpenAI edit exception', editErr);
+            if (editErr instanceof Error && /face-ref|Không fallback/i.test(editErr.message)) {
+              throw editErr;
+            }
+            throw new Error(
+              `OpenAI face-ref edit exception: ${editErr instanceof Error ? editErr.message : String(editErr)}. Không fallback generations.`,
+            );
           }
         }
   

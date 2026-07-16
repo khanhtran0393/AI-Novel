@@ -20,7 +20,6 @@ import {
   parseScenes,
 } from './storyWriting';
 import {
-  generateYoutubeMetaWithQA,
   normalizeHashtagField,
   scoreYoutubeMetaFields,
   YOUTUBE_META_PASS_SCORE,
@@ -231,7 +230,7 @@ function buildShortSceneBodies(scenes: string[], hook?: string): string[] {
   return out.length ? out : scenes.slice(0, 1);
 }
 
-function sanitizeSeoTags(raw: string | string[] | undefined, fallback: string[]): string[] {
+function sanitizeSeoTags(raw: string | string[] | undefined, extra: string[]): string[] {
   const parts = Array.isArray(raw)
     ? raw
     : (raw || '')
@@ -251,7 +250,7 @@ function sanitizeSeoTags(raw: string | string[] | undefined, fallback: string[])
     (low) => cleaned.find((c) => c.toLowerCase() === low) || low,
   );
   if (uniq.length >= 3) return uniq.slice(0, 12);
-  return Array.from(new Set([...uniq, ...fallback])).slice(0, 12);
+  return Array.from(new Set([...uniq, ...extra])).slice(0, 12);
 }
 
 function estimateDurationSec(text: string, wpm = 140): number {
@@ -291,7 +290,7 @@ export type ShipSeoResult = {
   hook: string;
   thumbnailPrompt: string;
   scores: YoutubeFieldScores;
-  source: 'hooks_pass' | 'meta_qa' | 'fallback';
+  source: 'hooks_pass';
 };
 
 /** Extra product gates beyond numeric score (dialogue dump / stock agitate). */
@@ -331,15 +330,8 @@ function hooksMeetProductSeoGates(params: {
  * If chapterHooks fail scoring (dialogue dump, stock, short thumb), re-run Meta QA.
  */
 function buildSeoStub(input: ShipPackInput, mode: ShipMode): ShipSeoResult {
-  const script = (input.chapter.noi_dung || input.chapter.dan_y || '').normalize('NFC');
+  void mode;
   const hookIn = input.chapterHooks;
-  const fallbackTags = [
-    input.channel.niche || 'truyen',
-    mode,
-    'ai-novel',
-    input.channel.language || 'vi',
-    'truyenaudio',
-  ];
 
   const fromHooksTitle = (hookIn?.seoTitle || '').trim().slice(0, 100);
   const fromHooksThumb = (hookIn?.thumbnailLine || '').trim().slice(0, 30);
@@ -360,16 +352,14 @@ function buildSeoStub(input: ShipPackInput, mode: ShipMode): ShipSeoResult {
   ) {
     const tags = sanitizeSeoTags(
       normalizeHashtagField(hookIn?.seoTags || '') || hookIn?.seoTags || '',
-      fallbackTags,
+      [],
     );
+    if (!tags.length) {
+      throw new Error('Ship pack bi chan: seoTags trong chapterHooks dang trong.');
+    }
     return {
       title: fromHooksTitle,
-      description: [
-        fromHooksDesc,
-        `\n\n#${input.channel.slug || 'channel'} #${mode} #truyen #audio`,
-      ]
-        .join('')
-        .trim(),
+      description: fromHooksDesc,
       tags,
       thumbnailLine: fromHooksThumb,
       hook: (hookIn?.hook || '').trim(),
@@ -379,60 +369,7 @@ function buildSeoStub(input: ShipPackInput, mode: ShipMode): ShipSeoResult {
     };
   }
 
-  // Re-generate to meet output criteria (title ≤100, thumb ≤30, score ≥8.5)
-  if (script.trim().length >= 80) {
-    const qa = generateYoutubeMetaWithQA({
-      script,
-      novelTitle: input.ten_tac_pham,
-      chapter: input.chapter.so_chuong,
-      maxRounds: 5,
-    });
-    const tags = sanitizeSeoTags(normalizeHashtagField(qa.seoTags) || qa.seoTags, fallbackTags);
-    return {
-      title: (qa.seoTitle || fromHooksTitle).slice(0, 100),
-      description: [
-        qa.seoDescription || fromHooksDesc,
-        qa.hook ? `\n\nHook:\n${qa.hook}` : '',
-        `\n\n#${input.channel.slug || 'channel'} #${mode} #truyen #audio`,
-      ]
-        .join('')
-        .trim(),
-      tags,
-      thumbnailLine: (qa.thumbnailLine || fromHooksThumb).slice(0, 30),
-      hook: qa.hook || (hookIn?.hook || '').trim(),
-      thumbnailPrompt: qa.thumbnailPrompt || (hookIn?.thumbnailPrompt || '').trim(),
-      scores: qa.scores,
-      source: 'meta_qa',
-    };
-  }
-
-  const title =
-    fromHooksTitle ||
-    `${input.ten_tac_pham} — Chương ${input.chapter.so_chuong}: ${input.chapter.tieu_de}`.slice(
-      0,
-      100,
-    );
-  const description = [
-    fromHooksDesc,
-    hookIn?.hook ? `\n\nHook:\n${hookIn.hook}` : '',
-    `\n\n#${input.channel.slug || 'channel'} #${mode} #truyen #audio`,
-  ]
-    .join('')
-    .trim();
-  return {
-    title,
-    description,
-    tags: sanitizeSeoTags(hookIn?.seoTags, fallbackTags),
-    thumbnailLine: fromHooksThumb,
-    hook: (hookIn?.hook || '').trim(),
-    thumbnailPrompt: (hookIn?.thumbnailPrompt || '').trim(),
-    scores: scoreYoutubeMetaFields({
-      seoTitle: title,
-      thumbnailLine: fromHooksThumb,
-      seoDescription: description,
-    }),
-    source: 'fallback',
-  };
+  throw new Error('Ship pack bi chan: SEO chapterHooks chua dat gate, app khong tu tao SEO thay the.');
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 } from '@/contracts';
 
 import React, { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   buildYoutubeChecklist,
@@ -40,8 +41,67 @@ import SeoField, { hasImageCredentials } from './SeoField';
 import YoutubeThumbPanel from './YoutubeThumbPanel';
 
 export default function YoutubeSafeChecklist() {
-  const store = useNovelStore();
-  const [collapsed, setCollapsed] = useState(false);
+  /**
+   * Shallow snapshot of only fields that affect this checklist UI.
+   * Full useNovelStore() re-rendered on every media/TTS path update → main-thread lag.
+   * Handlers still use useNovelStore.getState() for one-shot actions.
+   */
+  const snap = useNovelStore(
+    useShallow((s) => {
+      const ch = s.chuong_dang_chon;
+      const chapter = s.danh_sach_chuong.find((c) => c.so_chuong === ch);
+      const script = chapter?.noi_dung || '';
+      const chPrefix = chapterAssetPrefix(ch);
+      const thumbAssetKey = imageAssetKey(ch, YOUTUBE_THUMB_SCENE_INDEX, 0);
+      const hook = s.chapterHooks?.[ch];
+      let imageCount = 0;
+      let videoCount = 0;
+      let hasAudio = false;
+      for (const k of Object.keys(s.generatedImages || {})) {
+        if (k.startsWith(chPrefix)) imageCount++;
+      }
+      for (const k of Object.keys(s.generatedVideos || {})) {
+        if (k.startsWith(chPrefix)) videoCount++;
+      }
+      for (const k of Object.keys(s.generatedAudioPaths || {})) {
+        if (k.startsWith(chPrefix) && s.generatedAudioPaths[k]?.path) {
+          hasAudio = true;
+          break;
+        }
+      }
+      return {
+        ch,
+        script,
+        soTuChuong: s.setup.so_tu_chuong || 4250,
+        review: s.editorReviews[ch],
+        youtubeSafe: s.youtubeSafe,
+        asset: hook || {
+          hook: '',
+          thumbnailLine: '',
+          seoTitle: '',
+          seoDescription: '',
+          seoTags: '',
+          thumbnailPrompt: '',
+          thumbnailImagePath: '',
+        },
+        thumbImageFromStore: s.generatedImages?.[thumbAssetKey] || '',
+        imageCount,
+        videoCount,
+        hasAudio,
+        ttsPlatform: s.ttsConfig.platform,
+        ttsPitch: s.ttsConfig.pitch,
+        ttsSpeed: s.ttsConfig.speed,
+        hasVisualDna: !!(s.visualDnaPrompt?.trim() || s.mediaStylePreset?.trim()),
+        humanEdited: !!s.humanEditFlags?.[ch]?.edited,
+        ten_tac_pham: s.ten_tac_pham,
+        visualDnaPrompt: s.visualDnaPrompt,
+        mediaStylePreset: s.mediaStylePreset,
+      };
+    }),
+  );
+
+  const store = useNovelStore.getState;
+  const [collapsed, setCollapsed] = useState(true);
   const [metaLoading, setMetaLoading] = useState(false);
   const [thumbRegenLoading, setThumbRegenLoading] = useState(false);
   const [thumbFromLineLoading, setThumbFromLineLoading] = useState(false);
@@ -49,39 +109,21 @@ export default function YoutubeSafeChecklist() {
   const [competitorDnaLoading, setCompetitorDnaLoading] = useState(false);
   const [zoomThumbUrl, setZoomThumbUrl] = useState<string | null>(null);
 
-  const chapter = store.danh_sach_chuong.find((c) => c.so_chuong === store.chuong_dang_chon);
-  const script = chapter?.noi_dung || '';
-  const gate = evaluateWordGate(script, store.setup.so_tu_chuong || 4250);
-  const review = store.editorReviews[store.chuong_dang_chon];
-  const ch = store.chuong_dang_chon;
-  const yt = mergeYoutubeSafe(store.youtubeSafe);
+  const script = snap.script;
+  const gate = evaluateWordGate(script, snap.soTuChuong);
+  const review = snap.review;
+  const ch = snap.ch;
+  const yt = mergeYoutubeSafe(snap.youtubeSafe);
+  const asset = snap.asset;
+  const imageCount = snap.imageCount;
+  const videoCount = snap.videoCount;
+  const hasAudio = snap.hasAudio;
   const thumbAssetKey = imageAssetKey(ch, YOUTUBE_THUMB_SCENE_INDEX, 0);
-
-  const asset = store.chapterHooks?.[ch] || {
-    hook: '',
-    thumbnailLine: '',
-    seoTitle: '',
-    seoDescription: '',
-    seoTags: '',
-    thumbnailPrompt: '',
-    thumbnailImagePath: '',
-  };
 
   const thumbImageUrl =
     (asset.thumbnailImagePath || '').trim() ||
-    (store.generatedImages?.[thumbAssetKey] || '').trim() ||
+    (snap.thumbImageFromStore || '').trim() ||
     '';
-
-  const chPrefix = chapterAssetPrefix(ch);
-  const imageCount = Object.keys(store.generatedImages || {}).filter((k) =>
-    k.startsWith(chPrefix),
-  ).length;
-  const videoCount = Object.keys(store.generatedVideos || {}).filter((k) =>
-    k.startsWith(chPrefix),
-  ).length;
-  const hasAudio = Object.keys(store.generatedAudioPaths || {}).some(
-    (k) => k.startsWith(chPrefix) && !!store.generatedAudioPaths[k]?.path,
-  );
 
   const hasHook = (asset.hook || '').trim().length > 40;
   const hasSeoTitle = (asset.seoTitle || '').trim().length > 8;
@@ -95,15 +137,15 @@ export default function YoutubeSafeChecklist() {
     sceneCount: countSceneTags(script),
     minScenes: 3,
     editorVerdict: review?.verdict,
-    ttsPlatform: store.ttsConfig.platform,
-    ttsPitch: store.ttsConfig.pitch,
-    ttsSpeed: store.ttsConfig.speed,
-    hasVisualDna: !!(store.visualDnaPrompt?.trim() || store.mediaStylePreset?.trim()),
+    ttsPlatform: snap.ttsPlatform,
+    ttsPitch: snap.ttsPitch,
+    ttsSpeed: snap.ttsSpeed,
+    hasVisualDna: snap.hasVisualDna,
     hasAudio,
     imageCount,
     videoCount,
     enforceEditorGate: yt.enforceEditorGate !== false,
-    humanEdited: !!store.humanEditFlags?.[ch]?.edited,
+    humanEdited: snap.humanEdited,
     requireHumanEdit: yt.requireHumanEdit === true,
     hasHook,
     hasSeoTitle,
@@ -114,12 +156,12 @@ export default function YoutubeSafeChecklist() {
   const summary = summarizeChecklist(items);
 
   const patch = (partial: Partial<typeof asset>) => {
-    store.setChapterHook(ch, partial);
+    store().setChapterHook(ch, partial);
   };
 
   const resolveMediaStyle = () =>
-    store.visualDnaPrompt?.trim() ||
-    store.mediaStylePreset?.trim() ||
+    store().visualDnaPrompt?.trim() ||
+    store().mediaStylePreset?.trim() ||
     'cinematic natural realism, grounded production design, expressive lighting, tactile materials';
 
   /** Prefer competitor thumb DNA for thumb rewrite/gen style (does not touch global DNA). */
@@ -139,21 +181,21 @@ export default function YoutubeSafeChecklist() {
     });
 
   const getVisionKeys = () => {
-    if (store.aiMasterModel === 'llama' || store.aiMasterModel === 'grok') {
-      return store.grokApiKeys?.length
-        ? store.grokApiKeys
-        : store.grokApiKey
-          ? [store.grokApiKey]
+    if (store().aiMasterModel === 'llama' || store().aiMasterModel === 'grok') {
+      return store().grokApiKeys?.length
+        ? store().grokApiKeys
+        : store().grokApiKey
+          ? [store().grokApiKey]
           : [];
     }
-    if (store.aiMasterModel === 'gpt4o') {
-      return store.openaiApiKeys?.length
-        ? store.openaiApiKeys
-        : store.openaiApiKey
-          ? [store.openaiApiKey]
+    if (store().aiMasterModel === 'gpt4o') {
+      return store().openaiApiKeys?.length
+        ? store().openaiApiKeys
+        : store().openaiApiKey
+          ? [store().openaiApiKey]
           : [];
     }
-    return store.apiKeys?.length ? store.apiKeys : store.apiKey ? [store.apiKey] : [];
+    return store().apiKeys?.length ? store().apiKeys : store().apiKey ? [store().apiKey] : [];
   };
 
   /** Upload 1–3 competitor thumbs → extract DNA (thumb-only, not global visual DNA). */
@@ -186,7 +228,7 @@ export default function YoutubeSafeChecklist() {
         patch({ competitorThumbPreview: previewDataUrl });
       } else {
         patch({ competitorThumbPreview: '' });
-        toast.info('Notice', 'Ảnh lớn — chỉ lưu DNA, bỏ preview để tránh phình store.');
+        toast.info('Notice', 'Ảnh lớn — chỉ lưu DNA, bỏ preview để tránh phình store().');
       }
 
       const images = await Promise.all(imageFiles.map(readImageFile));
@@ -196,7 +238,7 @@ export default function YoutubeSafeChecklist() {
         body: JSON.stringify({
           requestType: 'ANALYZE_VISUAL_DNA',
           apiKeys,
-          model: store.aiMasterModel,
+          model: store().aiMasterModel,
           payload: { images, mode: 'thumb_competitor' },
         }),
       });
@@ -228,10 +270,10 @@ export default function YoutubeSafeChecklist() {
   };
 
   const characterHint = () => {
-    const names = store.nhan_vat || [];
+    const names = store().nhan_vat || [];
     if (!names.length) return '';
     const primary = names[0];
-    const prof = store.nhan_vat_prompts?.[primary];
+    const prof = store().nhan_vat_prompts?.[primary];
     const look =
       (typeof prof === 'object' && prof
         ? (prof as { prompt?: string; ngoai_hinh?: string }).prompt ||
@@ -255,8 +297,8 @@ export default function YoutubeSafeChecklist() {
     setThumbRegenLoading(true);
     try {
       const next = await regenPromptAction({
-        apiKey: store.apiKey,
-        apiKeys: store.apiKeys || [],
+        apiKey: store().apiKey,
+        apiKeys: store().apiKeys || [],
         sceneIndex: YOUTUBE_THUMB_SCENE_INDEX,
         promptIndex: 0,
         sentence:
@@ -265,7 +307,7 @@ export default function YoutubeSafeChecklist() {
         currentPrompt: seed,
         // Style hint for rewrite; competitor DNA preferred when set (not written into stored prompt)
         style: resolveThumbStyle(),
-        nhan_vat_prompts: store.nhan_vat_prompts || {},
+        nhan_vat_prompts: store().nhan_vat_prompts || {},
       });
       if (next?.trim()) {
         patch({ thumbnailPrompt: next.trim() });
@@ -300,14 +342,14 @@ export default function YoutubeSafeChecklist() {
       let next = base;
       try {
         const polished = await regenPromptAction({
-          apiKey: store.apiKey,
-          apiKeys: store.apiKeys || [],
+          apiKey: store().apiKey,
+          apiKeys: store().apiKeys || [],
           sceneIndex: YOUTUBE_THUMB_SCENE_INDEX,
           promptIndex: 0,
           sentence: `YouTube thumbnail text overlay mood: "${line}". Build a cinematic EN still prompt; leave clean space for bold overlay text "${line}".`,
           currentPrompt: base,
           style: resolveThumbStyle(),
-          nhan_vat_prompts: store.nhan_vat_prompts || {},
+          nhan_vat_prompts: store().nhan_vat_prompts || {},
         });
         if (polished?.trim()) next = polished.trim();
       } catch {
@@ -334,7 +376,7 @@ export default function YoutubeSafeChecklist() {
       toast.info('Notice', 'Chưa cấu hình credential cho engine sinh ảnh (Cấu hình đầu ra).');
       return;
     }
-    if (!store.deductCredits(1)) {
+    if (!store().deductCredits(1)) {
       toast.info('Notice', '⚠️ Hết Tín dụng. Nạp thêm để gen ảnh thumbnail.');
       return;
     }
@@ -348,8 +390,8 @@ export default function YoutubeSafeChecklist() {
       : contentPrompt;
 
     setThumbImageLoading(true);
-    store.addGeneratedImage(thumbAssetKey, '');
-    store.addGeneratedImageVariants(thumbAssetKey, []);
+    store().addGeneratedImage(thumbAssetKey, '');
+    store().addGeneratedImageVariants(thumbAssetKey, []);
 
     try {
       const st = useNovelStore.getState();
@@ -399,8 +441,8 @@ export default function YoutubeSafeChecklist() {
         .map((path) => `${path}?t=${cacheBust}`);
       const primary = cacheBusted[0] || `${data.imagePath}?t=${cacheBust}`;
 
-      store.addGeneratedImage(thumbAssetKey, primary);
-      store.addGeneratedImageVariants(thumbAssetKey, cacheBusted);
+      store().addGeneratedImage(thumbAssetKey, primary);
+      store().addGeneratedImageVariants(thumbAssetKey, cacheBusted);
       patch({ thumbnailImagePath: primary });
     } catch (err: unknown) {
       toast.info('Notice', `❌ Lỗi gen ảnh thumbnail: ${err instanceof Error ? err.message : String(err)}`);
@@ -413,8 +455,8 @@ export default function YoutubeSafeChecklist() {
     if (!script.trim()) return;
 
     const geminiKeys = [
-      store.apiKey,
-      ...(Array.isArray(store.apiKeys) ? store.apiKeys : []),
+      store().apiKey,
+      ...(Array.isArray(store().apiKeys) ? store().apiKeys : []),
     ].filter((k): k is string => typeof k === 'string' && k.trim().length > 0);
 
     if (geminiKeys.length === 0) {
@@ -428,7 +470,7 @@ export default function YoutubeSafeChecklist() {
       const sceneMeta = scenes.map((sc, i) => {
         const key = sceneAssetKey(ch, i);
         const dur =
-          store.generatedAudioPaths[key]?.duration ||
+          store().generatedAudioPaths[key]?.duration ||
           Math.max(15, (sc.content?.length || 100) / 12);
         return { title: sc.title, durationSec: dur, content: sc.content };
       });
@@ -436,7 +478,7 @@ export default function YoutubeSafeChecklist() {
       const chaptersText = chapters.map((c) => c.line).join('\n');
 
       // Channel anti-repeat + chính field hiện tại (tránh gen lại y hệt)
-      const chProfile = store.channels?.[store.activeChannelId || ''];
+      const chProfile = store().channels?.[store().activeChannelId || ''];
       const usedTitles = [
         ...(chProfile?.usedHooks || []),
         asset.seoTitle || '',
@@ -454,7 +496,7 @@ export default function YoutubeSafeChecklist() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: script.slice(0, 12000),
-          novelTitle: store.ten_tac_pham,
+          novelTitle: store().ten_tac_pham,
           apiKey: geminiKeys[0],
           apiKeys: geminiKeys,
           chapter: ch,
@@ -523,7 +565,7 @@ export default function YoutubeSafeChecklist() {
           thumbnailLine: thumbnailLine || title.slice(0, 30),
           tags: String(tagsRaw || ''),
           chaptersText,
-          novelTitle: store.ten_tac_pham,
+          novelTitle: store().ten_tac_pham,
           chapter: ch,
           forceThumbLead: true,
         });
@@ -532,9 +574,9 @@ export default function YoutubeSafeChecklist() {
         thumbnailPrompt = buildThumbnailPrompt({
           hook: hook || title,
           thumbnailLine: thumbnailLine || title.slice(0, 30),
-          visualDna: store.visualDnaPrompt || store.mediaStylePreset,
+          visualDna: store().visualDnaPrompt || store().mediaStylePreset,
           characterHint:
-            (store.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+            (store().nhan_vat || []).slice(0, 2).join(' and ') || undefined,
         });
       }
 
@@ -547,7 +589,7 @@ export default function YoutubeSafeChecklist() {
         thumbnailPrompt,
       };
 
-      store.setChapterHook(ch, {
+      store().setChapterHook(ch, {
         hook: merged.hook,
         thumbnailLine: merged.thumbnailLine,
         seoTitle: merged.seoTitle,
@@ -558,10 +600,10 @@ export default function YoutubeSafeChecklist() {
 
       try {
         if (merged.seoTitle) {
-          store.rememberChannelMotif?.('hook', merged.seoTitle.slice(0, 120));
+          store().rememberChannelMotif?.('hook', merged.seoTitle.slice(0, 120));
         }
         if (merged.thumbnailLine) {
-          store.rememberChannelMotif?.('thumb', merged.thumbnailLine.slice(0, 80));
+          store().rememberChannelMotif?.('thumb', merged.thumbnailLine.slice(0, 80));
         }
       } catch {
         /* ignore */
@@ -589,7 +631,7 @@ export default function YoutubeSafeChecklist() {
     const sceneMeta = scenes.map((sc, i) => {
       const key = sceneAssetKey(ch, i);
       const dur =
-        store.generatedAudioPaths[key]?.duration ||
+        store().generatedAudioPaths[key]?.duration ||
         Math.max(15, (sc.content?.length || 100) / 12);
       return { title: sc.title, durationSec: dur, content: sc.content, index: i };
     });
@@ -602,7 +644,7 @@ export default function YoutubeSafeChecklist() {
     );
     const chaptersText = chapters.map((c) => c.line).join('\n');
     const cutPlans = sceneMeta.map((s) => {
-      const prompts = store.generatedPrompts[sceneAssetKey(ch, s.index)] || [];
+      const prompts = store().generatedPrompts[sceneAssetKey(ch, s.index)] || [];
       return buildCutPlan({
         chapter: ch,
         sceneIndex: s.index,
@@ -618,7 +660,7 @@ export default function YoutubeSafeChecklist() {
 
     const seoTitle =
       asset.seoTitle ||
-      buildSeoTitleFromHook(asset.hook, asset.thumbnailLine, store.ten_tac_pham);
+      buildSeoTitleFromHook(asset.hook, asset.thumbnailLine, store().ten_tac_pham);
     const seoTags = normalizeHashtagField(asset.seoTags || '');
     const seoDescription =
       asset.seoDescription ||
@@ -627,14 +669,14 @@ export default function YoutubeSafeChecklist() {
         thumbnailLine: asset.thumbnailLine,
         tags: seoTags,
         chaptersText,
-        novelTitle: store.ten_tac_pham,
+        novelTitle: store().ten_tac_pham,
         chapter: ch,
       });
 
     return {
       version: 2,
       generatedAt: new Date().toISOString(),
-      title: store.ten_tac_pham || 'Untitled',
+      title: store().ten_tac_pham || 'Untitled',
       chapter: ch,
       hook: asset.hook,
       thumbnailLine: asset.thumbnailLine,
@@ -648,10 +690,10 @@ export default function YoutubeSafeChecklist() {
       cutPlans,
       checklist: items,
       voiceDna: {
-        platform: store.ttsConfig.platform,
-        voice: store.ttsConfig.voice,
-        speed: store.ttsConfig.speed,
-        pitch: store.ttsConfig.pitch,
+        platform: store().ttsConfig.platform,
+        voice: store().ttsConfig.voice,
+        speed: store().ttsConfig.speed,
+        pitch: store().ttsConfig.pitch,
       },
       purpose: [
         '1) Copy seoTitle → Title YouTube',
@@ -858,7 +900,7 @@ export default function YoutubeSafeChecklist() {
               onUploadCompetitor={(files) => void handleUploadCompetitorThumb(files)}
               onClearCompetitor={() => handleClearCompetitor()}
               onPickVariant={(src) => {
-                store.addGeneratedImage(thumbAssetKey, src);
+                store().addGeneratedImage(thumbAssetKey, src);
                 patch({ thumbnailImagePath: src });
               }}
             />

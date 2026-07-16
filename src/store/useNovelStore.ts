@@ -48,17 +48,28 @@ export const useNovelStore: UseBoundStore<StoreApi<NovelStore>> = create<NovelSt
   ),
 );
 
-// Safety: never leave UI stuck on "Đang nạp..." if async rehydrate hangs
+/**
+ * Multi-stage failsafe: never leave UI on "Đang nạp trạng thái bộ nhớ..." forever.
+ * Uses setState directly (works even if setHydrated missing / rehydrate hung).
+ */
 if (typeof window !== 'undefined') {
-  setTimeout(() => {
+  const forceHydrated = (reason: string) => {
     try {
       const state = useNovelStore.getState();
-      if (!state.isHydrated) {
-        console.warn('[NovelStore] Ép isHydrated=true sau timeout rehydrate.');
-        state.setHydrated(true);
+      if (state.isHydrated) return;
+      console.warn(`[NovelStore] force isHydrated=true (${reason})`);
+      useNovelStore.setState({ isHydrated: true });
+      try {
+        state.setHydrated?.(true);
+      } catch {
+        /* ignore */
       }
     } catch {
-      // ignore
+      /* ignore */
     }
-  }, 4000);
+  };
+
+  // Do not force on microtask (would paint empty before localStorage rehydrate).
+  // 4500ms matches the dualStorage HTTP fetch timeout of 4000ms.
+  setTimeout(() => forceHydrated('4.5s-hard'), 4500);
 }

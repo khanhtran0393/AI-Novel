@@ -51,13 +51,17 @@ function pickStr(data: Record<string, unknown>, keys: string[]): string {
 }
 
 export function useSetupActions() {
-  const store = useNovelStore();
+  // Local busy only — handlers use getState (no full-store subscribe)
+  const getStore = () => useNovelStore.getState();
   const [promptError, setPromptError] = useState('');
   const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
+  /** Sinh outline — busy riêng, không dang_tai global */
+  const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [isAnalyzingPlot, setIsAnalyzingPlot] = useState(false);
 
   // Sinh ý tưởng bối cảnh ngẫu nhiên qua API (classic setup)
   const handleRandomTemplate = async () => {
+    const store = getStore();
     const prevMoTa = store.setup.mo_ta;
     setPromptError('');
     setIsGeneratingIdea(true);
@@ -91,6 +95,7 @@ export function useSetupActions() {
    * Không dump transcript thô vào mo_ta.
    */
   const handlePhanTichYoutube = async (urlOverride?: string) => {
+    const store = getStore();
     const url = (urlOverride ?? store.youtubeRewriteUrl ?? '').trim();
     if (!url) {
       setPromptError('⚠️ Dán link YouTube trước khi Phân tích.');
@@ -155,6 +160,7 @@ export function useSetupActions() {
 
   // Nút khởi tạo kịch bản AI (Phase 1 -> Phase 2)
   const handleGenerateOutline = async () => {
+    const store = getStore();
     const ytMode =
       store.setupKind === 'youtube' ||
       !!(store.youtubeSourceText || '').trim() ||
@@ -196,7 +202,7 @@ export function useSetupActions() {
     }
 
     setPromptError('');
-    store.setDangTai(true);
+    setIsGeneratingOutline(true);
 
     try {
       const live = useNovelStore.getState();
@@ -304,7 +310,7 @@ export function useSetupActions() {
     } catch (err: unknown) {
       setPromptError(getFriendlyErrorMessage(err));
     } finally {
-      store.setDangTai(false);
+      setIsGeneratingOutline(false);
     }
   };
 
@@ -312,6 +318,7 @@ export function useSetupActions() {
     promptError,
     setPromptError,
     isGeneratingIdea,
+    isGeneratingOutline,
     isAnalyzingPlot,
     handleRandomTemplate,
     handleAnalyzeYoutubePlot,

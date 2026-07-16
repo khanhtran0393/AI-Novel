@@ -61,11 +61,11 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
   const selectedName =
     filteredCloneProfiles.some((p) => p.name === (config.voice || ''))
       ? config.voice
-      : filteredCloneProfiles[0]?.name || '';
+      : filteredCloneProfiles.find((p) => p.hasSample !== false)?.name || '';
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="space-y-1">
           <label className="text-[9px] font-bold uppercase text-zinc-500">Giới tính</label>
           <select
@@ -82,28 +82,6 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
             </option>
             <option className={OPTION_DARK} value="female">
               Nữ
-            </option>
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase text-zinc-500">Vùng miền</label>
-          <select
-            value={config.vinaArea || 'southern'}
-            onChange={(e) =>
-              onCloneFilterChange({
-                vinaArea: e.target.value as 'northern' | 'central' | 'southern',
-              })
-            }
-            className={SELECT_DARK_SM}
-          >
-            <option className={OPTION_DARK} value="northern">
-              Bắc
-            </option>
-            <option className={OPTION_DARK} value="central">
-              Trung
-            </option>
-            <option className={OPTION_DARK} value="southern">
-              Nam
             </option>
           </select>
         </div>

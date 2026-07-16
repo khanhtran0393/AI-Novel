@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  STATIC_VOICE_CATALOG,
-  type VoiceCatalog,
-} from '@/lib/voiceCatalog';
+import { type VoiceCatalog } from '@/lib/voiceCatalog';
 import { prepareVoiceCatalog } from '@/lib/voiceCatalogPrep';
 
 export type VoicePrepMeta = {
@@ -12,9 +9,9 @@ export type VoicePrepMeta = {
 };
 
 export function useVoiceCatalogPrep(isOpen: boolean) {
-  const [dynamicVoices, setDynamicVoices] = useState<VoiceCatalog>(STATIC_VOICE_CATALOG);
+  const [dynamicVoices, setDynamicVoices] = useState<VoiceCatalog>({});
   const [prepMeta, setPrepMeta] = useState<VoicePrepMeta>({
-    sources: ['static'],
+    sources: [],
     total: 0,
     loading: false,
   });

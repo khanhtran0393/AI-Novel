@@ -186,6 +186,26 @@ let hydrationLockedUntil = 0;
 let flushGuardsInstalled = false;
 /** Window during which setItem may persist a low-score "project reset" payload. */
 let intentionalResetUntil = 0;
+/** Debounce localStorage + durable writes — big JSON.stringify payloads freeze UI if every set() flushes. */
+let localPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingLocalPersist: { name: string; value: string } | null = null;
+const LOCAL_PERSIST_DEBOUNCE_MS = 450;
+
+function flushPendingLocalPersist(): void {
+  if (localPersistTimer) {
+    clearTimeout(localPersistTimer);
+    localPersistTimer = null;
+  }
+  const pending = pendingLocalPersist;
+  pendingLocalPersist = null;
+  if (!pending) return;
+  try {
+    window.localStorage.setItem(pending.name, pending.value);
+  } catch (err) {
+    console.warn('[NovelStore] localStorage.setItem failed:', err);
+  }
+  durableWrite(pending.value);
+}
 
 /**
  * Call immediately before store.resetStore() for "Làm Mới Dự Án".
@@ -342,6 +362,7 @@ export function durableWrite(value: string, { sync = false } = {}) {
 }
 
 export function flushDurableNow() {
+  flushPendingLocalPersist();
   if (!lastDiskPayload || scoreStoreRaw(lastDiskPayload) <= 0) return;
   const api = getPersistApi();
   try {
@@ -375,72 +396,119 @@ export function flushDurableNow() {
  * 2. localStorage - fast session cache (may wipe)
  * 3. HTTP /api/persist-store - same disk files when not in Electron bridge
  */
+/**
+ * Hydrate storage — MUST never hang the renderer.
+ * Electron preload already injects best disk snapshot into localStorage via sendSync boot.
+ * Calling getStoreSync again here can freeze the UI forever (sync IPC + huge JSON).
+ * Strategy: localStorage first; optional short HTTP only if thin; no blocking IPC on read path.
+ */
 export const dualStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
     if (typeof window === 'undefined') return null;
 
-    let local: string | null = null;
-    try {
-      local = window.localStorage.getItem(name);
-    } catch {
-      local = null;
-    }
-
-    let ipcRaw: string | null = null;
-    try {
-      ipcRaw = getPersistApi()?.getStoreSync?.() || null;
-    } catch {
-      ipcRaw = null;
-    }
-
-    let httpRaw: string | null = null;
-    // Always try HTTP if local/IPC lack a reset epoch or look thin — then epoch wins
-    const quickBest = pickBestForHydrate(local, ipcRaw);
-    const quickScore = scoreStoreRaw(quickBest);
-    const quickEpoch = extractResetEpoch(quickBest);
-    if (quickScore < 500 || quickEpoch <= 0) {
+    const hardTimeoutMs = 4000;
+    const run = async (): Promise<string | null> => {
+      let local: string | null = null;
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2500);
-        const res = await fetch(`${API.persistStore}?name=${encodeURIComponent(name)}`, {
-          signal: controller.signal,
-          cache: 'no-store',
-        });
-        clearTimeout(timeout);
-        if (res.ok) {
-          const data = (await res.json()) as { value?: string | null };
-          httpRaw = data?.value || null;
+        local = window.localStorage.getItem(name);
+      } catch {
+        local = null;
+      }
+
+      // Boot marker from preload — disk already fused into localStorage
+      let bootRaw: string | null = null;
+      try {
+        const boot = getPersistApi()?.getBootInfo?.() as
+          | { raw?: string | null }
+          | null
+          | undefined;
+        if (boot?.raw && typeof boot.raw === 'string') bootRaw = boot.raw;
+      } catch {
+        bootRaw = null;
+      }
+
+      const localScore = scoreStoreRaw(local);
+      const bootScore = scoreStoreRaw(bootRaw);
+
+      // Fast path: local is rich enough — do NOT touch IPC sendSync
+      if (localScore >= 200 || (local && extractResetEpoch(local) > 0)) {
+        // Optionally fuse media from boot if boot is richer on media keys only
+        let best = local;
+        if (bootRaw && bootScore > 0) {
+          best = fuseMediaSettingsRaw(local || bootRaw, local, bootRaw) || local;
         }
-      } catch {
-        // ignore
+        hydrationLockedUntil = Date.now() + 2000;
+        return best;
       }
-    }
 
-    // Epoch beats content richness (prevents old lore/chapters resurrecting after Làm Mới)
-    let best = pickBestForHydrate(local, ipcRaw, httpRaw);
-    if (best) {
-      // Only fuse media keys — never revive story fields from weaker candidates
-      best = fuseMediaSettingsRaw(best, local, ipcRaw, httpRaw);
-    }
-    if (best) {
+      // Thin local: prefer boot raw from preload (already in memory, no second IPC)
+      let best = pickBestForHydrate(local, bootRaw);
+
+      // HTTP only if still thin (browser / non-electron) — hard abort 800ms
+      if (scoreStoreRaw(best) < 200) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 800);
+          const res = await fetch(
+            `${API.persistStore}?name=${encodeURIComponent(name)}`,
+            { signal: controller.signal, cache: 'no-store' },
+          );
+          clearTimeout(timeout);
+          if (res.ok) {
+            const data = (await res.json()) as { value?: string | null };
+            const httpRaw = data?.value || null;
+            best = pickBestForHydrate(best, httpRaw);
+            if (best && httpRaw) {
+              best = fuseMediaSettingsRaw(best, best, httpRaw) || best;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (best) {
+        try {
+          if (best !== local) window.localStorage.setItem(name, best);
+        } catch {
+          // quota
+        }
+        try {
+          durableWrite(best);
+        } catch {
+          // ignore
+        }
+      }
+
+      hydrationLockedUntil = Date.now() + 2000;
+      return best;
+    };
+
+    try {
+      return await Promise.race([
+        run(),
+        new Promise<string | null>((resolve) => {
+          setTimeout(() => {
+            try {
+              const fallback = window.localStorage.getItem(name);
+              console.warn(
+                `[NovelStore] getItem hard-timeout ${hardTimeoutMs}ms — use local only`,
+              );
+              resolve(fallback);
+            } catch {
+              resolve(null);
+            }
+          }, hardTimeoutMs);
+        }),
+      ]);
+    } catch (e) {
+      console.warn('[NovelStore] getItem failed, empty hydrate', e);
       try {
-        if (best !== local) window.localStorage.setItem(name, best);
+        return window.localStorage.getItem(name);
       } catch {
-        // quota
-      }
-      durableWrite(best);
-      if (
-        extractResetEpoch(best) > extractResetEpoch(local) ||
-        scoreStoreRaw(best) > scoreStoreRaw(local)
-      ) {
-        console.info(
-          `[NovelStore] Hydrate epoch=${extractResetEpoch(best)} score=${scoreStoreRaw(best)} (local epoch=${extractResetEpoch(local)} score=${scoreStoreRaw(local)})`,
-        );
+        return null;
       }
     }
-
-    hydrationLockedUntil = Date.now() + 2500;
-    return best;
   },
 
   setItem: (name: string, value: string): void => {
@@ -476,12 +544,29 @@ export const dualStorage: StateStorage = {
       // continue
     }
 
-    try {
-      window.localStorage.setItem(name, value);
-    } catch (err) {
-      console.warn('[NovelStore] localStorage.setItem failed:', err);
+    // Debounce non-intentional writes — avoids main-thread freeze on every media map update
+    if (intentional) {
+      pendingLocalPersist = null;
+      if (localPersistTimer) {
+        clearTimeout(localPersistTimer);
+        localPersistTimer = null;
+      }
+      try {
+        window.localStorage.setItem(name, value);
+      } catch (err) {
+        console.warn('[NovelStore] localStorage.setItem failed:', err);
+      }
+      durableWrite(value, { sync: true });
+      return;
     }
-    durableWrite(value);
+
+    pendingLocalPersist = { name, value };
+    lastDiskPayload = value;
+    if (localPersistTimer) clearTimeout(localPersistTimer);
+    localPersistTimer = setTimeout(() => {
+      localPersistTimer = null;
+      flushPendingLocalPersist();
+    }, LOCAL_PERSIST_DEBOUNCE_MS);
   },
 
   removeItem: (name: string): void => {

@@ -342,34 +342,42 @@ export function resolveBrowser(opts?: {
     if (list[0]) return list[0];
   }
 
-  // auto / fallback: clean chromium first
+  // auto: CHỈ Chromium sạch — cấm fallback Google Chrome (B10: hard-fail để user sửa)
   const clean = listDetectedBrowsers().find(
     (b) => b.family === 'chromium' && !b.isStockChrome,
   );
   if (clean) return clean;
 
   const chrome = listDetectedBrowsers().find((b) => b.isStockChrome);
-  if (chrome) {
+  if (chrome && engine === 'chrome') {
+    // Chỉ khi user chọn tường minh engine=chrome
     return {
       ...chrome,
       warning:
         (chrome.warning || '') +
-        ' Không có Ungoogled/Brave — dùng Chrome (có thể fail). Xem tools/browsers/README.md',
+        ' Bạn đã chọn Google Chrome tường minh — load-extension có thể FAIL.',
     };
   }
 
+  if (chrome) {
+    throw new Error(
+      'Chỉ phát hiện Google Chrome. App không fallback Chrome khi engine=auto (thường chặn extension Flow). ' +
+        'Sửa: Ảnh/Video → «Cài browser gen ảnh» (1 nút) hoặc cài Brave, rồi Đăng nhập Google. ' +
+        'Hoặc chọn engine «Google Chrome» tường minh nếu cố dùng Chrome.',
+    );
+  }
+
   throw new Error(
-    'Không tìm thấy trình duyệt. Cài Ungoogled Chromium portable vào tools/browsers/ungoogled-chromium/ hoặc Brave.',
+    'Không tìm thấy trình duyệt sạch. Bấm «Cài browser gen ảnh» trong app hoặc cài Brave / portable vào tools/browsers/ungoogled-chromium/.',
   );
 }
 
 export function portableChromiumInstallHint(): string {
   return [
-    'Khuyến nghị (FlowAgent strategy — không CDP):',
-    '1) Tải Ungoogled Chromium Windows portable',
-    '2) Giải nén vào: tools/browsers/ungoogled-chromium/',
-    '   (file chrome.exe nằm trong thư mục đó)',
-    '3) Bấm Đăng nhập Google / Sửa kết nối trong app',
-    'Chrome Google chính thức (120+) thường chặn --load-extension → extension không nối WS.',
+    'Không fallback Chrome ngầm (IRON B10). Làm lần lượt:',
+    '1) Trong app: Ảnh/Video → Google Flow → «Cài browser gen ảnh» (tự tải, 1 nút)',
+    '2) Rồi «Đăng nhập Google»',
+    'Hoặc cài Brave / bỏ portable vào tools/browsers/ungoogled-chromium/chrome.exe',
+    'Chỉ chọn engine «Google Chrome» tường minh nếu cố dùng Chrome (dễ fail extension).',
   ].join('\n');
 }

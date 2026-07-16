@@ -76,9 +76,9 @@ export interface TTSConfig {
   vinaSpeakerSeed?: number;
   vinaStyleSeed?: number;
   vinaEngineUrl?: string;
-  /** Google Cloud TTS API key (optional — có key thì gen thật, không thì nghe mẫu Edge) */
+  /** Google Cloud TTS API key (bắt buộc nếu platform=google — không mẫu Edge ngầm) */
   googleCloudApiKey?: string;
-  /** VBee API token (optional) */
+  /** Legacy VBee fields (platform đã gỡ — không dùng) */
   vbeeApiKey?: string;
   vbeeAppId?: string;
 }

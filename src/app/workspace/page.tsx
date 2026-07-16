@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import { Download } from 'lucide-react';
 
@@ -34,7 +34,42 @@ import { toast } from '@/lib/toastBus';
 
 export default function Workspace() {
   const store = useNovelStore();
+  // Primitive selector — guarantee re-render when Setup closes (giai_doan 1→2)
+  const giaiDoan = useNovelStore((s) => s.giai_doan);
+  const setupKind = useNovelStore((s) => s.setupKind);
+  /**
+   * Local latch: once user closes Setup this session, hide modal even if
+   * late rehydrate restores disk giai_doan:1. Re-open from Sidebar sets
+   * giai_doan 1 after we were on 2 → clear latch.
+   */
+  const [setupDismissed, setSetupDismissed] = useState(false);
+  const prevGiaiDoanRef = React.useRef(giaiDoan);
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prev = prevGiaiDoanRef.current;
+    prevGiaiDoanRef.current = giaiDoan;
+    if (giaiDoan === 2) {
+      setSetupDismissed(true);
+      return;
+    }
+    // Explicit open Setup (Sidebar): 2 → 1
+    if (prev === 2 && giaiDoan === 1) {
+      setSetupDismissed(false);
+    }
+  }, [giaiDoan]);
+
+  const showSetup = giaiDoan === 1 && !setupDismissed;
+
+  const dismissSetup = () => {
+    setSetupDismissed(true);
+    useNovelStore.setState({ giai_doan: 2 });
+    try {
+      useNovelStore.getState().setGiaiDoan?.(2);
+    } catch {
+      /* ignore */
+    }
+  };
 
   // 8 Custom React Hooks để quản lý toàn bộ các hành động mượt mà theo mô-đun
   const {
@@ -81,8 +116,7 @@ export default function Workspace() {
   const {
     generatingPrompt,
     regeneratingSinglePrompt,
-    generatingImage,
-    generatingVideo,
+    // gen ảnh/video progress: mediaGenSlotStore (không còn state trên hook)
     handleGenerateImagePrompt,
     handleRegenPrompt,
     handleGenerateImage,
@@ -97,19 +131,17 @@ export default function Workspace() {
     handleExportTxt
   } = useProjectActions(streamText);
 
-  // Trả về Loading Screen nếu Zustand chưa hydrate
-  if (!store.isHydrated) {
-    return (
-      <AppShell>
-        <div className="flex h-full flex-col items-center justify-center bg-black/40 font-sans text-amber-500">
-          <div className="relative h-16 w-16 animate-spin rounded-full border-4 border-amber-950 border-t-amber-500" />
-          <p className="mt-4 text-sm tracking-widest text-zinc-400 uppercase">
-            Đang nạp trạng thái bộ nhớ...
-          </p>
-        </div>
-      </AppShell>
-    );
-  }
+  // NEVER block workspace behind isHydrated spinner (was stuck forever on desktop).
+  // Store starts isHydrated=true; rehydrate merges disk data in background.
+  useEffect(() => {
+    try {
+      if (!useNovelStore.getState().isHydrated) {
+        useNovelStore.setState({ isHydrated: true });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
   // Live Word-Gate: while streaming, count ticks from typing animation; else saved chapter
@@ -419,8 +451,6 @@ export default function Workspace() {
                 <div className="flex-1 min-h-0 overflow-y-auto bg-black">
                   <div className="p-3 sm:p-5 text-zinc-300 font-sans text-sm">
                     <ContentTab
-                      isStreaming={isStreaming}
-                      streamText={streamText}
                       handleSceneChange={handleSceneChange}
                       handleCopyScene={handleCopyScene}
                       handleExpandScene={handleExpandScene}
@@ -443,8 +473,6 @@ export default function Workspace() {
                       ttsStatus={ttsStatus}
                       generatingPrompt={generatingPrompt}
                       regeneratingSinglePrompt={regeneratingSinglePrompt}
-                      generatingImage={generatingImage}
-                      generatingVideo={generatingVideo}
                       onImageZoom={setZoomImageUrl}
                     />
                   </div>
@@ -454,24 +482,24 @@ export default function Workspace() {
           </section>
         </main>
 
-      {/* Setup modal giữa màn hình — classic | youtube */}
-      {store.giai_doan === 1 && store.setupKind === 'youtube' && (
+      {/* Setup modal — local dismiss latch + store phase (survives rehydrate yank-back) */}
+      {showSetup && setupKind === 'youtube' && (
         <YoutubeSetupPhase
           promptError={promptError}
           isGeneratingIdea={isGeneratingIdea}
           isAnalyzingPlot={isAnalyzingPlot}
           handlePhanTichYoutube={handlePhanTichYoutube}
           handleGenerateOutline={handleGenerateOutline}
-          onClose={() => store.setGiaiDoan(2)}
+          onClose={dismissSetup}
         />
       )}
-      {store.giai_doan === 1 && store.setupKind !== 'youtube' && (
+      {showSetup && setupKind !== 'youtube' && (
         <SetupPhase
           promptError={promptError}
           isGeneratingIdea={isGeneratingIdea}
           handleRandomTemplate={handleRandomTemplate}
           handleGenerateOutline={handleGenerateOutline}
-          onClose={() => store.setGiaiDoan(2)}
+          onClose={dismissSetup}
         />
       )}
 

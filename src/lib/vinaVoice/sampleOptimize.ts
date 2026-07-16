@@ -153,29 +153,15 @@ export function optimizeCloneSample(
 
     return { ok: true, outPath: dst, steps, durationHintSec: dur || undefined };
   } catch (e) {
-    // fallback: plain convert
-    try {
-      execFileSync(
-        ff,
-        ['-y', '-i', src, '-ac', '1', '-ar', '44100', '-sample_fmt', 's16', dst],
-        { stdio: 'pipe' },
-      );
-      steps.push('fallback_plain');
-      return {
-        ok: true,
-        outPath: dst,
-        steps,
-        durationHintSec: probeDuration(dst) || undefined,
-        error: e instanceof Error ? e.message : String(e),
-      };
-    } catch (e2) {
-      return {
-        ok: false,
-        outPath: dst,
-        steps,
-        error: e2 instanceof Error ? e2.message : String(e2),
-      };
-    }
+    // IRON B10: không plain-convert che lỗi optimize — báo thẳng
+    const msg = e instanceof Error ? e.message : String(e);
+    steps.push('optimize_failed');
+    return {
+      ok: false,
+      outPath: dst,
+      steps,
+      error: `Tối ưu mẫu thất bại (không fallback plain convert): ${msg}. Kiểm tra ffmpeg / file mẫu.`,
+    };
   }
 }
 

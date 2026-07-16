@@ -176,6 +176,11 @@ class WarmBrain:
             return {"ok": False, "error": "empty vocab ids"}
 
         waveform = self.load_ref_pcm(ref_audio)
+        # Cap ref to ~12s @ 24kHz — long refs explode max_duration and hang CUDA
+        MODEL_SAMPLE_RATE = 24000
+        max_ref_samples = int(os.environ.get("VINA_MAX_REF_SEC", "12")) * MODEL_SAMPLE_RATE
+        if waveform.shape[-1] > max_ref_samples:
+            waveform = waveform[:max_ref_samples]
         refaudio = np.array(waveform * 32768.0, dtype=np.int16)
         audio_len = refaudio.shape[-1]
         refaudio = refaudio.reshape(1, 1, -1)
@@ -191,13 +196,13 @@ class WarmBrain:
         )
         ref_text_len = max(ref_text_len, 1)
         ref_audio_len = audio_len // HOP_LENGTH + 1
-        max_duration = np.array(
-            [
-                ref_audio_len
-                + int(ref_audio_len / ref_text_len * gen_text_len / speed)
-            ],
-            dtype=np.int64,
+        planned = ref_audio_len + int(
+            ref_audio_len / ref_text_len * gen_text_len / speed
         )
+        # Hard cap frames (~30s @ 24k hop256) so one hung job cannot freeze GPU forever
+        max_frames = int(os.environ.get("VINA_MAX_DURATION_FRAMES", "3000"))
+        planned = max(32, min(int(planned), max_frames))
+        max_duration = np.array([planned], dtype=np.int64)
 
         signal = run_inference(
             self.ort_A,

@@ -176,20 +176,17 @@ async function runLoop(signal: AbortSignal): Promise<void> {
     });
 
     if (!instruction) {
-      // Nếu còn chương trống nhưng route null → force writer next
+      // IRON B10: không force writer "Fallback next chapter" che router null
       const n = nextChapter(progress);
       if (n > 0) {
-        await executeInstruction(
-          {
-            agent: 'writer',
-            task: `Viết chương ${n}`,
-            reason: 'Fallback next chapter',
-            chapter: n,
-          },
-          progress,
-          signal,
-        );
-        continue;
+        const msg =
+          `AI Novel engine: router trả null nhưng còn chương ${n} chưa xong. ` +
+          `Không auto-force writer. Sửa Flow Router / progress / foundation.`;
+        state().lastError = msg;
+        logEngine(`❌ ${msg}`, 'error');
+        progress.lastAction = 'Router null (hard-fail)';
+        saveProgress(progress);
+        break;
       }
       progress.phase = 'complete';
       progress.lastAction = 'Complete';
@@ -207,12 +204,11 @@ async function runLoop(signal: AbortSignal): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       state().lastError = msg;
-      logEngine(`❌ Tool error: ${msg}`, 'error');
-      // stop on hard failures (auth / no key)
-      if (/API Key|Unauthorized|401|403/i.test(msg)) break;
-      // soft fail: pause briefly then continue once
-      await sleep(1500);
-      if (steps > 3) break;
+      logEngine(`❌ Tool error (hard-stop, không soft-continue): ${msg}`, 'error');
+      // IRON B10: mọi lỗi tool dừng loop — không sleep-retry che lỗi
+      progress.lastAction = `Error: ${msg.slice(0, 120)}`;
+      saveProgress(progress);
+      break;
     }
 
     await sleep(800);
@@ -266,11 +262,11 @@ async function executeInstruction(
     return expandArcTool(progress);
   }
 
-  // Fallback commit current draft if any
-  if (ch > 0) {
-    return commitChapterTool(ch, progress);
-  }
-  return progress;
+  // IRON B10: agent/task không khớp → hard-fail, không commit ngầm draft
+  throw new Error(
+    `AI Novel engine: instruction không khớp agent/task (agent=${instruction.agent}, task=${String(instruction.task || '').slice(0, 80)}, chapter=${ch || 0}). ` +
+      `Không fallback commit. Sửa Flow Router / agent map.`,
+  );
 }
 
 function syncSnapshot(progress: EngineProgress): void {

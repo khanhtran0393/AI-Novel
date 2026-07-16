@@ -23,9 +23,9 @@ import {
   countHumanJokeAsides,
 } from '@/lib/youtubeSafe';
 import {
-  applyCharacterSheetFormulas,
   applyDirectorFormulasToPromptPair,
   compileStillImagePrompt,
+  requireGenreFromSetup,
 } from '@/lib/integrations/seedance';
 import {
   CHAR_ANGLE_CAMERA,
@@ -41,8 +41,127 @@ import {
 import type { GenerateHandlerContext } from './types';
 
 /**
+ * Cap shot count from **user timeline config** (not a fixed 16).
+ * Seedance multishot / event-density: ~one beat per shot; budget ≈ duration / beat length.
+ *
+ * Sources (priority):
+ * 1. payload.maxPromptShots — explicit override
+ * 2. ceil(totalDurationSec / secondsPerBeat) — Media Config WPM/beat + TTS duration
+ * 3. Safety ceiling 80 only to protect model JSON size (not a creative default)
+ */
+function resolveMaxPromptShots(opts: {
+  totalDurationSec: number;
+  secondsPerBeat: number;
+  explicitMax?: number;
+}): number {
+  const beatRaw = Number(opts.secondsPerBeat);
+  if (!Number.isFinite(beatRaw) || beatRaw <= 0) {
+    throw new Error(
+      'Thieu secondsPerBeat hop le khi cap shot. App khong tu gan 6s.',
+    );
+  }
+  const beat = Math.max(1, beatRaw);
+  const durRaw = Number(opts.totalDurationSec);
+  if (!Number.isFinite(durRaw) || durRaw <= 0) {
+    throw new Error(
+      'Thieu totalDurationSec hop le khi cap shot. App khong tu gan duration.',
+    );
+  }
+  const dur = Math.max(beat, durRaw);
+  // How many beats fit the scene timeline (user-configured beat length)
+  let maxShots = Math.max(1, Math.round(dur / beat));
+  const explicit = Number(opts.explicitMax);
+  if (Number.isFinite(explicit) && explicit > 0) {
+    maxShots = Math.min(maxShots, Math.round(explicit));
+  }
+  // Absolute safety only (token / JSON size) — not a product default of 16
+  return Math.min(80, Math.max(1, maxShots));
+}
+
+/**
+ * AI sometimes wraps the array: { prompts: [...] } / { data: [...] }
+ * or returns a single object / numeric-key map — normalize to array.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizePromptArray(raw: any): any[] {
+  if (Array.isArray(raw)) return raw.filter((x) => x != null);
+  if (raw && typeof raw === 'object') {
+    for (const k of [
+      'prompts',
+      'items',
+      'data',
+      'results',
+      'shots',
+      'list',
+      'output',
+      'scenes',
+      'beats',
+    ]) {
+      if (Array.isArray(raw[k])) return raw[k].filter((x: unknown) => x != null);
+    }
+    // Single prompt object with image/video fields
+    if (
+      raw.image_prompt ||
+      raw.imagePrompt ||
+      raw.video_prompt ||
+      raw.videoPrompt ||
+      raw.prompt ||
+      raw.script_prompt
+    ) {
+      return [raw];
+    }
+    // Map-like: { "1": {...}, "2": {...} } or { "0": {...} }
+    const vals = Object.values(raw);
+    if (
+      vals.length > 0 &&
+      vals.every((v) => v && typeof v === 'object' && !Array.isArray(v))
+    ) {
+      const looksLikePrompts = vals.some(
+        (v) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (v as any).image_prompt ||
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (v as any).imagePrompt ||
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (v as any).prompt ||
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (v as any).video_prompt ||
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (v as any).script_prompt ||
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (v as any).sentence,
+      );
+      if (looksLikePrompts) return vals as any[];
+    }
+  }
+  return [];
+}
+
+/** Merge overflow sentences so N ≤ maxN (preserve order, join with space). */
+function capSentences(sentences: string[], maxN: number): string[] {
+  if (sentences.length <= maxN) return sentences;
+  const out: string[] = [];
+  const bucketSize = Math.ceil(sentences.length / maxN);
+  for (let i = 0; i < sentences.length; i += bucketSize) {
+    out.push(
+      sentences
+        .slice(i, i + bucketSize)
+        .join(' ')
+        .trim(),
+    );
+  }
+  // If still over (edge), hard-merge tail
+  while (out.length > maxN) {
+    const last = out.pop() || '';
+    out[out.length - 1] = `${out[out.length - 1]} ${last}`.trim();
+  }
+  return out;
+}
+
+/**
  * Owner: generate/imagePrompt.ts
  * Only handles requestTypes assigned in contracts/apiMap GENERATE_REQUEST_OWNERS → imagePrompt
+ * B10: no local heuristic fill, no mat-the genre default — hard-fail with clear error.
  */
 export async function handleImagePrompt(
   ctx: GenerateHandlerContext,
@@ -53,8 +172,53 @@ export async function handleImagePrompt(
   if (requestType === 'GENERATE_IMAGE_PROMPT') {
     const { sceneText, style, voiceDuration, characterReferences, wpm, secondsPerBeat } =
       payload;
-    const wpmNum = Number(wpm) > 0 ? Number(wpm) : 140;
-    const beatSec = Number(secondsPerBeat) > 0 ? Number(secondsPerBeat) : 6;
+
+    const styleHint = String(style || '').trim();
+    if (!styleHint) {
+      return NextResponse.json(
+        {
+          error:
+            'Thieu Visual DNA / Media Style. Mo Media Config dat style truoc khi Gen Prompt. App khong tu gan style.',
+        },
+        { status: 400 },
+      );
+    }
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreFromSetup({
+        genre: typeof payload.genre === 'string' ? payload.genre : undefined,
+        chu_de: typeof payload.chu_de === 'string' ? payload.chu_de : undefined,
+        phong_cach:
+          typeof payload.phong_cach === 'string' ? payload.phong_cach : undefined,
+      });
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
+
+    const wpmNum = Number(wpm);
+    if (!Number.isFinite(wpmNum) || wpmNum <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            'Thieu WPM hop le (Media Config). App khong tu gan WPM.',
+        },
+        { status: 400 },
+      );
+    }
+    const beatSec = Number(secondsPerBeat);
+    if (!Number.isFinite(beatSec) || beatSec <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            'Thieu secondsPerBeat hop le (Media Config). App khong tu gan beat.',
+        },
+        { status: 400 },
+      );
+    }
     const voiceDur = Number(voiceDuration);
     // Prefer real TTS duration; else estimate from word count + WPM (aligned with client Studio)
     const wordCount = String(sceneText || '')
@@ -104,9 +268,29 @@ export async function handleImagePrompt(
     }
   
     if (rawSentences.length === 0) {
-      rawSentences.push(sceneText.trim());
+      rawSentences.push(String(sceneText || '').trim() || 'Cảnh trống');
     }
-  
+
+    // Cap shot count from user config: secondsPerBeat + scene duration (TTS or WPM estimate)
+    const explicitMax = Number(
+      (payload as { maxPromptShots?: number }).maxPromptShots,
+    );
+    const maxPromptShots = resolveMaxPromptShots({
+      totalDurationSec: totalDuration,
+      secondsPerBeat: beatSec,
+      explicitMax: Number.isFinite(explicitMax) && explicitMax > 0 ? explicitMax : undefined,
+    });
+    const beforeCap = rawSentences.length;
+    const capped = capSentences(rawSentences, maxPromptShots);
+    rawSentences.length = 0;
+    rawSentences.push(...capped);
+    if (beforeCap !== rawSentences.length) {
+      console.info(
+        `[Prompt Generator] cap shots ${beforeCap} → ${rawSentences.length} ` +
+          `(user beat=${beatSec}s · duration=${totalDuration}s · max=${maxPromptShots})`,
+      );
+    }
+
     let sentenceListText = '';
     rawSentences.forEach((sentence: string, idx: number) => {
       sentenceListText += `${idx + 1}. "${sentence}"\n`;
@@ -128,7 +312,7 @@ export async function handleImagePrompt(
       }
       characterInstructions += `\nYÊU CẦU QUAN TRỌNG (Character Consistency):
   1. Nếu câu kịch bản có tên nhân vật trong danh sách trên → BẮT BUỘC nhúng face lock + đặc điểm nhận dạng + trang phục signature vào image_prompt/video_prompt (tiếng Anh).
-  2. Đặc điểm nhận dạng (sẹo, nốt ruồi, xăm, khuyết tật, vật dụng đặc trưng) PHẢI xuất hiện giống hệt mọi shot — không được đổi/mất/thêm bừa.
+  2. Đặc điểm nhận dạng (sẹo, nốt ruồi, xăm, vật dụng đặc trưng) PHẢI xuất hiện giống hệt mọi shot — không được đổi/mất/thêm bừa.
   3. Biểu cảm khuôn mặt phải khớp emotion của câu (vui/buồn/giận/sợ...) nhưng cấu trúc mặt + marks vẫn cố định.
   4. Góc máy (front/3-4/side/back) có thể đổi, nhưng identity lock không được đổi.`;
     }
@@ -142,7 +326,9 @@ export async function handleImagePrompt(
   ${sentenceListText}
   
   --- PHONG CÁCH NGHỆ THUẬT (VISUAL DNA STYLE) ---
-  ${style || 'Cinematic Dark Post-Apocalyptic Fantasy'}
+  ${styleHint}
+  --- THỂ LOẠI / SETUP (CHỦ ĐỀ + PHONG CÁCH TRUYỆN) ---
+  ${genreLabel}
   ${characterInstructions}
   
   YÊU CẦU BẮT BUỘC VỀ BẢN DỊCH & NGÔN NGỮ (BẮT BUỘC TUÂN THỦ):
@@ -172,20 +358,52 @@ export async function handleImagePrompt(
   `;
   
   
-    const aiResponse = await callActiveModel(prompt, keysToUse, model);
+    // Resolve character hints early (AI repair path only — no local fill)
+    const charHintsEarly: string[] = [];
+    try {
+      const refs = characterReferences || payload.nhan_vat_prompts || {};
+      if (refs && typeof refs === 'object') {
+        for (const k of Object.keys(refs)) if (k) charHintsEarly.push(k);
+      }
+    } catch {
+      /* ignore */
+    }
+    // Prefer retry-capable JSON path — B10: no local heuristic fill on failure
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsedPrompts: any[] = [];
+    let aiParseError: string | null = null;
     try {
-      parsedPrompts = cleanAndParseJson(aiResponse);
+      const rawJson = await generateJsonWithRetry(prompt, keysToUse, 2, model);
+      parsedPrompts = normalizePromptArray(rawJson);
     } catch (err) {
-      throw new Error(`Prompt generator returned invalid JSON: ${(err as Error).message}`);
+      aiParseError = err instanceof Error ? err.message : String(err);
+      try {
+        const aiResponse = await callActiveModel(prompt, keysToUse, model);
+        parsedPrompts = normalizePromptArray(cleanAndParseJson(aiResponse));
+        aiParseError = null;
+      } catch (err2) {
+        aiParseError =
+          (err2 instanceof Error ? err2.message : String(err2)) || aiParseError;
+        return NextResponse.json(
+          {
+            error: `Sinh prompt AI that bai (JSON). Khong dung fill cuc bo. Chi tiet: ${aiParseError}`,
+          },
+          { status: 502 },
+        );
+      }
     }
-  
-    if (!Array.isArray(parsedPrompts)) {
-      throw new Error('Prompt generator did not return a JSON array.');
+
+    if (!parsedPrompts.length) {
+      return NextResponse.json(
+        {
+          error:
+            'AI tra ve mang prompt rong. Khong dung fill cuc bo — kiem tra API key / model master.',
+        },
+        { status: 502 },
+      );
     }
-  
-    // Tái lập danh sách prompt đầy đủ hoàn hảo khớp 100% với danh sách câu ban đầu
+
+    // Tái lập danh sách prompt khớp 100% với danh sách câu
     const N = rawSentences.length;
     const durations = new Array(N);
     let remainingDuration = totalDuration;
@@ -196,49 +414,224 @@ export async function handleImagePrompt(
       durations[i] = dur;
       remainingDuration -= dur;
     }
-  
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const coercePromptText = (val: any): string => {
+      if (val == null) return '';
+      if (typeof val === 'string') return val.trim();
+      if (typeof val === 'number' || typeof val === 'boolean') return String(val).trim();
+      if (Array.isArray(val)) {
+        return val.map(coercePromptText).filter(Boolean).join(', ').trim();
+      }
+      if (typeof val === 'object') {
+        for (const k of [
+          'text',
+          'prompt',
+          'value',
+          'content',
+          'en',
+          'english',
+          'description',
+          'image_prompt',
+          'video_prompt',
+        ]) {
+          const s = coercePromptText(val[k]);
+          if (s) return s;
+        }
+      }
+      return '';
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const getVal = (obj: any, keys: string[]): string => {
+      if (!obj || typeof obj !== 'object') return '';
+      for (const k of keys) {
+        const s = coercePromptText(obj[k]);
+        if (s) return s;
+      }
+      return '';
+    };
+
+    // Claim each AI item at most once — avoid id=1 being reused for idx 0 and 1
+    const claimed = new Set<number>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pickAiItem = (idx: number): any => {
+      // 1) exact 1-based id
+      for (let i = 0; i < parsedPrompts.length; i++) {
+        if (claimed.has(i)) continue;
+        if (Number(parsedPrompts[i]?.id) === idx + 1) {
+          claimed.add(i);
+          return parsedPrompts[i];
+        }
+      }
+      // 2) positional index
+      if (idx < parsedPrompts.length && !claimed.has(idx)) {
+        claimed.add(idx);
+        return parsedPrompts[idx];
+      }
+      // 3) first unclaimed
+      for (let i = 0; i < parsedPrompts.length; i++) {
+        if (!claimed.has(i)) {
+          claimed.add(i);
+          return parsedPrompts[i];
+        }
+      }
+      return null;
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extractPair = (aiItem: any) => {
+      if (!aiItem) {
+        return { image: '', video: '', emotion: 'cinematic' };
+      }
+      const image = getVal(aiItem, [
+        'image_prompt',
+        'imagePrompt',
+        'prompt_image',
+        'image-prompt',
+        'still_prompt',
+        'stillPrompt',
+        'prompt',
+        'image',
+      ]);
+      let video = getVal(aiItem, [
+        'video_prompt',
+        'videoPrompt',
+        'prompt_video',
+        'video-prompt',
+        'motion_prompt',
+        'motionPrompt',
+        'video',
+        'animation',
+      ]);
+      // B10: do not invent video from image — incomplete pairs go to repair / hard-fail
+      return {
+        image,
+        video,
+        emotion: getVal(aiItem, ['emotion', 'feeling', 'mood']) || 'cinematic',
+      };
+    };
+
+    type DraftItem = {
+      idx: number;
+      sentence: string;
+      image: string;
+      video: string;
+      emotion: string;
+      source: 'ai' | 'repair';
+    };
+    const drafts: DraftItem[] = rawSentences.map((sentence: string, idx: number) => {
+      const pair = extractPair(pickAiItem(idx));
+      return {
+        idx,
+        sentence,
+        image: pair.image,
+        video: pair.video,
+        emotion: pair.emotion,
+        source: 'ai' as const,
+      };
+    });
+
+    // Surgical AI repair for incomplete slots only (still AI — no local heuristic)
+    let missing = drafts.filter((d) => !d.image.trim() || !d.video.trim());
+    if (missing.length > 0 && missing.length <= N) {
+      console.warn(
+        `[Prompt Generator] ${missing.length}/${N} incomplete — AI repair`,
+        missing.map((m) => m.idx + 1),
+      );
+      const repairList = missing
+        .map(
+          (m) =>
+            `${m.idx + 1}. script (VI): "${m.sentence.slice(0, 200)}"\n` +
+            `   have_image: ${m.image ? 'yes' : 'NO'}\n` +
+            `   have_video: ${m.video ? 'yes' : 'NO'}`,
+        )
+        .join('\n');
+      const repairPrompt = `You are a cinematic prompt engineer.
+Return ONLY a pure JSON array (no markdown). One object per item below.
+Each object MUST have non-empty English "image_prompt" AND "video_prompt".
+
+[
+  { "id": 1, "emotion": "tense", "image_prompt": "...", "video_prompt": "..." }
+]
+
+Style DNA: ${styleHint}
+Genre / Setup: ${genreLabel}
+${characterInstructions}
+
+ITEMS:
+${repairList}
+`;
+      try {
+        const repairedRaw = await generateJsonWithRetry(
+          repairPrompt,
+          keysToUse,
+          1,
+          model,
+        );
+        const repaired = normalizePromptArray(repairedRaw);
+        for (const m of missing) {
+          const hit =
+            repaired.find((item: any) => Number(item?.id) === m.idx + 1) ||
+            repaired[missing.indexOf(m)] ||
+            null;
+          if (!hit) continue;
+          const pair = extractPair(hit);
+          if (pair.image) {
+            drafts[m.idx].image = pair.image;
+            drafts[m.idx].source = 'repair';
+          }
+          if (pair.video) {
+            drafts[m.idx].video = pair.video;
+            drafts[m.idx].source = 'repair';
+          }
+          if (pair.emotion) drafts[m.idx].emotion = pair.emotion;
+        }
+      } catch (repairErr) {
+        const msg =
+          repairErr instanceof Error ? repairErr.message : String(repairErr);
+        return NextResponse.json(
+          {
+            error: `AI repair prompt that bai (slot thieu image/video). Chi tiet: ${msg}`,
+            missingIds: missing.map((m) => m.idx + 1),
+          },
+          { status: 502 },
+        );
+      }
+    }
+
+    missing = drafts.filter((d) => !d.image.trim() || !d.video.trim());
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Con ${missing.length}/${N} shot thieu image_prompt hoac video_prompt sau AI repair. Khong dung fill cuc bo — kiem tra API / thu gen lai.`,
+          missingIds: missing.map((m) => m.idx + 1),
+          missingSentences: missing.map((m) => m.sentence.slice(0, 80)),
+        },
+        { status: 502 },
+      );
+    }
+
+    // Timestamp unified: start-end (matches TTS resync) e.g. "0-8.5s"
     let cumulativeSum = 0;
-    const formattedPrompts = rawSentences.map((sentence: string, idx: number) => {
-      const segDur = durations[idx];
+    const formattedPrompts = drafts.map((d) => {
+      const segDur = durations[d.idx];
       const startSec = cumulativeSum;
       cumulativeSum += segDur;
-      const timestamp = `${String(segDur).padStart(2, '0')}-${startSec === 0 ? '0' : String(startSec).padStart(2, '0')}`;
-      
-      // Tìm prompt mà AI trả về dựa trên id (1-indexed) hoặc vị trí index tương ứng
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const aiItem = parsedPrompts.find((item: any) => Number(item?.id) === idx + 1) || parsedPrompts[idx];
-      
-      // Trích xuất dữ liệu thông minh hỗ trợ sai lệch Key từ AI
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const getVal = (obj: any, keys: string[]): string => {
-        if (!obj) return '';
-        for (const k of keys) {
-          if (obj[k] && typeof obj[k] === 'string' && obj[k].trim()) {
-            return obj[k].trim();
-          }
-        }
-        return '';
-      };
-  
-      const aiImgPrompt = getVal(aiItem, ['image_prompt', 'imagePrompt', 'prompt_image', 'image-prompt', 'prompt', 'image']);
-      const aiVidPrompt = getVal(aiItem, ['video_prompt', 'videoPrompt', 'prompt_video', 'video-prompt', 'video']);
-      const aiEmotion = getVal(aiItem, ['emotion', 'feeling', 'mood']) || 'cinematic';
-      if (!aiImgPrompt || !aiVidPrompt) {
-        throw new Error(`Prompt item ${idx + 1} is missing required image_prompt or video_prompt.`);
-      }
-  
+      const endSec = cumulativeSum;
+      const timestamp = `${startSec}-${endSec}s`;
       return {
         timestamp,
-        emotion: aiEmotion,
-        sentence: sentence,
-        script_prompt: sentence, // Ép cứng luôn là câu gốc Tiếng Việt để tránh AI dịch bậy kịch bản gốc của người dùng
-        prompt: aiImgPrompt,
-        image_prompt: aiImgPrompt,
-        video_prompt: aiVidPrompt
+        emotion: d.emotion || 'cinematic',
+        sentence: d.sentence,
+        script_prompt: d.sentence,
+        prompt: d.image,
+        image_prompt: d.image,
+        video_prompt: d.video,
+        _source: d.source,
       };
     });
   
-    // Shot graph: force wide→medium→close→insert→OTS cycle (anti-slideshow)
+    // Shot graph: force wide→medium→close→insert→OTS cycle (anti-slideshow) — server only
     const shotFixed = enforceShotGraphOnPrompts(formattedPrompts);
     for (let i = 0; i < shotFixed.length; i++) {
       const img = shotFixed[i].image_prompt || shotFixed[i].prompt;
@@ -246,19 +639,8 @@ export async function handleImagePrompt(
       formattedPrompts[i].prompt = img;
     }
   
-    // Director formula layer — image (still) + video (I2V), anti-slop, no extra UI
-    const charHints: string[] = [];
-    try {
-      const refs = payload.characterReferences || payload.nhan_vat_prompts || {};
-      if (refs && typeof refs === 'object') {
-        for (const k of Object.keys(refs)) if (k) charHints.push(k);
-      }
-    } catch {
-      /* ignore */
-    }
-    const styleHint =
-      (typeof payload.style === 'string' && payload.style) ||
-      'dark survival realism, matte debris world';
+    // Director formula layer — style from Visual DNA, genre from Setup (no mat-the default)
+    const charHints = charHintsEarly;
     const perShotSec = Math.max(
       Math.min(beatSec, 3),
       Math.round(totalDuration / Math.max(1, formattedPrompts.length)),
@@ -268,38 +650,167 @@ export async function handleImagePrompt(
         formattedPrompts[i].image_prompt ||
         formattedPrompts[i].prompt ||
         '';
-      const vidBase =
-        formattedPrompts[i].video_prompt ||
-        imgBase;
-      if (!imgBase.trim() && !vidBase.trim()) continue;
+      const vidBase = formattedPrompts[i].video_prompt || '';
+      if (!imgBase.trim() || !vidBase.trim()) {
+        return NextResponse.json(
+          {
+            error: `Shot #${i + 1} thieu image/video truoc director formula. Khong fill cuc bo.`,
+          },
+          { status: 502 },
+        );
+      }
       try {
         const directed = applyDirectorFormulasToPromptPair({
           imagePrompt: imgBase,
           videoPrompt: vidBase,
           characterHints: charHints,
           styleHint,
-          genre: 'dark survival / mạt thế',
-          durationSec: perShotSec,
+          genre: genreLabel,
+          durationSec: Math.max(perShotSec, beatSec),
+          secondsPerBeat: beatSec,
         });
+        if (!directed.image_prompt?.trim() || !directed.video_prompt?.trim()) {
+          return NextResponse.json(
+            {
+              error: `Director formula tra rong o shot #${i + 1}. Kiem tra style/genre setup.`,
+            },
+            { status: 502 },
+          );
+        }
         formattedPrompts[i].image_prompt = directed.image_prompt;
         formattedPrompts[i].prompt = directed.image_prompt;
         formattedPrompts[i].video_prompt = directed.video_prompt;
       } catch (e) {
-        console.warn('[Prompt Generator] director formula skip item', i, e);
+        const msg = e instanceof Error ? e.message : String(e);
+        return NextResponse.json(
+          {
+            error: `Director formula loi o shot #${i + 1}: ${msg}`,
+          },
+          { status: 502 },
+        );
       }
     }
-  
+
+    // Seedance sequence — hard-fail if continuity bake fails (B10 no silent skip)
+    let sequenceMeta: {
+      projectId?: string;
+      sequenceApplied?: boolean;
+      clipIds?: string[];
+    } = {};
+    try {
+      const { applySequenceToVideoPrompts } = await import(
+        '@/lib/integrations/seedanceAuto'
+      );
+      const chapterNum = Number(
+        payload.chapterNum ?? payload.chuong_dang_chon ?? 0,
+      );
+      const sceneIndex = Number(payload.sceneIndex ?? payload.scene_index ?? 0);
+      const applied = applySequenceToVideoPrompts({
+        chapterNum: Number.isFinite(chapterNum) && chapterNum > 0 ? chapterNum : 1,
+        sceneIndex: Number.isFinite(sceneIndex) ? sceneIndex : 0,
+        prompts: formattedPrompts,
+        characterHints: charHints,
+        styleHint,
+        genre: genreLabel,
+        secondsPerBeat: beatSec,
+        durationSecPerShot: Math.max(perShotSec, beatSec),
+        title:
+          typeof payload.ten_tac_pham === 'string'
+            ? payload.ten_tac_pham
+            : typeof payload.title === 'string'
+              ? payload.title
+              : undefined,
+        lorebook:
+          typeof payload.lorebook === 'string' ? payload.lorebook : undefined,
+        sceneText: String(sceneText || ''),
+        projectSlug:
+          typeof payload.ten_tac_pham === 'string'
+            ? payload.ten_tac_pham
+            : undefined,
+      });
+      for (let i = 0; i < formattedPrompts.length; i++) {
+        const next = applied.prompts[i];
+        if (!next) continue;
+        if (next.video_prompt) formattedPrompts[i].video_prompt = next.video_prompt;
+        if (next.image_prompt) {
+          formattedPrompts[i].image_prompt = next.image_prompt;
+          formattedPrompts[i].prompt = next.image_prompt;
+        }
+      }
+      sequenceMeta = {
+        projectId: applied.projectId,
+        sequenceApplied: applied.sequenceApplied,
+        clipIds: applied.clipIds,
+      };
+      console.log(
+        `[Prompt Generator] Seedance sequence applied · project=${applied.projectId} · clips=${applied.clipIds.length}`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json(
+        {
+          error: `Seedance sequence that bai (khong bo qua im lang): ${msg}`,
+        },
+        { status: 502 },
+      );
+    }
+
+    const repairCount = drafts.filter((d) => d.source === 'repair').length;
+    void aiParseError;
     console.log(
-      `[Prompt Generator] ${formattedPrompts.length} prompts · ${rawSentences.length} sentences · ${totalDuration}s · director formula on image+video`,
+      `[Prompt Generator] ${formattedPrompts.length} prompts · ${rawSentences.length} sentences · ${totalDuration}s · repair=${repairCount} · genre=${genreLabel.slice(0, 40)}`,
     );
-  
-    return NextResponse.json({ prompts: formattedPrompts, usedApiKey: getLastWorkingApiKey() });
+
+    // Strip internal debug field before client
+    const clientPrompts = formattedPrompts.map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ _source, ...rest }) => rest,
+    );
+
+    return NextResponse.json({
+      prompts: clientPrompts,
+      usedApiKey: getLastWorkingApiKey(),
+      meta: {
+        sentenceCount: rawSentences.length,
+        localFill: 0,
+        repairFill: repairCount,
+        genre: genreLabel,
+        style: styleHint,
+        seedance: sequenceMeta,
+      },
+    });
   }
   
   // --- NODE 1: GENERATE_OUTLINE ---
   
   if (requestType === 'REGENERATE_PROMPT') {
     const { sentence, currentPrompt, style, characterReferences } = payload;
+
+    const styleHint = String(style || '').trim();
+    if (!styleHint) {
+      return NextResponse.json(
+        {
+          error:
+            'Thieu Visual DNA / Media Style khi viet lai prompt. App khong tu gan style.',
+        },
+        { status: 400 },
+      );
+    }
+
+    let genreLabel: string;
+    try {
+      genreLabel = requireGenreFromSetup({
+        genre: typeof payload.genre === 'string' ? payload.genre : undefined,
+        chu_de: typeof payload.chu_de === 'string' ? payload.chu_de : undefined,
+        phong_cach:
+          typeof payload.phong_cach === 'string' ? payload.phong_cach : undefined,
+      });
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        { status: 400 },
+      );
+    }
     
     let characterInstructions = '';
     if (characterReferences && Object.keys(characterReferences).length > 0) {
@@ -329,22 +840,30 @@ export async function handleImagePrompt(
   --- PROMPT CŨ BỊ LỒI ---
   "${currentPrompt}"
   
-  --- PHONG CÁCH NGHỆ THUẪc (VISUAL DNA STYLE) ---
-  ${style || 'Cinematic Dark Cyberpunk Sci-Fi Fantasy'}
+  --- PHONG CÁCH NGHỆ THUẬT (VISUAL DNA STYLE) ---
+  ${styleHint}
+  --- THỂ LOẠI / SETUP ---
+  ${genreLabel}
   ${characterInstructions}
   
   YÊU CẦU BẮT BUỘC VỀ SỰ LIÊN KẾT:
   1. Hãy viết lại Prompt này bằng tiếng Anh thật an toàn, tránh vi phạm chính sách nội dung (safety block) nhưng vẫn bám sát nội dung Câu Gốc.
   2. Tính nhất quán phong cách (Visual DNA): Prompt mới BẮT BUỘC phải kế thừa triệt để Phong Cách Nghệ Thuật (Visual DNA) được cung cấp ở trên.
-  3. Tính nhất quán nhân vật: Nếu câu gốc có nhắc đến tên nhân vật đã được cung cấp ở mục THAM CHIẾU NHÂN VẪc, bạn BẮT BUỘC phải kế t hợp đủ các đặc tả ngoại hình của họ vào Prompt.
+  3. Tính nhất quán nhân vật: Nếu câu gốc có nhắc đến tên nhân vật đã được cung cấp ở mục THAM CHIẾU NHÂN VẬT, bạn BẮT BUỘC phải kết hợp đủ các đặc tả ngoại hình của họ vào Prompt.
   4. Chất lượng đầu ra: Sử dụng các mô tả điện ảnh hiện đại (cinematic lighting, camera zoom, raw photo rendering style, volumetric light) thay vì sử dụng các từ khóa rác cũ như "8k, Unreal Engine 5, highly detailed".
   5. Chỉ trả về chuỗi văn bản Prompt tiếng Anh mới duy nhất, không giải thích gì thêm, không bọc markdown.
   `;
   
   
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
-    // Still-image director formula on rewritten prompt (anti-slop + framing)
-    let finalPrompt = aiResponse.trim();
+    let finalPrompt = String(aiResponse || '').trim();
+    if (!finalPrompt) {
+      return NextResponse.json(
+        { error: 'AI tra prompt rong khi viet lai. Khong dung fill cuc bo.' },
+        { status: 502 },
+      );
+    }
+    // Still-image director formula — hard-fail if formula fails (B10)
     try {
       const regenChars: string[] = [];
       if (characterReferences && typeof characterReferences === 'object') {
@@ -353,14 +872,22 @@ export async function handleImagePrompt(
       const still = compileStillImagePrompt({
         sceneText: finalPrompt,
         characterHints: regenChars,
-        styleHint:
-          (typeof style === 'string' && style) ||
-          'dark survival realism, matte debris world',
-        genre: 'dark survival / mạt thế',
+        styleHint,
+        genre: genreLabel,
       });
       finalPrompt = still.prompt;
+      if (!finalPrompt?.trim()) {
+        return NextResponse.json(
+          { error: 'Director still formula tra rong sau REGENERATE_PROMPT.' },
+          { status: 502 },
+        );
+      }
     } catch (e) {
-      console.warn('[REGENERATE_PROMPT] still formula skip:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json(
+        { error: `REGENERATE_PROMPT director formula loi: ${msg}` },
+        { status: 502 },
+      );
     }
     return NextResponse.json({ prompt: finalPrompt, usedApiKey: getLastWorkingApiKey() });
   }

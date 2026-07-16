@@ -6,9 +6,16 @@ import { BookOpen, Award, Book, ChevronUp, ChevronDown } from 'lucide-react';
 
 /** Accordion dàn ý chương / tổng quan / lorebook */
 export default function OutlineAccordions() {
-  const store = useNovelStore();
-  const currentChapter = store.danh_sach_chuong.find(
-    (c) => c.so_chuong === store.chuong_dang_chon,
+  const chuong = useNovelStore((s) => s.chuong_dang_chon);
+  const danYTongThe = useNovelStore((s) => s.dan_y_tong_the);
+  const lorebook = useNovelStore((s) => s.lorebook);
+  // Primitive dan_y only — no object-literal selector (avoids getSnapshot loop)
+  const chapterDanY = useNovelStore((s) => {
+    const ch = s.danh_sach_chuong.find((c) => c.so_chuong === s.chuong_dang_chon);
+    return ch?.dan_y || '';
+  });
+  const hasCurrentChapter = useNovelStore((s) =>
+    s.danh_sach_chuong.some((c) => c.so_chuong === s.chuong_dang_chon),
   );
   const [openOutlineTab, setOpenOutlineTab] = useState<
     'chapter' | 'overall' | 'lore' | null
@@ -30,7 +37,7 @@ export default function OutlineAccordions() {
         >
           <span className="flex items-center gap-1.5">
             <BookOpen className="h-3.5 w-3.5" />
-            Tóm Tắt Chương {store.chuong_dang_chon}
+            Tóm Tắt Chương {chuong}
           </span>
           {openOutlineTab === 'chapter' ? (
             <ChevronUp className="h-3 w-3" />
@@ -38,9 +45,9 @@ export default function OutlineAccordions() {
             <ChevronDown className="h-3 w-3" />
           )}
         </button>
-        {openOutlineTab === 'chapter' && currentChapter && (
+        {openOutlineTab === 'chapter' && hasCurrentChapter && (
           <div className="p-3 text-[11px] leading-relaxed text-zinc-300 bg-zinc-950/90 italic border-t border-zinc-900 font-sans whitespace-pre-line max-h-32 overflow-y-auto">
-            {currentChapter.dan_y || 'Chưa có dàn ý cụ thể cho chương này.'}
+            {chapterDanY || 'Chưa có dàn ý cụ thể cho chương này.'}
           </div>
         )}
       </div>
@@ -65,7 +72,7 @@ export default function OutlineAccordions() {
         </button>
         {openOutlineTab === 'overall' && (
           <div className="p-3 text-[10px] leading-relaxed text-zinc-400 bg-zinc-950/90 border-t border-zinc-900 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
-            {store.dan_y_tong_the || 'Chưa có dàn ý tổng quan.'}
+            {danYTongThe || 'Chưa có dàn ý tổng quan.'}
           </div>
         )}
       </div>
@@ -90,7 +97,7 @@ export default function OutlineAccordions() {
         </button>
         {openOutlineTab === 'lore' && (
           <div className="p-3 text-[10px] leading-relaxed text-zinc-400 bg-zinc-950/90 border-t border-zinc-900 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
-            {store.lorebook || 'Chưa có Lorebook.' /* PROJECT_RESET_POINT empty label */}
+            {lorebook || 'Chưa có Lorebook.'}
           </div>
         )}
       </div>

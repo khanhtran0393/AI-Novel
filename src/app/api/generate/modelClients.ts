@@ -1,3 +1,14 @@
+import {
+  assertPoolHasCapacity,
+  filterAvailableKeys,
+  isKeyAvailable,
+  keyFingerprint,
+  markKeyAttempt,
+  markKeyLimited,
+  markKeySuccess,
+  type KeyLimitKind,
+} from '@/lib/apiKeyRotate';
+
 // Hàm tự động sửa chữa/hoàn thành các khối JSON bị lỗi hoặc bị cắt cụt (truncation) do giới hạn token của AI
 function repairJson(jsonStr: string): string {
   let result = '';
@@ -205,19 +216,38 @@ function cleanJsonStructurally(jsonStr: string): string {
   return result;
 }
 
+function shouldExhaustKey(kind: KeyLimitKind): boolean {
+  return kind === 'rpm' || kind === 'rpd' || kind === 'auth';
+}
+
 async function callOpenAI(prompt: string, apiKeyOrKeys: string | string[]) {
-  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  // Hard gate: if pool over RPM/RPD → wait message (no force-call)
+  assertPoolHasCapacity(apiKeyOrKeys);
+  const keys = filterAvailableKeys(apiKeyOrKeys);
   if (keys.length === 0) {
+    assertPoolHasCapacity(apiKeyOrKeys);
     throw new Error('Không có OpenAI API Key nào hợp lệ để sử dụng.');
   }
 
   const models = ['gpt-4o', 'gpt-4o-mini'];
   let lastError: any = null;
+  let payloadFatal: Error | null = null;
 
-  for (const apiKey of keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const apiKey = keys[i];
+    if (!isKeyAvailable(apiKey)) continue;
     for (const model of models) {
       try {
-        console.log(`[OpenAI API] Thử gọi mô hình: ${model} ...`);
+        if (!isKeyAvailable(apiKey)) break;
+        console.log(
+          `[OpenAI API] RR key ${i + 1}/${keys.length} (${keyFingerprint(apiKey)}) model=${model}`,
+        );
+        if (!markKeyAttempt(apiKey)) {
+          lastError = new Error(
+            `Key ${keyFingerprint(apiKey)} đã chạm trần — chuyển key/chờ.`,
+          );
+          break;
+        }
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -235,13 +265,28 @@ async function callOpenAI(prompt: string, apiKeyOrKeys: string | string[]) {
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) return text;
+          if (text) {
+            markKeySuccess(apiKey);
+            globalLastWorkingKey = apiKey;
+            return text;
+          }
         } else {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || 'Lỗi không xác định từ OpenAI API');
+          const msg = errorData.error?.message || `HTTP ${response.status}`;
+          const kind = markKeyLimited(apiKey, msg, response.status);
+          lastError = new Error(`[${response.status}] ${msg}`);
+          if (kind === 'payload') {
+            payloadFatal = lastError;
+            // same bad body — stop burning the whole key pool
+            throw lastError;
+          }
+          if (shouldExhaustKey(kind)) break;
         }
       } catch (e: any) {
         lastError = e;
+        if (payloadFatal) throw payloadFatal;
+        const kind = markKeyLimited(apiKey, e?.message || '', undefined);
+        if (shouldExhaustKey(kind)) break;
         console.warn(`[OpenAI API] Thất bại với model ${model}: ${e.message}`);
       }
     }
@@ -250,18 +295,32 @@ async function callOpenAI(prompt: string, apiKeyOrKeys: string | string[]) {
 }
 
 async function callGroq(prompt: string, apiKeyOrKeys: string | string[]) {
-  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  assertPoolHasCapacity(apiKeyOrKeys);
+  const keys = filterAvailableKeys(apiKeyOrKeys);
   if (keys.length === 0) {
+    assertPoolHasCapacity(apiKeyOrKeys);
     throw new Error('Không có Groq API Key nào hợp lệ để sử dụng.');
   }
 
   const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'];
   let lastError: any = null;
+  let payloadFatal: Error | null = null;
 
-  for (const apiKey of keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const apiKey = keys[i];
+    if (!isKeyAvailable(apiKey)) continue;
     for (const model of models) {
       try {
-        console.log(`[Groq API] Thử gọi mô hình: ${model} ...`);
+        if (!isKeyAvailable(apiKey)) break;
+        console.log(
+          `[Groq API] RR key ${i + 1}/${keys.length} (${keyFingerprint(apiKey)}) model=${model}`,
+        );
+        if (!markKeyAttempt(apiKey)) {
+          lastError = new Error(
+            `Key ${keyFingerprint(apiKey)} đã chạm trần — chuyển key/chờ.`,
+          );
+          break;
+        }
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -279,13 +338,27 @@ async function callGroq(prompt: string, apiKeyOrKeys: string | string[]) {
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) return text;
+          if (text) {
+            markKeySuccess(apiKey);
+            globalLastWorkingKey = apiKey;
+            return text;
+          }
         } else {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || 'Lỗi không xác định từ Groq API');
+          const msg = errorData.error?.message || `HTTP ${response.status}`;
+          const kind = markKeyLimited(apiKey, msg, response.status);
+          lastError = new Error(`[${response.status}] ${msg}`);
+          if (kind === 'payload') {
+            payloadFatal = lastError;
+            throw lastError;
+          }
+          if (shouldExhaustKey(kind)) break;
         }
       } catch (e: any) {
         lastError = e;
+        if (payloadFatal) throw payloadFatal;
+        const kind = markKeyLimited(apiKey, e?.message || '', undefined);
+        if (shouldExhaustKey(kind)) break;
         console.warn(`[Groq API] Thất bại với model ${model}: ${e.message}`);
       }
     }
@@ -294,18 +367,32 @@ async function callGroq(prompt: string, apiKeyOrKeys: string | string[]) {
 }
 
 async function callGrok(prompt: string, apiKeyOrKeys: string | string[]) {
-  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  assertPoolHasCapacity(apiKeyOrKeys);
+  const keys = filterAvailableKeys(apiKeyOrKeys);
   if (keys.length === 0) {
+    assertPoolHasCapacity(apiKeyOrKeys);
     throw new Error('Không có Grok API Key nào hợp lệ để sử dụng.');
   }
 
   const models = ['grok-2-1212', 'grok-beta', 'grok-2'];
   let lastError: any = null;
+  let payloadFatal: Error | null = null;
 
-  for (const apiKey of keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const apiKey = keys[i];
+    if (!isKeyAvailable(apiKey)) continue;
     for (const model of models) {
       try {
-        console.log(`[xAI Grok API] Thử gọi mô hình: ${model} ...`);
+        if (!isKeyAvailable(apiKey)) break;
+        console.log(
+          `[xAI Grok API] RR key ${i + 1}/${keys.length} (${keyFingerprint(apiKey)}) model=${model}`,
+        );
+        if (!markKeyAttempt(apiKey)) {
+          lastError = new Error(
+            `Key ${keyFingerprint(apiKey)} đã chạm trần — chuyển key/chờ.`,
+          );
+          break;
+        }
         const response = await fetch('https://api.x.ai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -322,13 +409,27 @@ async function callGrok(prompt: string, apiKeyOrKeys: string | string[]) {
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) return text;
+          if (text) {
+            markKeySuccess(apiKey);
+            globalLastWorkingKey = apiKey;
+            return text;
+          }
         } else {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || 'Lỗi không xác định từ xAI Grok API');
+          const msg = errorData.error?.message || `HTTP ${response.status}`;
+          const kind = markKeyLimited(apiKey, msg, response.status);
+          lastError = new Error(`[${response.status}] ${msg}`);
+          if (kind === 'payload') {
+            payloadFatal = lastError;
+            throw lastError;
+          }
+          if (shouldExhaustKey(kind)) break;
         }
       } catch (e: any) {
         lastError = e;
+        if (payloadFatal) throw payloadFatal;
+        const kind = markKeyLimited(apiKey, e?.message || '', undefined);
+        if (shouldExhaustKey(kind)) break;
         console.warn(`[xAI Grok API] Thất bại với model ${model}: ${e.message}`);
       }
     }
@@ -343,50 +444,63 @@ export function getLastWorkingApiKey(): string {
   return globalLastWorkingKey;
 }
 
-// Hàm gọi API Gemini hỗ trợ tự động xoay vòng nhiều API Key và nhiều dòng mô hình khi hết quota hoặc lỗi model
+// Gemini: round-robin keys mỗi request + hard gate RPM/RPD (B10: chỉ xoay key, không đổi platform)
 async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
-  let keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
-  
+  assertPoolHasCapacity(apiKeyOrKeys);
+  const keys = filterAvailableKeys(apiKeyOrKeys);
+
   if (keys.length === 0) {
+    assertPoolHasCapacity(apiKeyOrKeys);
     throw new Error('Không có API Key nào hợp lệ để sử dụng.');
   }
 
-  // Đưa key đang hoạt động tốt lên đầu danh sách để tiết kiệm thời gian
-  if (globalLastWorkingKey && keys.includes(globalLastWorkingKey)) {
-    keys = [globalLastWorkingKey, ...keys.filter(k => k !== globalLastWorkingKey)];
-  }
-
   // Danh sách các mô hình chạy ổn định sắp xếp theo thứ tự ưu tiên
-  // LƯU Ý: Các model gemini-1.5-* (flash, pro, flash-8b) đã bị Google ngừng hỗ trợ hoàn toàn (deprecated)
-  // và luôn trả về 404 "not found". KHÔNG được thêm lại vào danh sách này. Xem error.md Mục 19.
+  // LƯU Ý: gemini-1.5-* deprecated — không thêm lại. Xem error.md Mục 19.
   let models = [
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
     'gemini-2.5-pro'
   ];
-  
-  // Đưa model đang hoạt động tốt lên đầu danh sách
+
+  // Model sticky OK (cùng provider); key thì luôn RR
   if (globalLastWorkingModel && models.includes(globalLastWorkingModel)) {
-    models = [globalLastWorkingModel, ...models.filter(m => m !== globalLastWorkingModel)];
+    models = [globalLastWorkingModel, ...models.filter((m) => m !== globalLastWorkingModel)];
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let lastError: any = null;
   const exhaustedKeys = new Set<string>();
+  /** Same bad payload → stop burning every key with identical 400 */
+  let payloadFatal: Error | null = null;
 
-  // Ưu tiên xoay vòng qua từng Key trước (vòng lặp ngoài)
   for (let i = 0; i < keys.length; i++) {
     const apiKey = keys[i];
     if (exhaustedKeys.has(apiKey)) continue;
+    if (payloadFatal) break;
+    if (!isKeyAvailable(apiKey)) continue;
 
-    console.log(`[Gemini API] Bắt đầu thử các dòng mô hình với API Key index ${i + 1}/${keys.length} (...${apiKey.slice(-4)})...`);
+    console.log(
+      `[Gemini API] RR key ${i + 1}/${keys.length} (${keyFingerprint(apiKey)})…`,
+    );
 
-    // Với mỗi API Key, thử lần lượt các Model theo độ ưu tiên (vòng lặp trong)
     for (const model of models) {
+      if (!isKeyAvailable(apiKey)) {
+        exhaustedKeys.add(apiKey);
+        break;
+      }
       const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
-      
+
       try {
-        console.log(`[Gemini API] Thử gọi mô hình: ${model} (v1) với API Key index ${i + 1}/${keys.length}...`);
+        console.log(
+          `[Gemini API] model=${model} key=${i + 1}/${keys.length} (${keyFingerprint(apiKey)})`,
+        );
+        if (!markKeyAttempt(apiKey)) {
+          exhaustedKeys.add(apiKey);
+          lastError = new Error(
+            `Key ${keyFingerprint(apiKey)} chạm trần RPM/RPD — chuyển key hoặc chờ.`,
+          );
+          break;
+        }
         const response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -404,46 +518,92 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
           }),
         });
 
-        let status = response.status;
-        let errorData = await response.json().catch(() => ({}));
-        let msg = errorData.error?.message || '';
+        const status = response.status;
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData.error?.message || '';
 
         if (response.ok) {
-          const data = errorData; // Đã parse ở trên
+          const data = errorData;
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (!text) {
             throw new Error(`[Key ${i + 1}/${keys.length}]: AI không trả về kết quả hợp lệ.`);
           }
           globalLastWorkingKey = apiKey;
           globalLastWorkingModel = model;
+          markKeySuccess(apiKey);
           return text;
         }
 
-        // Xử lý lỗi trả về từ API
-        if (status === 429 || msg.includes('Quota') || msg.includes('quota') || msg.includes('limit')) {
-          console.warn(`[Gemini API] Key index ${i + 1} (...${apiKey.slice(-4)}) bị cạn kiệt hoặc quá hạn ngạch (Status: ${status}). Đánh dấu cạn kiệt và chuyển sang Key tiếp theo.`);
-          exhaustedKeys.add(apiKey);
-          lastError = new Error(`[Key ${i + 1}/${keys.length}] (${model}): ${msg} (Status: 429)`);
-          break; // Bứt khỏi vòng lặp models để chuyển sang API Key tiếp theo ngay lập tức!
-        } else {
-          // Lỗi khác (vd: lỗi tham số, lỗi server 500), tiếp tục thử model khác của key này
-          console.warn(`[Gemini API] Lỗi model ${model} với Key index ${i + 1} (...${apiKey.slice(-4)}): ${msg} (Status: ${status})`);
-          lastError = new Error(`[Key ${i + 1}/${keys.length}] (${model}): ${msg} (Status: ${status})`);
+        const kind = markKeyLimited(apiKey, msg || `Status ${status}`, status);
+        lastError = new Error(
+          `[Key ${i + 1}/${keys.length}] (${model}): ${msg || 'no message'} (Status: ${status})`,
+        );
+
+        if (kind === 'payload') {
+          // 400 invalid argument / unsupported — try next model; if all models fail, stop pool
+          console.warn(
+            `[Gemini API] HTTP 400 payload/model key=${keyFingerprint(apiKey)} model=${model}: ${msg.slice(0, 180)}`,
+          );
+          // If message is clearly model-not-found, continue models; else after last model mark fatal
+          if (
+            /not\s*found|is not found|unsupported|does not exist|unknown model/i.test(
+              msg,
+            )
+          ) {
+            continue;
+          }
+          // Same body will fail every key — don't rotate the whole pool
+          if (model === models[models.length - 1] || !/model/i.test(msg)) {
+            payloadFatal = lastError;
+            break;
+          }
+          continue;
         }
+
+        if (shouldExhaustKey(kind)) {
+          console.warn(
+            `[Gemini API] Key ${keyFingerprint(apiKey)} ${kind} (${status}) → xoay key tiếp`,
+          );
+          exhaustedKeys.add(apiKey);
+          break;
+        }
+
+        console.warn(
+          `[Gemini API] Lỗi model ${model} key ${keyFingerprint(apiKey)}: ${msg} (${status})`,
+        );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         const errMsg = err.message || '';
-        console.error(`[Gemini API] Ngoại lệ với ${model} và API Key index ${i + 1}:`, errMsg);
+        console.error(`[Gemini API] Ngoại lệ ${model} key ${keyFingerprint(apiKey)}:`, errMsg);
         lastError = err;
 
-        if (errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('quota') || errMsg.includes('limit')) {
+        const kind = markKeyLimited(apiKey, errMsg, undefined);
+        if (kind === 'payload') {
+          payloadFatal = err;
+          break;
+        }
+        if (shouldExhaustKey(kind)) {
           exhaustedKeys.add(apiKey);
-          break; // Bứt khỏi vòng lặp models để sang key mới
+          break;
         }
       }
     } // end for models
   } // end for keys
+
+  if (payloadFatal) {
+    throw new Error(
+      `[Gemini 400] Request bị từ chối (payload/model), không phải RPM/RPD. ` +
+        `Không xoay hết pool key. Chi tiết: ${payloadFatal.message}`,
+    );
+  }
+
+  // Re-check pool — may now be fully blocked after attempts
+  try {
+    assertPoolHasCapacity(apiKeyOrKeys);
+  } catch (waitErr) {
+    throw waitErr;
+  }
 
   throw lastError || new Error('Tất cả các API Key và dòng mô hình đều thất bại hoặc quá hạn ngạch.');
 }

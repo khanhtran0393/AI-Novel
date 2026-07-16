@@ -106,7 +106,7 @@ export async function POST(req: Request) {
 
     const reqApiKey = body.apiKey || '';
     const reqApiKeys = body.apiKeys || [];
-    const keysToTry: string[] = [];
+    let keysToTry: string[] = [];
     if (reqApiKey) keysToTry.push(reqApiKey);
     if (Array.isArray(reqApiKeys)) {
       reqApiKeys.forEach((k: string) => {
@@ -127,6 +127,14 @@ export async function POST(req: Request) {
       }
     } catch (err) {
       console.log('[generate-image] Cannot read apikey.txt:', err);
+    }
+
+    // Soft RR + RPM/RPD balance (same pool as /api/generate — B10 same provider only)
+    try {
+      const { orderKeysRoundRobin } = await import('@/lib/apiKeyRotate');
+      keysToTry = orderKeysRoundRobin(keysToTry);
+    } catch {
+      /* keep sequential if rotate module unavailable */
     }
 
     const { saveImage, saveImageBuffers } = createImageSavers({

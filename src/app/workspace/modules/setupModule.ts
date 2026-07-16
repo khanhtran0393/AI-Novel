@@ -5,30 +5,33 @@ import { postGenerate, postJson, API } from './apiClient';
 import type { SetupData } from '@/store/useNovelStore';
 
 
+/** Gợi ý khuyết điểm (điểm yếu) — không ép khuyết tật mạt thế */
 export const CO_THE_KHUYET_TAT = [
-  'rách gân tay trái khiến kiếm chiêu bị lệch 1 phân',
-  'mù mắt phải do vết cào của dị chủng cấp cao',
-  'liệt chân trái phải bước đi tập tễnh cùng nạng sắt',
-  'mất khứu giác do hít phải bụi phóng xạ mạt thế',
-  'phổi bị tổn thương nặng chỉ có thể nín thở tối đa 15 giây',
-  'cụt 2 ngón tay phải khiến việc nạp đạn súng bị chậm 2 giây'
+  'kiêu ngạo che giấu nỗi sợ bị coi thường',
+  'nói dối khi bị dồn vào chân tường',
+  'nghiện kiểm soát mọi người xung quanh',
+  'trì hoãn quyết định quan trọng đến phút chót',
+  'ghen tị thầm với thành công của người thân',
+  'hy sinh bản thân quá mức đến mức tự hủy',
 ];
 
+/** Gợi ý không gian (trung tính / đa thể loại) */
 export const KHONG_GIAN_HOANG_PHE = [
-  'trạm xăng bỏ hoang ngập trong sương độc axit',
-  'tầng hầm trung tâm thương mại bị rêu đỏ ăn mòn',
-  'nhà kho đông lạnh cũ chứa đầy kén trứng của biến dị thể',
-  'nhà thờ đổ nát có bức tượng đổ sập chặn lối thoát',
-  'toa tàu điện ngầm mắc kẹt giữa đường hầm ngập nước',
-  'phòng thí nghiệm sinh học đổ nát đầy bình chứa rò rỉ'
+  'căn hộ tầng cao lúc nửa đêm đèn nhấp nháy',
+  'hành lang trường cũ vang tiếng bước chân',
+  'quán cà phê góc phố giờ tan tầm',
+  'phòng họp kính của tập đoàn sau giờ làm',
+  'sân ga vắng lúc sương sớm',
+  'thư viện tầng hầm chỉ còn một bóng đèn',
 ];
 
+/** Gợi ý đạo cụ / vật ký ức (trung tính) */
 export const VAT_PHAM_MAC_DINH = [
-  'Con dao găm rỉ sét cán gỗ',
-  'Bình lọc nước cầm tay còn 1 lần lọc',
-  'Bản đồ khu tị nạn rách góc',
-  'Hộp quẹt đá hết gas nhưng còn tia lửa',
-  'Sợi dây xích sắt dài 2 mét'
+  'Chiếc nhẫn khắc chữ mờ',
+  'Cuốn sổ tay rách góc',
+  'Chiếc chìa khóa cũ không rõ cửa',
+  'Ảnh polaroid phai màu',
+  'Dây chuyền mẻ một mắt xích',
 ];
 
 export const getFriendlyErrorMessage = (err: unknown): string => {
@@ -48,8 +51,19 @@ apiKey: string;
   const { chu_de, phong_cach } = params;
   void params.apiKey;
   void params.apiKeys;
-  const data = await postGenerate('GENERATE_IDEAS', { chu_de, phong_cach });
-  return String(data.idea || 'Không nhận được ý tưởng.');
+  const de = String(chu_de || '').trim();
+  const pc = String(phong_cach || '').trim();
+  if (!de || !pc) {
+    throw new Error(
+      'Chua chon Setup Chu de va Phong cach. App khong tu gan mat the khi sinh y tuong.',
+    );
+  }
+  const data = await postGenerate('GENERATE_IDEAS', { chu_de: de, phong_cach: pc });
+  const idea = String(data.idea || data.mo_ta || '').trim();
+  if (!idea) {
+    throw new Error('API sinh y tuong tra rong. Khong dung fill cuc bo.');
+  }
+  return idea;
 }
 
 export type YoutubeSourcePayload = {
@@ -134,8 +148,21 @@ export async function importFoundationAction(params: {
   if (!text) {
     throw new Error('Vui lòng dán nội dung truyện vào đây.');
   }
+  const { useNovelStore } = await import('@/store/useNovelStore');
+  const store = useNovelStore.getState();
+  const styleHint = String(
+    store.visualDnaPrompt || store.mediaStylePreset || '',
+  ).trim();
+  const chu_de = String(store.setup?.chu_de || '').trim();
+  const phong_cach = String(store.setup?.phong_cach || '').trim();
   const data = await postGenerate('IMPORT_FOUNDATION', {
     text_content: text.slice(0, 50000),
+    styleHint: styleHint || undefined,
+    style: styleHint || undefined,
+    visualDnaPrompt: store.visualDnaPrompt || '',
+    chu_de: chu_de || undefined,
+    phong_cach: phong_cach || undefined,
+    genre: [chu_de, phong_cach].filter(Boolean).join(' / ') || undefined,
   });
   const foundation = data.foundation as Record<string, unknown> | undefined;
   if (!foundation || typeof foundation !== 'object') {

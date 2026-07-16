@@ -4,7 +4,8 @@ import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+/** Có thể tự tải Chromium ~150MB lần đầu — cho phép tới 10 phút */
+export const maxDuration = 600;
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
@@ -20,6 +21,8 @@ export async function POST(req: Request) {
         body.waitExtensionMs != null ? Number(body.waitExtensionMs) : 25_000,
       waitLoginMs:
         body.waitLoginMs != null ? Number(body.waitLoginMs) : undefined,
+      /** Thêm profile mới = hồ sơ trình duyệt trống, không login account cũ */
+      freshSession: Boolean(body.freshSession),
     });
     slog({
       level: result.ok ? 'info' : 'warn',

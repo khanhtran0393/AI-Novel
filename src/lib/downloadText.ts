@@ -22,7 +22,8 @@ export type WriteTextResult = {
 };
 
 /**
- * Prefer Electron userData/reports; fallback to browser download.
+ * Electron desktop: ghi file reports. Browser: download (môi trường khác nhau, không phải fail-over che lỗi).
+ * Trong Electron: writeTextFile fail → hard error, không lén download.
  */
 export async function persistTextReport(
   filename: string,
@@ -40,8 +41,17 @@ export async function persistTextReport(
       if (res?.ok && res.path) {
         return { ok: true, path: res.path, via: 'electron' };
       }
+      return {
+        ok: false,
+        error: res?.error || 'Electron writeTextFile thất bại (không fallback download).',
+        via: 'electron',
+      };
     } catch (e) {
-      console.warn('[persistTextReport] electron failed', e);
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+        via: 'electron',
+      };
     }
   }
   downloadTextFile(safe, content);

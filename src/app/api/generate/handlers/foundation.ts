@@ -171,19 +171,32 @@ CẤM bịa quy tắc không có trong nguồn. CẤM copy nguyên đoạn tho�
   }`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
     const parsed = cleanAndParseJson(aiResponse);
-    // Apply still formula to each character master prompt in import foundation
-    try {
-      if (parsed && Array.isArray(parsed.nhan_vat)) {
+    // Apply still formula only when client provided style/genre (no mat-the hardcode)
+    const importStyle = String(
+      payload.styleHint || payload.style || payload.visualDnaPrompt || '',
+    ).trim();
+    const importGenre = String(
+      payload.genre ||
+        [payload.chu_de, payload.phong_cach].filter(Boolean).join(' / ') ||
+        '',
+    ).trim();
+    if (parsed && Array.isArray(parsed.nhan_vat) && (importStyle || importGenre)) {
+      try {
         parsed.nhan_vat = parsed.nhan_vat.map(
-          (c: { name?: string; prompt?: string; angle_prompts?: Record<string, string>; expression_prompts?: Record<string, string> }) => {
+          (c: {
+            name?: string;
+            prompt?: string;
+            angle_prompts?: Record<string, string>;
+            expression_prompts?: Record<string, string>;
+          }) => {
             if (!c || typeof c !== 'object') return c;
             const sheet = applyCharacterSheetFormulas({
               name: c.name || 'character',
               prompt: c.prompt || '',
               angle_prompts: c.angle_prompts,
               expression_prompts: c.expression_prompts,
-              styleHint: 'dark survival realism, matte debris world, identity lock',
-              genre: 'dark survival / mạt thế',
+              styleHint: importStyle || importGenre,
+              genre: importGenre || importStyle,
               angleFraming: CHAR_ANGLE_CAMERA as unknown as Record<string, string>,
               emotionFace: CHAR_EMOTION_FACE as unknown as Record<string, string>,
             });
@@ -199,9 +212,16 @@ CẤM bịa quy tắc không có trong nguồn. CẤM copy nguyên đoạn tho�
             };
           },
         );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return NextResponse.json(
+          {
+            error: `IMPORT_FOUNDATION character formula loi: ${msg}`,
+            usedApiKey: getLastWorkingApiKey(),
+          },
+          { status: 502 },
+        );
       }
-    } catch (e) {
-      console.warn('[IMPORT_FOUNDATION] character formula skip:', e);
     }
     return NextResponse.json({ foundation: parsed, usedApiKey: getLastWorkingApiKey() });
   }

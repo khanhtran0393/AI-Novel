@@ -11,11 +11,24 @@ export const API = {
   /** Google Flow bridge (extension + multi-account queue) */
   flowStatus: '/api/flow/status',
   flowAccounts: '/api/flow/accounts',
+  flowProxy: '/api/flow/proxy',
   flowQueue: '/api/flow/queue',
   flowConnect: '/api/flow/connect',
   flowBootstrap: '/api/flow/bootstrap',
   flowBrowsers: '/api/flow/browsers',
+  /** One-click portable Chromium for non-technical users */
+  flowInstallBrowser: '/api/flow/install-browser',
+  /** Select / create Google Flow project (dropdown) */
+  flowProjects: '/api/flow/projects',
   flowGenerateOne: '/api/flow/generate-one',
+  /** Flow model matrix + credit estimates (P0) */
+  flowModels: '/api/flow/models',
+  /** Flow ops: agent instructions, quality, farm policy (P2/P3) */
+  flowOps: '/api/flow/ops',
+  /** In-app Flow Agent plan/chat/enqueue (P2) */
+  flowAgent: '/api/flow/agent',
+  /** Flow mediaId index for Extend (B) */
+  flowMediaId: '/api/flow/media-id',
   /** Video generation */
   generateVideo: '/api/generate-video',
   /** TTS synthesis — route dispatches TTS_PROVIDERS registry */
@@ -64,11 +77,17 @@ export const API = {
   rpaTranslateSrt: '/api/rpa-translate-srt',
   rpaProfileManager: '/api/rpa-profile-manager',
   videoEditor: '/api/video-editor',
+  /** Bypass Engine — FFmpeg fingerprint diversify (toolbox) */
+  bypassEngine: '/api/bypass-engine',
+  /** Real NVENC probe (same as Settings) — GET ?nvenc=1 */
+  bypassEngineNvenc: '/api/bypass-engine?nvenc=1',
   systemInfo: '/api/system-info',
   systemInfoInstallGpu: '/api/system-info/install-gpu',
   systemInfoInstallStatus: '/api/system-info/install-status',
   /** Runtime probes: FFmpeg, public dirs, Edge TTS pkg, Chrome */
   healthRuntime: '/api/health/runtime',
+  /** Per-key RPM/RPD time counters + wait message */
+  keyQuota: '/api/key-quota',
   navtools: {
     gateway: '/api/navtools/gateway',
     youtubeSeo: '/api/navtools/youtube-seo',

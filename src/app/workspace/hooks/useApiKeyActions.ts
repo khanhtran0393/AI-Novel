@@ -1,7 +1,21 @@
 'use client';
 
 import { useNovelStore } from '@/store/useNovelStore';
+import { API } from '@/contracts';
 import { addApiKeyAction, removeApiKeyAction } from '../modules/apiKeyModule';
+
+/** Register key pool on server so RPM/RPD timers start when user adds keys. */
+function registerKeyPoolOnServer(keys: string[]) {
+  const clean = keys.map((k) => String(k || '').trim()).filter(Boolean);
+  if (!clean.length) return;
+  void fetch(API.keyQuota, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keys: clean, register: true }),
+  }).catch(() => {
+    /* offline / server cold — first generate will still register */
+  });
+}
 
 export function useApiKeyActions() {
   const store = useNovelStore();
@@ -12,6 +26,7 @@ export function useApiKeyActions() {
       const updatedKeys = addApiKeyAction(currentKeys, newKey);
       store.setApiKeys(updatedKeys);
       if (!store.apiKey) store.setApiKey(newKey.trim());
+      registerKeyPoolOnServer(updatedKeys);
     }
   };
 

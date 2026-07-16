@@ -5,14 +5,14 @@
 
 export function resolveWpm(wpm?: number | null): number {
   const n = Number(wpm);
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : 140;
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
 }
 
 /** Phút (có thể lẻ 0.1); làm tròn hợp lý cho UI */
 export function wordsToMinutes(words: number, wpm?: number | null): number {
   const w = Math.max(0, Number(words) || 0);
   const rate = resolveWpm(wpm);
-  if (w <= 0) return 0;
+  if (w <= 0 || rate <= 0) return 0;
   return w / rate;
 }
 
