@@ -1,56 +1,47 @@
-# AI Novel & Script Generator - Trình Sinh Kịch Bản Tiểu Thuyết Mạt Thế (V2.3 Ultimate)
+# AI Novel & Script Generator - Ultimate Studio
 
-Chào mừng bạn đến với **AI Novel & Script Generator**, một không gian làm việc (Workspace) chuyên nghiệp, cao cấp dành riêng cho biên kịch và tác giả sáng tác truyện mạt thế, sinh tồn.
-Hệ thống hiện tại đang vận hành ở phiên bản V2.3+ Ultimate, tích hợp quy chuẩn khép kín về giao diện (UI), quy trình (Logic) và hệ thống Tự động hóa ngầm đa luồng (Automations).
+Chào mừng bạn đến với **AI Novel & Script Generator**, một không gian làm việc (Workspace) chuyên nghiệp, cao cấp dành riêng cho biên kịch, đạo diễn hình ảnh và tác giả sáng tác nội dung đa phương tiện.
+Hệ thống hiện tại là một Studio khép kín: từ khâu viết kịch bản AI, storyboard, lồng tiếng đa nhân vật (TTS), cho đến gen ảnh, gen video và xuất dự án thẳng vào CapCut.
 
 ---
 
-## ✨ KIẾN TRÚC & GIAO DIỆN CỐT LÕI (PREMIUM UI)
-Ứng dụng được xây dựng trên **Next.js (App Router)** + **Tailwind CSS (v4)** + **Zustand Persist (Hydration Safe)**.
-- **Tỷ lệ Vàng 3:7**: Không gian làm việc chia tỷ lệ vàng 3:7 (Sidebar/Content). Sidebar tích hợp Accordion co-giãn chứa Dàn ý và Cấu trúc Nhân vật (thay vì dùng Modal nổi gây phân tâm).
-- **Màu sắc & Thẩm mỹ**: Giao diện Cyberpunk/Sci-Fi cực kỳ chuyên nghiệp (Nền `zinc-950`, viền `zinc-900/60`, điểm nhấn `amber-500` và `emerald-500` cho các nút bấm hành động).
-- **Lightbox Zoom**: Tích hợp tính năng click ảnh phóng to toàn màn hình (Z-index 100, backdrop blur) để kiểm duyệt ảnh storyboard chất lượng cao.
-- **Sticky Navigation & Word-Gate**: Thanh điều hướng chương đứng yên giúp chuyển chương siêu tốc, đi kèm Thanh tiến độ Cổng Từ (Word-Gate Progress Bar) dạng Neon trực quan.
+## ✨ KIẾN TRÚC & GIAO DIỆN (PREMIUM UI)
+Ứng dụng được xây dựng trên **Next.js (App Router)** + **Tailwind CSS (v4)** + **Zustand Persist (Hydration Safe)**, được bọc trong một vỏ **Electron** (Desktop Shell) để can thiệp hệ thống tệp và tiến trình hệ điều hành.
+- **Tỷ lệ Vàng 3:7**: Không gian làm việc chia tỷ lệ vàng 3:7 (Sidebar trái / Content phải). Sidebar tích hợp Accordion co-giãn chứa Dàn ý và Cấu trúc Nhân vật.
+- **Màu sắc & Thẩm mỹ**: Giao diện Cyberpunk/Sci-Fi chuyên nghiệp (Nền `zinc-950/zinc-900`, hiệu ứng kính mờ glassmorphism, điểm nhấn `emerald-500` cho hành động chính).
+- **Lightbox Zoom**: Tích hợp tính năng click ảnh/video phóng to toàn màn hình (Z-index 100, backdrop blur) để kiểm duyệt chất lượng cao.
+- **Tính năng độc quyền**: Sticky Navigation, Word-Gate, thanh công cụ Toolbars, màn hình giám sát luồng Gen (Media Gen Progress).
 
-## 🧠 LUỒNG LOGIC TỐI CAO
-Hệ thống xoay quanh 3 Node vận hành song song:
-1. **Setup Node**: Khởi tạo bối cảnh vĩ mô. Tuyệt đối sử dụng "Zero-Legacy Engine", loại bỏ mọi tên gọi rập khuôn, chỉ dùng tên Hán Việt đặc trưng hoang phế.
-2. **Write Script Node**: Ứng dụng kỷ luật "Real-time Pacing", cấm AI tóm tắt hay nhảy cóc thời gian, ép miêu tả đa giác quan. Kết xuất bằng **Typing Effect** (Có `.normalize('NFC')` chuẩn tiếng Việt).
-3. **Commit Memory Node**: Cuốn chiếu ký ức ngắn hạn liên tục để duy trì tính liền mạch của bộ truyện.
+## 🧠 LÕI ENGINE "NATIVE"
+- **Zero-Legacy Engine**: Code engine hoạt động 100% bằng TypeScript Native in-process. Không phụ thuộc vào các binary Go cũ. Hỗ trợ đa dạng thể loại (không ép buộc "mạt thế"). 
+- **Setup Genre**: Quy định thế giới, phong cách, luật lệ được cá nhân hóa hoàn toàn ở Bước Setup (không hardcode).
+- **Character Roster**: Quản lý hồ sơ nhân vật sâu (tuổi, giới tính, ngoại hình, khuyết điểm, động cơ, giọng TTS riêng biệt). Tự động nạp vào Prompt Studio để khóa định dạng nhân vật (Identity Lock).
 
-## 🤖 CÔNG NĂNG TỰ ĐỘNG HÓA MỞ RỘNG (V2.3+)
+## 🎬 TỔ HỢP SẢN XUẤT MEDIA TOÀN DIỆN
 Dự án không chỉ sinh chữ, mà là một cỗ máy sản xuất phim phân cảnh hoàn chỉnh:
-- **Đa kênh (Channel DNA)**: Mỗi kênh khóa **Cấu hình đầu ra** + **Giọng đọc toàn cục** (provider, ratio, DNA, speed/pitch…). Đổi kênh nạp lại DNA; self-heal chỉ sửa tạm, không ghi đè DNA.
-- **YouTube Studio**: SEO meta chấm điểm, Thumb prompt (EN) gen ảnh như scene, viết lại ± Thumbnail line, overlay preview, biến thể thumb, lightbox.
-- **Soát trước đăng**: Panel Ready / Not ready + click jump tới chỗ thiếu (TTS, ảnh, SEO, thumb…).
-- **Job queue**: Gen tất cả ảnh xếp hàng — pause / cancel / dọn job xong (panel Jobs trên header).
-- **Health + Backup**: Credential & runtime health; portable project export/import (strip secrets); job error report.
-- **Ship quality**: CI (`verify:ci`), Zod hot APIs, correlationId logs, Labs hidden by default, core-loop onboarding.
-- **Genre packs**: Mạt thế / Trinh thám / Horror radio / Romance / Xuyên không — nạp rules + DNA + TTS mặc định.
-- **Ship pack**: copy **file media vật lý** vào folder pack + `media_copy_result.json` + SRT đa speaker.
-- **Jobs panel**: Gen all **ảnh + video** + TTS chương mirror job; **Retry failed**; pause/cancel.
-- **Policy ảnh**: fail safety → auto viết lại prompt → gen lại 1 lần.
-- **Face-ref binary**: concept sheet `face_ref` load server-side → OpenAI edits / Gemini multimodal khi có file.
-- **Toast**: workspace hooks chính (scene/TTS/thumb/video/file) dùng toast, giảm `alert`.
-- **Studio drawer**: 1 panel mở TTS / Media / DNA / Health.
-- **Editor banner**: verdict rewrite/polish → nút Sửa theo nhận xét (sticky).
-- **Concept cache**: hash hồ sơ NV → reuse prompt sheet; `face_ref` sau gen concept.
-- **Persist v3**: migrate channel `outputDna` / `ttsDna`.
-- **TTS → timestamp**: Tự re-sync mốc prompt khi duration TTS lệch >15%.
-- **Đa luồng Gen Ảnh**: Whisk/API, cookie xoay, worker song song, dọn profile Chrome.
-- **TTS Local Cache**: Cache Storage API nghe thử offline.
-- **Native Explorer**: `explorer.exe` mở thư mục lưu.
+- **Prompt Studio**: Tự động sinh `image_prompt` (ảnh), `video_prompt` (video), phân rã timestamp đồng bộ với TTS. Tích hợp đạo diễn (Director Formulas) cho góc máy (Wide, Medium, Close-up).
+- **Voice Cast (Multi-Voice TTS)**: Gán giọng riêng biệt cho từng nhân vật. Hỗ trợ Vina Voice, Edge TTS, Piper, CapCut. Ghép nối liền mạch đoạn hội thoại và dẫn truyện. Tự động đồng bộ (re-sync) timestamp hình ảnh theo thời lượng giọng nói.
+- **Ảnh (Images) & Video Gen**: Hỗ trợ xuất qua Flow Bridge (Google Flow), Veo, Whisk, Gemini, OpenAI... Tự động lập lịch xếp hàng (Job Queue).
+- **Google Flow Bridge**: Hệ thống cầu nối (Bridge) tự động điều khiển trình duyệt qua Puppeteer để gen ảnh/video trên Flow một cách âm thầm, hỗ trợ đa tài khoản (Multi-account).
 
-### Kiểm chứng lõi
-```bash
-npm run verify:core
-```
-Chạy DNA kênh · ship pack · publish readiness · youtube-safe · cast unit.
-
----
+## 🤖 CÔNG NĂNG TỰ ĐỘNG HÓA & TÍCH HỢP
+- **CapCut / FableCut Integration**: Tự động build timeline JSON. Sắp xếp Audio, Hình ảnh, Video, Subtitles thành một file dự án CapCut/FableCut mở lên là render được ngay. Hỗ trợ Pro Gate.
+- **YouTube SEO**: Hỗ trợ chuẩn bị đăng bài (Title, Description, Tags, Thumbnail Prompt, Checklist an toàn tâm lý).
+- **Auto-Debug & Self-Heal**: Hệ thống tự động sửa lỗi ngầm với API. Cấu trúc bypass-engine để xử lý các block từ CDN/Cloudflare.
+- **Tích hợp Job Queue**: Quản lý tiến trình Gen Media đa luồng (pause/cancel/resume).
+- **Quản lý Media Path**: Mọi file ảnh/video/audio đều lưu trữ vật lý trên đĩa và được map thông qua `sceneAssetKey`.
 
 ## 🚀 HƯỚNG DẪN BẮT ĐẦU NHANH
-Chỉ cần nhấp đúp vào tệp: 👉 **`run.bat`** tại thư mục gốc của dự án. 
-Tệp này sẽ tự động chạy Next.js Server và mở web trên trình duyệt: [http://localhost:3000](http://localhost:3000).
+- **Chạy Dev Web**: 
+  ```bash
+  npm run dev
+  ```
+  Truy cập vào web trên trình duyệt: [http://localhost:3000](http://localhost:3000)
 
-> Mọi đóng góp, can thiệp hay sửa chữa mã nguồn từ AI/Developer đều phải bám sát tuyệt đối quy chuẩn trong tài liệu `AGENTS.md` (Master Blueprint). Không phá vỡ hệ thống modular đang vận hành.
+- **Chạy Desktop (Electron)**: 
+  Mở terminal khác, chạy:
+  ```bash
+  npm run electron
+  ```
+
+> ⚠️ **Lưu ý**: Mọi đóng góp, can thiệp hay sửa chữa mã nguồn từ AI/Developer đều phải bám sát tuyệt đối quy chuẩn trong tài liệu `AGENTS.md` (Bách khoa toàn thư dự án). Không phá vỡ hệ thống modular đang vận hành. Tuyệt đối không fallback ngầm nếu gặp lỗi (luật B10).
