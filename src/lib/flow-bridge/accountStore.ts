@@ -277,22 +277,44 @@ export function deleteAccount(id: string): boolean {
 }
 
 /**
- * Clear stuck "connecting" flags on boot. Keep active+token if already set
- * (token alone is a valid login; email is enrichment).
+ * Clear stuck / false-ready flags on boot.
+ * sessionVerified requires real Google email — token alone is NOT login.
+ * Fixes "Trình duyệt 1 · sẵn sàng" when user never finished Google login.
  */
 export function sanitizeUnverifiedAccounts(): number {
   const list = loadAccounts();
   let n = 0;
   for (const a of list) {
+    const hasEmail = Boolean(a.email && String(a.email).includes('@'));
+
     if (a.status === 'connecting') {
-      // Stuck mid-login from previous crash → idle unless already has token
-      if (!a.flowKeyPresent && !a.sessionVerified) {
+      // Stuck mid-login from previous crash → idle
+      if (!hasEmail) {
         updateAccount(a.id, {
           status: 'idle',
-          lastError: a.lastError || null,
+          sessionVerified: false,
+          lastError:
+            a.lastError ||
+            'Browser đã đóng — chưa hoàn tất đăng nhập Google',
         });
         n++;
+        continue;
       }
+    }
+
+    // Demote painted ready: active/sessionVerified without email
+    if (!hasEmail && (a.sessionVerified || a.status === 'active')) {
+      updateAccount(a.id, {
+        status: 'idle',
+        sessionVerified: false,
+        // Keep flowKeyPresent flag if disk has token — UI will show partial, not "sẵn sàng"
+        lastError:
+          a.flowKeyPresent
+            ? 'Có token cũ nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập'
+            : a.lastError || 'Chưa đăng nhập Google',
+        projectId: a.projectId && !hasEmail ? a.projectId : a.projectId,
+      });
+      n++;
     }
   }
   return n;
@@ -310,8 +332,9 @@ export function pickReadyAccount(accounts: FlowAccount[]): FlowAccount | null {
       return false;
     }
     if (a.cooldownUntil && a.cooldownUntil > now) return false;
-    // Ready if verified session (email optional if token present)
-    if (a.sessionVerified || (a.flowKeyPresent && a.status === 'active')) {
+    // Ready = real Google email + token (never token-only stale paint)
+    const hasEmail = Boolean(a.email && String(a.email).includes('@'));
+    if (hasEmail && a.sessionVerified && a.flowKeyPresent) {
       return true;
     }
     return false;

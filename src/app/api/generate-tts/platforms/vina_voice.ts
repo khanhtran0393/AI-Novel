@@ -22,12 +22,14 @@ export const provider_vina_voice: TTSProvider = {
     const isChapter = extra.isChapter === true || Number(extra.chapterNum) > 0;
 
     if (!voice) {
-      throw new Error('VinaVoice: chua chon profile Zero-Shot.');
+      throw new Error(
+        'VinaVoice: chưa chọn profile Zero-Shot. Mở «Cấu Hình Giọng Đọc Toàn Cục» → tab Não Zero-Shot → bấm chọn một giọng 🎤 (có file mẫu).',
+      );
     }
     if (profileLooksLikeEdge || profileLooksLikePiper) {
       throw new Error(
-        `VinaVoice: voice "${voice}" khong phai profile Zero-Shot. ` +
-          `Chon profile trong tab Nao Zero-Shot hoac doi platform thu cong.`,
+        `VinaVoice: voice «${voice}» không phải profile Zero-Shot. ` +
+          `Chọn profile trong tab Não Zero-Shot hoặc đổi platform thủ công (Engine chọn tay).`,
       );
     }
 

@@ -8,7 +8,9 @@ import {
 import { exportTxtAction, resetProjectAction } from '../modules/projectModule';
 import { resetEngineAction } from '../modules/engineModule';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 import { getStreamUi } from '../modules/streamUiStore';
+import { clearPipelineStore } from '@/lib/pipeline';
 
 /** Project actions — getState only (no full-store subscription). */
 export function useProjectActions(streamText?: string) {
@@ -30,13 +32,20 @@ export function useProjectActions(streamText?: string) {
   };
 
   const handleResetProject = async () => {
-    if (
-      !confirm(
-        '⚠️ Bạn có chắc chắn muốn làm mới dự án? Toàn bộ thiết lập, kịch bản đã sinh cùng với tất cả file âm thanh/hình ảnh cũ liên quan sẽ bị XÓA SẠCH!',
-      )
-    ) {
-      return;
-    }
+    const ok = await appConfirm({
+      title: 'Làm mới dự án',
+      message:
+        'Toàn bộ canvas dự án sẽ bị xóa sạch. Cài đặt & API key được giữ nguyên.',
+      details: [
+        'Tên tác phẩm, lorebook, dàn ý, chương / kịch bản',
+        'File âm thanh, hình ảnh, video, prompt liên quan',
+        'Hồ sơ nhân vật trên canvas hiện tại',
+      ],
+      confirmLabel: 'Xóa sạch & làm mới',
+      cancelLabel: 'Giữ nguyên',
+      tone: 'danger',
+    });
+    if (!ok) return;
     const store = useNovelStore.getState();
     try {
       await resetProjectAction(store.googleDrivePath || '');
@@ -46,6 +55,8 @@ export function useProjectActions(streamText?: string) {
     }
     allowIntentionalStoreReset(60_000);
     store.resetStore();
+    // P0 — wipe Quality Gate / foreshadow / longform meta with canvas
+    clearPipelineStore();
     commitIntentionalProjectResetFromLocal();
     queueMicrotask(() => commitIntentionalProjectResetFromLocal());
     setTimeout(() => commitIntentionalProjectResetFromLocal(), 200);
@@ -58,6 +69,7 @@ export function useProjectActions(streamText?: string) {
       (live.danh_sach_chuong && live.danh_sach_chuong.length > 0)
     ) {
       live.resetStore();
+      clearPipelineStore();
       commitIntentionalProjectResetFromLocal();
     }
 

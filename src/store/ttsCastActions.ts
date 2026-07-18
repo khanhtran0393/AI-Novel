@@ -70,6 +70,10 @@ export function createTtsCastActions(
             language,
             state.nhan_vat_prompts || {},
             next.voice || '',
+            {
+              baseSpeed: next.speed ?? state.ttsConfig.speed,
+              basePitch: next.pitch ?? state.ttsConfig.pitch,
+            },
           );
           const prompts = { ...(state.nhan_vat_prompts || {}) };
           for (const r of roles) {

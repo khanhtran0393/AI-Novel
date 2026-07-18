@@ -9,7 +9,8 @@ import {
   type TtsCacheVariantConfig,
 } from '@/lib/tts/prosodyVariant';
 
-const CACHE_NAME = 'tts-prelisten-cache-v3';
+/** v5: invalidate v3/v4 blobs that stored Vina NFE=4 noise as “success” previews */
+const CACHE_NAME = 'tts-prelisten-cache-v5';
 const MAX_SESSION_BLOBS = 16;
 
 /** Session memory: key → blob URL (instant replay, no network) */
@@ -35,6 +36,8 @@ export function buildClientPreviewKey(params: {
   pitch?: number;
   speakerSeed?: number;
   styleSeed?: number;
+  /** Vina flow-matching steps — must be in key (NFE=4 was noise, NFE=16 speech) */
+  nfeStep?: number;
   variantKey?: string;
 } & TtsCacheVariantConfig): string {
   const { speed, pitch } = normalizeProsodyClient(params.speed, params.pitch);
@@ -52,6 +55,12 @@ export function buildClientPreviewKey(params: {
         ? Number(params.styleSeed)
         : 4125
       : '';
+  const nfe =
+    platform === 'vina_voice'
+      ? Number.isFinite(Number(params.nfeStep)) && Number(params.nfeStep) > 0
+        ? Math.trunc(Number(params.nfeStep))
+        : 16
+      : '';
   const variantKey =
     params.variantKey !== undefined
       ? String(params.variantKey || '')
@@ -64,6 +73,7 @@ export function buildClientPreviewKey(params: {
     String(pitch),
     String(seedS),
     String(seedY),
+    String(nfe),
     variantKey,
   ].join('|');
 }

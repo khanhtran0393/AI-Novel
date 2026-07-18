@@ -8,6 +8,8 @@ const FILTERS: Record<string, string> = {
   media: 'Media Files (*.mp4;*.mov;*.avi;*.mkv;*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg;*.png;*.jpg;*.jpeg;*.webp)|*.mp4;*.mov;*.avi;*.mkv;*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg;*.png;*.jpg;*.jpeg;*.webp|All Files (*.*)|*.*',
   video: 'Video Files (*.mp4;*.mov;*.avi;*.mkv)|*.mp4;*.mov;*.avi;*.mkv|All Files (*.*)|*.*',
   srt: 'Subtitle Files (*.srt)|*.srt|Text Files (*.txt)|*.txt|All Files (*.*)|*.*',
+  /** SRT + plain TXT for TTS Batch subtitle input */
+  subtitle: 'Subtitles / Text (*.srt;*.txt)|*.srt;*.txt|SRT (*.srt)|*.srt|Text (*.txt)|*.txt|All Files (*.*)|*.*',
   text: 'Text Files (*.txt)|*.txt|All Files (*.*)|*.*',
   audio: 'Audio Files (*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg)|*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg|All Files (*.*)|*.*',
   image: 'Image Files (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp|All Files (*.*)|*.*',

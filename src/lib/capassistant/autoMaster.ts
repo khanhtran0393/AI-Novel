@@ -43,6 +43,7 @@ export interface AutoMasterRequest {
   speed?: number | string;
   volume?: number | string;
   flip?: boolean;
+  loopVideo?: boolean;
   wmText?: string;
   srtStyle?: number | string;
   srtFont?: string;
@@ -545,6 +546,7 @@ export async function runAutoMaster(
       mute: request.muteOriginal ?? Boolean(ttsPath),
       vocalFilter: request.vocalFilter ?? false,
       flip: request.flip ?? false,
+      loop: request.loopVideo ?? false,
       gpu: request.gpu ?? true,
       volume: request.volume ?? 100,
     },

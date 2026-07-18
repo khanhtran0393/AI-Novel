@@ -1,0 +1,220 @@
+/**
+ * P0 — Chapter Quality Gate
+ * Word-band = Setup so_tu_chuong only (unified with rules via wordGoal).
+ * mediaReady = zero hard errors (no dead rulesHard branch).
+ */
+
+import {
+  checkChapterAgainstRules,
+  resolveRulesForProject,
+} from '@/lib/novel-engine/rules/checker';
+import {
+  DEFAULT_WORD_GOAL,
+  MIN_SCENE_COUNT,
+  countSceneTags,
+  evaluateWordGate,
+  getWordCount,
+} from '@/lib/storyWriting';
+import { wordBandFromSetupGoal } from './wordBand';
+import type { ChapterQualityReport, GateFinding } from './types';
+
+export type QualityGateInput = {
+  chapter: number;
+  content: string;
+  characterNames?: string[];
+  /** Setup so_tu_chuong — sole word authority */
+  wordGoal?: number;
+  userRules?: {
+    forbidden_words?: string;
+    fatigue_words?: string;
+  };
+  editorVerdict?: 'accept' | 'rewrite' | 'polish' | string;
+};
+
+function consistencyFindings(
+  content: string,
+  names: string[],
+): GateFinding[] {
+  const findings: GateFinding[] = [];
+  const text = (content || '').normalize('NFC');
+  if (!text.trim()) {
+    findings.push({
+      severity: 'error',
+      code: 'empty_content',
+      message: 'Nội dung chương trống — không qua Quality Gate.',
+    });
+    return findings;
+  }
+
+  const roster = names.map((n) => n.normalize('NFC').trim()).filter(Boolean);
+  if (roster.length === 0) {
+    findings.push({
+      severity: 'warning',
+      code: 'no_roster',
+      message: 'Chưa có roster nhân vật — consistency NV bỏ qua.',
+    });
+    return findings;
+  }
+
+  const lower = text.toLowerCase();
+  let mentioned = 0;
+  for (const name of roster) {
+    if (lower.includes(name.toLowerCase())) mentioned += 1;
+  }
+  if (mentioned === 0 && roster.length > 0) {
+    findings.push({
+      severity: 'warning',
+      code: 'roster_unused',
+      message: `Không thấy tên nào trong roster (${roster.length} NV) xuất hiện trong chương.`,
+    });
+  }
+
+  const speakerHits =
+    text.match(/(?:^|\n)\s*([A-ZÀ-Ỵ][\wÀ-ỹ'’\-\s]{1,24})\s*[:：]/g) || [];
+  const orphans = new Set<string>();
+  for (const raw of speakerHits.slice(0, 40)) {
+    const m = raw.match(/([A-ZÀ-Ỵ][\wÀ-ỹ'’\-\s]{1,24})\s*[:：]/);
+    if (!m) continue;
+    const speaker = m[1].trim();
+    if (speaker.length < 2 || speaker.length > 24) continue;
+    const inRoster = roster.some(
+      (n) =>
+        n.toLowerCase() === speaker.toLowerCase() ||
+        speaker.toLowerCase().includes(n.toLowerCase()),
+    );
+    if (!inRoster && !/^(Cảnh|Narrator|Người|Hắn|Nàng|Tôi)$/i.test(speaker)) {
+      orphans.add(speaker);
+    }
+  }
+  if (orphans.size >= 3) {
+    findings.push({
+      severity: 'warning',
+      code: 'orphan_speakers',
+      message: `≥3 speaker không khớp roster: ${[...orphans].slice(0, 5).join(', ')}`,
+      evidence: [...orphans].slice(0, 5).join('|'),
+    });
+  }
+
+  return findings;
+}
+
+/**
+ * Run full quality gate. Pure — no I/O.
+ * Word authority: Setup so_tu_chuong via evaluateWordGate + aligned rules.
+ * Rules chapter_words findings dropped when wordGoal set (avoid double-count).
+ */
+export function evaluateChapterQuality(input: QualityGateInput): ChapterQualityReport {
+  const content = (input.content || '').normalize('NFC');
+  const band = wordBandFromSetupGoal(input.wordGoal);
+  const wordGoal = band.goal;
+  const findings: GateFinding[] = [];
+
+  // 1) Word + scene gate (Setup) — single hard floor
+  const gate = evaluateWordGate(content, wordGoal, MIN_SCENE_COUNT);
+  if (!gate.wordsOk) {
+    findings.push({
+      severity: 'error',
+      code: 'word_gate',
+      message: `Word-gate: ${gate.wordCount}/${gate.wordMin} từ (mục tiêu Setup ${gate.wordGoal} · band ${band.min}–${band.max}).`,
+    });
+  } else if (gate.wordCount < wordGoal) {
+    findings.push({
+      severity: 'info',
+      code: 'word_below_goal',
+      message: `Đủ floor ${band.min} nhưng dưới mục tiêu ${wordGoal} (hiện ${gate.wordCount}).`,
+    });
+  }
+  if (gate.wordCount > band.max) {
+    findings.push({
+      severity: gate.wordCount > Math.round(band.max * 1.15) ? 'error' : 'warning',
+      code: 'word_over_max',
+      message: `Số từ ${gate.wordCount} trên ceiling Setup ${band.max} (goal×1.25).`,
+    });
+  }
+  if (!gate.scenesOk) {
+    findings.push({
+      severity: 'error',
+      code: 'scene_gate',
+      message: `Thiếu tag cảnh: ${gate.sceneCount}/${MIN_SCENE_COUNT} [CẢNH N: …].`,
+    });
+  }
+
+  // 2) Rules (forbidden/fatigue) — word band aligned; skip chapter_words (already gated)
+  const rules = resolveRulesForProject(input.userRules, wordGoal);
+  const ruleFindings = checkChapterAgainstRules(content, rules).filter(
+    (f) => f.rule !== 'chapter_words',
+  );
+  for (const f of ruleFindings) {
+    findings.push({
+      severity: f.severity,
+      code: `rules_${f.rule}`,
+      message: f.message,
+      evidence: f.evidence,
+    });
+  }
+
+  findings.push(...consistencyFindings(content, input.characterNames || []));
+
+  const verdict = String(input.editorVerdict || '').toLowerCase();
+  if (verdict === 'rewrite') {
+    findings.push({
+      severity: 'error',
+      code: 'editor_rewrite',
+      message: 'Editor verdict=rewrite — chưa media-ready.',
+    });
+  } else if (verdict === 'polish') {
+    findings.push({
+      severity: 'warning',
+      code: 'editor_polish',
+      message: 'Editor verdict=polish — nên polish trước Gen Prompt (media vẫn mở nếu không lỗi khác).',
+    });
+  }
+
+  const hardErrors = findings.filter((f) => f.severity === 'error').length;
+  const warnings = findings.filter((f) => f.severity === 'warning').length;
+
+  // mediaReady = zero hard errors only (no dead rulesHard branch)
+  const mediaReady = hardErrors === 0 && content.trim().length > 0;
+  const ok = hardErrors === 0;
+
+  return {
+    chapter: input.chapter,
+    ok,
+    mediaReady,
+    wordCount: getWordCount(content) || gate.wordCount,
+    sceneCount: countSceneTags(content) || gate.sceneCount,
+    hardErrors,
+    warnings,
+    findings,
+    checkedAt: new Date().toISOString(),
+    editorVerdict: input.editorVerdict || 'ungated',
+  };
+}
+
+/** Throw with actionable message if not media-ready (B10 hard-fail). */
+export function assertChapterMediaReady(
+  report: ChapterQualityReport | null | undefined,
+  chapter: number,
+): void {
+  if (!report) {
+    throw new Error(
+      `Quality Gate: chương ${chapter} chưa được kiểm tra sau khi viết. ` +
+        `Viết/commit chương trước, hoặc chạy lại gate. Không bỏ qua để Gen Prompt.`,
+    );
+  }
+  if (report.chapter !== chapter) {
+    throw new Error(
+      `Quality Gate: báo cáo thuộc ch${report.chapter}, đang gen ch${chapter}.`,
+    );
+  }
+  if (!report.mediaReady) {
+    const top = report.findings
+      .filter((f) => f.severity === 'error')
+      .slice(0, 3)
+      .map((f) => f.message)
+      .join(' | ');
+    throw new Error(
+      `Quality Gate chặn media ch${chapter} (${report.hardErrors} lỗi). ${top || 'Xem findings.'}`,
+    );
+  }
+}

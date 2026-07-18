@@ -380,7 +380,9 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
   const mapX = (x: unknown) => Math.floor(parseNumber(x, 0) * metadata.width / previewW);
   const mapY = (y: unknown) => Math.floor(parseNumber(y, 0) * metadata.height / previewH);
 
-  const inputsRaw = ['-y', '-i', videoPath.replace(/\\/g, '/')];
+  const inputsRaw = ['-y'];
+  if (video.loop || payload.loopVideo) inputsRaw.push('-stream_loop', '-1');
+  inputsRaw.push('-i', videoPath.replace(/\\/g, '/'));
   const vFilters: string[] = [];
   const aFilters: string[] = [];
   const tempFiles: string[] = [];
@@ -643,7 +645,7 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
     if (metadata.hasAudio && !video.mute) ffmpegArgs.push('-map', '0:a?');
   }
 
-  if (musicItems.length > 0 || trimItems.length > 0) ffmpegArgs.push('-shortest');
+  if (musicItems.length > 0 || trimItems.length > 0 || video.loop || payload.loopVideo) ffmpegArgs.push('-shortest');
 
   const wantsGpu = Boolean(video.gpu);
   const gpuType = wantsGpu ? (payload.gpuType ?? detectGpu()) : null;

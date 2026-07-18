@@ -55,32 +55,78 @@ export function buildNarrativePsychBlock(enabled: boolean): string {
    - ≥1 câu/hành động khiến muốn sang cảnh tiếp — open loop tình huống, không CTA kênh.`;
 }
 
+export type CharacterPromptLite = {
+  thoi_quen?: string;
+  so_thich?: string;
+  gioi_tinh?: string;
+  prompt?: string;
+  giong_thoai?: string;
+  dong_co?: string;
+  dac_diem_nhan_dang?: string;
+};
+
+/** Lookup profile with NFC-normalized name keys (persist / import often diverge). */
+function findCharacterPrompt(
+  name: string,
+  map?: Record<string, CharacterPromptLite>,
+): CharacterPromptLite | undefined {
+  if (!map) return undefined;
+  if (map[name]) return map[name];
+  const nfc = name.normalize('NFC');
+  if (map[nfc]) return map[nfc];
+  for (const [k, v] of Object.entries(map)) {
+    if (k.normalize('NFC') === nfc) return v;
+  }
+  return undefined;
+}
+
+/**
+ * Preflight for WRITE_CHAPTER / REVISE — clear VN errors, no silent invent.
+ * Returns null when OK; otherwise human-readable message for toast/UI.
+ */
+export function validateSpeechFingerprints(
+  nhan_vat?: string[],
+  nhan_vat_prompts?: Record<string, CharacterPromptLite>,
+): string | null {
+  if (!nhan_vat?.length) return null;
+  const missingQuirk: string[] = [];
+  const missingHabit: string[] = [];
+  for (const name of nhan_vat) {
+    const p = findCharacterPrompt(name, nhan_vat_prompts);
+    const quirk = (p?.giong_thoai || '').trim();
+    const habit = (p?.thoi_quen || p?.so_thich || '').trim();
+    if (!quirk) missingQuirk.push(name);
+    if (!habit) missingHabit.push(name);
+  }
+  const parts: string[] = [];
+  if (missingQuirk.length) {
+    parts.push(
+      `Thiếu «Giọng thoại / quirk» cho: ${missingQuirk.join(', ')}. ` +
+        `Mở hồ sơ nhân vật → điền Giọng thoại (VD: «cộc, câu ngắn»). App không tự bịa quirk.`,
+    );
+  }
+  if (missingHabit.length) {
+    parts.push(
+      `Thiếu «Thói quen / sở thích» cho: ${missingHabit.join(', ')}. ` +
+        `Điền trong hồ sơ nhân vật. App không tự tạo habit.`,
+    );
+  }
+  return parts.length ? parts.join('\n') : null;
+}
+
 export function buildSpeechFingerprintBlock(
   nhan_vat?: string[],
-  nhan_vat_prompts?: Record<
-    string,
-    {
-      thoi_quen?: string;
-      so_thich?: string;
-      gioi_tinh?: string;
-      prompt?: string;
-      giong_thoai?: string;
-      dong_co?: string;
-      dac_diem_nhan_dang?: string;
-    }
-  >,
+  nhan_vat_prompts?: Record<string, CharacterPromptLite>,
 ): string {
   if (!nhan_vat?.length) return '';
+  const pre = validateSpeechFingerprints(nhan_vat, nhan_vat_prompts);
+  if (pre) {
+    throw new Error(pre);
+  }
   const lines = nhan_vat.map((name) => {
-    const p = nhan_vat_prompts?.[name];
+    const p = findCharacterPrompt(name, nhan_vat_prompts);
     const habit = (p?.thoi_quen || p?.so_thich || '').trim();
     const quirk = (p?.giong_thoai || '').trim();
-    if (!quirk) {
-      throw new Error(`Nhan vat "${name}" thieu giong_thoai. App khong tu tao quirk thoai.`);
-    }
-    if (!habit) {
-      throw new Error(`Nhan vat "${name}" thieu thoi_quen/so_thich. App khong tu tao habit.`);
-    }
     const motive = p?.dong_co ? `; động cơ = "${p.dong_co}"` : '';
     const mark = p?.dac_diem_nhan_dang ? `; nhận dạng = "${p.dac_diem_nhan_dang}"` : '';
     return `- ${name}: quirk thoại = "${quirk}"; thói quen/sở thích = "${habit}"${motive}${mark}. Mọi câu thoại của ${name} phải giữ quirk này.`;

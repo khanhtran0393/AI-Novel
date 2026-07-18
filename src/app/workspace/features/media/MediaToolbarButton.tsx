@@ -18,7 +18,24 @@ export default function MediaToolbarButton() {
         const res = await fetch(API.flowStatus, { cache: 'no-store' });
         const j = await res.json();
         if (dead) return;
-        const ready = Boolean(j.flowKeyPresent && j.extensionConnected);
+        // Ready only when at least one profile has real Google email + token
+        const accounts = Array.isArray(j.accounts) ? j.accounts : [];
+        const anyProfileReady = accounts.some(
+          (a: {
+            flowKeyPresent?: boolean;
+            sessionVerified?: boolean;
+            email?: string;
+          }) =>
+            Boolean(
+              a.flowKeyPresent &&
+                a.sessionVerified &&
+                a.email &&
+                String(a.email).includes('@'),
+            ),
+        );
+        const ready = Boolean(
+          anyProfileReady && j.flowKeyPresent && j.extensionConnected,
+        );
         const login = Boolean(j.loginSessionOpen);
         setFlowReady((prev) => (prev === ready ? prev : ready));
         setLoginOpen((prev) => (prev === login ? prev : login));
@@ -30,7 +47,11 @@ export default function MediaToolbarButton() {
       }
     };
     void tick();
-    const t = setInterval(tick, 4000);
+    // 8s + skip when tab hidden — tránh spam /api/flow/status khi GUI nền
+    const t = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void tick();
+    }, 8000);
     return () => {
       dead = true;
       clearInterval(t);
@@ -63,7 +84,10 @@ export default function MediaToolbarButton() {
           }`}
         />
       </button>
-      <MediaConfigModal isOpen={open} onClose={() => setOpen(false)} />
+      {/* Lazy-mount: tránh full-store subscribe khi modal đóng (GUI đứng) */}
+      {open ? (
+        <MediaConfigModal isOpen onClose={() => setOpen(false)} />
+      ) : null}
     </>
   );
 }

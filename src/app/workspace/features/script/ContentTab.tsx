@@ -20,6 +20,7 @@ import {
   YOUTUBE_HOOK_SCENE_INDEX,
   migrateHookAssetKeys,
 } from '@/lib/youtubeSafe';
+import { appConfirm } from '@/lib/confirmDialog';
 
 interface ContentTabProps {
   handleSceneChange: (idx: number, newContent: string) => void;
@@ -270,13 +271,21 @@ export default function ContentTab(props: ContentTabProps) {
                 : handleWriteChapter(false));
             }}
             onFullRewrite={() => {
-              if (
-                confirm(
-                  '⚠️ Viết lại từ đầu sẽ xóa kịch bản và media (audio/ảnh/video/prompt) của chương này. Tiếp tục?',
-                )
-              ) {
-                void handleWriteChapter(true);
-              }
+              void (async () => {
+                const ok = await appConfirm({
+                  title: 'Viết lại chương',
+                  message:
+                    'Viết lại từ đầu sẽ xóa kịch bản và media của chương này.',
+                  details: [
+                    'Kịch bản / cảnh hiện tại',
+                    'Audio · ảnh · video · prompt gắn chương',
+                  ],
+                  confirmLabel: 'Viết lại từ đầu',
+                  cancelLabel: 'Giữ nguyên',
+                  tone: 'danger',
+                });
+                if (ok) void handleWriteChapter(true);
+              })();
             }}
           />
         </div>

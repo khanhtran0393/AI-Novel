@@ -5,6 +5,7 @@ import { loadProjectContext, type ProjectContext } from '../projectContext';
 import { listChapters, loadChapter } from '../store/diskStore';
 import { resolveRulesForProject } from '../rules/checker';
 import { type NovelRules } from '../rules/defaultRules';
+import { buildForeshadowPromptBlock, getForeshadowLedger, getMemoryPack } from '@/lib/pipeline';
 
 export interface NovelContextPack {
   projectName: string;
@@ -45,13 +46,24 @@ export function buildNovelContext(chapterNum: number, ctx?: ProjectContext): Nov
     return `- ${name}${bits.length ? `: ${bits.join(' · ')}` : ''}`;
   });
 
-  const rules = resolveRulesForProject(project.userRules);
+  const rules = resolveRulesForProject(
+    project.userRules,
+    project.so_tu_chuong || 4250,
+  );
+  const memPack = getMemoryPack();
+  const foreshadowBlock =
+    buildForeshadowPromptBlock(memPack?.foreshadowOpen || getForeshadowLedger()) || '';
+  const scroll =
+    memPack?.scrollSummary || project.tom_tat_cuon_chieu || '(chưa có)';
+  const shortTerm =
+    (memPack?.shortTerm?.length ? memPack.shortTerm : project.tri_nho_ngan_han) || [];
 
   const promptBlock = [
     `=== LOREBOOK ===\n${project.lorebook || '(trống)'}`,
     `=== DÀN Ý TỔNG ===\n${(project.dan_y_tong_the || '').slice(0, 4000)}`,
-    `=== CUỐN CHIẾU ===\n${project.tom_tat_cuon_chieu || '(chưa có)'}`,
-    `=== NGẮN HẠN ===\n${(project.tri_nho_ngan_han || []).join('\n') || '(chưa có)'}`,
+    `=== CUỐN CHIẾU ===\n${scroll}`,
+    `=== NGẮN HẠN ===\n${shortTerm.join('\n') || '(chưa có)'}`,
+    foreshadowBlock,
     `=== DÀN Ý CHƯƠNG ${chapterNum} ===\n${chapterPlan || '(chưa plan)'}`,
     `=== NHÂN VẬT ===\n${charLines.join('\n') || '(chưa có)'}`,
     recent.length ? `=== 3 CHƯƠNG GẦN ===\n${recent.join('\n')}` : '',
@@ -67,8 +79,8 @@ export function buildNovelContext(chapterNum: number, ctx?: ProjectContext): Nov
     chapter: chapterNum,
     lorebook: project.lorebook,
     outline: project.dan_y_tong_the,
-    scrollSummary: project.tom_tat_cuon_chieu,
-    shortTerm: project.tri_nho_ngan_han || [],
+    scrollSummary: typeof scroll === 'string' ? scroll : project.tom_tat_cuon_chieu,
+    shortTerm: shortTerm,
     chapterPlan,
     recentChaptersDigest: recent.join('\n'),
     characterBible: charLines.join('\n'),

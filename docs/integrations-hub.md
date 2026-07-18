@@ -10,22 +10,31 @@ Gen Prompt Studio  →  Gen ảnh  →  Gen Video  →  TTS  →  Ship / CapCut
 
 | Khi user bấm… | Logic ngầm |
 |---------------|------------|
-| **Gen Prompt Studio** | Shot graph + **công thức still** (`image_prompt`) + **Seedance I2V** (`video_prompt`) trong `/api/generate` |
+| **Gen Prompt Studio** | Shot graph + still formula + **Seedance sequence** (`video_prompt`, continuity) |
 | **Viết lại prompt** | `compileStillImagePrompt` sau REGENERATE_PROMPT |
 | **Gen Prompt AI (hồ sơ NV)** | `applyCharacterSheetFormulas` → master + 4 góc + biểu cảm |
 | **Gen Prompt ONLY / Kế thừa di sản** | Cùng still formula cho `prompt` (và sheet nếu có) |
 | **YouTube SEO Title / Thumb** | **55 quy luật tâm lý** (`youtubePsych55.ts`) + anti-motif kênh |
-| **Gen ảnh** | Dùng `image_prompt` đã có identity/formula; sau batch → rebuild **FableCut** timeline (im lặng) |
-| **Gen Video** | **Seedance** lại trong `/api/generate-video` (I2V); sau gen → FableCut |
-| **TTS chương** | Sau xong → FableCut (đồng bộ duration audio) |
-| **Lên cung** | MiroFish hooks → lorebook |
-| **Ship pack / CapCut** | Resolve path đĩa + đính timeline |
+| **Gen ảnh** | `image_prompt` + identity; sau batch → **FableCut** rebuild |
+| **Gen Video** | Seedance continuity + **auto take-review accept** + **Watch QC report-only** (async) |
+| **TTS chương** | Sau xong → FableCut (**duration TTS thật**, không hardcode 5s) |
+| **Plan Arc / Outline lore** | **MiroFish** hooks → lorebook (**chỉ** scope outline/lore/arc) |
+| **Ship pack / CapCut** | Path đĩa + timeline |
 
 Không có panel Repo Hub. Không gộp Prompt+Ảnh+Video+TTS thành một nút.
+
+## Paths (ship-ready)
+
+1. `vendor/FableCut`, `vendor/watch` (ưu tiên)
+2. Env `AINOVEL_*_DIR`
+3. `D:\repo\*` (dev only)
+
+Seedance = TypeScript in-process (`src/lib/integrations/seedance*`).
 
 ## Artifact
 
 - `exports/integrations/fablecut/…/project.json`
+- `exports/integrations/watch/qc_*.md` (report-only)
 - Ship: `…/fablecut/`
 
 ## Dev

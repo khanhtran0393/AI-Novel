@@ -9,6 +9,11 @@ import {
   buildProjectBackup,
   parseProjectBackup,
 } from '@/lib/projectBackup';
+import {
+  exportPipelineSnapshot,
+  importPipelineSnapshot,
+  type PipelinePortableSnapshot,
+} from '@/lib/pipeline';
 
 export const PORTABLE_VERSION = 2 as const;
 
@@ -22,6 +27,11 @@ export type PortableProject = ProjectBackupEnvelope & {
   };
   /** Secrets intentionally excluded when stripSecrets=true */
   secretsStripped: boolean;
+  /**
+   * P0–P2 pipeline meta (Quality Gate / foreshadow / longform).
+   * Not Zustand — lives in pipelineStore localStorage; travels with portable pack.
+   */
+  pipelineSnapshot?: PipelinePortableSnapshot | null;
 };
 
 const SECRET_KEYS = new Set([
@@ -194,6 +204,8 @@ export function buildPortableProject(
     secretsStripped: stripSecrets,
     mediaIndex,
     state: slice,
+    // Quality Gate + foreshadow + longform for multi-machine
+    pipelineSnapshot: exportPipelineSnapshot(),
   };
 }
 
@@ -201,11 +213,20 @@ export function parsePortableProject(raw: string): PortableProject {
   const data = parseProjectBackup(raw) as PortableProject;
   if (!data.state) throw new Error('Portable thiếu state.');
   // Accept v1 backup as portable v1
+  // Recover pipeline from top-level or legacy nested state key
+  const nested = (data.state as Record<string, unknown> | undefined)?.__pipelineSnapshot;
+  const pipelineSnapshot =
+    data.pipelineSnapshot ||
+    (nested && typeof nested === 'object'
+      ? (nested as PipelinePortableSnapshot)
+      : null);
+
   return {
     ...data,
     portableVersion: data.portableVersion === PORTABLE_VERSION ? PORTABLE_VERSION : PORTABLE_VERSION,
     secretsStripped: !!data.secretsStripped,
     mediaIndex: data.mediaIndex || { audio: [], images: [], videos: [] },
+    pipelineSnapshot,
   };
 }
 
@@ -221,6 +242,16 @@ export function portableStatePatch(
     patch[k] = v;
   }
   return patch;
+}
+
+/**
+ * Apply portable pack side-effects outside Zustand (pipeline Quality Gate etc.).
+ * Call after merging portableStatePatch into the store.
+ */
+export function applyPortablePipelineSnapshot(portable: PortableProject): void {
+  if (portable.pipelineSnapshot) {
+    importPipelineSnapshot(portable.pipelineSnapshot);
+  }
 }
 
 export function downloadPortableProject(pack: PortableProject, filename?: string) {

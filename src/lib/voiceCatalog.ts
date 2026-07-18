@@ -539,6 +539,11 @@ export function getVoiceList(
 ): VoiceOption[] {
   const byLang = catalog[platform]?.[language];
   if (byLang?.length) return dedupeVoicesById(byLang);
+  // Prep chưa xong / catalog rỗng → fallback static (tránh dropdown "Không có giọng")
+  if (catalog !== STATIC_VOICE_CATALOG) {
+    const staticList = STATIC_VOICE_CATALOG[platform]?.[language];
+    if (staticList?.length) return dedupeVoicesById(staticList);
+  }
   return [];
 }
 
@@ -582,14 +587,95 @@ export function getDefaultVoiceConfig(
   platform: string,
   preferredLanguage: string,
 ): { language: string; voice: string } {
-  const platformVoices = catalog[platform] || {};
-  let language = preferredLanguage;
-  let voices = platformVoices[language] || [];
+  const tryList = (cat: VoiceCatalog, lang: string) =>
+    cat[platform]?.[lang] || [];
+
+  let language = preferredLanguage || 'vi';
+  let voices = tryList(catalog, language);
+  if (!voices.length) voices = tryList(STATIC_VOICE_CATALOG, language);
+  if (!voices.length && language !== 'vi') {
+    language = 'vi';
+    voices = tryList(catalog, 'vi');
+    if (!voices.length) voices = tryList(STATIC_VOICE_CATALOG, 'vi');
+  }
+  // Last resort: first language that has any voice on this platform
+  if (!voices.length) {
+    const merged = { ...STATIC_VOICE_CATALOG[platform], ...catalog[platform] };
+    for (const [lang, list] of Object.entries(merged || {})) {
+      if (list?.length) {
+        language = lang;
+        voices = list;
+        break;
+      }
+    }
+  }
+
+  let voice = voices[0]?.id || '';
+  // Hard defaults when catalog empty (dev race / prep fail)
+  if (!voice) {
+    if (platform === 'edge_tts') voice = 'vi-VN-NamMinhNeural';
+    else if (platform === 'piper' || platform === 'vieneu_tts') voice = 'manhdung.onnx';
+    else if (platform === 'omnivoice_local') voice = 'alloy';
+    else if (platform === 'gemini_tts') voice = 'Kore';
+    else if (platform === 'openai_tts') voice = 'alloy';
+  }
 
   return {
     language,
-    voice: voices[0]?.id || '',
+    voice,
   };
+}
+
+const OMNI_PRESET_RE =
+  /^(alloy|ash|ballad|cedar|coral|echo|fable|marin|nova|onyx|sage|shimmer|verse|auto)$/i;
+
+/**
+ * Khi đổi nền tảng: luôn chọn language + voice hợp lệ cho platform mới.
+ * - keepPreferred=false (mặc định khi đổi platform): lấy default, bỏ voice cũ (tránh Edge id → Vina fail).
+ * - keepPreferred=true: giữ voice nếu còn trong catalog platform.
+ */
+export function resolveVoiceForPlatform(
+  catalog: VoiceCatalog,
+  platform: string,
+  preferredLanguage: string,
+  preferredVoice?: string,
+  opts?: { keepPreferred?: boolean },
+): { language: string; voice: string } {
+  const def = getDefaultVoiceConfig(catalog, platform, preferredLanguage);
+  const list = getVoiceList(catalog, platform, def.language);
+  const pref = (preferredVoice || '').trim();
+  const keep = opts?.keepPreferred !== false;
+
+  if (keep && pref) {
+    if (list.some((v) => v.id === pref || v.name === pref)) {
+      return { language: def.language, voice: pref };
+    }
+    if (platform === 'omnivoice_local' && (OMNI_PRESET_RE.test(pref) || pref.startsWith('omnivoice_'))) {
+      return { language: def.language, voice: pref };
+    }
+  }
+
+  return {
+    language: def.language,
+    voice: def.voice || pref || '',
+  };
+}
+
+/** Voice có thuộc catalog platform không (kèm preset Omni). */
+export function isVoiceValidForPlatform(
+  catalog: VoiceCatalog,
+  platform: string,
+  language: string,
+  voiceId: string,
+): boolean {
+  const v = (voiceId || '').trim();
+  if (!v) return false;
+  const list = getVoiceList(catalog, platform, language || 'vi');
+  if (list.some((x) => x.id === v || x.name === v)) return true;
+  if (platform === 'omnivoice_local' && (OMNI_PRESET_RE.test(v) || v.startsWith('omnivoice_'))) {
+    return true;
+  }
+  return false;
 }
 
 export function countCatalogVoices(catalog: VoiceCatalog): Record<string, number> {

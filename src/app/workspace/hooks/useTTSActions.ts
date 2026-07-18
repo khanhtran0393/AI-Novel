@@ -14,6 +14,7 @@ import {
   runCastPreflight,
 } from '../modules/castPreflight';
 import { toast } from '@/lib/toastBus';
+import { appConfirm, splitConfirmBody } from '@/lib/confirmDialog';
 import {
   resyncPromptTimestamps,
   timestampsNeedResync,
@@ -35,6 +36,7 @@ import {
   generateChapterTts,
   runChapterCastPreflightReport,
 } from './chapterTtsActions';
+import { assertTtsMediaPreflight } from '@/lib/pipeline';
 
 export type { ChapterTTSOptions, SceneAutomationOptions } from './ttsActionHelpers';
 
@@ -152,12 +154,36 @@ export function useTTSActions() {
       throw new Error(gate.reasons.join(' | '));
     }
 
-    if (gate.warnings.length > 0 && !options.silent) {
-      const proceed = confirm(
-        `⚠️ Cảnh báo YouTube-safe:\n• ${gate.warnings.join('\n• ')}\n\nVẫn tiếp tục sinh TTS?`,
-      );
-      if (!proceed) return;
+    // P1 — One consolidated preflight pass (media + cast + youtube warns)
+    // Collect soft warnings; hard-fail once with single toast.
+    const softWarns: string[] = [];
+
+    // Media TTS (platform / voice / scene; quality soft-warn)
+    try {
+      const ttsPf = assertTtsMediaPreflight({
+        chapter: chapterNumber,
+        sceneIndex,
+        sceneText,
+        platform: state.ttsConfig.platform,
+        voice: finalVoice || state.ttsConfig.voice,
+        chu_de: state.setup?.chu_de,
+        phong_cach: state.setup?.phong_cach,
+        chapterContent: chapter?.noi_dung,
+        characterNames: state.nhan_vat,
+        wordGoal: state.setup?.so_tu_chuong || 4250,
+        userRules: state.userRules,
+        editorVerdict: state.editorReviews?.[chapterNumber]?.verdict,
+      });
+      for (const issue of ttsPf.issues.filter((i) => i.level === 'warn')) {
+        softWarns.push(issue.message);
+      }
+    } catch (pfErr) {
+      const msg = pfErr instanceof Error ? pfErr.message : String(pfErr);
+      if (!options.silent) toast.error('Preflight TTS', msg);
+      throw pfErr;
     }
+
+    for (const w of gate.warnings) softWarns.push(`YouTube: ${w}`);
 
     // Cast preflight (warn / block before spending credits)
     if (!options.skipPreflight && !options.silent) {
@@ -184,13 +210,39 @@ export function useTTSActions() {
         );
         return;
       }
-      // Confirm only on warnings or resume cache (not every multi gen)
+      for (const i of pf.issues.filter((x) => x.level === 'warn')) {
+        softWarns.push(i.message);
+      }
+      // Single confirm for all soft warnings + cast resume cache
       const needsConfirm =
-        pf.issues.some((i) => i.level === 'warn') || pf.partialCached > 0;
+        softWarns.length > 0 ||
+        pf.issues.some((i) => i.level === 'warn') ||
+        pf.partialCached > 0 ||
+        gate.warnings.length > 0;
       if (needsConfirm) {
-        const proceed = confirm(formatPreflightConfirm(pf));
+        const raw = formatPreflightConfirm(pf);
+        const body = splitConfirmBody(raw);
+        const details = [
+          ...softWarns.slice(0, 8),
+          ...(body.details || []),
+        ].filter(Boolean);
+        const proceed = await appConfirm({
+          title: 'Preflight TTS',
+          message:
+            body.message ||
+            (softWarns.length
+              ? 'Có cảnh báo preflight. Vẫn tiếp tục sinh TTS?'
+              : 'Xác nhận preflight TTS'),
+          details: details.length ? details : undefined,
+          confirmLabel: 'Tiếp tục TTS',
+          cancelLabel: 'Hủy',
+          tone: 'warn',
+        });
         if (!proceed) return;
       }
+    } else if (!options.silent && softWarns.length > 0) {
+      // skipPreflight / silent cast path: one toast, no spam per issue
+      toast.warn('Preflight TTS', softWarns.slice(0, 4).join(' · '));
     }
 
     if (!options.skipCredit) {

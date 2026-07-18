@@ -605,7 +605,12 @@ export default function FlowAccountsPanel() {
       /* ignore */
     }
 
-    const t = setInterval(() => void refresh(), 2500);
+    // 5s poll (was 2.5s) — getBridgeSnapshot + Chrome alive check is heavy on Windows.
+    // Skip when tab hidden to avoid freezing background Electron UI.
+    const t = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void refresh();
+    }, 5000);
     return () => clearInterval(t);
   }, [refresh]);
 
@@ -680,9 +685,15 @@ export default function FlowAccountsPanel() {
   };
 
   const accounts = snap?.accounts || [];
-  const readyCount = accounts.filter(
-    (a) => a.flowKeyPresent || a.sessionVerified,
-  ).length;
+  /** Ready = real Google email + token. Token alone (no email) is NOT "sẵn sàng". */
+  const isAccountReady = (a: FlowAccount) =>
+    Boolean(
+      a.flowKeyPresent &&
+        a.sessionVerified &&
+        a.email &&
+        String(a.email).includes('@'),
+    );
+  const readyCount = accounts.filter(isAccountReady).length;
   const bridgeUp = Boolean(snap?.running);
 
   return (
@@ -776,11 +787,12 @@ export default function FlowAccountsPanel() {
             const isThisLogin =
               loginTargetId === a.id &&
               (bootstrapping || Boolean(a.loginSessionOpen));
-            const ready = Boolean(
-              a.flowKeyPresent &&
-                (a.extensionConnected || a.sessionVerified) &&
-                bridgeUp,
-            );
+            // Strict: email + token + bridge. Never green from stale token alone.
+            const ready = Boolean(bridgeUp && isAccountReady(a));
+            const tokenOnly =
+              Boolean(a.flowKeyPresent) &&
+              !ready &&
+              !(a.email && String(a.email).includes('@'));
             const extMissing =
               bridgeUp &&
               !a.extensionConnected &&
@@ -790,6 +802,13 @@ export default function FlowAccountsPanel() {
               isThisLogin ||
               (Boolean(a.loginSessionOpen) && !a.flowKeyPresent);
             const steps = stepsByProfile[a.id] || [];
+            const statusLabel = isThisLogin
+              ? 'đang login'
+              : ready
+                ? 'sẵn sàng'
+                : tokenOnly
+                  ? 'chưa login'
+                  : a.status;
 
             return (
               <div
@@ -799,21 +818,19 @@ export default function FlowAccountsPanel() {
                     ? 'border-amber-500/50 bg-amber-950/15'
                     : ready
                       ? 'border-emerald-700/50 bg-emerald-950/10'
-                      : 'border-zinc-800/80 bg-black/40'
+                      : tokenOnly
+                        ? 'border-amber-800/40 bg-amber-950/10'
+                        : 'border-zinc-800/80 bg-black/40'
                 }`}
               >
                 {/* Header profile */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                      {statusDot(ready, isThisLogin)}
+                      {statusDot(ready, isThisLogin || tokenOnly)}
                       <span className="truncate">{a.name}</span>
                       <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-[9px] uppercase text-zinc-500">
-                        {isThisLogin
-                          ? 'đang login'
-                          : ready
-                            ? 'sẵn sàng'
-                            : a.status}
+                        {statusLabel}
                       </span>
                       {typeof a.credits === 'number' ? (
                         <span className="text-[9px] font-normal text-amber-400/90">
@@ -972,8 +989,17 @@ export default function FlowAccountsPanel() {
                 {ready ? (
                   <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-2 py-1.5 text-[10px] font-semibold text-emerald-300">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    Token OK · phiên login đã đóng · gen ảnh/video bằng profile
-                    này
+                    Đã đăng nhập ({a.email}) · token OK · gen bằng profile này
+                  </div>
+                ) : tokenOnly ? (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-950/25 px-2 py-1.5 text-[10px] text-amber-100">
+                    <div className="font-semibold">
+                      Chưa đăng nhập Google (token cũ / thiếu email)
+                    </div>
+                    <div className="mt-0.5 text-[9px] text-amber-200/75">
+                      {a.lastError ||
+                        'Profile có token cũ trên đĩa nhưng chưa login Google. Bấm Đăng nhập trên card này.'}
+                    </div>
                   </div>
                 ) : extMissing ? (
                   <div className="rounded-lg border border-red-500/35 bg-red-950/20 px-2 py-1.5 text-[10px] text-red-200">

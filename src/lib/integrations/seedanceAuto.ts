@@ -14,6 +14,7 @@ import { compileDirectedClip } from './seedance';
 import {
   buildContinuationPrompt,
   markClipGenerated,
+  promotePreviousShotForContinuation,
 } from './seedanceTakeReview';
 
 export type SceneBeatInput = {
@@ -330,6 +331,26 @@ export function resolveVideoPromptWithSequence(input: {
   const already = input.priorSentences || [];
   const reserved = input.laterSentences || [];
 
+  // Promote previous generated take → accepted so continuation source-gate can fire
+  if (state && input.promptIndex > 0) {
+    try {
+      const promo = promotePreviousShotForContinuation(
+        state,
+        input.sceneIndex,
+        input.promptIndex,
+      );
+      if (promo.promoted) {
+        state = promo.state;
+        saveSeedanceProject(state, slug);
+        console.log(
+          `[Seedance auto] promoted parent ${promo.promoted} for continuation sc=${input.sceneIndex} p=${input.promptIndex}`,
+        );
+      }
+    } catch (e) {
+      console.warn('[Seedance auto] promote parent failed', e);
+    }
+  }
+
   // Prefer continuation from accepted parent (previous prompt in scene)
   if (state && input.promptIndex > 0) {
     const parent = state.clips.find(
@@ -349,6 +370,15 @@ export function resolveVideoPromptWithSequence(input: {
           characterHints: input.characterHints,
           durationSec: input.durationSec,
           secondsPerBeat: input.secondsPerBeat,
+          observation: {
+            observed_start_state: String(
+              (parent.planned_end_state as { description?: string })?.description ||
+                already[already.length - 1] ||
+                '',
+            ),
+            observed_end_state: input.promptText.slice(0, 240),
+            observation_confidence: 'medium',
+          },
         });
         return {
           promptText: cont.directed.prompt,

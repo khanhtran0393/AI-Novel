@@ -603,11 +603,13 @@ def main() -> int:
     out_dir = os.path.dirname(os.path.abspath(args.output))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+    # Standard PCM WAV (not WAVEX) — better browser/Electron <audio> decode.
     sf.write(
         args.output,
         generated_signal.reshape(-1),
         MODEL_SAMPLE_RATE,
-        format="WAVEX",
+        subtype="PCM_16",
+        format="WAV",
     )
     print(f"Done: {args.output} providers={used_providers}")
     return 0

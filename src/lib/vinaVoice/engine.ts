@@ -632,7 +632,7 @@ export async function synthesizeVinaVoice(
     const engineRaw = path.join(outDir, 'engine_raw.bin');
     let ext: { ok: boolean; method?: string; error?: string } = { ok: false };
 
-    // NFE: preview 12 / chapter 20 / full 24 (env overrides). Was 32.
+    // NFE: preview 16 / chapter 20 / full 24 (env overrides). Never use 4 — pure noise.
     const nfeStep = resolveNfeStep({
       isPreview: !!req.isPreview,
       isChapter: !!req.isChapter && !req.isPreview,

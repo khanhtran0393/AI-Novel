@@ -71,8 +71,9 @@ export const provider_gemini_tts: TTSProvider = {
       try {
         const buffer = await generateGeminiTTS(text, key, voice);
         markKeySuccess(key);
-        // small spacing to avoid burst RPM across many voice previews
-        await sleep(80);
+        // Preview: pace; batch (isChapter): minimal gap — CapAssist-style fan-out
+        const isBatch = Boolean((opts as { isChapter?: boolean }).isChapter);
+        await sleep(isBatch ? 15 : 80);
         return {
           buffer,
           method: `Gemini TTS (${voice})`,

@@ -13,6 +13,7 @@ import {
   resolvePrimaryCastReference,
 } from '@/lib/flow-bridge/castIngredients';
 import { characterImageKey } from '@/contracts';
+import { lorebookWithMemoryPack } from '@/lib/pipeline';
 
 export type NhanVatPrompts = Record<string, NhanVatProfile | Partial<NhanVatProfile>>;
 
@@ -85,7 +86,7 @@ export async function generateImagePromptAction(params: GenImagePromptParams): P
       typeof params.sceneIndex === 'number' ? params.sceneIndex : 0,
     ten_tac_pham: live.ten_tac_pham,
     title: live.ten_tac_pham,
-    lorebook: live.lorebook,
+    lorebook: lorebookWithMemoryPack(live.lorebook || ''),
   });
 
   let prompts: PromptAsset[] = [];

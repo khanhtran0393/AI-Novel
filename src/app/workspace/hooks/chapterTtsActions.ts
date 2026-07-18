@@ -22,7 +22,6 @@ import {
   timestampsNeedResync,
 } from '@/lib/timestampSync';
 import {
-  createBatchJob,
   setJobRunner,
   patchBatchJobItem,
   setBatchJobStatus,
@@ -46,6 +45,7 @@ import {
   type TtsSceneJob,
 } from './ttsActionHelpers';
 import { API } from '@/contracts';
+import { assertTtsMediaPreflight } from '@/lib/pipeline';
 
 /**
  * Gen TTS cả chương qua queue nền (sống sót remount React / đổi tab).
@@ -91,6 +91,31 @@ export async function generateChapterTts(
       const msg = err instanceof Error ? err.message : String(err);
       notice(`❌ ${msg}`);
       if (!silent) toast.error('TTS chuong', msg);
+      return { ok: 0, fail: 0, skipped: 0 };
+    }
+
+    // P1 — chapter-level TTS media preflight (sample first scene text later; platform/voice now)
+    try {
+      assertTtsMediaPreflight({
+        chapter: chapterNumber,
+        sceneText: (chapter?.noi_dung || state.chapterHooks?.[chapterNumber]?.hook || ' ').slice(
+          0,
+          500,
+        ),
+        platform: state.ttsConfig.platform,
+        voice: defaultVoice,
+        chu_de: state.setup?.chu_de,
+        phong_cach: state.setup?.phong_cach,
+        chapterContent: chapter?.noi_dung,
+        characterNames: state.nhan_vat,
+        wordGoal: state.setup?.so_tu_chuong || 4250,
+        userRules: state.userRules,
+        editorVerdict: state.editorReviews?.[chapterNumber]?.verdict,
+      });
+    } catch (pfErr) {
+      const msg = pfErr instanceof Error ? pfErr.message : String(pfErr);
+      notice(`🚫 Media preflight TTS: ${msg}`);
+      if (!silent) toast.error('TTS preflight', msg);
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
@@ -233,14 +258,18 @@ export async function generateChapterTts(
           : ' · tuần tự')
     );
 
-    // Mirror into global Jobs panel (status + retry failed)
-    const batchJob = createBatchJob({
+    // P1 — stage batch job (Jobs panel pause/cancel/retry)
+    const { createStageBatchJob } = await import('@/lib/pipeline');
+    const batchJob = createStageBatchJob({
+      stage: 'tts',
+      chapter: chapterNumber,
       title: `TTS chương ${chapterNumber}`,
-      kind: 'tts',
       concurrency,
       items: jobs.map((j) => ({
         label: j.title,
-        meta: { sceneIndex: j.sceneIndex, text: j.text, title: j.title },
+        chapter: chapterNumber,
+        sceneIndex: j.sceneIndex,
+        meta: { text: j.text, title: j.title },
       })),
     });
     setBatchJobStatus(batchJob.id, 'running');

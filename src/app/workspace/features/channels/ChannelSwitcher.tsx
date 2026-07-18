@@ -32,6 +32,7 @@ import {
 } from '@/store/useNovelStoreSelectors';
 import { GENRE_PACKS, applyGenrePackDefaults } from '@/lib/genrePacks';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 import FloatingMenu from '../../shared/FloatingMenu';
 
 /**
@@ -128,11 +129,19 @@ export default function ChannelSwitcher() {
     toast.success('Đã tạo kênh', name);
   };
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (list.length <= 1) return;
     const ch = channels[id];
-    if (!confirm(`Xóa kênh "${ch?.name || id}"?`)) return;
+    const ok = await appConfirm({
+      title: 'Xóa kênh',
+      message: `Xóa kênh «${ch?.name || id}» khỏi danh sách?`,
+      details: ['Không thể hoàn tác từ UI'],
+      confirmLabel: 'Xóa kênh',
+      cancelLabel: 'Giữ lại',
+      tone: 'danger',
+    });
+    if (!ok) return;
     const res = deleteChannel(id);
     if (!res.ok) toast.error('Xóa kênh', res.error);
     else toast.info('Đã xóa kênh', ch?.name);

@@ -1,5 +1,34 @@
 # Project memory (AI Novel)
 
+## Pipeline P0–P2 packages (2026-07-17)
+
+- **Code:** `src/lib/pipeline/*` — Quality Gate, Memory/foreshadow, Media Preflight, Stage job helpers, Long-form arc.
+- **P0 wire:** `writeChapterFinish` + `commitChapterMemory` → `evaluateChapterQuality` / `enrichMemoryAfterCommit`; `writeModule` + engine draft inject `lorebookWithMemoryPack`.
+- **P1 wire:** `useImagePromptActions` preflight prompt/image/video (+ `ensureChapterQuality` lazy for legacy chapters). Job queue still `jobQueue` + `createStageBatchJob` available.
+- **P2 wire:** `runner.ts` uses `buildLayeredRouteExtras` (no hardcode null); editor tools `markArcSummaryDone` / volume; auto layered when `so_chuong >= 2*chaptersPerArc`.
+- **Smoke:** `npm run smoke:pipeline` (= `smoke-pipeline-p0-p2.mjs` + `smoke-pipeline-import.mts`) PASS (+ stage batch + TTS preflight).
+- **P1 TTS:** `assertTtsMediaPreflight` in `useTTSActions` + `chapterTtsActions`; chapter batch uses `createStageBatchJob(stage=tts)`.
+- **P1 stage queue:** `handleGenerateAllImages/Videos` → `createStageBatchJob` + `runStageBatch` (no raw createBatchJob).
+- **P0 UI:** `QualityGateBadge` on SceneCard (full/compact) + ChapterList (dot); `subscribePipelineStore` for live updates.
+- **Conflict fixes (2026-07-17):** Unified word-band = Setup `so_tu_chuong` (`wordBand.ts` + rules aligned; strip dual `chapter_words`). `mediaReady` = hardErrors===0 only. Engine commit same as workspace. Portable `pipelineSnapshot` + `applyPortablePipelineSnapshot`; `clearPipelineStore` on Làm Mới. TTS soft-warns consolidated into one confirm/toast.
+- **Prior media:** Seedance continuity / FableCut vendor / Watch QC / VieNeu v3turbo / MiroFish arc hooks remain as before.
+- **Media e2e (2026-07-17):** `npm run test:pipeline-e2e` — continuity `usedContinuation=true`, FableCut TTS-sync, Watch native frames≥3, VieNeu synth, HTTP chapter 200, MiroFish **403** outside outline.
+
+## Toolbox host-binding (2026-07-17) — no encryption yet
+
+- **Goal:** NAV/toolbox CLIs refuse standalone (Terminal/double-click); only App host may spawn.
+- **TS:** `src/lib/nav/hostBinding.ts` → `issueHostToken` / `hostBindingChildEnv`; wire `navPythonBridge` + `video-dub-tools`.
+- **Py:** `python_core/gateway/host_binding.py` + `ainovel_host_guard.py`; `nav_gateway.py` checks before dispatch; toolbox CLIs `import ainovel_host_guard`.
+- **Env:** `AINOVEL_HOST_TOKEN` (HMAC), mode `AINOVEL_HOST_BINDING=enforce|open`, secret shares entitlement default.
+- **Not done yet:** Nuitka/Cython, Pro grayed UI for Toolbox — later.
+
+## Tool Dịch SRT (toolbox) — Cap Gemini method (no DeepSeek)
+
+- **Method Cap:** parse SRT → chỉ text → batch **50** cue → neo ` || ` → Gemini REST → unbatch → gắn lại timestamp. Lệch count → tách đôi lô retry.
+- **Không DeepSeek / không cookie RPA** — chỉ API key Gemini (Cài đặt).
+- **UI:** bảng # · time · gốc | đã dịch; 14 style; Chia mặc định 50 (5–100).
+- **API:** `action=translateOnly` → `googleStudioTranslate.ts`. Menu: **Tool Dịch SRT**.
+
 ## IRON B10 — No content/logic fallback (except API keys)
 
 - **CẤM** đổi platform/engine/provider/voice ngầm khi fail (CapCut→Edge, Flow→Gemini, auto→Chrome…).
@@ -19,6 +48,7 @@
 - **Pass 3 (2026-07-15):** novel-engine `setupGenrePayload`; OUTLINE/PLAN_ARC/COMMIT hard-require Setup; INITIAL_LOREBOOK production-only; NV **khuyết điểm** bắt buộc (không “khuyết tật mạt thế”); seedance duration hard-fail; soft idea/noi_dung fallback removed.
 - **AGENTS.md (2026-07-15):** viết lại toàn bộ theo runtime hiện tại — native engine, B10, Setup genre, khuyết điểm, Gen Prompt pipeline, domain tree, checklist 30s; gỡ nội dung cũ (CapCut→Edge, path hooks sai, mạt thế hardcode).
 - **UI lag (2026-07-15):** full `useNovelStore()` trên YoutubeSafeChecklist / SceneTtsBar / EditorPanel / CharacterProfileForm gây re-render toàn cây; fix selectors/shallow. Persist debounce 450ms cho localStorage+durable (flush on leave). SceneCard memo so sánh regen theo scene.
+- **GUI đứng / crash (2026-07-17):** (1) page.tsx full store → selector-only. Lazy-mount Media/TTS. (2) **YoutubeSafeChecklist** `useShallow` + object literal `{}` trong selector → React 19 `getSnapshot` infinite loop / Maximum update depth. Fix: primitive selectors + `EMPTY_CHAPTER_HOOK` stable. SettingsPanel JSX bad split rolled back.
 - **Upscale:** 2K/4K image + FHD/4K video · output `public/*` + `image_output` / `veo_output`
 - **Login UX:** kill profile trước khi launch (tránh Chrome bỏ --load-extension) → login → harvest token (reload Flow) → đóng login + background
 - **1 profile = 1 phiên login:** UI bấm Đăng nhập trên card → `accountId` vào bootstrap; Chrome `--user-data-dir=accounts_data/<id>` + extension inject `?accountId=`; cấm bootstrap global “chạy ra ngoài” profile

@@ -19,6 +19,8 @@ import {
   normalizeSceneTags,
 } from '@/lib/storyWriting';
 import { setStreamUi, getStreamUi } from '../modules/streamUiStore';
+import { pushToast } from '@/lib/toastBus';
+import { validateSpeechFingerprints } from '@/lib/youtubeSafe';
 
 export type WriteChapterOptions = {
   /** Apply editor review via REVISE_CHAPTER instead of fresh write */
@@ -126,6 +128,17 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       (c) => c.so_chuong === chapterNumber,
     );
     if (!currentChapter) return;
+
+    // Preflight hồ sơ thoại — popup ngay, không gọi API / không unhandledRejection
+    const fpErr = validateSpeechFingerprints(
+      startState.nhan_vat,
+      startState.nhan_vat_prompts,
+    );
+    if (fpErr) {
+      setPromptError(fpErr);
+      pushToast('error', 'Sinh kịch bản — thiếu hồ sơ nhân vật', fpErr, 14_000);
+      return;
+    }
 
     startState.setDangTai(true);
     startState.setMemoryPipelineStatus({
@@ -259,10 +272,23 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
-      setPromptError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setPromptError(friendly);
       useNovelStore.getState().setDangTai(false);
       setIsStreaming(false);
-      throw err;
+      // Popup cho user (callers often .catch(() => undefined) → không rethrow)
+      const raw = err instanceof Error ? err.message : String(err);
+      const isProfile =
+        /Giọng thoại|giong_thoai|Thói quen|thoi_quen|hồ sơ nhân vật|fingerprint/i.test(
+          raw,
+        );
+      pushToast(
+        'error',
+        isProfile ? 'Sinh kịch bản — thiếu hồ sơ nhân vật' : 'Sinh kịch bản thất bại',
+        raw || friendly,
+        isProfile ? 14_000 : 9_000,
+      );
+      // Không rethrow: tránh unhandledRejection khi Sidebar/Setup .catch(() => undefined)
     }
   };
 

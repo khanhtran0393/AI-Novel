@@ -155,10 +155,16 @@ export function setAccountFlowKey(accountId: string, flowKey: string): void {
   } catch {
     /* ignore */
   }
+  // Token capture ≠ full Google login. sessionVerified only when email already known.
+  const prev = loadAccounts().find((a) => a.id === id);
+  const hasEmail = Boolean(prev?.email && String(prev.email).includes('@'));
   updateAccount(id, {
     flowKeyPresent: true,
-    status: 'active',
-    sessionVerified: true,
+    status: hasEmail ? 'active' : prev?.status === 'connecting' ? 'connecting' : 'idle',
+    sessionVerified: hasEmail,
+    lastError: hasEmail
+      ? null
+      : prev?.lastError || 'Có token nhưng chưa đăng nhập Google (thiếu email)',
   });
 }
 
@@ -341,9 +347,12 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     const liveToken =
       Boolean(a.flowKeyPresent) ||
       Boolean(s.flowKey && s.flowKeyAccountId === a.id);
-    const verified =
-      Boolean(a.sessionVerified && a.email) ||
-      Boolean(liveToken && (a.sessionVerified || a.email || s.flowKeyAccountId === a.id));
+    // Real Google login = email from labs session. NEVER paint verified from token alone
+    // (stale SESSION_BUNDLE Bearer was making "Trình duyệt 1 · sẵn sàng" without login).
+    const hasEmail = Boolean(a.email && String(a.email).includes('@'));
+    const verified = Boolean(
+      hasEmail && (a.sessionVerified || liveToken || a.flowKeyPresent),
+    );
 
     let browserAlive = Boolean(perChrome.profileBrowserAlive);
     if (!browserAlive && (a.status === 'connecting' || isBound || liveToken)) {
@@ -362,8 +371,12 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     const tokenOk = liveToken || ownKey;
 
     let status = a.status;
-    if (tokenOk && status !== 'cooldown' && status !== 'error') {
+    // Token alone ≠ logged-in ready. Keep active only when email verified.
+    if (verified && tokenOk && status !== 'cooldown' && status !== 'error') {
       status = 'active';
+    } else if (!verified && status === 'active' && !loginOpen) {
+      // Stale "active" from old token paint — idle until real Google login
+      status = 'idle';
     } else if (status === 'connecting' && !loginOpen && !browserAlive) {
       status = 'idle';
     }
@@ -372,7 +385,9 @@ export function getBridgeSnapshot(): BridgeSnapshot {
       ...a,
       status,
       flowKeyPresent: tokenOk,
-      sessionVerified: verified || tokenOk,
+      // Contract: sessionVerified only with real email — never tokenOk alone
+      sessionVerified: verified,
+      email: a.email || '',
       tokenAgeMs:
         (isBound || ownKey) && s.tokenCapturedAt
           ? Date.now() - s.tokenCapturedAt
@@ -408,9 +423,16 @@ export function getBridgeSnapshot(): BridgeSnapshot {
           }
         : null;
 
-  const anyVerified = accounts.some((a) => a.sessionVerified);
-  // Live Bearer only — never green from account.sessionVerified alone (NO_FLOW_KEY false positive)
-  const liveKeyOk = Boolean(s.flowKey && String(s.flowKey).length >= 20) && anyVerified;
+  // Global ready: live Bearer bound to a profile that has real Google email
+  const anyVerified = accounts.some(
+    (a) =>
+      a.sessionVerified &&
+      a.email &&
+      String(a.email).includes('@') &&
+      a.flowKeyPresent,
+  );
+  const liveKeyOk =
+    Boolean(s.flowKey && String(s.flowKey).length >= 20) && anyVerified;
 
   return {
     running: isBridgeRunning(),
@@ -802,46 +824,49 @@ export async function inheritAccountSession(accountId: string): Promise<{
     inheritedAt: Date.now(),
   });
 
+  const inheritEmail = Boolean(
+    accNow?.email && String(accNow.email).includes('@'),
+  );
   const projectCount = accNow?.projects?.length || 0;
+  // Gen readiness = Google email + (token or cookies). Token alone is NOT enough.
   const capabilities = {
-    canGenerateImage: Boolean(finalKey || disk.hasCookies),
-    canGenerateVideo: Boolean(finalKey || disk.hasCookies),
-    canUpload: Boolean(finalKey),
-    canListProjects: Boolean(finalKey || projectCount > 0),
+    canGenerateImage: inheritEmail && Boolean(finalKey || disk.hasCookies),
+    canGenerateVideo: inheritEmail && Boolean(finalKey || disk.hasCookies),
+    canUpload: inheritEmail && Boolean(finalKey),
+    canListProjects: inheritEmail && Boolean(finalKey || projectCount > 0),
     paygateTier: accNow?.paygateTier ?? null,
     credits: accNow?.credits ?? null,
     projectCount,
     flowKeyPresent: Boolean(finalKey),
     browserCookies: disk.hasCookies,
     /** App can invoke any Flow API as this account and receive full results */
-    proxyParity: Boolean(finalKey || disk.hasCookies),
+    proxyParity: inheritEmail && Boolean(finalKey || disk.hasCookies),
     updatedAt: Date.now(),
   };
 
   updateAccount(id, {
-    status:
-      finalKey || accNow?.sessionVerified || accNow?.email
-        ? 'active'
-        : accNow?.status || 'idle',
+    status: inheritEmail && (finalKey || accNow?.flowKeyPresent)
+      ? 'active'
+      : accNow?.status === 'connecting'
+        ? 'connecting'
+        : 'idle',
     flowKeyPresent: Boolean(finalKey || accNow?.flowKeyPresent),
-    sessionVerified: Boolean(
-      (accNow?.email && accNow.email.includes('@')) || finalKey,
-    ),
+    // Inherit token without email must NOT paint sessionVerified / sẵn sàng
+    sessionVerified: inheritEmail,
     sessionInheritedAt: Date.now(),
     profileDir,
     browserExe: browserExe || accNow?.browserExe || '',
     capabilities,
-    lastError:
-      finalKey || accNow?.email
-        ? null
-        : accNow?.lastError || 'Chưa inherit được token/email — mở browser login',
+    lastError: inheritEmail
+      ? null
+      : finalKey
+        ? 'Có token nhưng chưa đăng nhập Google (thiếu email) — giữ browser, hoàn tất login Google trên tab Flow'
+        : accNow?.lastError ||
+          'Chưa inherit được token/email — mở browser login',
   });
 
-  const ready = Boolean(
-    finalKey ||
-      (accNow?.email && accNow.email.includes('@')) ||
-      disk.hasCookies,
-  );
+  // ready = real Google session (email). Token-only is NOT ready (avoids false "Inherit OK").
+  const ready = inheritEmail;
   console.log(
     `[FlowBridge] inherit account=${id} email=${accNow?.email || '—'} key=${Boolean(finalKey)} projects=${accNow?.projects?.length || 0} ready=${ready}`,
   );
@@ -850,7 +875,8 @@ export async function inheritAccountSession(accountId: string): Promise<{
     ok: ready,
     error: ready
       ? undefined
-      : sync.error || 'Browser chưa có session — đăng nhập Google trên profile này',
+      : sync.error ||
+        'Chưa có email Google trên profile — đăng nhập xong trên browser rồi Sync lại (không đóng tab sớm)',
     steps,
     accountId: id,
     identity: state().identity,
@@ -1152,46 +1178,68 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
           const prev = loadAccounts().find((a) => a.id === bindId);
           const hasEmail = Boolean(prev?.email?.includes('@'));
           updateAccount(bindId, {
-            status: 'active',
+            status: hasEmail ? 'active' : 'idle',
             flowKeyPresent: true,
-            sessionVerified: true,
+            // sessionVerified only with real Google email (not token alone)
+            sessionVerified: hasEmail,
             projectId: prev?.projectId || s.projectId || '',
             profileDir: prev?.profileDir || undefined,
-            lastError: hasEmail ? null : prev?.lastError || null,
+            lastError: hasEmail
+              ? null
+              : prev?.lastError ||
+                'Có token nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập',
           });
           // Full inherit: email/credits/projects + SESSION_BUNDLE
           scheduleInheritAccountSession(bindId, isNewToken ? 800 : 2500);
         }
 
         const activeSess = bindId ? getSession(bindId) : null;
-        // CHỈ đóng khi CỬA SỔ LOGIN còn mở — không kill Chrome nền đã ổn định
-        // (tránh vòng logout/login: close → relaunch → token_captured → close…)
-        if (activeSess?.loginOpen || s.loginSessionOpen) {
-          try {
-            sendWs({
-              id: newMsgId(),
-              method: 'close_login_session',
-              params: {},
-            });
-          } catch {
-            /* ignore */
-          }
-          const r = await closeLoginSessionAfterCapture({
-            delayMs: 600,
-            accountId: bindId || undefined,
-            keepBackground: true,
-          });
-          console.log('[FlowBridge] auto-close after token:', r.message);
-
-          // Enrich identity once after first close (not on every re-broadcast)
-          if (isNewToken) {
-            const idr = await syncAccountIdentity(bindId || undefined);
-            if (idr.ok) {
+        // CRITICAL: do NOT close login window on bare token.
+        // Closing early killed Google login mid-flow → email never harvested
+        // ("Có token nhưng thiếu email"). Only close when session has @email.
+        if (isNewToken && bindId) {
+          const idr = await syncAccountIdentity(bindId);
+          const emailNow =
+            idr.identity?.email ||
+            loadAccounts().find((a) => a.id === bindId)?.email ||
+            '';
+          console.log(
+            '[FlowBridge] identity after token:',
+            emailNow || 'no-email',
+            idr.error || '',
+          );
+          if (emailNow && String(emailNow).includes('@')) {
+            if (activeSess?.loginOpen || s.loginSessionOpen) {
+              try {
+                sendWs({
+                  id: newMsgId(),
+                  method: 'close_login_session',
+                  params: {},
+                });
+              } catch {
+                /* ignore */
+              }
+              const r = await closeLoginSessionAfterCapture({
+                delayMs: 600,
+                accountId: bindId || undefined,
+                keepBackground: true,
+              });
               console.log(
-                '[FlowBridge] identity after token:',
-                idr.identity?.email || 'no-email',
+                '[FlowBridge] auto-close after email session:',
+                r.message,
               );
             }
+          } else {
+            console.log(
+              '[FlowBridge] keep login open — token without Google email (finish login on Chromium)',
+            );
+            updateAccount(bindId, {
+              status: 'connecting',
+              flowKeyPresent: true,
+              sessionVerified: false,
+              lastError:
+                'Token tạm có — hoàn tất đăng nhập Google trên browser profile (chờ email hiện trên Flow)',
+            });
           }
         }
 
@@ -1287,17 +1335,18 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
           // First solid email → full inherit (projects/credits)
           scheduleInheritAccountSession(bind, 1000);
         } else if (hasToken && bind) {
-          // Token without email — still mark active so UI/gen work
+          // Token without email — NOT ready/sẵn sàng (user must finish Google login)
           updateAccount(bind, {
-            status: 'active',
+            status: 'idle',
             flowKeyPresent: true,
-            sessionVerified: true,
-            lastError: 'Token OK (email session chưa đọc được)',
+            sessionVerified: false,
+            lastError:
+              'Có token nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập',
           });
         }
 
-        // Chỉ đóng cửa sổ LOGIN — KHÔNG kill browser nền (profileBrowserAlive=true là OK)
-        if (email || hasToken) {
+        // Chỉ đóng LOGIN khi đã có email Google — token-only phải giữ cửa sổ để user login xong
+        if (email && email.includes('@')) {
           const { closeLoginSessionAfterCapture, getChromeSessionInfo } =
             await import('./chromeSession');
           const chrome = getChromeSessionInfo(bind);
@@ -1307,13 +1356,14 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
               accountId: bind || undefined,
               keepBackground: true,
             });
-            console.log('[FlowBridge] session_poll → closed login window only');
+            console.log(
+              '[FlowBridge] session_poll → closed login (email verified)',
+            );
           }
-          // Không sync_account lặp mỗi poll — chỉ 1 lần khi có email mới
           const acc = bind
             ? loadAccounts().find((a) => a.id === bind)
             : null;
-          if (email && (!acc?.credits || !acc?.lastSyncedAt)) {
+          if (!acc?.credits || !acc?.lastSyncedAt) {
             await syncAccountIdentity(bind || undefined).catch(() => undefined);
           }
         }
@@ -1964,11 +2014,18 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
               return;
             }
             setActiveAccountId(accountId);
+            const prevClaim = loadAccounts().find((a) => a.id === accountId);
+            const claimEmail = Boolean(
+              prevClaim?.email && String(prevClaim.email).includes('@'),
+            );
             updateAccount(accountId, {
-              status: 'active',
+              status: claimEmail ? 'active' : 'idle',
               flowKeyPresent: true,
-              sessionVerified: true,
-              lastError: null,
+              // Token claim without email is partial — not sessionVerified
+              sessionVerified: claimEmail,
+              lastError: claimEmail
+                ? null
+                : 'Có token — đang sync email; nếu trống hãy Đăng nhập Google',
               lastSyncedAt: Date.now(),
             });
             // Best-effort email/credits

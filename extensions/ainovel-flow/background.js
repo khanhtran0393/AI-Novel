@@ -80,19 +80,36 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-/** Harvest session/token — KHÔNG reload/spam tab nếu đã có token. */
+/**
+ * Harvest session/token.
+ * IMPORTANT: bare flowKey without labs session email is NOT "done" —
+ * keep polling so Google login can complete (do not early-return on stale ya29).
+ */
 async function forceTokenHarvest() {
   console.log('[AI Novel Flow] forceTokenHarvest…');
-  await pollSessionAndNotify();
-  if (flowKey) {
+  let session = await pollSessionAndNotify();
+  const hasEmail = !!(session?.email && String(session.email).includes('@'));
+
+  // Stale storage token without email: still open Flow tab to finish Google login
+  if (flowKey && hasEmail) {
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+      ws.send(
+        JSON.stringify({
+          type: 'token_captured',
+          flowKey,
+          email: session.email,
+        }),
+      );
     }
-    return;
+    return { ok: true, flowKeyPresent: true, email: session.email || '' };
   }
-  // Chưa token: chỉ mở/focus tab Flow (không reload liên tục)
+
   const tabs = await chrome.tabs.query({
-    url: ['https://labs.google/fx/tools/flow*', 'https://labs.google/fx/*/tools/flow*'],
+    url: [
+      'https://labs.google/fx/tools/flow*',
+      'https://labs.google/fx/*/tools/flow*',
+      'https://labs.google/*',
+    ],
   });
   if (!tabs.length) {
     try {
@@ -100,7 +117,7 @@ async function forceTokenHarvest() {
         url: 'https://labs.google/fx/tools/flow',
         active: true,
       });
-      await sleep(3000);
+      await sleep(3500);
     } catch (e) {
       console.warn('[AI Novel Flow] open Flow failed', e);
     }
@@ -113,11 +130,43 @@ async function forceTokenHarvest() {
     } catch {
       /* ignore */
     }
+    // Soft reload once if no email yet (page may still be on accounts.google.com redirect)
+    if (!hasEmail) {
+      try {
+        const u = tabs[0].url || '';
+        if (u.includes('labs.google') && !u.includes('accounts.google')) {
+          /* keep */
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }
-  await pollSessionAndNotify();
+
+  // Retry session a few times while user may still be finishing login
+  for (let i = 0; i < 4; i++) {
+    session = await pollSessionAndNotify();
+    if (session?.email && String(session.email).includes('@')) break;
+    if (session?.accessToken || flowKey) {
+      // token without email — keep waiting for Google
+    }
+    await sleep(1200);
+  }
+
   if (flowKey && ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+    ws.send(
+      JSON.stringify({
+        type: 'token_captured',
+        flowKey,
+        email: session?.email || '',
+      }),
+    );
   }
+  return {
+    ok: true,
+    flowKeyPresent: !!flowKey,
+    email: session?.email || '',
+  };
 }
 
 async function init() {
@@ -345,10 +394,17 @@ function connectToAgent() {
         }
       } else if (msg.method === 'force_token_harvest') {
         try {
-          await forceTokenHarvest();
+          const harvest = await forceTokenHarvest();
           sendToAgent({
             id: msg.id,
-            result: { ok: true, flowKeyPresent: !!flowKey },
+            result: {
+              ok: true,
+              flowKeyPresent: !!flowKey,
+              email: harvest?.email || '',
+              sessionReady: !!(
+                harvest?.email && String(harvest.email).includes('@')
+              ),
+            },
           });
         } catch (e) {
           sendToAgent({ id: msg.id, error: e.message || 'HARVEST_FAILED' });
@@ -979,22 +1035,32 @@ async function handleDownloadBinary(msg) {
 const API_KEY_PUBLIC = API_KEY;
 
 async function fetchJsonSafe(url, opts = {}) {
-  const res = await fetch(url, {
-    credentials: 'include',
-    ...opts,
-    headers: {
-      Accept: 'application/json',
-      ...(opts.headers || {}),
-    },
-  });
-  const text = await res.text();
-  let data = null;
   try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = { raw: text?.slice?.(0, 500) };
+    const res = await fetch(url, {
+      credentials: 'include',
+      ...opts,
+      headers: {
+        Accept: 'application/json',
+        ...(opts.headers || {}),
+      },
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { raw: text?.slice?.(0, 500) };
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    // Network / CORS / offline — never throw (was "Failed to fetch" killing sync_account)
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
-  return { ok: res.ok, status: res.status, data };
 }
 
 function parseSessionPayload(d) {
@@ -1320,6 +1386,7 @@ async function openFlowProject(projectId) {
 
 async function syncAccountIdentity() {
   console.log('[AI Novel Flow] sync_account — harvest session/credits/projects');
+  const steps = [];
   // Ensure we have a Flow context (cookies) when possible
   try {
     const tabs = await chrome.tabs.query({
@@ -1331,30 +1398,61 @@ async function syncAccountIdentity() {
         active: true,
       });
       await sleep(3500);
+      steps.push('Opened Flow tab for session cookies');
     }
-  } catch {
-    /* ignore */
+  } catch (e) {
+    steps.push(
+      `Open Flow tab: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 
   // Retry session a few times (login redirect may lag)
-  let session = await fetchLabsSession();
-  for (let i = 0; i < 5 && !session.email; i++) {
-    await sleep(1500);
+  let session = { email: '', name: '', accessToken: '', status: 0 };
+  try {
     session = await fetchLabsSession();
+  } catch (e) {
+    steps.push(
+      `fetchLabsSession: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
-  // Trigger network so webRequest can also catch Bearer if session token empty
+  for (let i = 0; i < 6 && !session.email; i++) {
+    await sleep(1500);
+    try {
+      session = await fetchLabsSession();
+    } catch {
+      /* ignore */
+    }
+  }
+  // Prefer session access_token over leftover webRequest scrap
+  if (session.accessToken && session.accessToken.length >= 20) {
+    acceptBearerToken(String(session.accessToken), 'sync:session');
+  }
   if (!flowKey) {
     try {
       await forceTokenHarvest();
-      await sleep(2000);
+      await sleep(1500);
       session = await fetchLabsSession();
     } catch {
       /* ignore */
     }
   }
 
-  const creditsInfo = await fetchCredits();
-  const projects = await listFlowProjects();
+  let creditsInfo = { credits: null, tier: null, status: 0 };
+  let projects = [];
+  try {
+    creditsInfo = await fetchCredits();
+  } catch (e) {
+    steps.push(
+      `credits: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  try {
+    projects = await listFlowProjects();
+  } catch (e) {
+    steps.push(
+      `projects: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
   // Prefer active project from storage if still in list
   let activeProjectId = null;
@@ -1366,9 +1464,12 @@ async function syncAccountIdentity() {
   }
   if (!activeProjectId && projects[0]) activeProjectId = projects[0].id;
 
+  const email = session.email || '';
+  const ready = !!(email && email.includes('@'));
+
   const identity = {
-    ok: true,
-    email: session.email || '',
+    ok: ready,
+    email,
     name: session.name || '',
     image: session.image || '',
     sessionExpires: session.expires || null,
@@ -1380,13 +1481,14 @@ async function syncAccountIdentity() {
     projectId: activeProjectId,
     syncedAt: Date.now(),
     steps: [
-      session.email
-        ? `Session: ${session.email}`
-        : `Session HTTP ${session.status || '?'} (chưa email — mở tab Flow login)`,
+      email
+        ? `Session: ${email}`
+        : `Session HTTP ${session.status || session.source || '?'} (chưa email — đăng nhập Google trên tab Flow)`,
       typeof creditsInfo.credits === 'number'
         ? `Credits: ${creditsInfo.credits}`
         : `Credits: n/a (HTTP ${creditsInfo.status || '?'})`,
       `Projects: ${projects.length}`,
+      ...steps,
     ],
   };
 

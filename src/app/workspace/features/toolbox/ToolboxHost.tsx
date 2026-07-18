@@ -8,6 +8,7 @@ import React, { useRef, useState } from 'react';
 import { Briefcase } from 'lucide-react';
 import FlowAgentStudioModal from './FlowAgentStudioModal';
 import BypassEngineModal from './BypassEngineModal';
+import TtsBatchSrtModal from './TtsBatchSrtModal';
 import {
   TOOLBOX_ITEMS,
   type ToolKey,
@@ -59,9 +60,6 @@ export default function ToolboxHost() {
               onClick={() => openTool(it.key)}
               className="w-full text-left rounded-lg px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors cursor-pointer flex items-center gap-2"
             >
-              {it.labs ? (
-                <span className="text-[9px] text-violet-400 font-mono">LABS</span>
-              ) : null}
               {it.label}
             </button>
           ))}
@@ -74,6 +72,7 @@ export default function ToolboxHost() {
 
       <FlowAgentStudioModal isOpen={active === 'batch'} onClose={close} />
       <BypassEngineModal isOpen={active === 'bypass_engine'} onClose={close} />
+      <TtsBatchSrtModal isOpen={active === 'tts_batch_srt'} onClose={close} />
     </>
   );
 }

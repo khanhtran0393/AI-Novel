@@ -13,7 +13,7 @@ import Header from './chrome/Header';
 import { AppShell } from './layouts';
 import { SetupPhase, YoutubeSetupPhase, Sidebar, ContentTab } from './features/script';
 import AINovelDashboard from './features/ainovel/AINovelDashboard';
-import { ToastHost } from './shared';
+import { ToastHost, ConfirmHost } from './shared';
 import OnboardingBanner from './features/onboarding/OnboardingBanner';
 import MediaDnaBanner from './features/media/MediaDnaBanner';
 import FlowAutoBootstrap from './features/media/FlowAutoBootstrap';
@@ -31,9 +31,28 @@ import { parseScenes, getWordCount } from './utils/stringUtils';
 import { imageAssetKey, sceneAssetKey } from '@/contracts';
 import { YOUTUBE_HOOK_SCENE_INDEX } from '@/lib/youtubeSafe';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 
 export default function Workspace() {
-  const store = useNovelStore();
+  /**
+   * Selector-only — CẤM `useNovelStore()` full store.
+   * Full subscribe re-render cả workspace mỗi lần media/TTS/persist tick → GUI đứng.
+   */
+  const workspaceTab = useNovelStore((s) => s.workspaceTab);
+  const chuongDangChon = useNovelStore((s) => s.chuong_dang_chon);
+  const chapterContent = useNovelStore((s) => {
+    const ch = s.danh_sach_chuong.find((c) => c.so_chuong === s.chuong_dang_chon);
+    return ch?.noi_dung || '';
+  });
+  const hasCurrentChapter = useNovelStore((s) =>
+    s.danh_sach_chuong.some((c) => c.so_chuong === s.chuong_dang_chon),
+  );
+  const soTuChuong = useNovelStore((s) => s.setup?.so_tu_chuong || 4250);
+  const dangTai = useNovelStore((s) => s.dang_tai);
+  const memoryPipelineStatus = useNovelStore((s) => s.memoryPipelineStatus);
+  // Image progress: only re-render when maps for current chapter change (not full tree identity thrash via derived counts)
+  const generatedPrompts = useNovelStore((s) => s.generatedPrompts);
+  const generatedImages = useNovelStore((s) => s.generatedImages);
   // Primitive selector — guarantee re-render when Setup closes (giai_doan 1→2)
   const giaiDoan = useNovelStore((s) => s.giai_doan);
   const setupKind = useNovelStore((s) => s.setupKind);
@@ -143,33 +162,32 @@ export default function Workspace() {
     }
   }, []);
 
-  const currentChapter = store.danh_sach_chuong.find(c => c.so_chuong === store.chuong_dang_chon);
   // Live Word-Gate: while streaming, count ticks from typing animation; else saved chapter
   const wordsCount = isStreaming
     ? liveWordCount
-    : getWordCount(currentChapter?.noi_dung || '');
-  const targetWords = store.setup.so_tu_chuong || 4250;
+    : getWordCount(chapterContent || '');
+  const targetWords = soTuChuong || 4250;
   // % đúng tỉ lệ (có thể >100% khi vượt chỉ tiêu) — không ép trần 100; bar fill clamp 100
   const progressPercent =
     targetWords > 0 ? Math.round((wordsCount / targetWords) * 100) : 0;
   const progressBarPct = Math.min(100, Math.max(0, progressPercent));
 
   // Tính toán thống kê hình ảnh chương hiện tại
-  const activeChapterNum = store.chuong_dang_chon;
+  const activeChapterNum = chuongDangChon;
   let totalPromptsCount = 0;
   let successImagesCount = 0;
 
-  const scenesList = currentChapter ? parseScenes(currentChapter.noi_dung) : [];
+  const scenesList = chapterContent ? parseScenes(chapterContent) : [];
   // Include Hook (990) + normal scenes in image progress
   const sceneIndicesForStats = [YOUTUBE_HOOK_SCENE_INDEX, ...scenesList.map((_, i) => i)];
   sceneIndicesForStats.forEach((sceneIdx) => {
     const assetKey = sceneAssetKey(activeChapterNum, sceneIdx);
-    const prompts = store.generatedPrompts[assetKey] || [];
+    const prompts = generatedPrompts[assetKey] || [];
     totalPromptsCount += prompts.length;
 
     prompts.forEach((_, promptIdx) => {
       const imageKey = imageAssetKey(activeChapterNum, sceneIdx, promptIdx);
-      if (store.generatedImages?.[imageKey]) {
+      if (generatedImages?.[imageKey]) {
         successImagesCount++;
       }
     });
@@ -199,10 +217,10 @@ export default function Workspace() {
             {/* Hàng 1: toolbar fluid */}
             <div className="flex h-11 min-w-0 shrink-0 items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/80 px-3 sm:px-4">
               <span className="shrink-0 whitespace-nowrap text-[clamp(10px,1.1vw,12px)] font-bold uppercase tracking-wide text-amber-500">
-                {store.workspaceTab === 'script' ? '📝 Kịch Bản Làm Việc' : '🤖 AI Novel Engine'}
+                {workspaceTab === 'script' ? '📝 Kịch Bản Làm Việc' : '🤖 AI Novel Engine'}
               </span>
 
-              {store.workspaceTab === 'script' && currentChapter && (
+              {workspaceTab === 'script' && hasCurrentChapter && (
                 <>
                   <span className="text-zinc-800 shrink-0 select-none" aria-hidden>
                     ·
@@ -250,7 +268,7 @@ export default function Workspace() {
                   </span>
                   {/* Memory commit status — hàng 1 cạnh Ảnh / .txt */}
                   {(() => {
-                    const mem = store.memoryPipelineStatus;
+                    const mem = memoryPipelineStatus;
                     const st = mem?.status || 'idle';
                     const msg = (mem?.message || '').trim();
                     const shortMsg =
@@ -312,7 +330,7 @@ export default function Workspace() {
 
               <div className="flex-1 min-w-0" />
 
-              {store.workspaceTab === 'script' && (
+              {workspaceTab === 'script' && (
                 <button
                   type="button"
                   onClick={handleExportTxt}
@@ -325,17 +343,17 @@ export default function Workspace() {
             </div>
 
             {/* AINOVEL DASHBOARD */}
-            {store.workspaceTab === 'ainovel' && (
+            {workspaceTab === 'ainovel' && (
               <div className="flex-1 overflow-y-auto bg-black min-h-0">
                 <AINovelDashboard />
               </div>
             )}
 
             {/* KỊCH BẢN WORKSPACE (trục chính) */}
-            {store.workspaceTab === 'script' && (
+            {workspaceTab === 'script' && (
               <>
                 {/* Hàng 2: tên series + cuộn cảnh + viết lại toàn bộ chương (phải) */}
-                {currentChapter && (
+                {hasCurrentChapter && (
                   <div className="shrink-0 border-b border-zinc-900/80 bg-zinc-950/95 px-3 sm:px-4 py-1.5 flex items-center gap-2 min-w-0 z-10">
                     <div className="flex flex-1 items-center gap-1 min-w-0 overflow-x-auto scrollbar-thin py-0.5">
                       <button
@@ -427,17 +445,25 @@ export default function Workspace() {
                       ) : null}
                       <button
                         type="button"
-                        disabled={store.dang_tai || isStreaming}
+                        disabled={dangTai || isStreaming}
                         title="Viết lại toàn bộ chương này từ đầu (xóa kịch bản + media chương)"
                         onClick={() => {
-                          if (
-                            !confirm(
-                              `⚠️ Viết lại toàn bộ Chương ${store.chuong_dang_chon}?\nSẽ xóa kịch bản và media (audio/ảnh/video/prompt) của chương này.`,
-                            )
-                          ) {
-                            return;
-                          }
-                          void handleWriteChapter(true);
+                          void (async () => {
+                            const ok = await appConfirm({
+                              title: `Viết lại Chương ${chuongDangChon}`,
+                              message:
+                                'Xóa kịch bản và media của chương này rồi gen lại từ đầu.',
+                              details: [
+                                'Kịch bản / cảnh',
+                                'Audio · ảnh · video · prompt',
+                              ],
+                              confirmLabel: 'Viết lại toàn bộ',
+                              cancelLabel: 'Giữ nguyên',
+                              tone: 'danger',
+                            });
+                            if (!ok) return;
+                            void handleWriteChapter(true);
+                          })();
                         }}
                         className="shrink-0 inline-flex items-center gap-1 rounded border border-red-900/50 bg-red-500/15 px-2.5 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                       >
@@ -528,6 +554,7 @@ export default function Workspace() {
       )}
 
       <ToastHost />
+      <ConfirmHost />
     </div>
     </AppShell>
   );

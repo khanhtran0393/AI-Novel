@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react';
 import { API, chapterAssetPrefix } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 import {
   mergeLiveSettingsIntoChannel,
   resolveOutputCriteria,
@@ -28,13 +29,19 @@ export default function CapCutExportButton() {
           toast.info('Notice', '⚠️ Tính năng này yêu cầu nâng cấp gói Pro/VIP!');
           return;
         }
-        if (
-          !confirm(
-            '⚠️ Bạn có chắc chắn muốn xuất kịch bản này ra CapCut (Bao gồm Audio, Video, Ảnh)?',
-          )
-        ) {
-          return;
-        }
+        const okExport = await appConfirm({
+          title: 'Xuất CapCut',
+          message:
+            'Xuất kịch bản chương hiện tại ra CapCut (audio, video, ảnh gắn với chương).',
+          details: [
+            'Cần gói Pro/VIP',
+            'Đảm bảo CapCut đã cài trên máy',
+          ],
+          confirmLabel: 'Xuất CapCut',
+          cancelLabel: 'Hủy',
+          tone: 'info',
+        });
+        if (!okExport) return;
         try {
           setExporting(true);
 
@@ -137,13 +144,16 @@ export default function CapCutExportButton() {
                 .filter((w) => w.includes('DNA media'))
                 .slice(0, 3)
                 .join('\n');
-              if (
-                !confirm(
-                  `Media không khớp cài Ảnh/Video · TTS:\n\n${dnaLines}\n\nVẫn xuất CapCut?`,
-                )
-              ) {
-                return;
-              }
+              const okDna = await appConfirm({
+                title: 'Media lệch DNA',
+                message:
+                  'Media không khớp cài Ảnh/Video · TTS hiện tại. Vẫn xuất CapCut?',
+                details: dnaLines.split('\n').filter(Boolean),
+                confirmLabel: 'Vẫn xuất',
+                cancelLabel: 'Hủy',
+                tone: 'warn',
+              });
+              if (!okDna) return;
             } else if (gate.warnings.length) {
               toast.info(
                 'Notice',

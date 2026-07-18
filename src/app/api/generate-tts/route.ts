@@ -107,14 +107,14 @@ export async function POST(req: Request) {
     });
     if (!platform) {
       throw new AppError(
-        'Missing TTS platform. Please select a real TTS engine.',
+        'Chưa chọn nền tảng TTS. Mở «Cấu Hình Giọng Đọc Toàn Cục» và chọn engine (Não Zero-Shot / Edge / …).',
         { code: 'VALIDATION', status: 400 },
       );
     }
     const voice = resolvedVoiceName || voiceName || ttsConfig?.voice || '';
     if (!voice && !(Array.isArray(voiceSegments) && voiceSegments.length > 0)) {
       throw new AppError(
-        'Missing TTS voice. Please select a real voice for the selected engine.',
+        'Chưa chọn giọng đọc. Mở «Cấu Hình Giọng Đọc Toàn Cục» → chọn một giọng trong list (tab Não Zero-Shot hoặc Engine chọn tay) rồi Lưu.',
         { code: 'VALIDATION', status: 400 },
       );
     }

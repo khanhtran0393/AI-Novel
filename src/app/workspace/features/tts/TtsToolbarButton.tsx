@@ -17,7 +17,10 @@ export default function TtsToolbarButton() {
         <Settings className="h-3.5 w-3.5" />
         <span className="hidden lg:inline">TTS</span>
       </button>
-      <TTSConfigModal isOpen={open} onClose={() => setOpen(false)} />
+      {/* Lazy-mount: không subscribe store/TTS catalog khi đóng */}
+      {open ? (
+        <TTSConfigModal isOpen onClose={() => setOpen(false)} />
+      ) : null}
     </>
   );
 }

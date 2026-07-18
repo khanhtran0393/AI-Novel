@@ -136,12 +136,12 @@ export async function getIntegrationsStatus(): Promise<IntegrationsStatus> {
     },
     pipeline: [
       '1. Write chapter (AI Novel engine)',
-      '2. Seedance compile → directed video prompts',
-      '3. Gen images / I2V (existing generators)',
-      '4. TTS audio (existing)',
-      '5. FableCut timeline export + optional editor :7777',
-      '6. Watch QC on reference or rendered clip',
-      '7. MiroFish what-if → plot hooks back into outline',
+      '2. Gen Prompt Studio → Seedance sequence + continuity',
+      '3. Gen images / I2V',
+      '4. Gen video → take-review auto-accept + Watch QC report-only',
+      '5. TTS (VieNeu SDK or Piper — separate platforms)',
+      '6. FableCut timeline (TTS duration sync; vendor/FableCut, no D:\\repo required)',
+      '7. MiroFish what-if only at Outline / Plan Arc / lorebook',
     ],
   };
 }

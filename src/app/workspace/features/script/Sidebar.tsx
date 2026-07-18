@@ -16,6 +16,7 @@ import { RefreshCw, Settings2, UploadCloud, Video, CheckCircle } from 'lucide-re
 import { planArcAction } from '../../modules/writeModule';
 import { silentEnrichArcHooks } from '../../modules/integrationsModule';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 import ChapterList from './ChapterList';
 import OutlineAccordions from './OutlineAccordions';
 import CharacterRoster from './CharacterRoster';
@@ -111,9 +112,16 @@ export default function Sidebar({
       (currentChapter.noi_dung || '').length > 500;
 
     if (isLastChapter && hasFinishedContent) {
-      const confirmNext = confirm(
-        `🎉 Bạn đã hoàn thành chương cuối cùng của Arc hiện tại (Chương ${currentChapterNum}).\n\nBạn có muốn tự động LÊN DÀN Ý CUNG (ARC) TIẾP THEO để tiếp tục viết tiếp tác phẩm không?`,
-      );
+      const confirmNext = await appConfirm({
+        title: 'Hoàn thành arc',
+        message: `Bạn đã xong chương cuối của arc hiện tại (Chương ${currentChapterNum}).`,
+        details: [
+          'Lên dàn ý cung (arc) tiếp theo để viết tiếp tác phẩm',
+        ],
+        confirmLabel: 'Lên dàn ý arc mới',
+        cancelLabel: 'Để sau',
+        tone: 'success',
+      });
       if (confirmNext) {
         const success = await handlePlanNextArc();
         if (success) {
@@ -193,13 +201,18 @@ export default function Sidebar({
           // Chỉ khóa khi ĐANG VIẾT CHƯƠNG — không khóa vì gen hồ sơ NV / job khác
           disabled={isStreaming}
           onClick={() => {
-            if (
-              confirm(
-                '⚠️ Bạn có chắc chắn muốn viết lại toàn bộ kịch bản Chương này? Nội dung hiện tại của chương sẽ bị ghi đè!',
-              )
-            ) {
-              void handleWriteChapter(true).catch(() => undefined);
-            }
+            void (async () => {
+              const ok = await appConfirm({
+                title: 'Viết lại kịch bản',
+                message:
+                  'Viết lại toàn bộ kịch bản chương này. Nội dung hiện tại sẽ bị ghi đè.',
+                details: ['Không thể hoàn tác sau khi gen lại'],
+                confirmLabel: 'Viết lại từ đầu',
+                cancelLabel: 'Giữ nguyên',
+                tone: 'danger',
+              });
+              if (ok) void handleWriteChapter(true).catch(() => undefined);
+            })();
           }}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 bg-red-500/10 py-2.5 text-xs font-bold uppercase tracking-wider text-red-500 shadow-lg transition-all duration-300 hover:bg-red-500 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
         >

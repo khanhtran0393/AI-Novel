@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
           success: false,
           error: `Unknown or missing action: ${action || '(empty)'}`,
           known_actions: Array.from(ALLOWED_ACTIONS),
-          hint: 'Standalone AI Novel gateway — does not require NAVTools.exe',
+          hint: 'Host-bound AI Novel gateway — requires App token; does not require NAVTools.exe',
         },
         { status: 400 },
       );

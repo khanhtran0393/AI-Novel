@@ -121,6 +121,84 @@ export function runWatchSetupCheck(): Promise<{ ok: boolean; output: string }> {
   });
 }
 
+/** Offline QC when watch.py fails — extract sample frames via ffmpeg (report-only). */
+export function runNativeFfmpegQc(input: {
+  source: string;
+  outDir?: string;
+  maxFrames?: number;
+}): WatchRunResult {
+  const started = Date.now();
+  const paths = getIntegrationPaths();
+  ensureWorkDirs(paths);
+  const outDir =
+    input.outDir || path.join(paths.watchWork, `native_${Date.now()}`);
+  fs.mkdirSync(outDir, { recursive: true });
+  const ff = localFfmpegBin(process.cwd());
+  const framePaths: string[] = [];
+  const maxFrames = Math.max(1, Math.min(12, input.maxFrames ?? 4));
+
+  if (!ff || !fs.existsSync(input.source)) {
+    return {
+      success: false,
+      report: '',
+      framePaths: [],
+      outDir,
+      error: !ff
+        ? 'ffmpeg missing for native QC'
+        : `source missing: ${input.source}`,
+      durationMs: Date.now() - started,
+    };
+  }
+
+  try {
+    // One frame every ~25% of timeline (approx via fps filter)
+    const pattern = path.join(outDir, 'frame_%03d.jpg');
+    const { execFileSync } = require('child_process') as typeof import('child_process');
+    execFileSync(
+      ff,
+      [
+        '-y',
+        '-i',
+        input.source,
+        '-vf',
+        `fps=1/${Math.max(1, Math.ceil(8 / maxFrames))}`,
+        '-frames:v',
+        String(maxFrames),
+        pattern,
+      ],
+      { windowsHide: true, timeout: 60_000, stdio: 'pipe' },
+    );
+    for (const f of fs.readdirSync(outDir)) {
+      if (/\.(jpe?g|png)$/i.test(f)) framePaths.push(path.join(outDir, f));
+    }
+  } catch (e) {
+    return {
+      success: false,
+      report: '',
+      framePaths: [],
+      outDir,
+      error: (e as Error).message,
+      durationMs: Date.now() - started,
+    };
+  }
+
+  const report = [
+    '# Native FFmpeg frame QC (report-only)',
+    `source: ${input.source}`,
+    `frames: ${framePaths.length}`,
+    ...framePaths.map((p, i) => `- frame[${i}]: ${p}`),
+    'note: no provider swap / no auto re-gen (B10).',
+  ].join('\n');
+
+  return {
+    success: framePaths.length > 0,
+    report,
+    framePaths,
+    outDir,
+    durationMs: Date.now() - started,
+  };
+}
+
 export function runWatch(input: WatchRunInput): Promise<WatchRunResult> {
   const started = Date.now();
   const paths = getIntegrationPaths();
@@ -128,13 +206,13 @@ export function runWatch(input: WatchRunInput): Promise<WatchRunResult> {
 
   const watchPy = path.join(paths.watchScripts, 'watch.py');
   if (!fs.existsSync(watchPy)) {
-    return Promise.resolve({
-      success: false,
-      report: '',
-      framePaths: [],
-      error: `watch.py not found at ${watchPy}`,
-      durationMs: 0,
-    });
+    return Promise.resolve(
+      runNativeFfmpegQc({
+        source: input.source,
+        outDir: input.outDir,
+        maxFrames: input.maxFrames,
+      }),
+    );
   }
 
   if (!input.source?.trim()) {
@@ -186,13 +264,23 @@ export function runWatch(input: WatchRunInput): Promise<WatchRunResult> {
       } catch {
         /* ignore */
       }
+      const native = runNativeFfmpegQc({
+        source: input.source,
+        outDir: path.join(outDir, 'native_timeout'),
+        maxFrames: input.maxFrames ?? 4,
+      });
       resolve({
-        success: false,
-        report: stdout,
+        success: native.framePaths.length > 0,
+        report: [stdout, native.report].filter(Boolean).join('\n'),
         stderr,
         outDir,
-        framePaths: extractFramePaths(stdout),
-        error: `watch timed out after ${timeoutMs}ms`,
+        framePaths: native.framePaths.length
+          ? native.framePaths
+          : extractFramePaths(stdout),
+        error:
+          native.framePaths.length > 0
+            ? undefined
+            : `watch timed out after ${timeoutMs}ms`,
         durationMs: Date.now() - started,
       });
     }, timeoutMs);
@@ -219,8 +307,8 @@ export function runWatch(input: WatchRunInput): Promise<WatchRunResult> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      const report = stdout || stderr;
-      const framePaths = extractFramePaths(report);
+      let report = stdout || stderr;
+      let framePaths = extractFramePaths(report);
       // also scan outDir for frames
       try {
         const files = fs.readdirSync(outDir);
@@ -246,8 +334,31 @@ export function runWatch(input: WatchRunInput): Promise<WatchRunResult> {
         /* ignore */
       }
 
+      // Fallback: native ffmpeg frames when watch.py yields nothing usable
+      if (framePaths.length === 0 || (code !== 0 && report.length < 20)) {
+        const native = runNativeFfmpegQc({
+          source: input.source,
+          outDir: path.join(outDir, 'native_frames'),
+          maxFrames: input.maxFrames ?? 4,
+        });
+        if (native.framePaths.length) {
+          framePaths = native.framePaths;
+          report = [report, '', native.report].filter(Boolean).join('\n');
+          resolve({
+            success: true,
+            report,
+            stderr: stderr || undefined,
+            outDir,
+            framePaths,
+            error: undefined,
+            durationMs: Date.now() - started,
+          });
+          return;
+        }
+      }
+
       resolve({
-        success: code === 0 || report.length > 50,
+        success: code === 0 || report.length > 50 || framePaths.length > 0,
         report,
         stderr: stderr || undefined,
         outDir: extractOutDir(report) || outDir,

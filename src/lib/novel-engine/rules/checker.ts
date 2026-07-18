@@ -78,11 +78,25 @@ export function checkChapterAgainstRules(
   return findings;
 }
 
-export function resolveRulesForProject(userRules?: {
-  forbidden_words?: string;
-  fatigue_words?: string;
-}): NovelRules {
-  return mergeUserRules(BUILTIN_RULES, userRules);
+export function resolveRulesForProject(
+  userRules?: {
+    forbidden_words?: string;
+    fatigue_words?: string;
+  },
+  /** Setup so_tu_chuong — aligns chapterWordsMin/Max with word-gate (no dual band) */
+  wordGoal?: number,
+): NovelRules {
+  const merged = mergeUserRules(BUILTIN_RULES, userRules);
+  if (typeof wordGoal === 'number' && Number.isFinite(wordGoal) && wordGoal > 0) {
+    const goal = Math.round(wordGoal);
+    return {
+      ...merged,
+      chapterWordsMin: Math.round(goal * 0.92),
+      chapterWordsMax: Math.round(goal * 1.25),
+      source: `${merged.source}+setupGoal:${goal}`,
+    };
+  }
+  return merged;
 }
 
 function escapeReg(s: string): string {

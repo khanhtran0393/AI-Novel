@@ -5,6 +5,11 @@ import {
 } from '../modules/writeModule';
 import { recordEngineCheckpoint, recordEngineSnapshot } from '../modules/engineModule';
 import { resolveMasterModelKeys } from '../modules/apiClient';
+import {
+  enrichMemoryAfterCommit,
+  evaluateChapterQuality,
+  setChapterQuality,
+} from '@/lib/pipeline';
 
 /** Normalize language label; repair legacy mojibake from older builds. */
 export function resolveNgonNgu(raw?: string): string {
@@ -201,6 +206,28 @@ export async function commitChapterMemory(
       updatedChapters.length,
       'Commit memory xong (AI).',
     );
+
+    // P0 — Memory pack + foreshadow ledger (local extract, no fake AI)
+    const after = useNovelStore.getState();
+    enrichMemoryAfterCommit({
+      chapter: chapterNum,
+      content: body,
+      scrollSummary: after.tom_tat_cuon_chieu || String(memory.tom_tat_cuon_chieu || ''),
+      shortTerm: after.tri_nho_ngan_han || [],
+      characterNames: after.nhan_vat || [],
+    });
+
+    // P0 — Quality Gate snapshot (editor verdict may still be pending)
+    const q = evaluateChapterQuality({
+      chapter: chapterNum,
+      content: body,
+      characterNames: after.nhan_vat || [],
+      wordGoal: after.setup?.so_tu_chuong || 4250,
+      userRules: after.userRules,
+      editorVerdict: after.editorReviews?.[chapterNum]?.verdict,
+    });
+    setChapterQuality(q);
+
     return { ok: true };
   } catch (error) {
     // No local/heuristic replacement — fail hard (API key rotation stays inside generate).

@@ -13,12 +13,15 @@ type Props = {
 };
 
 export default function EmptyWorkspaceHint({ onWriteChapter }: Props) {
-  const store = useNovelStore();
-  const chapter = store.danh_sach_chuong.find(
-    (c) => c.so_chuong === store.chuong_dang_chon,
-  );
-  const hasOutline = !!(store.dan_y_tong_the || '').trim();
-  const hasContent = !!(chapter?.noi_dung || '').trim();
+  // Selector-only — full store re-render empty state mỗi media tick
+  const chuongDangChon = useNovelStore((s) => s.chuong_dang_chon);
+  const hasContent = useNovelStore((s) => {
+    const ch = s.danh_sach_chuong.find((c) => c.so_chuong === s.chuong_dang_chon);
+    return !!(ch?.noi_dung || '').trim();
+  });
+  const hasOutline = useNovelStore((s) => !!(s.dan_y_tong_the || '').trim());
+  const giaiDoan = useNovelStore((s) => s.giai_doan);
+  const setGiaiDoan = useNovelStore((s) => s.setGiaiDoan);
 
   if (hasContent) return null;
 
@@ -34,10 +37,10 @@ export default function EmptyWorkspaceHint({ onWriteChapter }: Props) {
           : 'Bấm «Sinh Chi Tiết Chương» — AI soạn phân cảnh, tự bù Cổng Từ, commit bộ nhớ, chấm Editor 7 chiều, auto rewrite/polish (YouTube-safe), rồi checklist trước khi TTS.'}
       </p>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {!hasOutline && store.giai_doan === 2 && (
+        {!hasOutline && giaiDoan === 2 && (
           <button
             type="button"
-            onClick={() => store.setGiaiDoan(1)}
+            onClick={() => setGiaiDoan(1)}
             className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-1.5 text-[10px] font-bold uppercase text-amber-400 hover:bg-amber-900/40 cursor-pointer"
           >
             Về Setup / Outline
@@ -53,7 +56,7 @@ export default function EmptyWorkspaceHint({ onWriteChapter }: Props) {
             className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-black shadow hover:bg-amber-400 transition-colors cursor-pointer disabled:opacity-40 animate-pulse"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            Sinh Chi Tiết Chương {store.chuong_dang_chon}
+            Sinh Chi Tiết Chương {chuongDangChon}
           </button>
         )}
       </div>

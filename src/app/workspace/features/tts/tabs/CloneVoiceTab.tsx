@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import type { TTSConfig } from '@/store/useNovelStore';
 import { Volume2, Loader2, Play, X, Trash2 } from 'lucide-react';
 import { SELECT_DARK_SM, OPTION_DARK } from '../ttsSelectStyles';
+import { appConfirm } from '@/lib/confirmDialog';
 
 export type CloneVoiceTabProps = {
   config: TTSConfig;
@@ -257,14 +258,20 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
                     disabled={!!deletingCloneName}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (
-                        !window.confirm(
-                          `Xóa giọng clone «${p.name}» khỏi app?\nFile mẫu + profile sẽ bị xóa vĩnh viễn.`,
-                        )
-                      ) {
-                        return;
-                      }
-                      void onDeleteCloneProfile?.(p.name);
+                      void (async () => {
+                        const ok = await appConfirm({
+                          title: 'Xóa giọng clone',
+                          message: `Xóa giọng clone «${p.name}» khỏi app?`,
+                          details: [
+                            'File mẫu + profile sẽ bị xóa vĩnh viễn',
+                          ],
+                          confirmLabel: 'Xóa vĩnh viễn',
+                          cancelLabel: 'Giữ lại',
+                          tone: 'danger',
+                        });
+                        if (!ok) return;
+                        void onDeleteCloneProfile?.(p.name);
+                      })();
                     }}
                     title={`Xóa «${p.name}»`}
                     className="shrink-0 m-1 p-1.5 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-rose-500/15 disabled:opacity-40 transition-colors"

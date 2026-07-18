@@ -79,6 +79,26 @@ export async function runSilentChapterTimeline(opts?: {
       if (k.startsWith(chPrefix)) generatedPrompts[k] = v;
     }
 
+    // Prefer real TTS durations for FableCut still length (sum of chapter scene audio)
+    let secondsPerImage = Number(store.secondsPerBeat) > 0 ? Number(store.secondsPerBeat) : 0;
+    try {
+      const audioEntries = Object.entries(store.generatedAudioPaths || {}).filter(([k]) =>
+        k.startsWith(chPrefix),
+      );
+      const totalAudio = audioEntries.reduce(
+        (s, [, v]) => s + (Number(v?.duration) > 0 ? Number(v.duration) : 0),
+        0,
+      );
+      const stillCount = Object.keys(store.generatedImages || {}).filter((k) =>
+        k.startsWith(chPrefix),
+      ).length;
+      if (totalAudio > 0 && stillCount > 0) {
+        secondsPerImage = Math.max(1.5, totalAudio / stillCount);
+      }
+    } catch {
+      /* optional */
+    }
+
     const res = await fetch(API.integrations.chapter, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -100,6 +120,7 @@ export async function runSilentChapterTimeline(opts?: {
         liveEditor: true,
         autoStartFableCut: false,
         aspect,
+        secondsPerImage: secondsPerImage > 0 ? secondsPerImage : undefined,
       }),
     });
     const data = await res.json();
@@ -156,6 +177,8 @@ export async function runSilentChapterTimeline(opts?: {
  */
 export async function silentEnrichArcHooks(opts: {
   hypothesis?: string;
+  /** outline | plan_arc | lore — MiroFish API scope gate */
+  context?: 'outline' | 'plan_arc' | 'lore' | 'lorebook' | 'arc';
 }): Promise<string[]> {
   try {
     const store = useNovelStore.getState();
@@ -168,6 +191,8 @@ export async function silentEnrichArcHooks(opts: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        context: opts.context || 'plan_arc',
+        scope: 'lorebook',
         title: store.ten_tac_pham,
         lorebook: store.lorebook,
         chapterSummary: ch

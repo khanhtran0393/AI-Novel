@@ -1,20 +1,26 @@
 /**
  * VRAM / RAM guard for heavy local TTS (OmniVoice + Vina ONNX).
- * GTX 1050 Ti 4GB:
- *  - one synth at a time (mutex)
- *  - exclusive engine: when using Omni, unload Vina; when using Vina, unload Omni
- *  - RSS recycle when process bloats
  *
- * State lives on globalThis so Next.js route bundles share one mutex.
+ * - Omni ↔ Vina: exclusive (unload the other).
+ * - Vina ↔ Vina: up to N parallel slots (= daemon workers) for same-voice multi-request.
+ * - Omni: always 1 slot.
+ *
+ * State on globalThis so Next.js route bundles share one guard.
+ *
+ * SERVER-ONLY (do not import from Client Components):
+ * dynamic imports warmDaemon / omnivoiceLocal (fs + child_process).
+ * Client UI: use `@/lib/ttsBatchSrt/concurrency` for parallel slot counts only.
  */
 
 export type GpuTtsEngine = 'omnivoice' | 'vina';
 
 type GuardState = {
+  /** Legacy single-holder (status UI) */
   holder: GpuTtsEngine | null;
-  /** Last engine that owned the GPU (kept warm until switch). */
   exclusiveEngine: GpuTtsEngine | null;
-  gate: Promise<void>;
+  vinaInflight: number;
+  omniInflight: number;
+  waitQueue: Array<() => void>;
   lastReleaseAt: number;
   queueDepth: number;
   stats: {
@@ -26,7 +32,7 @@ type GuardState = {
   };
 };
 
-const GKEY = '__ai_novel_gpu_tts_guard_v3';
+const GKEY = '__ai_novel_gpu_tts_guard_v4';
 
 function state(): GuardState {
   const g = globalThis as unknown as Record<string, GuardState | undefined>;
@@ -34,7 +40,9 @@ function state(): GuardState {
     g[GKEY] = {
       holder: null,
       exclusiveEngine: null,
-      gate: Promise.resolve(),
+      vinaInflight: 0,
+      omniInflight: 0,
+      waitQueue: [],
       lastReleaseAt: 0,
       queueDepth: 0,
       stats: {
@@ -46,8 +54,10 @@ function state(): GuardState {
       },
     };
   } else {
-    // HMR / old shape: fill missing fields
     const s = g[GKEY]!;
+    if (s.vinaInflight === undefined) s.vinaInflight = 0;
+    if (s.omniInflight === undefined) s.omniInflight = 0;
+    if (!s.waitQueue) s.waitQueue = [];
     if (s.exclusiveEngine === undefined) s.exclusiveEngine = null;
     if (!s.stats) {
       s.stats = {
@@ -64,6 +74,18 @@ function state(): GuardState {
   return g[GKEY]!;
 }
 
+function wakeWaiters() {
+  const s = state();
+  const q = s.waitQueue.splice(0, s.waitQueue.length);
+  for (const w of q) {
+    try {
+      w();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /** Set false to only serialize (no kill other engine). Default: exclusive. */
 export function exclusiveGpuEngineEnabled(): boolean {
   const v = (process.env.TTS_EXCLUSIVE_GPU_ENGINE || '1').toLowerCase();
@@ -71,8 +93,24 @@ export function exclusiveGpuEngineEnabled(): boolean {
 }
 
 /**
+ * How many Vina synth jobs may run at once (same voice multi-request).
+ * Align with VINA_DAEMON_WORKERS — each slot needs a warm worker process.
+ * Default 1 (safe 4GB). Set VINA_DAEMON_WORKERS=2 + VINA_PARALLEL_SLOTS=2 when VRAM allows.
+ */
+export function resolveVinaParallelSlots(): number {
+  const slots = Number(process.env.VINA_PARALLEL_SLOTS);
+  if (Number.isFinite(slots) && slots > 0) {
+    return Math.max(1, Math.min(4, Math.trunc(slots)));
+  }
+  const workers = Number(process.env.VINA_DAEMON_WORKERS);
+  if (Number.isFinite(workers) && workers > 0) {
+    return Math.max(1, Math.min(4, Math.trunc(workers)));
+  }
+  return 1;
+}
+
+/**
  * Unload the *other* heavy engine so only the selected model occupies VRAM.
- * Lazy imports avoid circular deps with omnivoiceLocal / warmDaemon.
  */
 export async function releaseOtherHeavyEngine(
   keep: GpuTtsEngine,
@@ -94,7 +132,6 @@ export async function releaseOtherHeavyEngine(
     return { unloaded: 'vina' };
   }
 
-  // keep vina → unload Omni :8880
   try {
     const omni = await import('@/lib/omnivoiceLocal');
     await omni.killOmniServerProcesses();
@@ -107,10 +144,6 @@ export async function releaseOtherHeavyEngine(
   return { unloaded: 'omnivoice' };
 }
 
-/**
- * Soft: recycle before next heavy job.
- * Steady Omni after CUDA load often sits ~1.5–2.6GB; only recycle on real bloat.
- */
 export function omniRssSoftMb(): number {
   const n = Number(process.env.OMNI_RSS_SOFT_MB);
   return Number.isFinite(n) && n > 500 ? n : 3000;
@@ -121,63 +154,88 @@ export function omniRssHardMb(): number {
   return Number.isFinite(n) && n > 800 ? n : 3600;
 }
 
-/** Min uptime (s) before RSS soft recycle — avoid thrash right after restart. */
 export function omniRssMinUptimeS(): number {
   const n = Number(process.env.OMNI_RSS_MIN_UPTIME_S);
   return Number.isFinite(n) && n >= 0 ? n : 90;
 }
 
-/**
- * Soft RSS for Vina warm daemon recycle.
- * Brain ~1.3–1.5GB on disk; Windows WorkingSet after load often 2.8–4.0GB (mapped pages).
- * Old default 2200MB caused thrash: ready → recycle → exit -1 → respawn loop → app destabilize.
- * Override: VINA_RSS_SOFT_MB=6000
- */
 export function vinaWorkerRssSoftMb(): number {
   const n = Number(process.env.VINA_RSS_SOFT_MB);
   return Number.isFinite(n) && n > 400 ? n : 4800;
 }
 
-/** Min seconds a worker must stay warm before RSS soft recycle. */
 export function vinaRssMinUptimeS(): number {
   const n = Number(process.env.VINA_RSS_MIN_UPTIME_S);
   return Number.isFinite(n) && n >= 0 ? n : 180;
 }
 
+async function acquireEngineSlot(engine: GpuTtsEngine): Promise<void> {
+  const s = state();
+  const maxVina = resolveVinaParallelSlots();
+
+  for (;;) {
+    if (engine === 'vina') {
+      // Block while Omni holds GPU
+      if (s.omniInflight === 0 && s.vinaInflight < maxVina) {
+        s.vinaInflight += 1;
+        s.holder = 'vina';
+        s.stats.acquires += 1;
+        return;
+      }
+    } else {
+      // Omni: exclusive vs Vina, single slot
+      if (s.vinaInflight === 0 && s.omniInflight < 1) {
+        s.omniInflight += 1;
+        s.holder = 'omnivoice';
+        s.stats.acquires += 1;
+        return;
+      }
+    }
+    s.stats.waits += 1;
+    s.queueDepth += 1;
+    await new Promise<void>((resolve) => {
+      s.waitQueue.push(resolve);
+    });
+    s.queueDepth = Math.max(0, s.queueDepth - 1);
+  }
+}
+
+function releaseEngineSlot(engine: GpuTtsEngine): void {
+  const s = state();
+  if (engine === 'vina') {
+    s.vinaInflight = Math.max(0, s.vinaInflight - 1);
+  } else {
+    s.omniInflight = Math.max(0, s.omniInflight - 1);
+  }
+  if (s.vinaInflight === 0 && s.omniInflight === 0) {
+    s.holder = null;
+  } else if (s.vinaInflight > 0) {
+    s.holder = 'vina';
+  } else {
+    s.holder = 'omnivoice';
+  }
+  s.lastReleaseAt = Date.now();
+  wakeWaiters();
+}
+
 /**
- * Serialize OmniVoice + Vina inference on one GPU (4GB class cards).
- * Claims exclusive engine: only the selected model stays loaded.
- * Optional timeoutMs races *inside* the slot so lock is always released
- * (outer Promise.race would abandon fn while still holding the mutex).
- * Edge/Piper/cloud TTS do not use this lock.
+ * Acquire GPU slot then run fn.
+ * Vina: up to resolveVinaParallelSlots() concurrent (same-voice multi-request).
+ * Omni: 1 concurrent. Omni and Vina never overlap.
  */
 export async function withGpuTtsSlot<T>(
   engine: GpuTtsEngine,
   fn: () => Promise<T>,
   opts?: { timeoutMs?: number },
 ): Promise<T> {
-  const s = state();
-  let release!: () => void;
-  const mine = new Promise<void>((r) => {
-    release = r;
-  });
-  const prev = s.gate;
-  s.gate = prev.then(() => mine);
-  if (s.holder !== null) s.stats.waits += 1;
-  s.queueDepth += 1;
-  await prev;
-  s.queueDepth = Math.max(0, s.queueDepth - 1);
-  s.holder = engine;
-  s.stats.acquires += 1;
+  await acquireEngineSlot(engine);
   const timeoutMs =
     typeof opts?.timeoutMs === 'number' && opts.timeoutMs > 0
       ? opts.timeoutMs
       : 0;
   try {
-    // Only this model on GPU — free the other heavy process first
     await releaseOtherHeavyEngine(engine);
     if (!timeoutMs) return await fn();
-    // Race inside slot → finally always runs and frees mutex
     return await Promise.race([
       fn(),
       new Promise<never>((_, reject) =>
@@ -193,9 +251,7 @@ export async function withGpuTtsSlot<T>(
       ),
     ]);
   } finally {
-    s.holder = null;
-    s.lastReleaseAt = Date.now();
-    release();
+    releaseEngineSlot(engine);
   }
 }
 
@@ -205,6 +261,9 @@ export function getGpuTtsGuardStatus() {
     holder: s.holder,
     exclusiveEngine: s.exclusiveEngine,
     exclusiveEnabled: exclusiveGpuEngineEnabled(),
+    vinaInflight: s.vinaInflight,
+    omniInflight: s.omniInflight,
+    vinaParallelSlots: resolveVinaParallelSlots(),
     queueDepth: s.queueDepth,
     lastReleaseAt: s.lastReleaseAt,
     stats: { ...s.stats },
@@ -225,7 +284,7 @@ export function noteVinaRestart() {
   state().stats.vinaRestarts += 1;
 }
 
-/** Chapter / multi-scene: Omni + Vina must stay serial (concurrency = 1). */
+/** Chapter / multi-scene: heavy local TTS uses GPU guard. */
 export function isHeavyLocalTtsPlatform(platform: string): boolean {
   const p = (platform || '').toLowerCase();
   return p === 'vina_voice' || p === 'omnivoice_local';

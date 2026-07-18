@@ -308,14 +308,16 @@ export default function SceneTtsBar({
         )}
       </div>
 
-      <RoleCastStudioModal
-        isOpen={castStudioOpen}
-        onClose={() => setCastStudioOpen(false)}
-        sceneText={sceneContent}
-        chapter={chapterNum}
-        sceneIndex={sceneIndex}
-        initialTab="board"
-      />
+      {castStudioOpen ? (
+        <RoleCastStudioModal
+          isOpen
+          onClose={() => setCastStudioOpen(false)}
+          sceneText={sceneContent}
+          chapter={chapterNum}
+          sceneIndex={sceneIndex}
+          initialTab="board"
+        />
+      ) : null}
     </>
   );
 }

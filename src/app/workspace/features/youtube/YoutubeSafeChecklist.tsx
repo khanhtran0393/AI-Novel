@@ -7,7 +7,6 @@ import {
 } from '@/contracts';
 
 import React, { useMemo, useState } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   buildYoutubeChecklist,
@@ -40,64 +39,68 @@ import { toast } from '@/lib/toastBus';
 import SeoField, { hasImageCredentials } from './SeoField';
 import YoutubeThumbPanel from './YoutubeThumbPanel';
 
+/** Stable empty hook — never allocate new {} in selector (causes getSnapshot infinite loop). */
+const EMPTY_CHAPTER_HOOK = Object.freeze({
+  hook: '',
+  thumbnailLine: '',
+  seoTitle: '',
+  seoDescription: '',
+  seoTags: '',
+  thumbnailPrompt: '',
+  thumbnailImagePath: '',
+});
+
 export default function YoutubeSafeChecklist() {
   /**
-   * Shallow snapshot of only fields that affect this checklist UI.
-   * Full useNovelStore() re-rendered on every media/TTS path update → main-thread lag.
-   * Handlers still use useNovelStore.getState() for one-shot actions.
+   * Primitive selectors only (React 19 + zustand): never return a fresh `{}` from
+   * getSnapshot — that causes "Maximum update depth exceeded" / infinite loop.
+   * Handlers use useNovelStore.getState() for one-shot actions.
    */
-  const snap = useNovelStore(
-    useShallow((s) => {
-      const ch = s.chuong_dang_chon;
-      const chapter = s.danh_sach_chuong.find((c) => c.so_chuong === ch);
-      const script = chapter?.noi_dung || '';
-      const chPrefix = chapterAssetPrefix(ch);
-      const thumbAssetKey = imageAssetKey(ch, YOUTUBE_THUMB_SCENE_INDEX, 0);
-      const hook = s.chapterHooks?.[ch];
-      let imageCount = 0;
-      let videoCount = 0;
-      let hasAudio = false;
-      for (const k of Object.keys(s.generatedImages || {})) {
-        if (k.startsWith(chPrefix)) imageCount++;
-      }
-      for (const k of Object.keys(s.generatedVideos || {})) {
-        if (k.startsWith(chPrefix)) videoCount++;
-      }
-      for (const k of Object.keys(s.generatedAudioPaths || {})) {
-        if (k.startsWith(chPrefix) && s.generatedAudioPaths[k]?.path) {
-          hasAudio = true;
-          break;
-        }
-      }
-      return {
-        ch,
-        script,
-        soTuChuong: s.setup.so_tu_chuong || 4250,
-        review: s.editorReviews[ch],
-        youtubeSafe: s.youtubeSafe,
-        asset: hook || {
-          hook: '',
-          thumbnailLine: '',
-          seoTitle: '',
-          seoDescription: '',
-          seoTags: '',
-          thumbnailPrompt: '',
-          thumbnailImagePath: '',
-        },
-        thumbImageFromStore: s.generatedImages?.[thumbAssetKey] || '',
-        imageCount,
-        videoCount,
-        hasAudio,
-        ttsPlatform: s.ttsConfig.platform,
-        ttsPitch: s.ttsConfig.pitch,
-        ttsSpeed: s.ttsConfig.speed,
-        hasVisualDna: !!(s.visualDnaPrompt?.trim() || s.mediaStylePreset?.trim()),
-        humanEdited: !!s.humanEditFlags?.[ch]?.edited,
-        ten_tac_pham: s.ten_tac_pham,
-        visualDnaPrompt: s.visualDnaPrompt,
-        mediaStylePreset: s.mediaStylePreset,
-      };
-    }),
+  const ch = useNovelStore((s) => s.chuong_dang_chon);
+  const script = useNovelStore((s) => {
+    const chapter = s.danh_sach_chuong.find((c) => c.so_chuong === s.chuong_dang_chon);
+    return chapter?.noi_dung || '';
+  });
+  const soTuChuong = useNovelStore((s) => s.setup?.so_tu_chuong || 4250);
+  const review = useNovelStore((s) => s.editorReviews[s.chuong_dang_chon]);
+  const youtubeSafe = useNovelStore((s) => s.youtubeSafe);
+  const chapterHook = useNovelStore((s) => s.chapterHooks?.[s.chuong_dang_chon]);
+  const asset = chapterHook || EMPTY_CHAPTER_HOOK;
+  const thumbAssetKey = imageAssetKey(ch, YOUTUBE_THUMB_SCENE_INDEX, 0);
+  const thumbImageFromStore = useNovelStore(
+    (s) => s.generatedImages?.[imageAssetKey(s.chuong_dang_chon, YOUTUBE_THUMB_SCENE_INDEX, 0)] || '',
+  );
+  const imageCount = useNovelStore((s) => {
+    const prefix = chapterAssetPrefix(s.chuong_dang_chon);
+    let n = 0;
+    for (const k of Object.keys(s.generatedImages || {})) {
+      if (k.startsWith(prefix)) n++;
+    }
+    return n;
+  });
+  const videoCount = useNovelStore((s) => {
+    const prefix = chapterAssetPrefix(s.chuong_dang_chon);
+    let n = 0;
+    for (const k of Object.keys(s.generatedVideos || {})) {
+      if (k.startsWith(prefix)) n++;
+    }
+    return n;
+  });
+  const hasAudio = useNovelStore((s) => {
+    const prefix = chapterAssetPrefix(s.chuong_dang_chon);
+    for (const k of Object.keys(s.generatedAudioPaths || {})) {
+      if (k.startsWith(prefix) && s.generatedAudioPaths[k]?.path) return true;
+    }
+    return false;
+  });
+  const ttsPlatform = useNovelStore((s) => s.ttsConfig.platform);
+  const ttsPitch = useNovelStore((s) => s.ttsConfig.pitch);
+  const ttsSpeed = useNovelStore((s) => s.ttsConfig.speed);
+  const hasVisualDna = useNovelStore(
+    (s) => !!(s.visualDnaPrompt?.trim() || s.mediaStylePreset?.trim()),
+  );
+  const humanEdited = useNovelStore(
+    (s) => !!s.humanEditFlags?.[s.chuong_dang_chon]?.edited,
   );
 
   const store = useNovelStore.getState;
@@ -109,20 +112,12 @@ export default function YoutubeSafeChecklist() {
   const [competitorDnaLoading, setCompetitorDnaLoading] = useState(false);
   const [zoomThumbUrl, setZoomThumbUrl] = useState<string | null>(null);
 
-  const script = snap.script;
-  const gate = evaluateWordGate(script, snap.soTuChuong);
-  const review = snap.review;
-  const ch = snap.ch;
-  const yt = mergeYoutubeSafe(snap.youtubeSafe);
-  const asset = snap.asset;
-  const imageCount = snap.imageCount;
-  const videoCount = snap.videoCount;
-  const hasAudio = snap.hasAudio;
-  const thumbAssetKey = imageAssetKey(ch, YOUTUBE_THUMB_SCENE_INDEX, 0);
+  const gate = evaluateWordGate(script, soTuChuong);
+  const yt = mergeYoutubeSafe(youtubeSafe);
 
   const thumbImageUrl =
     (asset.thumbnailImagePath || '').trim() ||
-    (snap.thumbImageFromStore || '').trim() ||
+    (thumbImageFromStore || '').trim() ||
     '';
 
   const hasHook = (asset.hook || '').trim().length > 40;
@@ -137,15 +132,15 @@ export default function YoutubeSafeChecklist() {
     sceneCount: countSceneTags(script),
     minScenes: 3,
     editorVerdict: review?.verdict,
-    ttsPlatform: snap.ttsPlatform,
-    ttsPitch: snap.ttsPitch,
-    ttsSpeed: snap.ttsSpeed,
-    hasVisualDna: snap.hasVisualDna,
+    ttsPlatform,
+    ttsPitch,
+    ttsSpeed,
+    hasVisualDna,
     hasAudio,
     imageCount,
     videoCount,
     enforceEditorGate: yt.enforceEditorGate !== false,
-    humanEdited: snap.humanEdited,
+    humanEdited,
     requireHumanEdit: yt.requireHumanEdit === true,
     hasHook,
     hasSeoTitle,

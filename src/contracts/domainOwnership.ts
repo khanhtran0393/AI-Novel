@@ -47,14 +47,17 @@ export const DOMAIN_OWNERSHIP: DomainOwnership[] = [
     label: 'TTS / role cast',
     owns: [
       'workspace/features/tts',
+      'workspace/features/toolbox/TtsBatchSrtModal',
       'workspace/modules/ttsModule',
       'workspace/modules/tts/*',
       'api/generate-tts',
+      'api/tts-batch-srt',
+      'lib/ttsBatchSrt',
       'lib/vinaVoice',
       'lib/voiceCatalog',
       'store/ttsCastActions',
     ],
-    apis: ['generateTts', 'concatAudio', 'ttsVoices', 'vinaVoiceClone'],
+    apis: ['generateTts', 'concatAudio', 'ttsBatchSrt', 'ttsVoices', 'vinaVoiceClone'],
     contracts: ['keys.sceneAssetKey'],
   },
   {

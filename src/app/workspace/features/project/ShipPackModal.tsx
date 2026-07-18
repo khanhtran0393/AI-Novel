@@ -10,6 +10,7 @@ import {
   resolveOutputCriteria,
 } from '@/lib/outputCriteria';
 import { evaluateShipGate, healthInputFromStore } from '@/lib/shipGate';
+import { appConfirm } from '@/lib/confirmDialog';
 
 interface ShipPackModalProps {
   isOpen: boolean;
@@ -204,11 +205,16 @@ export default function ShipPackModal({ isOpen, onClose }: ShipPackModalProps) {
           .filter((w) => w.includes('DNA media'))
           .slice(0, 4)
           .join('\n');
-        if (
-          !confirm(
-            `Media không khớp cài Ảnh/Video · TTS hiện tại:\n\n${preview}\n\nVẫn ship pack? (Nên gen lại TTS/ảnh trước)`,
-          )
-        ) {
+        const okShip = await appConfirm({
+          title: 'Media lệch DNA',
+          message:
+            'Media không khớp cài Ảnh/Video · TTS hiện tại. Nên gen lại TTS/ảnh trước khi ship.',
+          details: preview.split('\n').filter(Boolean),
+          confirmLabel: 'Vẫn ship pack',
+          cancelLabel: 'Hủy',
+          tone: 'warn',
+        });
+        if (!okShip) {
           setResult({
             error: `Đã hủy ship — media lệch DNA.\n${preview}`,
           });

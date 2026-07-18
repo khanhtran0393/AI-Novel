@@ -26,6 +26,12 @@ import {
 } from './tools/editorTools';
 import { pullChaptersFromStoreBackup } from './sync/storeBridge';
 import { recordSnapshot } from './engine';
+import {
+  buildLayeredRouteExtras,
+  formatArcLabel,
+  markArcReviewDone,
+  resolveLongformConfig,
+} from '@/lib/pipeline';
 
 export type RunnerStatus = 'running' | 'stopped';
 
@@ -165,13 +171,32 @@ async function runLoop(signal: AbortSignal): Promise<void> {
       break;
     }
 
+    // P2 — Long-form arc: layered RouteState (no hardcode null when enabled)
+    const lf = resolveLongformConfig(progress.totalChapters);
+    const layered = buildLayeredRouteExtras(
+      progress.completedChapters,
+      progress.totalChapters,
+      lf,
+    );
+    if (progress.layered !== layered.layered) {
+      progress = {
+        ...progress,
+        layered: layered.layered,
+        updatedAt: new Date().toISOString(),
+      };
+      saveProgress(progress);
+    }
+    if (layered.layered && layered.arcBoundary?.isArcEnd) {
+      logEngine(`📐 Long-form: ${formatArcLabel(layered.arcBoundary)}`);
+    }
+
     const instruction = route({
-      progress,
+      progress: { ...progress, layered: layered.layered },
       lastCompleted: progress.completedChapters[progress.completedChapters.length - 1] || 0,
-      arcBoundary: null,
-      hasArcReview: true,
-      hasArcSummary: true,
-      hasVolumeSummary: true,
+      arcBoundary: layered.arcBoundary,
+      hasArcReview: layered.hasArcReview,
+      hasArcSummary: layered.hasArcSummary,
+      hasVolumeSummary: layered.hasVolumeSummary,
       foundationMissing: [],
     });
 
@@ -243,6 +268,16 @@ async function executeInstruction(
   if (instruction.agent === 'editor') {
     if (/volume|tập/i.test(instruction.task)) {
       return saveVolumeSummaryTool(progress);
+    }
+    // Arc review task: mark review done then summary path on next loop
+    if (/đánh giá|review/i.test(instruction.task)) {
+      markArcReviewDone(progress.currentChapter || progress.completedChapters.at(-1) || 0);
+      logEngine('✅ Arc review flagged complete (editor)', 'success');
+      return {
+        ...progress,
+        lastAction: 'Arc review done',
+        updatedAt: new Date().toISOString(),
+      };
     }
     return saveArcSummaryTool(progress);
   }

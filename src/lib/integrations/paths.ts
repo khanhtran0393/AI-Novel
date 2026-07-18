@@ -34,25 +34,31 @@ function firstExisting(...candidates: string[]): string {
 
 export function getIntegrationPaths(cwd = process.cwd()): IntegrationPaths {
   const repoRoot = process.env.AINOVEL_REPO_ROOT || DEFAULT_REPO_ROOT;
+  // Prefer app-vendored packages (ship-ready) over D:\repo (dev machine only)
   const seedance = firstExisting(
     process.env.AINOVEL_SEEDANCE_DIR || '',
+    path.join(cwd, 'vendor', 'seedance-2.0'),
     path.join(repoRoot, 'seedance-2.0-main'),
   );
   const fablecut = firstExisting(
     process.env.AINOVEL_FABLECUT_DIR || '',
+    path.join(cwd, 'vendor', 'FableCut'),
     path.join(repoRoot, 'FableCut-main'),
   );
   const watchRoot = firstExisting(
     process.env.AINOVEL_WATCH_DIR || '',
+    path.join(cwd, 'vendor', 'watch'),
     path.join(repoRoot, 'claude-video-main', 'skills', 'watch'),
     path.join(repoRoot, 'claude-video-main'),
   );
   const watchScripts = firstExisting(
     path.join(watchRoot, 'scripts'),
+    path.join(cwd, 'vendor', 'watch', 'scripts'),
     path.join(repoRoot, 'claude-video-main', 'skills', 'watch', 'scripts'),
   );
   const mirofish = firstExisting(
     process.env.AINOVEL_MIROFISH_DIR || '',
+    path.join(cwd, 'vendor', 'MiroFish'),
     path.join(repoRoot, 'MiroFish-main'),
   );
 

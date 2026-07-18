@@ -34,6 +34,12 @@ export const API = {
   /** TTS synthesis — route dispatches TTS_PROVIDERS registry */
   generateTts: '/api/generate-tts',
   concatAudio: '/api/concat-audio',
+  /**
+   * TTS Batch / Tool Dịch SRT:
+   * - action=translateOnly: Google Studio || batch translate
+   * - stream full pipe: video/SRT → TTS → CapCut draft / mux
+   */
+  ttsBatchSrt: '/api/tts-batch-srt',
   /** Native AI Novel engine */
   ainovel: {
     start: '/api/ainovel/start',
@@ -98,6 +104,7 @@ export const API = {
   },
   capassistant: {
     selectFile: '/api/capassistant/select-file',
+    saveFile: '/api/capassistant/save-file',
     autoMaster: '/api/capassistant/auto-master',
     thumbnail: '/api/capassistant/thumbnail',
     join: '/api/capassistant/join',

@@ -199,6 +199,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Thiếu thông tin chương hoặc phân cảnh.' }, { status: 400 });
     }
 
+    let promptText = typeof prompt === 'string' ? prompt.trim() : '';
+    if (!promptText) {
+      return NextResponse.json({ error: '[Video API] Thieu prompt video thuc te. He thong khong tu chen prompt mau.' }, { status: 400 });
+    }
+
     seedanceGenCtx = {
       chapterNum: Number(chapterNum),
       sceneIndex: Number(sceneIndex),
@@ -209,12 +214,8 @@ export async function POST(req: Request) {
           : typeof body.ten_tac_pham === 'string'
             ? body.ten_tac_pham
             : undefined,
+      promptText,
     };
-
-    let promptText = typeof prompt === 'string' ? prompt.trim() : '';
-    if (!promptText) {
-      return NextResponse.json({ error: '[Video API] Thieu prompt video thuc te. He thong khong tu chen prompt mau.' }, { status: 400 });
-    }
 
     // Seedance 2.0 — sequence-aware video_prompt (continuation / directed clip) baked in
     try {
@@ -269,11 +270,15 @@ export async function POST(req: Request) {
         laterSentences: later,
       });
       promptText = resolved.promptText;
+      if (seedanceGenCtx) seedanceGenCtx.promptText = promptText;
       console.log(
         `[Video API] Seedance sequence relation=${resolved.sequenceRelation} cont=${resolved.usedContinuation} clip=${resolved.clipId}`,
       );
     } catch (e) {
-      console.warn('[Video API] Seedance sequence compile skipped:', e);
+      // Continuity bake is best-effort at gen-video; Gen Prompt Studio already hard-fails on sequence.
+      // Keep original promptText so gen still runs when only handoff metadata fails.
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[Video API] Seedance sequence continuity skipped:', msg);
     }
 
     const videoDuration = Number(duration);
@@ -462,7 +467,7 @@ export async function POST(req: Request) {
         } catch {
           /* ignore */
         }
-        return createSuccessResponse(
+        return await createSuccessResponse(
           localSavePath,
           filename,
           videoDuration,
@@ -594,7 +599,7 @@ export async function POST(req: Request) {
             const videoData = await pollXaiVideo(data.request_id, currentKey, 180000);
             if (videoData) {
               fs.writeFileSync(localSavePath, videoData);
-              return createSuccessResponse(localSavePath, filename, requestDuration, drivePath, chapterNum, 'Grok Imagine Video 1.5');
+              return await createSuccessResponse(localSavePath, filename, requestDuration, drivePath, chapterNum, 'Grok Imagine Video 1.5');
             }
             lastError = 'Timeout while waiting for Grok Imagine video result.';
           } else {
@@ -685,7 +690,7 @@ export async function POST(req: Request) {
                 const videoData = await pollOperation(data.name, key, 120000);
                 if (videoData) {
                   fs.writeFileSync(localSavePath, videoData);
-                  return createSuccessResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, veoModel);
+                  return await createSuccessResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, veoModel);
                 }
               }
               if (data.candidates) {
@@ -695,7 +700,7 @@ export async function POST(req: Request) {
                       if (part.inlineData?.mimeType?.startsWith('video/')) {
                         const videoBuffer = Buffer.from(part.inlineData.data, 'base64');
                         fs.writeFileSync(localSavePath, videoBuffer);
-                        return createSuccessResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, veoModel);
+                        return await createSuccessResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, veoModel);
                       }
                     }
                   }
@@ -715,7 +720,7 @@ export async function POST(req: Request) {
 
     // 5. FFMPEG VIDEO BUILDER (Ken Burns)
     else if (videoProvider === 'ffmpeg') {
-      return createFfmpegVideoResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, body.useGpuAcceleration, sourceImagePath);
+      return await createFfmpegVideoResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, body.useGpuAcceleration, sourceImagePath);
     }
 
     else {
@@ -827,6 +832,7 @@ let seedanceGenCtx: {
   sceneIndex: number;
   promptIndex: number;
   projectSlug?: string;
+  promptText?: string;
 } | null = null;
 
 function tryMarkSeedanceGenerated(opts: {
@@ -836,40 +842,172 @@ function tryMarkSeedanceGenerated(opts: {
   videoPath?: string;
   mediaId?: string;
   projectSlug?: string;
-}) {
+  promptText?: string;
+}): { clipId?: string; accepted?: boolean } {
   try {
     const {
       loadSeedanceProject,
       saveSeedanceProject,
+      ensureSeedanceProject,
     } = require('@/lib/integrations/seedancePersist') as typeof import('@/lib/integrations/seedancePersist');
-    const { markClipGenerated } = require('@/lib/integrations/seedanceTakeReview') as typeof import('@/lib/integrations/seedanceTakeReview');
-    const state = loadSeedanceProject(opts.chapterNum, opts.projectSlug);
-    if (!state?.clips?.length) return;
-    const clip =
+    const {
+      markClipGenerated,
+      autoAcceptGeneratedTake,
+    } = require('@/lib/integrations/seedanceTakeReview') as typeof import('@/lib/integrations/seedanceTakeReview');
+    const { compileDirectedClip } = require('@/lib/integrations/seedance') as typeof import('@/lib/integrations/seedance');
+
+    let state = loadSeedanceProject(opts.chapterNum, opts.projectSlug);
+    if (!state?.clips?.length) {
+      const ensured = ensureSeedanceProject({
+        chapterNum: opts.chapterNum,
+        title: opts.projectSlug || `Chapter ${opts.chapterNum}`,
+        scenes: [
+          {
+            index: opts.sceneIndex,
+            text: opts.promptText || `scene ${opts.sceneIndex}`,
+            title: `Sc ${opts.sceneIndex}`,
+          },
+        ],
+        styleHint: 'cinematic',
+        secondsPerBeat: 6,
+        videoDuration: 6,
+        projectSlug: opts.projectSlug,
+        forceRebuild: false,
+      });
+      state = ensured.state;
+    }
+
+    let clip =
       state.clips.find(
         (c) =>
           c.scene_index === opts.sceneIndex &&
           (c.prompt_index ?? 0) === opts.promptIndex,
-      ) ||
-      state.clips.find((c) => c.scene_index === opts.sceneIndex) ||
-      state.clips.find((c) => c.clip_id === state.current_clip_id) ||
-      state.clips[0];
-    if (!clip) return;
-    const next = markClipGenerated(state, clip.clip_id, {
+      ) || undefined;
+
+    // Multi-shot within scene: ensure a clip row exists for this promptIndex
+    if (!clip && opts.promptText) {
+      try {
+        const pack = compileDirectedClip({
+          projectId: state.project_id,
+          chapterNum: opts.chapterNum,
+          sceneIndex: opts.sceneIndex,
+          promptIndex: opts.promptIndex,
+          sceneText: opts.promptText,
+          videoPrompt: opts.promptText,
+          styleHint: String(state.story?.tone || 'cinematic'),
+          durationSec: 6,
+          secondsPerBeat: state.seconds_per_beat || 6,
+          hasStartImage: true,
+        });
+        const exists = state.clips.some((c) => c.clip_id === pack.contract.clip_id);
+        state = {
+          ...state,
+          clips: exists
+            ? state.clips.map((c) =>
+                c.clip_id === pack.contract.clip_id
+                  ? { ...c, ...pack.contract }
+                  : c,
+              )
+            : [...state.clips, pack.contract],
+          current_clip_id: pack.contract.clip_id,
+          updated_at: new Date().toISOString(),
+        };
+        clip = pack.contract;
+      } catch (e) {
+        console.warn('[Video API] Seedance ensure clip failed', e);
+      }
+    }
+
+    if (!clip) {
+      clip =
+        state.clips.find((c) => c.scene_index === opts.sceneIndex) ||
+        state.clips.find((c) => c.clip_id === state.current_clip_id) ||
+        state.clips[0];
+    }
+    if (!clip) return {};
+
+    let next = markClipGenerated(state, clip.clip_id, {
       videoPath: opts.videoPath,
       mediaId: opts.mediaId,
+      prompt: opts.promptText,
     });
+    let accepted = false;
+    try {
+      const reviewed = autoAcceptGeneratedTake(next, clip.clip_id, {
+        videoPath: opts.videoPath,
+        mediaId: opts.mediaId,
+        observedEndState: (opts.promptText || '').slice(0, 280) || undefined,
+      });
+      next = reviewed.state;
+      accepted = true;
+      console.log(
+        `[Video API] Seedance take-review auto keep clip=${clip.clip_id} next=${reviewed.nextClipId || '-'}`,
+      );
+    } catch (revErr) {
+      console.warn('[Video API] Seedance auto take-review skipped:', revErr);
+    }
     saveSeedanceProject(next, opts.projectSlug);
     console.log(
-      `[Video API] Seedance mark_generated clip=${clip.clip_id} ch=${opts.chapterNum} sc=${opts.sceneIndex}`,
+      `[Video API] Seedance mark_generated clip=${clip.clip_id} ch=${opts.chapterNum} sc=${opts.sceneIndex} p=${opts.promptIndex}`,
     );
+    return { clipId: clip.clip_id, accepted };
   } catch (e) {
     console.warn('[Video API] Seedance mark_generated skipped:', e);
+    return {};
   }
 }
 
-// Tạo response thành công
-function createSuccessResponse(
+/** Report-only Watch QC after video lands on disk (never swaps provider). */
+async function tryWatchQcReport(opts: {
+  localSavePath: string;
+  videoPath: string;
+  chapterNum: number;
+  sceneIndex: number;
+}): Promise<{ ok: boolean; brief?: string; error?: string; outDir?: string } | null> {
+  try {
+    const { runWatch, buildWatchQcBrief, watchRepoReady } = await import(
+      '@/lib/integrations/watchVideo'
+    );
+    const { runNativeFfmpegQc } = await import('@/lib/integrations/watchVideo');
+    let result = watchRepoReady()
+      ? await runWatch({
+          source: opts.localSavePath,
+          detail: 'efficient',
+          maxFrames: 6,
+          noWhisper: true,
+          timeoutMs: 90_000,
+        })
+      : runNativeFfmpegQc({
+          source: opts.localSavePath,
+          maxFrames: 6,
+        });
+    if (!result.success || !(result.framePaths?.length > 0)) {
+      const native = runNativeFfmpegQc({
+        source: opts.localSavePath,
+        maxFrames: 6,
+      });
+      if (native.framePaths.length) result = native;
+    }
+    const brief = buildWatchQcBrief({
+      report: result.report || result.error || '',
+      chapterTitle: `Ch${opts.chapterNum} Sc${opts.sceneIndex}`,
+      question:
+        'Report-only QC: identity drift, blur, subtitle junk, pacing issues. Do not suggest provider swap.',
+    });
+    return {
+      ok: result.success || (result.framePaths?.length ?? 0) > 0,
+      brief,
+      error: result.error,
+      outDir: result.outDir,
+    };
+  } catch (e) {
+    console.warn('[Video API] Watch QC skipped:', e);
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+// Tạo response thành công (+ Seedance take-review + Watch QC report path)
+async function createSuccessResponse(
   localSavePath: string,
   filename: string,
   duration: number,
@@ -893,16 +1031,49 @@ function createSuccessResponse(
 
   const mids = Array.isArray(mediaIds) ? mediaIds.filter(Boolean) : [];
   const videoPath = `/video/${filename}`;
+  let seedanceMeta: { clipId?: string; accepted?: boolean } = {};
   if (seedanceGenCtx) {
-    tryMarkSeedanceGenerated({
+    seedanceMeta = tryMarkSeedanceGenerated({
       chapterNum: seedanceGenCtx.chapterNum,
       sceneIndex: seedanceGenCtx.sceneIndex,
       promptIndex: seedanceGenCtx.promptIndex,
       videoPath,
       mediaId: mids[0],
       projectSlug: seedanceGenCtx.projectSlug,
+      promptText: seedanceGenCtx.promptText,
     });
   }
+
+  // Await QC briefly so response includes report path (cap 25s — report-only)
+  let watchQcPath: string | undefined;
+  let watchQcOk: boolean | undefined;
+  try {
+    const qc = await Promise.race([
+      tryWatchQcReport({
+        localSavePath,
+        videoPath,
+        chapterNum,
+        sceneIndex: seedanceGenCtx?.sceneIndex ?? 0,
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 25_000)),
+    ]);
+    if (qc?.brief) {
+      const dir = path.join(process.cwd(), 'exports', 'integrations', 'watch');
+      fs.mkdirSync(dir, { recursive: true });
+      watchQcPath = path.join(
+        dir,
+        `qc_ch${chapterNum}_sc${seedanceGenCtx?.sceneIndex ?? 0}_${Date.now()}.md`,
+      );
+      fs.writeFileSync(watchQcPath, qc.brief, 'utf8');
+      watchQcOk = qc.ok;
+      console.log(`[Video API] Watch QC report → ${watchQcPath}`);
+    } else if (qc === null) {
+      console.warn('[Video API] Watch QC timed out (25s) — non-blocking');
+    }
+  } catch (e) {
+    console.warn('[Video API] Watch QC failed', e);
+  }
+
   return NextResponse.json({
     success: true,
     videoPath,
@@ -913,6 +1084,15 @@ function createSuccessResponse(
     method,
     mediaIds: mids.length ? mids : undefined,
     mediaId: mids[0] || undefined,
+    seedance: seedanceMeta.clipId
+      ? {
+          clipId: seedanceMeta.clipId,
+          accepted: Boolean(seedanceMeta.accepted),
+        }
+      : undefined,
+    watchQc: watchQcPath
+      ? { ok: watchQcOk, path: watchQcPath, mode: 'report-only' }
+      : { mode: 'skipped-or-timeout' },
   });
 }
 
@@ -1023,28 +1203,14 @@ async function createFfmpegVideoResponse(localSavePath: string, filename: string
     }
     console.log(`[FFmpeg Video Builder] ✅ Đã tạo file video thật sắc nét: ${localSavePath}`);
 
-    // Lưu vào Drive nếu có
-    let driveSaved = false;
-    let driveFilePath = '';
-    if (drivePath && drivePath.trim().length > 0) {
-      try {
-        const driveFolder = path.join(drivePath.trim(), `Chương ${chapterNum}`);
-        if (!fs.existsSync(driveFolder)) fs.mkdirSync(driveFolder, { recursive: true });
-        driveFilePath = path.join(driveFolder, filename);
-        fs.copyFileSync(localSavePath, driveFilePath);
-        driveSaved = true;
-      } catch {}
-    }
-
-    return NextResponse.json({
-      success: true,
-      videoPath: `/video/${filename}`,
-      driveSaved,
-      driveFilePath,
+    return await createSuccessResponse(
+      localSavePath,
       filename,
       duration,
-      method: 'Generated Image + FFmpeg Ken Burns'
-    });
+      drivePath,
+      chapterNum,
+      'Generated Image + FFmpeg Ken Burns',
+    );
   } catch (err: unknown) {
     console.error(`[FFmpeg Video Builder] Lỗi:`, (err as Error).message);
     return NextResponse.json(

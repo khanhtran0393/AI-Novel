@@ -15,6 +15,11 @@ export type FlowSessionSnapshot = {
   loginSessionOpen?: boolean;
   activeAccountId?: string | null;
   error?: string;
+  accounts?: Array<{
+    flowKeyPresent?: boolean;
+    sessionVerified?: boolean;
+    email?: string;
+  }>;
 };
 
 export type FlowPreflightResult = {
@@ -54,9 +59,28 @@ async function fetchFlowStatus(): Promise<FlowSessionSnapshot> {
   return data;
 }
 
+function hasLoggedInProfile(st: FlowSessionSnapshot): boolean {
+  const accounts = Array.isArray(st.accounts) ? st.accounts : [];
+  if (
+    accounts.some(
+      (a) =>
+        a.flowKeyPresent &&
+        a.sessionVerified &&
+        a.email &&
+        String(a.email).includes('@'),
+    )
+  ) {
+    return true;
+  }
+  // Snapshot without accounts[] — only trust both flags if caller already verified
+  return false;
+}
+
 function isSessionReady(st: FlowSessionSnapshot): boolean {
-  // Cả extension socket VÀ token — không tin flowKeyPresent đơn độc (xanh ảo)
-  return Boolean(st.extensionConnected && st.flowKeyPresent);
+  // Extension + token + real Google login (email). Token stale ≠ ready.
+  return Boolean(
+    st.extensionConnected && st.flowKeyPresent && hasLoggedInProfile(st),
+  );
 }
 
 /**
@@ -164,6 +188,14 @@ export async function ensureFlowSessionReady(
       message: data.message || 'OK',
       steps: data.steps,
     };
+  }
+
+  // Token without Google email (stale paint) — force re-login
+  if (flowKeyPresent && !hasLoggedInProfile(after) && !hasLoggedInProfile(data.snapshot || {})) {
+    const msg =
+      'Profile có token nhưng chưa đăng nhập Google (thiếu email). Mở Ảnh/Video → bấm Đăng nhập trên card trình duyệt, đăng nhập Google, đợi badge «sẵn sàng» + email hiện ra.';
+    if (notify) toast.warn(label, msg);
+    throw new Error(`[Flow] ${msg}`);
   }
 
   // Partial: browser opened but user must login

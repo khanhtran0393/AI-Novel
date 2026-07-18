@@ -258,9 +258,24 @@ export async function generateOutlineAction(params: {
     rewrite_source_kind: rewriteOn ? sourceKind : '',
   };
 
-  return postGenerate(
+  const result = await postGenerate(
     'GENERATE_OUTLINE',
     safeSetup as unknown as Record<string, unknown>,
   );
+  // P2: MiroFish only at outline/lore — silent hooks after outline (never block)
+  try {
+    const { silentEnrichArcHooks } = await import('./integrationsModule');
+    const title =
+      typeof (safeSetup as { ten_tac_pham?: string }).ten_tac_pham === 'string'
+        ? String((safeSetup as { ten_tac_pham?: string }).ten_tac_pham)
+        : 'truyện';
+    void silentEnrichArcHooks({
+      context: 'outline',
+      hypothesis: `Outline vừa tạo cho "${title}" — gợi ý móc lorebook / arc.`,
+    });
+  } catch {
+    /* ignore */
+  }
+  return result;
 }
 

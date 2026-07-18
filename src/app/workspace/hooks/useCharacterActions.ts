@@ -15,6 +15,7 @@ import {
 } from '../modules/characterModule';
 import { composeCharacterReferenceSheetPrompt } from '@/lib/characterProfile';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 import {
   profilePromptCacheKey,
   getCachedConceptPromptDurable,
@@ -170,17 +171,23 @@ export function useCharacterActions() {
     }
     if (generatingAllCharPrompts || generatingCharPrompt) return { ok: 0, fail: 0, castUpdated: 0 };
 
-    if (
-      !opts?.silent &&
-      !window.confirm(
-        `✨ Gen Prompt AI cho TẤT CẢ ${chars.length} nhân vật?\n\n` +
-          'Mỗi NV: hồ sơ đầy đủ (giới tính, tính cách, face lock, 4 góc, biểu cảm).\n' +
-          (opts?.applyCastVoices !== false
-            ? 'Sau đó gán chất giọng Role Casting theo giới tính / quirk / động cơ.'
-            : ''),
-      )
-    ) {
-      return { ok: 0, fail: 0, castUpdated: 0 };
+    if (!opts?.silent) {
+      const ok = await appConfirm({
+        title: 'Gen Prompt AI — tất cả NV',
+        message: `Gen Prompt AI cho TẤT CẢ ${chars.length} nhân vật?`,
+        details: [
+          'Mỗi NV: hồ sơ đầy đủ (giới tính, tính cách, face lock, 4 góc, biểu cảm)',
+          ...(opts?.applyCastVoices !== false
+            ? [
+                'Sau đó gán chất giọng Role Casting theo giới tính / quirk / động cơ',
+              ]
+            : []),
+        ],
+        confirmLabel: 'Gen tất cả',
+        cancelLabel: 'Hủy',
+        tone: 'info',
+      });
+      if (!ok) return { ok: 0, fail: 0, castUpdated: 0 };
     }
 
     setGeneratingAllCharPrompts(true);

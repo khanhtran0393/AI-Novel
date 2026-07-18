@@ -29,6 +29,19 @@ export type CastSeedSnapshot = {
   voiceCast?: ProjectVoiceCast | null;
 };
 
+/** Normalize persisted TTS numbers — store may hold string/null after JSON migrate. */
+export function coerceTtsSpeed(raw: unknown, fallback = 1): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0.5, Math.min(2, n));
+}
+
+export function coerceTtsPitch(raw: unknown, fallback = 0): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(-12, Math.min(12, n));
+}
+
 /** Gắn speed/pitch/emotion từ quirk hồ sơ (không đụng role locked). */
 function applyProsodyFromProfile(
   role: VoiceRole,
@@ -67,14 +80,8 @@ export function seedRolesFromProject(state: CastSeedSnapshot): VoiceRole[] {
   if (!defaultVoice) {
     throw new Error('Chua chon voice TTS narrator.');
   }
-  if (typeof state.ttsConfig.speed !== 'number' || !Number.isFinite(state.ttsConfig.speed)) {
-    throw new Error('TTS speed khong hop le.');
-  }
-  if (typeof state.ttsConfig.pitch !== 'number' || !Number.isFinite(state.ttsConfig.pitch)) {
-    throw new Error('TTS pitch khong hop le.');
-  }
-  const baseSpeed = state.ttsConfig.speed;
-  const basePitch = state.ttsConfig.pitch;
+  const baseSpeed = coerceTtsSpeed(state.ttsConfig.speed, 1);
+  const basePitch = coerceTtsPitch(state.ttsConfig.pitch, 0);
   const existing = normalizeVoiceCast(state.voiceCast).roles;
   const existingByChar = new Map<string, VoiceRole>();
   let narrator = existing.find((r) => r.id === NARRATOR_ROLE_ID);
@@ -211,14 +218,10 @@ export function migrateRolesForPlatform(
   opts?: { baseSpeed?: number; basePitch?: number },
 ): VoiceRole[] {
   void language;
-  if (typeof opts?.baseSpeed !== 'number' || !Number.isFinite(opts.baseSpeed)) {
-    throw new Error('TTS speed khong hop le.');
-  }
-  if (typeof opts?.basePitch !== 'number' || !Number.isFinite(opts.basePitch)) {
-    throw new Error('TTS pitch khong hop le.');
-  }
-  const baseSpeed = opts.baseSpeed;
-  const basePitch = opts.basePitch;
+  // Never throw on missing opts — callers (updateTTSConfig) historically omitted them
+  // and crashed workspace with uncaught "TTS speed khong hop le".
+  const baseSpeed = coerceTtsSpeed(opts?.baseSpeed, 1);
+  const basePitch = coerceTtsPitch(opts?.basePitch, 0);
   return roles.map((r) => {
     const cached = r.voicesByPlatform?.[newPlatform]?.trim();
     if (cached) {

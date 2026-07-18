@@ -17,6 +17,7 @@ import {
 import { useStreamUi } from '../../modules/streamUiStore';
 import { parseScenes, getWordCount } from '../../utils/stringUtils';
 import { toast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 
 export function WordGatePill() {
   const isStreaming = useStreamUi((s) => s.isStreaming);
@@ -280,15 +281,22 @@ export function ChapterActionBar({
           disabled={isStreaming}
           title="Viết lại toàn bộ chương này từ đầu (xóa kịch bản + media chương). Gen hồ sơ NV không chặn nút này."
           onClick={() => {
-            if (
-              !confirm(
-                `⚠️ Viết lại toàn bộ Chương ${chuong}?\nSẽ xóa kịch bản và media (audio/ảnh/video/prompt) của chương này.`,
-              )
-            ) {
-              return;
-            }
-            if (dangTai) setDangTai(false);
-            void handleWriteChapter(true);
+            void (async () => {
+              const ok = await appConfirm({
+                title: `Viết lại Chương ${chuong}`,
+                message: 'Xóa kịch bản và media của chương này rồi gen lại từ đầu.',
+                details: [
+                  'Kịch bản / cảnh',
+                  'Audio · ảnh · video · prompt',
+                ],
+                confirmLabel: 'Viết lại toàn bộ',
+                cancelLabel: 'Giữ nguyên',
+                tone: 'danger',
+              });
+              if (!ok) return;
+              if (dangTai) setDangTai(false);
+              void handleWriteChapter(true);
+            })();
           }}
           className="shrink-0 inline-flex items-center gap-1 rounded border border-red-900/50 bg-red-500/15 px-2.5 py-0.5 text-[10px] font-bold text-red-300 hover:bg-red-500/25 hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
         >

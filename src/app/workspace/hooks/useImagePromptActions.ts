@@ -21,17 +21,21 @@ import {
   mergeYoutubeSafe,
 } from '@/lib/youtubeSafe';
 import { toast } from '@/lib/toastBus';
-import {
-  createBatchJob,
-  runBatchJob,
-  jobProgress,
-} from '@/lib/jobQueue';
+import { jobProgress } from '@/lib/jobQueue';
 import {
   beginMediaGenProgress,
   completeMediaGenProgress,
 } from '../modules/mediaGenSlotStore';
 import { resolveCastIngredientPaths } from '@/lib/flow-bridge/castIngredients';
 import { cameraFromScaleIndex } from '@/lib/flow-bridge/cameraPrompt';
+import {
+  evaluateMediaPreflight,
+  assertMediaPreflight,
+  ensureChapterQuality,
+  createStageBatchJob,
+  runStageBatch,
+  readStageMeta,
+} from '@/lib/pipeline';
 
 function hasImageCredentials(store: ReturnType<typeof useNovelStore.getState>): boolean {
   // Google Flow: credential = browser session (extension + ya29), not API key
@@ -147,25 +151,37 @@ export function useImagePromptActions() {
     try {
       const wpm = Number(st0.wpm);
       const beat = Number(st0.secondsPerBeat);
-      if (!Number.isFinite(wpm) || wpm <= 0) {
-        throw new Error('Chua cau hinh WPM (Media Config). App khong tu gan WPM.');
-      }
-      if (!Number.isFinite(beat) || beat <= 0) {
-        throw new Error(
-          'Chua cau hinh secondsPerBeat (Media Config). App khong tu gan beat.',
-        );
-      }
-      if (!Number.isFinite(duration) || duration <= 0) {
-        throw new Error(
-          'Thieu thoi luong scene (TTS hoac o thoi luong). App khong tu gan duration.',
-        );
-      }
       const chu_de = String(st0.setup?.chu_de || '').trim();
       const phong_cach = String(st0.setup?.phong_cach || '').trim();
-      if (!chu_de && !phong_cach) {
-        throw new Error(
-          'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the.',
-        );
+
+      // P0/P1 — ensure quality from chapter body (legacy projects) then preflight
+      {
+        const ch = st0.danh_sach_chuong.find((c) => c.so_chuong === st0.chuong_dang_chon);
+        ensureChapterQuality({
+          chapter: st0.chuong_dang_chon,
+          content: ch?.noi_dung,
+          characterNames: st0.nhan_vat,
+          wordGoal: st0.setup?.so_tu_chuong || 4250,
+          userRules: st0.userRules,
+          editorVerdict: st0.editorReviews?.[st0.chuong_dang_chon]?.verdict,
+        });
+      }
+      const pf = evaluateMediaPreflight({
+        stage: 'prompt',
+        chapter: st0.chuong_dang_chon,
+        sceneIndex,
+        chu_de,
+        phong_cach,
+        style: resolveMediaStyle(),
+        wpm,
+        secondsPerBeat: beat,
+        duration,
+        sceneText,
+        requireQualityGate: true,
+      });
+      assertMediaPreflight(pf);
+      for (const issue of pf.issues.filter((i) => i.level === 'warn')) {
+        toast.warn('Preflight', issue.message);
       }
 
       const prompts = await generateImagePromptAction({
@@ -307,6 +323,32 @@ export function useImagePromptActions() {
 
     const runOnce = async (activePrompt: string) => {
       const st = useNovelStore.getState();
+      // P1 preflight image stage
+      {
+        const ch = st.danh_sach_chuong.find((c) => c.so_chuong === st.chuong_dang_chon);
+        ensureChapterQuality({
+          chapter: st.chuong_dang_chon,
+          content: ch?.noi_dung,
+          characterNames: st.nhan_vat,
+          wordGoal: st.setup?.so_tu_chuong || 4250,
+          userRules: st.userRules,
+          editorVerdict: st.editorReviews?.[st.chuong_dang_chon]?.verdict,
+        });
+        const chu_de = String(st.setup?.chu_de || '').trim();
+        const phong_cach = String(st.setup?.phong_cach || '').trim();
+        const pf = evaluateMediaPreflight({
+          stage: 'image',
+          chapter: st.chuong_dang_chon,
+          sceneIndex,
+          chu_de,
+          phong_cach,
+          style: resolveMediaStyle(),
+          hasImagePrompt: Boolean(activePrompt?.trim() || prompt?.trim()),
+          imageProvider: st.imageProvider,
+          requireQualityGate: true,
+        });
+        assertMediaPreflight(pf);
+      }
       if (!st.imageProvider?.trim()) {
         throw new Error('Chua chon imageProvider. App khong tu gan provider.');
       }
@@ -442,18 +484,31 @@ export function useImagePromptActions() {
       return;
     }
 
-    // Flow / labs: sequential + gap — anti-spam (không concurrency 3)
+    // P1 stage batch — Flow: sequential + gap anti-spam
     const isFlow = st0.imageProvider === 'flow';
     const { FLOW_DEFAULTS } = await import('@/lib/flow-bridge/config');
-    const job = createBatchJob({
-      title: `Gen ảnh · Ch.${st0.chuong_dang_chon} · Cảnh ${sceneIndex + 1}`,
-      kind: 'image',
+    const ch = st0.chuong_dang_chon;
+    ensureChapterQuality({
+      chapter: ch,
+      content: st0.danh_sach_chuong.find((c) => c.so_chuong === ch)?.noi_dung,
+      characterNames: st0.nhan_vat,
+      wordGoal: st0.setup?.so_tu_chuong || 4250,
+      userRules: st0.userRules,
+      editorVerdict: st0.editorReviews?.[ch]?.verdict,
+    });
+    const job = createStageBatchJob({
+      stage: 'image',
+      chapter: ch,
+      title: `Gen ảnh · Ch.${ch} · Cảnh ${sceneIndex + 1}`,
       concurrency: isFlow ? FLOW_DEFAULTS.clientFlowBatchConcurrency : 1,
       itemGapMs: isFlow ? FLOW_DEFAULTS.clientFlowItemGapMs : 800,
       items: promptsAsset.map((promptItem, pIdx) => ({
         label: `p${pIdx + 1}`,
+        chapter: ch,
+        sceneIndex,
+        promptIndex: pIdx,
+        assetKey: imageAssetKey(ch, sceneIndex, pIdx),
         meta: {
-          sceneIndex,
           pIdx,
           prompt: promptItem.image_prompt || promptItem.prompt,
           sentence: promptItem.sentence || promptItem.script_prompt || '',
@@ -463,14 +518,15 @@ export function useImagePromptActions() {
 
     toast.info(
       'Job ảnh đã xếp hàng',
-      `${promptsAsset.length} shot · ${isFlow ? 'tuần tự + nghỉ chống spam Flow' : 'tuần tự'} · Jobs panel`,
+      `${promptsAsset.length} shot · stage=image · ${isFlow ? 'tuần tự + nghỉ Flow' : 'tuần tự'} · Jobs panel`,
     );
 
-    const finished = await runBatchJob(job.id, async (item) => {
+    const finished = await runStageBatch(job.id, async (item) => {
+      const stage = readStageMeta(item);
       const meta = item.meta || {};
       await handleGenerateImage(
-        Number(meta.sceneIndex),
-        Number(meta.pIdx),
+        stage?.sceneIndex ?? Number(meta.sceneIndex),
+        stage?.promptIndex ?? Number(meta.pIdx),
         String(meta.prompt || ''),
         String(meta.sentence || ''),
         true,
@@ -524,6 +580,40 @@ export function useImagePromptActions() {
       const startKey = imageAssetKey(stStart.chuong_dang_chon, sceneIndex, startPromptIndex);
       const endKey = imageAssetKey(stStart.chuong_dang_chon, sceneIndex, endPromptIndex);
       const st = useNovelStore.getState();
+      // P1 preflight video
+      {
+        const ch = st.danh_sach_chuong.find((c) => c.so_chuong === st.chuong_dang_chon);
+        ensureChapterQuality({
+          chapter: st.chuong_dang_chon,
+          content: ch?.noi_dung,
+          characterNames: st.nhan_vat,
+          wordGoal: st.setup?.so_tu_chuong || 4250,
+          userRules: st.userRules,
+          editorVerdict: st.editorReviews?.[st.chuong_dang_chon]?.verdict,
+        });
+        const prompts = st.generatedPrompts[assetKey] || [];
+        const vp = String(
+          prompts[endPromptIndex]?.video_prompt ||
+            prompts[startPromptIndex]?.video_prompt ||
+            prompt ||
+            '',
+        ).trim();
+        const pf = evaluateMediaPreflight({
+          stage: 'video',
+          chapter: st.chuong_dang_chon,
+          sceneIndex,
+          chu_de: String(st.setup?.chu_de || '').trim(),
+          phong_cach: String(st.setup?.phong_cach || '').trim(),
+          style: resolveMediaStyle(),
+          wpm: Number(st.wpm),
+          secondsPerBeat: Number(st.secondsPerBeat),
+          hasVideoPrompt: Boolean(vp),
+          hasStartImage: Boolean(st.generatedImages?.[startKey] || st.generatedImages?.[endKey]),
+          videoProvider: st.videoProvider,
+          requireQualityGate: true,
+        });
+        assertMediaPreflight(pf);
+      }
       if (!st.videoProvider?.trim()) {
         throw new Error('Chua chon videoProvider. App khong tu gan provider.');
       }
@@ -830,15 +920,28 @@ export function useImagePromptActions() {
 
     const isFlowV = st0.videoProvider === 'flow';
     const { FLOW_DEFAULTS: FLOW_V } = await import('@/lib/flow-bridge/config');
-    const job = createBatchJob({
-      title: `Gen video · Ch.${st0.chuong_dang_chon} · Cảnh ${sceneIndex + 1}`,
-      kind: 'video',
+    const chV = st0.chuong_dang_chon;
+    ensureChapterQuality({
+      chapter: chV,
+      content: st0.danh_sach_chuong.find((c) => c.so_chuong === chV)?.noi_dung,
+      characterNames: st0.nhan_vat,
+      wordGoal: st0.setup?.so_tu_chuong || 4250,
+      userRules: st0.userRules,
+      editorVerdict: st0.editorReviews?.[chV]?.verdict,
+    });
+    const job = createStageBatchJob({
+      stage: 'video',
+      chapter: chV,
+      title: `Gen video · Ch.${chV} · Cảnh ${sceneIndex + 1}`,
       concurrency: isFlowV ? FLOW_V.clientFlowBatchConcurrency : 1,
       itemGapMs: isFlowV ? FLOW_V.clientFlowItemGapMs : 1200,
       items: pairs.map(([startIdx, endIdx]) => ({
         label: `v${startIdx + 1}-${endIdx + 1}`,
+        chapter: chV,
+        sceneIndex,
+        promptIndex: endIdx,
+        assetKey: videoAssetKey(chV, sceneIndex, endIdx),
         meta: {
-          sceneIndex,
           startIdx,
           endIdx,
           prompt:
@@ -847,12 +950,16 @@ export function useImagePromptActions() {
       })),
     });
 
-    toast.info('Job video đã xếp hàng', `${pairs.length} clip · Jobs panel pause/cancel/retry`);
+    toast.info(
+      'Job video đã xếp hàng',
+      `${pairs.length} clip · stage=video · Jobs panel pause/cancel/retry`,
+    );
 
-    const finished = await runBatchJob(job.id, async (item) => {
+    const finished = await runStageBatch(job.id, async (item) => {
+      const stage = readStageMeta(item);
       const meta = item.meta || {};
       await handleGenerateVideo(
-        Number(meta.sceneIndex),
+        stage?.sceneIndex ?? Number(meta.sceneIndex),
         Number(meta.startIdx),
         Number(meta.endIdx),
         String(meta.prompt || ''),

@@ -13,6 +13,7 @@ import {
 import { listChapters, saveProgress, writeJsonAtomicSafe } from '../store/diskStore';
 import { recordCheckpoint } from '../engine';
 import { buildNovelContext } from '../context/novelContext';
+import { markArcSummaryDone, markVolumeSummaryDone } from '@/lib/pipeline';
 
 async function postGenerate(
   requestType: string,
@@ -80,6 +81,8 @@ export async function saveArcSummaryTool(progress: EngineProgress): Promise<Engi
     updatedAt: new Date().toISOString(),
   };
   saveProgress(updated);
+  // P2 — close arc-end window for Flow Router
+  markArcSummaryDone(progress.currentChapter || progress.completedChapters.at(-1) || 0);
   logEngine('✅ Arc summary saved', 'success');
   return updated;
 }
@@ -107,6 +110,8 @@ export async function saveVolumeSummaryTool(progress: EngineProgress): Promise<E
     updatedAt: new Date().toISOString(),
   };
   saveProgress(updated);
+  // P2
+  markVolumeSummaryDone(progress.currentChapter || progress.completedChapters.at(-1) || 0);
   logEngine('✅ Volume summary saved', 'success');
   return updated;
 }

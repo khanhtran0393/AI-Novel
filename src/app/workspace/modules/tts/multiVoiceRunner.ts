@@ -90,15 +90,26 @@ export async function runMultiVoiceTts(params: {
         2,
     ),
   );
+  // Piper: true multi-process same model (no GPU mutex). Vina/Omni: daemon/GPU slots.
   const concurrency =
     plat === 'vina_voice' || plat === 'omnivoice_local'
       ? Number.isFinite(envMulti) && envMulti > 0
         ? Math.min(vinaWorkers, Math.trunc(envMulti))
         : vinaWorkers
-      : Math.max(
-          1,
-          Math.min(3, Number.isFinite(envMulti) && envMulti > 0 ? Math.trunc(envMulti) : 3),
-        );
+      : plat === 'piper'
+        ? Math.max(
+            1,
+            Math.min(
+              16,
+              Number.isFinite(envMulti) && envMulti > 0
+                ? Math.trunc(envMulti)
+                : Number(process.env.PIPER_BATCH_CONCURRENCY) || 8,
+            ),
+          )
+        : Math.max(
+            1,
+            Math.min(3, Number.isFinite(envMulti) && envMulti > 0 ? Math.trunc(envMulti) : 3),
+          );
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   const segsForResume: SegForResume[] = voiceSegments.map((s) => ({

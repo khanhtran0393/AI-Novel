@@ -440,3 +440,78 @@ export function markClipGenerated(
   };
   return appendTakeLog({ ...state, clips, current_clip_id: clipId }, take);
 }
+
+/**
+ * Provisional accept after a successful generate-video so the next shot can use
+ * continuation handoff. Not a creative QC substitute — evidence is tagged auto.
+ */
+export function autoAcceptGeneratedTake(
+  state: SeedanceProjectStateLite,
+  clipId: string,
+  opts?: {
+    videoPath?: string;
+    mediaId?: string;
+    observedEndState?: string;
+    observedStartState?: string;
+  },
+): TakeReviewResult {
+  return reviewTake({
+    state,
+    clipId,
+    verdict: 'keep',
+    acceptAsCanon: true,
+    videoPath: opts?.videoPath,
+    mediaId: opts?.mediaId,
+    evidence: 'auto-accept after successful generate-video (provisional canon for continuity)',
+    observation: {
+      observed_start_state:
+        opts?.observedStartState ||
+        'start of accepted take (auto)',
+      observed_end_state:
+        opts?.observedEndState ||
+        'end frame of accepted take (auto — refine via take review if needed)',
+      observation_confidence: 'low',
+      uncertainties: ['auto-accept without human/watch review'],
+    },
+  });
+}
+
+/**
+ * Promote prior shot in the same scene from `generated` → accepted so
+ * buildContinuationPrompt source-gate can fire for the current promptIndex.
+ */
+export function promotePreviousShotForContinuation(
+  state: SeedanceProjectStateLite,
+  sceneIndex: number,
+  promptIndex: number,
+): { state: SeedanceProjectStateLite; promoted: string | null } {
+  if (promptIndex <= 0) return { state, promoted: null };
+  const parent = state.clips.find(
+    (c) =>
+      c.scene_index === sceneIndex && (c.prompt_index ?? 0) === promptIndex - 1,
+  );
+  if (!parent) return { state, promoted: null };
+  if (
+    parent.status === 'accepted' ||
+    parent.status === 'accepted_with_deviation'
+  ) {
+    return { state, promoted: null };
+  }
+  if (parent.status !== 'generated' && parent.status !== 'reviewed') {
+    return { state, promoted: null };
+  }
+  const lastTake = [...(state.take_history || [])]
+    .reverse()
+    .find((t) => t?.clip_id === parent.clip_id);
+  const result = autoAcceptGeneratedTake(state, parent.clip_id, {
+    videoPath: lastTake?.video_path,
+    mediaId: lastTake?.media_id,
+    observedEndState: String(
+      (parent.planned_end_state as { description?: string })?.description ||
+        parent.this_clip_only?.[0] ||
+        parent.narrative_job ||
+        '',
+    ),
+  });
+  return { state: result.state, promoted: parent.clip_id };
+}

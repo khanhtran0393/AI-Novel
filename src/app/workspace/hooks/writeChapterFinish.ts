@@ -14,6 +14,11 @@ import {
   evaluateChapter,
   commitChapterMemory,
 } from './writeChapterHelpers';
+import {
+  evaluateChapterQuality,
+  setChapterQuality,
+} from '@/lib/pipeline';
+import { pushToast } from '@/lib/toastBus';
 
 
 export type FinishChapterParams = {
@@ -72,6 +77,27 @@ export async function finishChapterWrite(
       },
     });
 
+    // P0 — Quality Gate (pre-memory snapshot; re-run after editor)
+    {
+      const live = useNovelStore.getState();
+      const preQ = evaluateChapterQuality({
+        chapter: params.chapterNumber,
+        content: updatedChapter.noi_dung,
+        characterNames: live.nhan_vat || [],
+        wordGoal: live.setup?.so_tu_chuong || 4250,
+        userRules: live.userRules,
+      });
+      setChapterQuality(preQ);
+      if (!preQ.mediaReady) {
+        pushToast(
+          'warn',
+          `Quality Gate ch${params.chapterNumber}`,
+          `${preQ.hardErrors} lỗi · ${preQ.warnings} cảnh báo — media bị chặn đến khi đạt gate.`,
+          12_000,
+        );
+      }
+    }
+
     // Memory must not share write abort signal — content already saved
     await commitChapterMemory(updatedChapter, updatedChapter.noi_dung, updatedChapters);
 
@@ -92,6 +118,31 @@ export async function finishChapterWrite(
     });
 
     const review = await evaluateChapter(updatedChapter.noi_dung, params.chapterNumber, params.signal);
+
+    // P0 — re-gate with editor verdict (mediaReady requires accept-level)
+    {
+      const live = useNovelStore.getState();
+      const chBody =
+        live.danh_sach_chuong.find((c) => c.so_chuong === params.chapterNumber)?.noi_dung ||
+        updatedChapter.noi_dung;
+      const postQ = evaluateChapterQuality({
+        chapter: params.chapterNumber,
+        content: chBody,
+        characterNames: live.nhan_vat || [],
+        wordGoal: live.setup?.so_tu_chuong || 4250,
+        userRules: live.userRules,
+        editorVerdict: review?.verdict || live.editorReviews?.[params.chapterNumber]?.verdict,
+      });
+      setChapterQuality(postQ);
+      if (postQ.mediaReady) {
+        pushToast(
+          'success',
+          `Quality Gate ch${params.chapterNumber}`,
+          `Media-ready · ${postQ.wordCount} từ · ${postQ.sceneCount} cảnh`,
+          6_000,
+        );
+      }
+    }
 
     // Tín hiệu phụ: narrative psych (pattern interrupt / open loop) — log + console
     try {

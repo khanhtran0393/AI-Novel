@@ -71,6 +71,8 @@ export function buildCapabilitiesReport() {
       pythonCoreGateway: gateway,
       actions: ALL_NAV_GATEWAY_ACTIONS,
       dependsOnNavToolsExe: false,
+      hostBound: true,
+      standalone: false,
     },
     apis: {
       generate: API.generate,

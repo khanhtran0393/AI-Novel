@@ -3,10 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 import { resolvePythonExe } from '@/app/api/self-heal/media/mediaHelpers';
+import { hostBindingChildEnv } from '@/lib/nav/hostBinding';
 
 const execFileAsync = promisify(execFile);
 
-/** All gateway actions — standalone AI Novel python_core (no NAVTools.exe). */
+/** All gateway actions — bound to AI Novel host (no standalone CLI / no NAVTools.exe). */
 export type NavGatewayAction =
   | 'ping'
   | 'version'
@@ -115,13 +116,17 @@ export async function callNavGateway<T = unknown>(
   if (!fs.existsSync(GATEWAY_SCRIPT)) {
     return {
       success: false,
-      error: `NAV gateway not found: ${GATEWAY_SCRIPT}. AI Novel requires python_core inside the project (standalone — no NAVTools.exe).`,
+      error: `NAV gateway not found: ${GATEWAY_SCRIPT}. AI Novel requires python_core inside the project (host-bound — no NAVTools.exe, no standalone CLI).`,
     };
   }
 
   const pythonExe = resolvePythonExe();
   const payloadJson = JSON.stringify(request.payload ?? {});
   const timeout = request.timeoutMs ?? 600_000;
+  const bindingEnv = hostBindingChildEnv({
+    action: request.action,
+    timeoutMs: timeout,
+  });
 
   try {
     const { stdout, stderr } = await execFileAsync(
@@ -131,6 +136,7 @@ export async function callNavGateway<T = unknown>(
         cwd: PYTHON_CORE,
         env: {
           ...process.env,
+          ...bindingEnv,
           PYTHONPATH: PYTHON_CORE,
           PYTHONIOENCODING: 'utf-8',
           TORCH_COMPILE_DISABLE: '1',

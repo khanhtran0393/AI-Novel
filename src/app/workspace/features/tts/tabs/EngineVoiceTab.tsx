@@ -1,11 +1,12 @@
 'use client';
 import { API } from '@/contracts';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { TTSConfig } from '@/store/useNovelStore';
 import { Cpu, ChevronDown, Globe, Volume2, Loader2, Play, Power } from 'lucide-react';
 import {
-  getDefaultVoiceConfig,
+  isVoiceValidForPlatform,
+  resolveVoiceForPlatform,
   TTS_LANGUAGES,
   type VoiceCatalog,
 } from '@/lib/voiceCatalog';
@@ -63,6 +64,41 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
   const { status: omniStatus, ensureStart: ensureOmni } = useOmniVoiceStatus(isOmni);
   const platformSelectValue = config.platform;
 
+  // Giọng đang chọn không thuộc nền tảng hiện tại (stale sau đổi platform) → sửa ngay
+  useEffect(() => {
+    if (!config.platform) return;
+    if (
+      isVoiceValidForPlatform(
+        dynamicVoices,
+        config.platform,
+        config.language || 'vi',
+        config.voice || '',
+      )
+    ) {
+      return;
+    }
+    if (!currentVoices.length && !config.voice) return;
+    const fixed = resolveVoiceForPlatform(
+      dynamicVoices,
+      config.platform,
+      config.language || 'vi',
+      '',
+      { keepPreferred: false },
+    );
+    if (!fixed.voice || fixed.voice === config.voice) return;
+    store.updateTTSConfig({
+      language: fixed.language,
+      voice: fixed.voice,
+      vinaUseClone: config.platform === 'vina_voice',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when platform/voice/list drift
+  }, [config.platform, config.language, config.voice, currentVoices, dynamicVoices]);
+
+  const selectVoiceId =
+    currentVoices.some((v: { id: string }) => v.id === activeVoiceId)
+      ? activeVoiceId
+      : currentVoices[0]?.id || '';
+
   return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
@@ -74,34 +110,19 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     value={platformSelectValue}
                     onChange={(e) => {
                       const newPlatform = e.target.value as TTSConfig['platform'];
-                      if ((newPlatform as string) === 'vina_voice') {
-                        store.updateTTSConfig({ platform: 'vina_voice', vinaUseClone: true });
-                        return;
-                      }
-                      const nextVoiceConfig = getDefaultVoiceConfig(
+                      // Đổi nền tảng = luôn gán giọng default hợp lệ (không giữ voice engine cũ)
+                      const next = resolveVoiceForPlatform(
                         dynamicVoices,
                         newPlatform,
-                        config.language,
+                        config.language || 'vi',
+                        '',
+                        { keepPreferred: false },
                       );
-                      // Omni: chỉ giữ voice nếu đang là id Omni (clone/preset); không giữ giọng Edge
-                      let voice = nextVoiceConfig.voice;
-                      if (newPlatform === 'omnivoice_local') {
-                        const omniList =
-                          dynamicVoices.omnivoice_local?.[config.language] || [];
-                        const cur = config.voice || '';
-                        const curOk =
-                          omniList.some((v) => v.id === cur) ||
-                          /^(alloy|ash|ballad|cedar|coral|echo|fable|marin|nova|onyx|sage|shimmer|verse|auto)$/i.test(
-                            cur,
-                          ) ||
-                          cur.startsWith('omnivoice_');
-                        voice = curOk ? cur : nextVoiceConfig.voice;
-                      }
                       store.updateTTSConfig({
                         platform: newPlatform,
-                        language: nextVoiceConfig.language,
-                        voice,
-                        vinaUseClone: false,
+                        language: next.language,
+                        voice: next.voice,
+                        vinaUseClone: newPlatform === 'vina_voice',
                       });
                       if (newPlatform === 'omnivoice_local') {
                         // Fire-and-forget warm start — TTS path also ensureOmniServer
@@ -111,8 +132,8 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     className={SELECT_DARK}
                   >
                     <option className={OPTION_DARK} value="edge_tts">Microsoft Edge TTS</option>
-                    <option className={OPTION_DARK} value="piper">Piper Local (VN onnx)</option>
-                    <option className={OPTION_DARK} value="vieneu_tts">VieNeu → Piper local</option>
+                    <option className={OPTION_DARK} value="piper">Piper VN (.onnx local)</option>
+                    <option className={OPTION_DARK} value="vieneu_tts">VieNeu SDK (local clone)</option>
                     <option className={OPTION_DARK} value="omnivoice_local">OmniVoice Local</option>
                     <option className={OPTION_DARK} value="vina_voice">VinaVoice</option>
                     <option className={OPTION_DARK} value="capcut_tts">CapCut TTS</option>
@@ -190,14 +211,16 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     value={config.language}
                     onChange={(e) => {
                       const newLang = e.target.value;
-                      const nextVoiceConfig = getDefaultVoiceConfig(
+                      const next = resolveVoiceForPlatform(
                         dynamicVoices,
                         config.platform,
                         newLang,
+                        config.voice,
+                        { keepPreferred: true },
                       );
                       store.updateTTSConfig({
-                        language: nextVoiceConfig.language,
-                        voice: nextVoiceConfig.voice,
+                        language: next.language,
+                        voice: next.voice,
                       });
                     }}
                     className={SELECT_DARK}
@@ -248,7 +271,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                 </label>
                 <div className="relative w-full">
                   <select
-                    value={activeVoiceId}
+                    value={selectVoiceId}
                     onChange={(e) => store.updateTTSConfig({ voice: e.target.value })}
                     className={SELECT_DARK}
                   >
@@ -265,6 +288,14 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
                 </div>
+                {config.voice &&
+                  currentVoices.length > 0 &&
+                  !currentVoices.some((v: { id: string }) => v.id === config.voice) && (
+                    <p className="text-[10px] text-amber-400/90 leading-snug">
+                      Giọng «{config.voice}» không thuộc nền tảng đang chọn — đang đồng bộ sang «
+                      {selectVoiceId || '…'}».
+                    </p>
+                  )}
               </div>
 
               <div className="space-y-2">

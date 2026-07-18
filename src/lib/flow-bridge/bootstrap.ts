@@ -691,13 +691,16 @@ export async function bootstrapFlow(opts?: {
     steps.push('Đã nhận token/session');
     // Ensure account flags if only bridge has key
     if (gotToken && accFinal && !accFinal.flowKeyPresent) {
+      const hasEmail = Boolean(
+        accFinal.email && String(accFinal.email).includes('@'),
+      );
       updateAccount(accountId, {
-        status: 'active',
+        status: hasEmail ? 'active' : 'idle',
         flowKeyPresent: true,
-        sessionVerified: true,
-        lastError: accFinal.email
+        sessionVerified: hasEmail,
+        lastError: hasEmail
           ? null
-          : 'Token OK — đang inherit full session…',
+          : 'Có token nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập',
       });
     }
     // Close login UI; background only after verified (not if user aborted)

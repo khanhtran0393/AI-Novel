@@ -568,9 +568,13 @@ export function resolveNfeStep(opts: {
   const envPreview = Number(process.env.VINA_NFE_PREVIEW);
   const envChapter = Number(process.env.VINA_NFE_CHAPTER);
   if (opts.isPreview) {
-    // Preview: low NFE for nghe-thử speed (CPU ~1–2min; CUDA 4GB often OOMs higher NFE)
-    if (Number.isFinite(envPreview) && envPreview > 0) return Math.trunc(envPreview);
-    return 4;
+    // Preview NFE floor = 16. NFE≤8 (esp. 4) yields noise-like garbage on CPU/CUDA
+    // (high ZCR / flat energy envelope — not speech). Empirically: nfe=4 NOISY, nfe=16 SPEECH.
+    // Override: VINA_NFE_PREVIEW (must still be ≥12 or quality collapses).
+    if (Number.isFinite(envPreview) && envPreview > 0) {
+      return Math.max(12, Math.trunc(envPreview));
+    }
+    return 16;
   }
   if (opts.isChapter) {
     if (Number.isFinite(envChapter) && envChapter > 0) return Math.trunc(envChapter);

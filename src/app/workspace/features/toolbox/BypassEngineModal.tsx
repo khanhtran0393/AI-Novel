@@ -59,7 +59,9 @@ export default function BypassEngineModal({ isOpen, onClose }: BypassEngineModal
   const [turbo, setTurbo] = useState(false);
   const [gridLayout, setGridLayout] = useState<GridLayoutMode>('none');
   const [randomize, setRandomize] = useState(false);
-  const [randomPercent, setRandomPercent] = useState(VARIANCE_RECOMMENDED.defaultPercent);
+  const [randomPercent, setRandomPercent] = useState<number>(
+    VARIANCE_RECOMMENDED.defaultPercent,
+  );
   const [selected, setSelected] = useState<Set<BypassFilterId>>(new Set());
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -427,8 +429,16 @@ export default function BypassEngineModal({ isOpen, onClose }: BypassEngineModal
       <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
-          <h2 className="font-bold text-violet-400 flex items-center gap-2 uppercase tracking-wide text-sm">
-            <Shield size={18} /> Phantom-X Bypass
+          <h2 className="flex min-w-0 flex-1 items-center gap-2 pr-2">
+            <Shield size={18} className="shrink-0 text-violet-400" />
+            <span className="min-w-0 flex flex-col gap-0.5">
+              <span className="font-bold uppercase tracking-wide text-sm text-violet-400">
+                Phantom-X Bypass
+              </span>
+              <span className="text-[10px] font-semibold normal-case tracking-normal text-zinc-400">
+                Lách kiểm duyệt Đa hình Bất đối xứng
+              </span>
+            </span>
           </h2>
           <button
             type="button"

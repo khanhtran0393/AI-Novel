@@ -20,6 +20,12 @@ import { recordCheckpoint } from '../engine';
 import { buildNovelContext } from '../context/novelContext';
 import { checkChapterAgainstRules, resolveRulesForProject } from '../rules/checker';
 import { pushChapterToStoreBackup } from '../sync/storeBridge';
+import {
+  enrichMemoryAfterCommit,
+  evaluateChapterQuality,
+  lorebookWithMemoryPack,
+  setChapterQuality,
+} from '@/lib/pipeline';
 
 async function postGenerate(
   requestType: string,
@@ -139,6 +145,7 @@ export async function draftChapterTool(
 
   const pack = buildNovelContext(chapterNum, ctx);
   const baseContent = opts?.overwrite ? '' : planned.content || meta.noi_dung || '';
+  const loreMerged = lorebookWithMemoryPack(pack.lorebook || ctx.lorebook);
   const data = await postGenerate(
     'WRITE_CHAPTER',
     {
@@ -154,7 +161,7 @@ export async function draftChapterTool(
       },
       tom_tat_cuon_chieu: pack.scrollSummary || ctx.tom_tat_cuon_chieu,
       tri_nho_ngan_han: pack.shortTerm.length ? pack.shortTerm : ctx.tri_nho_ngan_han,
-      lorebook: pack.lorebook || ctx.lorebook,
+      lorebook: loreMerged,
       so_tu_chuong: ctx.so_tu_chuong,
       ngon_ngu: ctx.ngon_ngu,
       noi_dung_hien_tai: baseContent,
@@ -219,21 +226,33 @@ export async function commitChapterTool(
     throw new Error(`Chương ${chapterNum} chưa có nội dung để commit.`);
   }
 
-  // Rules gate (CLI checker parity)
+  // P0 — Quality Gate (rules + word + consistency)
   const ctxRules = loadProjectContext();
-  const rules = resolveRulesForProject(ctxRules.userRules);
-  const findings = checkChapterAgainstRules(chapter.content, rules);
-  const hardErrors = findings.filter((f) => f.severity === 'error');
-  for (const f of findings) {
-    logEngine(`rules[${f.severity}] ${f.rule}: ${f.message}`, f.severity === 'error' ? 'error' : 'info');
+  const quality = evaluateChapterQuality({
+    chapter: chapterNum,
+    content: chapter.content,
+    characterNames: ctxRules.nhan_vat || [],
+    wordGoal: ctxRules.so_tu_chuong || 4250,
+    userRules: ctxRules.userRules,
+  });
+  setChapterQuality(quality);
+  for (const f of quality.findings) {
+    logEngine(
+      `quality[${f.severity}] ${f.code}: ${f.message}`,
+      f.severity === 'error' ? 'error' : 'info',
+    );
   }
-  if (hardErrors.length >= 3) {
-    logEngine(`⛔ Rules hard-fail (${hardErrors.length} errors) — queue rewrite`, 'error');
+  // Unified with workspace: any hard error → not mediaReady → no commit
+  if (!quality.mediaReady || !quality.ok) {
+    logEngine(
+      `⛔ Quality Gate hard-fail (${quality.hardErrors} errors) — queue rewrite`,
+      'error',
+    );
     const updatedFail: EngineProgress = {
       ...progress,
       flow: 'rewriting',
       pendingRewrites: Array.from(new Set([chapterNum, ...progress.pendingRewrites])),
-      lastAction: `Rules blocked commit ch${chapterNum}`,
+      lastAction: `Quality Gate blocked commit ch${chapterNum}`,
       updatedAt: new Date().toISOString(),
     };
     saveProgress(updatedFail);
@@ -241,8 +260,15 @@ export async function commitChapterTool(
     saveChapter(chapter);
     return updatedFail;
   }
+  // Rules log (word band aligned to Setup so_tu_chuong)
+  const rules = resolveRulesForProject(
+    ctxRules.userRules,
+    ctxRules.so_tu_chuong || 4250,
+  );
+  const findings = checkChapterAgainstRules(chapter.content, rules);
+  void findings;
 
-  await postGenerate(
+  const memData = await postGenerate(
     'COMMIT_MEMORY',
     {
       ten_tac_pham: ctxRules.ten_tac_pham,
@@ -260,6 +286,19 @@ export async function commitChapterTool(
     ctxRules,
   );
   logEngine(`🧠 COMMIT_MEMORY ch${chapterNum} OK`, 'success');
+
+  // P0 — foreshadow + memory pack after commit
+  enrichMemoryAfterCommit({
+    chapter: chapterNum,
+    content: chapter.content,
+    scrollSummary: String(
+      memData.tom_tat_cuon_chieu || ctxRules.tom_tat_cuon_chieu || '',
+    ),
+    shortTerm: Array.isArray(memData.tri_nho_ngan_han)
+      ? (memData.tri_nho_ngan_han as string[])
+      : ctxRules.tri_nho_ngan_han || [],
+    characterNames: ctxRules.nhan_vat || [],
+  });
 
   chapter.status = 'committed';
   saveChapter(chapter);

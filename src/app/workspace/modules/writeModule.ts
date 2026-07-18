@@ -2,6 +2,7 @@ import { useNovelStore, type Chuong } from '@/store/useNovelStore';
 import { resolveUserRules } from '@/lib/youtubeSafe';
 import type { NhanVatProfile } from '@/lib/characterProfile';
 import { postGenerate } from './apiClient';
+import { lorebookWithMemoryPack } from '@/lib/pipeline';
 
 export interface WriteChapterParams {
   apiKey: string;
@@ -113,12 +114,21 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
       'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi viet chuong.',
     );
   }
+  // Preflight fingerprint (speech) — clear toast, no unhandledRejection / silent invent
+  {
+    const { validateSpeechFingerprints } = await import('@/lib/youtubeSafe');
+    const fpErr = validateSpeechFingerprints(nhan_vat, nhan_vat_prompts);
+    if (fpErr) throw new Error(fpErr);
+  }
+  // P0 — inject foreshadow ledger into lorebook (no invented world rules)
+  const lorebookEnriched = lorebookWithMemoryPack(lorebook);
+
   const data = await postGenerate(
     'WRITE_CHAPTER',
     {
       ten_tac_pham,
       dan_y_tong_the,
-      lorebook,
+      lorebook: lorebookEnriched,
       tom_tat_cuon_chieu: compressedMemory,
       tri_nho_ngan_han,
       nhan_vat,
@@ -184,6 +194,14 @@ export async function reviseChapterAction(params: {
     throw new Error(
       'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi sua chuong.',
     );
+  }
+  {
+    const { validateSpeechFingerprints } = await import('@/lib/youtubeSafe');
+    const fpErr = validateSpeechFingerprints(
+      params.nhan_vat,
+      params.nhan_vat_prompts,
+    );
+    if (fpErr) throw new Error(fpErr);
   }
   const data = await postGenerate(
     'REVISE_CHAPTER',
@@ -273,7 +291,7 @@ export async function planArcAction(params: {
       'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi plan arc.',
     );
   }
-  return postGenerate(
+  const result = await postGenerate(
     'PLAN_ARC',
     {
       ...(payload as Record<string, unknown>),
@@ -283,6 +301,17 @@ export async function planArcAction(params: {
     },
     { signal },
   );
+  // P2: MiroFish only after arc plan — enrich lorebook hooks (silent)
+  try {
+    const { silentEnrichArcHooks } = await import('./integrationsModule');
+    void silentEnrichArcHooks({
+      context: 'plan_arc',
+      hypothesis: `Arc kế tiếp sau plan (cung ${params.cung_hien_tai}): ${params.ten_tac_pham}`,
+    });
+  } catch {
+    /* never block planArc */
+  }
+  return result;
 }
 
 export async function commitMemoryAction(params: {

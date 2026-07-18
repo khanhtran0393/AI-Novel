@@ -24,7 +24,11 @@ type EngineProgress = {
 };
 
 export default function AINovelDashboard() {
-  const store = useNovelStore();
+  // Narrow selectors — full store re-render dashboard mỗi media tick khi tab Engine
+  const soChuongSetup = useNovelStore((s) => s.setup?.so_chuong);
+  const tenTacPham = useNovelStore((s) => s.ten_tac_pham);
+  const apiKey = useNovelStore((s) => s.apiKey);
+  const apiKeys = useNovelStore((s) => s.apiKeys);
   const [status, setStatus] = useState<'stopped' | 'running' | 'checking'>('checking');
   const [logs, setLogs] = useState<{ id: number; text: string; type: 'info' | 'error' | 'success' }[]>([]);
   const [chapters, setChapters] = useState<
@@ -265,7 +269,8 @@ export default function AINovelDashboard() {
       const listRes = await fetch(API.ainovel.chapters);
       const listData = await listRes.json();
       const ids: number[] = (listData.chapters || []).map((c: { id: number }) => c.id);
-      let merged = [...store.danh_sach_chuong];
+      const st = useNovelStore.getState();
+      let merged = [...st.danh_sach_chuong];
       for (const id of ids) {
         const res = await fetch(`${API.ainovel.chapters}/${id}`);
         if (!res.ok) continue;
@@ -283,9 +288,9 @@ export default function AINovelDashboard() {
         else merged.push(row);
       }
       merged = merged.sort((a, b) => a.so_chuong - b.so_chuong);
-      store.setDanhSachChuong(merged);
-      store.setWorkspaceTab('script');
-      store.setTabHienTai('noi_dung');
+      st.setDanhSachChuong(merged);
+      st.setWorkspaceTab('script');
+      st.setTabHienTai('noi_dung');
       toast.info('Notice', `✅ Đã đồng bộ ${ids.length} chương engine → workspace Script.`);
     } catch (err) {
       toast.info('Notice', `Lỗi sync: ${err instanceof Error ? err.message : String(err)}`);
@@ -295,7 +300,7 @@ export default function AINovelDashboard() {
   };
 
   const activeChapter = chapters.find((c) => c.id === selectedChapter);
-  const total = progress?.totalChapters || store.setup?.so_chuong || chapters.length || 0;
+  const total = progress?.totalChapters || soChuongSetup || chapters.length || 0;
   const done = progress?.completedChapters?.length || 0;
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
 
@@ -461,18 +466,19 @@ export default function AINovelDashboard() {
                         title="Gửi chương này sang tab Script"
                         onClick={() => {
                           if (!activeChapter.content) return;
-                          const existing = store.danh_sach_chuong.find(
+                          const st = useNovelStore.getState();
+                          const existing = st.danh_sach_chuong.find(
                             (c) => c.so_chuong === activeChapter.id,
                           );
                           if (existing) {
-                            store.updateChuong(activeChapter.id, {
+                            st.updateChuong(activeChapter.id, {
                               tieu_de: activeChapter.title,
                               noi_dung: activeChapter.content,
                               trang_thai: 'ready',
                             });
                           } else {
-                            store.setDanhSachChuong([
-                              ...store.danh_sach_chuong,
+                            st.setDanhSachChuong([
+                              ...st.danh_sach_chuong,
                               {
                                 so_chuong: activeChapter.id,
                                 tieu_de: activeChapter.title,
@@ -482,9 +488,9 @@ export default function AINovelDashboard() {
                               },
                             ]);
                           }
-                          store.selectChuong(activeChapter.id);
-                          store.setTabHienTai('noi_dung');
-                          store.setWorkspaceTab('script');
+                          st.selectChuong(activeChapter.id);
+                          st.setTabHienTai('noi_dung');
+                          st.setWorkspaceTab('script');
                         }}
                         className="bg-zinc-800 hover:bg-amber-600 text-zinc-300 hover:text-black p-1.5 rounded transition-colors cursor-pointer flex items-center gap-1.5 px-3 shrink-0"
                       >
@@ -596,9 +602,9 @@ export default function AINovelDashboard() {
       <YoutubePromptModal
         isOpen={showYoutubeModal}
         onClose={() => setShowYoutubeModal(false)}
-        novelTitle={store.ten_tac_pham}
-        apiKey={store.apiKey}
-        apiKeys={store.apiKeys}
+        novelTitle={tenTacPham}
+        apiKey={apiKey}
+        apiKeys={apiKeys}
       />
     </div>
   );

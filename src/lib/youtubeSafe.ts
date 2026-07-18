@@ -36,6 +36,7 @@ export {
   buildHumanizeScriptBlock,
   buildNarrativePsychBlock,
   buildSpeechFingerprintBlock,
+  validateSpeechFingerprints,
 } from './youtube-safe/humanize';
 export {
   applyShotScaleToPrompt,

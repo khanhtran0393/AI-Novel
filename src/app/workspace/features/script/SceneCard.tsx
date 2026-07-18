@@ -28,6 +28,7 @@ import { toast } from '@/lib/toastBus';
 import FloatingMenu from '../../shared/FloatingMenu';
 import ScenePromptRow from './ScenePromptRow';
 import SceneTtsBar from './SceneTtsBar';
+import QualityGateBadge from './QualityGateBadge';
 
 interface SceneCardProps {
   scene: { title: string; content: string };
@@ -311,9 +312,9 @@ function SceneCard({
         className="w-full min-h-[160px] bg-transparent text-md leading-loose text-zinc-300 resize-y outline-none border border-zinc-900/10 focus:border-zinc-800 focus:bg-zinc-900/20 p-3 rounded transition-all font-sans"
       />
       
-      {/* 3. Footer của cảnh: Thống kê + Nút biên soạn */}
+      {/* 3. Footer của cảnh: Thống kê + Quality Gate + Nút biên soạn */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-900/40 pt-2 text-xs">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider font-sans">
             📊 {getWordCount(scene.content)} từ
           </span>
@@ -321,6 +322,10 @@ function SceneCard({
           <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider font-sans">
             {scene.content.length} ký tự
           </span>
+          {/* P0 — chapter Quality Gate (chỉ hiện rõ ở cảnh đầu để tránh spam) */}
+          {sceneIndex === 0 || sceneIndex === 990 ? (
+            <QualityGateBadge chapter={chapterNum} variant="full" />
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -466,11 +471,12 @@ function SceneCard({
       {/* 6. Accordion: Studio Cảnh */}
       {openSceneTab === 'studio' && (
         <div className="mt-2 rounded-lg border border-emerald-900/30 bg-emerald-950/10 p-4 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <h4 className="text-xs font-bold text-emerald-500 uppercase flex items-center gap-2 font-sans">
               <Sparkles className="h-3 w-3" />
               Phân Tích & Sinh Ảnh / Video
             </h4>
+            <QualityGateBadge chapter={chapterNum} variant="compact" />
           </div>
           
 

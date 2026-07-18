@@ -200,51 +200,73 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
         const useVideos = videoPaths.length > 0;
 
         let audioPath: string | undefined;
-        let secondsPerImage = Number(input.secondsPerImage);
-        if (!Number.isFinite(secondsPerImage) || secondsPerImage <= 0) {
-          throw new Error(
-            'Thieu secondsPerImage hop le cho FableCut rebuild. App khong tu gan 5s.',
-          );
-        }
+        let audioDurationSec = 0;
+        let secondsPerImage =
+          Number(input.secondsPerImage) > 0 ? Number(input.secondsPerImage) : 0;
 
         if (audios.length > 0) {
-          // Longest audio or first chapter-level audio
           const sorted = [...audios].sort((a, b) => b.duration - a.duration);
           audioPath = sorted[0].disk;
-          const totalDur = sorted[0].duration;
-          if (totalDur > 0 && imagePaths.length > 0 && !useVideos) {
-            secondsPerImage = Math.max(2, totalDur / imagePaths.length);
+          audioDurationSec = Number(sorted[0].duration) || 0;
+          if (audioDurationSec <= 0 && audioPath) {
+            try {
+              const { probeDurationSec } = require('@/lib/audioStudio') as typeof import('@/lib/audioStudio');
+              audioDurationSec = probeDurationSec(audioPath);
+            } catch {
+              /* ignore */
+            }
+          }
+          if (audioDurationSec > 0 && imagePaths.length > 0 && !useVideos) {
+            secondsPerImage = Math.max(1.5, audioDurationSec / imagePaths.length);
           }
         }
 
+        // Probe video durations when building video timeline (no hardcode 5s)
+        let probeVideoDur: (p: string) => number = () => 0;
+        try {
+          const { probeDurationSec } = require('@/lib/audioStudio') as typeof import('@/lib/audioStudio');
+          probeVideoDur = (p: string) => probeDurationSec(p);
+        } catch {
+          /* optional */
+        }
+
         if (useVideos) {
-          // Build clips from videos via buildFromChapterAssets-like structure
-          // Reuse image path API by treating videos as media with kind handled in fablecut
-          // For now: use images if any, else still build from first frames path list as images won't work for mp4
-          // buildFromChapterAssets only supports images+audio — extend with video paths as imagePaths won't work for mp4
           let t = 0;
           const clips: Parameters<typeof buildFableCutProject>[0]['clips'] = videoPaths.map(
             (vp, i) => {
+              const d = probeVideoDur(vp);
+              const durationSec =
+                d > 0
+                  ? d
+                  : secondsPerImage > 0
+                    ? secondsPerImage
+                    : 0;
+              if (!(durationSec > 0)) {
+                throw new Error(
+                  `FableCut: khong probe duoc duration video ${vp}. App khong tu gan 5s.`,
+                );
+              }
               const c = {
                 mediaPath: vp,
                 kind: 'video' as const,
                 track: 0,
                 startSec: t,
-                durationSec: 5,
+                durationSec,
                 label: `vid_${i + 1}`,
                 titleText: i === 0 ? input.title || `Chương ${chapterNum}` : undefined,
               };
-              t += 5;
+              t += durationSec;
               return c;
             },
           );
           if (audioPath) {
+            const aDur = audioDurationSec > 0 ? audioDurationSec : t;
             clips.push({
               mediaPath: audioPath,
               kind: 'audio',
               track: 4,
               startSec: 0,
-              durationSec: t || 30,
+              durationSec: aDur,
               label: 'narration',
             });
           }
@@ -255,13 +277,23 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
             liveEditor: input.liveEditor !== false,
           });
           result.fablecut = fc;
-          logs.push(fc.success ? `fablecut:videos=${videoPaths.length}` : `fablecut:fail=${fc.error}`);
+          logs.push(
+            fc.success
+              ? `fablecut:videos=${videoPaths.length} totalSec=${t.toFixed(1)} audioSec=${audioDurationSec || 0}`
+              : `fablecut:fail=${fc.error}`,
+          );
         } else {
+          if (!(secondsPerImage > 0) && !(audioDurationSec > 0)) {
+            throw new Error(
+              'FableCut: thieu TTS duration / secondsPerImage. Gen TTS truoc de dong bo timeline.',
+            );
+          }
           const fc = buildFromChapterAssets({
             name: `${input.ten_tac_pham || 'AI-Novel'}_c${chapterNum}`,
             imagePaths,
             audioPath,
-            secondsPerImage,
+            audioDurationSec: audioDurationSec > 0 ? audioDurationSec : undefined,
+            secondsPerImage: secondsPerImage > 0 ? secondsPerImage : undefined,
             aspect: input.aspect || '9:16',
             liveEditor: input.liveEditor !== false,
             title: input.title || `Chương ${chapterNum}`,
@@ -269,7 +301,7 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
           result.fablecut = fc;
           logs.push(
             fc.success
-              ? `fablecut:images=${imagePaths.length} clips=${fc.clipCount}`
+              ? `fablecut:images=${imagePaths.length} clips=${fc.clipCount} audioSec=${audioDurationSec || 0} sec/img=${secondsPerImage.toFixed?.(2) ?? secondsPerImage}`
               : `fablecut:fail=${fc.error}`,
           );
         }

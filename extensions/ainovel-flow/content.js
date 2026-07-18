@@ -31,10 +31,22 @@
 
 chrome.runtime.onMessage.addListener((msg, _, reply) => {
   if (msg.type === 'FETCH_SESSION') {
-    fetch('/fx/api/auth/session', { credentials: 'include', cache: 'no-store' })
-      .then((r) => r.json().catch(() => ({})))
-      .then((data) => reply({ ok: true, data }))
-      .catch((e) => reply({ ok: false, error: e.message || String(e) }));
+    // Prefer absolute URL — relative /fx/... fails if content script ran on non-labs origin
+    const sessionUrls = [
+      'https://labs.google/fx/api/auth/session',
+      '/fx/api/auth/session',
+    ];
+    const tryOne = (i) => {
+      if (i >= sessionUrls.length) {
+        reply({ ok: false, error: 'Failed to fetch session' });
+        return;
+      }
+      fetch(sessionUrls[i], { credentials: 'include', cache: 'no-store' })
+        .then((r) => r.json().catch(() => ({})))
+        .then((data) => reply({ ok: true, data, url: sessionUrls[i] }))
+        .catch(() => tryOne(i + 1));
+    };
+    tryOne(0);
     return true;
   }
 

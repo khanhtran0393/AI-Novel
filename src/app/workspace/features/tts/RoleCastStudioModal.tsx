@@ -28,6 +28,7 @@ import { applyBulkRoleRule } from '../../modules/castModule';
 import { playTTSAction } from '../../modules/ttsModule';
 import { getTTSCredentialsForConfig } from '../../modules/tts/credentials';
 import { getTTSApiCredentials } from '../../hooks/ttsActionHelpers';
+import { appConfirm } from '@/lib/confirmDialog';
 import { useCharacterActions } from '../../hooks/useCharacterActions';
 import {
   downloadJson,
@@ -493,20 +494,28 @@ export default function RoleCastStudioModal({
   };
 
   const reseed = () => {
-    if (!window.confirm('Reset cast theo danh sách nhân vật hiện tại? Overrides sẽ giữ nếu còn khớp.')) {
-      return;
-    }
-    store.setVoiceCast({
-      version: 1,
-      enabled: true,
-      roles: [],
-      segmentOverrides: cast.segmentOverrides,
-      boardScope: cast.boardScope,
-      sceneTextHashes: cast.sceneTextHashes,
-      allowTextOverride: cast.allowTextOverride,
-    });
-    store.ensureVoiceCastSeeded();
-    showToast('Đã seed lại roles');
+    void (async () => {
+      const ok = await appConfirm({
+        title: 'Reset cast',
+        message: 'Reset cast theo danh sách nhân vật hiện tại?',
+        details: ['Overrides sẽ giữ nếu còn khớp tên/role'],
+        confirmLabel: 'Reset cast',
+        cancelLabel: 'Hủy',
+        tone: 'warn',
+      });
+      if (!ok) return;
+      store.setVoiceCast({
+        version: 1,
+        enabled: true,
+        roles: [],
+        segmentOverrides: cast.segmentOverrides,
+        boardScope: cast.boardScope,
+        sceneTextHashes: cast.sceneTextHashes,
+        allowTextOverride: cast.allowTextOverride,
+      });
+      store.ensureVoiceCastSeeded();
+      showToast('Đã seed lại roles');
+    })();
   };
 
   const roleLabel = useCallback(

@@ -94,16 +94,16 @@ export function buildFableCutProject(input: FableProjectBuildInput): FableProjec
     const paths = getIntegrationPaths();
     ensureWorkDirs(paths);
 
-    if (!fs.existsSync(paths.fablecut) || !fs.existsSync(path.join(paths.fablecut, 'server.js'))) {
-      return {
-        success: false,
-        projectPath: '',
-        mediaDir: '',
-        project: {},
-        clipCount: 0,
-        mediaCount: 0,
-        error: `FableCut not found at ${paths.fablecut}`,
-      };
+    const hasEditor =
+      fs.existsSync(paths.fablecut) &&
+      fs.existsSync(path.join(paths.fablecut, 'server.js'));
+
+    // Ship-ready: always allow export under exports/integrations/fablecut
+    // Live editor only when vendor/ or D:\repo FableCut is present
+    if (input.liveEditor && !hasEditor) {
+      console.warn(
+        `[FableCut] liveEditor requested but editor missing at ${paths.fablecut} — falling back to export pack only`,
+      );
     }
 
     const size = aspectSize(input.aspect || '9:16');
@@ -118,7 +118,8 @@ export function buildFableCutProject(input: FableProjectBuildInput): FableProjec
     let mediaDir: string;
     let projectPath: string;
 
-    if (input.liveEditor) {
+    const useLive = Boolean(input.liveEditor && hasEditor);
+    if (useLive) {
       projectRoot = paths.fablecut;
       mediaDir = path.join(paths.fablecut, 'media');
       projectPath = path.join(paths.fablecut, 'project.json');
@@ -192,7 +193,7 @@ export function buildFableCutProject(input: FableProjectBuildInput): FableProjec
 
     // Bump revision if live-editing existing project
     let revision = 1;
-    if (input.liveEditor && fs.existsSync(projectPath)) {
+    if (useLive && fs.existsSync(projectPath)) {
       try {
         const prev = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
         revision = (Number(prev.revision) || 0) + 1;
@@ -213,13 +214,16 @@ export function buildFableCutProject(input: FableProjectBuildInput): FableProjec
         source: 'ai-novel-fablecut-bridge',
         builtAt: new Date().toISOString(),
         packName,
+        liveEditor: useLive,
+        fablecutRoot: paths.fablecut,
       },
     };
 
+    fs.mkdirSync(path.dirname(projectPath), { recursive: true });
     fs.writeFileSync(projectPath, JSON.stringify(project, null, 2), 'utf8');
 
-    // Always keep a backup under exports/
-    if (input.liveEditor) {
+    // Always keep a backup under exports/ when writing live
+    if (useLive) {
       const backupDir = path.join(paths.fablecutExport, packName);
       fs.mkdirSync(backupDir, { recursive: true });
       fs.writeFileSync(path.join(backupDir, 'project.json'), JSON.stringify(project, null, 2), 'utf8');
@@ -232,7 +236,7 @@ export function buildFableCutProject(input: FableProjectBuildInput): FableProjec
       project,
       clipCount: clips.length,
       mediaCount: media.length,
-      editorUrl: `http://127.0.0.1:${FABLECUT_DEFAULT_PORT}`,
+      editorUrl: hasEditor ? `http://127.0.0.1:${FABLECUT_DEFAULT_PORT}` : undefined,
     };
   } catch (err) {
     const e = err as Error;
@@ -253,18 +257,47 @@ export function buildFromChapterAssets(opts: {
   name: string;
   imagePaths: string[];
   audioPath?: string;
+  /** Prefer store TTS duration; will re-probe disk if audioDurationSec missing */
+  audioDurationSec?: number;
   secondsPerImage?: number;
   aspect?: FableProjectBuildInput['aspect'];
   liveEditor?: boolean;
   title?: string;
 }): FableProjectBuildResult {
-  const sec = opts.secondsPerImage && opts.secondsPerImage > 0 ? opts.secondsPerImage : 5;
+  const n = opts.imagePaths.length;
+  let audioDur = Number(opts.audioDurationSec);
+  if ((!Number.isFinite(audioDur) || audioDur <= 0) && opts.audioPath) {
+    try {
+      // Lazy require to avoid circular deps in edge runtimes
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { probeDurationSec } = require('@/lib/audioStudio') as typeof import('@/lib/audioStudio');
+      audioDur = probeDurationSec(opts.audioPath);
+    } catch {
+      audioDur = 0;
+    }
+  }
+
+  let sec: number;
+  if (Number.isFinite(audioDur) && audioDur > 0 && n > 0) {
+    // Stretch stills to match TTS narration length (core ship stability)
+    sec = Math.max(1.5, audioDur / n);
+  } else if (opts.secondsPerImage && opts.secondsPerImage > 0) {
+    sec = opts.secondsPerImage;
+  } else {
+    return {
+      success: false,
+      projectPath: '',
+      mediaDir: '',
+      project: {},
+      clipCount: 0,
+      mediaCount: 0,
+      error:
+        'FableCut: thieu secondsPerImage va khong probe duoc duration TTS. Gen TTS truoc hoac truyen audioDurationSec.',
+    };
+  }
+
   const clips: FableClipInput[] = [];
   let t = 0;
-
-  if (opts.title) {
-    // title handled via first image titleText
-  }
 
   opts.imagePaths.forEach((img, i) => {
     clips.push({
@@ -280,14 +313,23 @@ export function buildFromChapterAssets(opts: {
   });
 
   if (opts.audioPath) {
+    const audioLen =
+      Number.isFinite(audioDur) && audioDur > 0 ? audioDur : t;
     clips.push({
       mediaPath: opts.audioPath,
       kind: 'audio',
       track: 4,
       startSec: 0,
-      durationSec: t || 30,
+      durationSec: audioLen,
       label: 'narration',
     });
+    // If audio longer than still sum, pad last still
+    if (audioLen > t + 0.05 && clips.length > 1) {
+      const lastStill = clips[clips.length - 2];
+      if (lastStill.kind === 'image') {
+        lastStill.durationSec = (lastStill.durationSec || sec) + (audioLen - t);
+      }
+    }
   }
 
   return buildFableCutProject({
