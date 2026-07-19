@@ -121,9 +121,11 @@ export const INITIAL_STATE: NovelState = {
   wpm: 140,
   secondsPerBeat: 6,
 
-  is_vip: true,
-  is_pro: true,
-  credits: 999_999_999,
+  // Commercial default = Free. Dev open / owner sync may promote to Pro on boot.
+  is_vip: false,
+  is_pro: false,
+  is_trial: false,
+  credits: 100,
   ttsConfig: {
     platform: 'vina_voice',
     language: 'vi',

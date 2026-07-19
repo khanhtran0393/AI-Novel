@@ -26,6 +26,7 @@ export const selectTenTacPham = (state: NovelStore) => state.ten_tac_pham;
 export const selectDangTai = (state: NovelStore) => state.dang_tai;
 export const selectIsPro = (state: NovelStore) => state.is_pro;
 export const selectIsVip = (state: NovelStore) => state.is_vip;
+export const selectIsTrial = (state: NovelStore) => state.is_trial;
 export const selectCredits = (state: NovelStore) => state.credits;
 export const selectTargetWords = (state: NovelStore) =>
   state.setup.so_tu_chuong || 4250;

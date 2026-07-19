@@ -142,6 +142,39 @@ function ensureEnv() {
       process.env.AI_NOVEL_ROOT = process.resourcesPath;
     }
   }
+
+  // Packaged desktop = publish posture (enforce license unless explicitly open)
+  if (app.isPackaged) {
+    process.env.AI_NOVEL_PACKAGED = '1';
+    process.env.AINOVEL_PUBLISH = process.env.AINOVEL_PUBLISH || '1';
+    if (!process.env.AINOVEL_ENTITLEMENT_MODE) {
+      process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
+    }
+    // Load secrets from userData/.env.commercial if present (never bake secret into asar)
+    try {
+      const commercialEnv = path.join(app.getPath('userData'), '.env.commercial');
+      if (fs.existsSync(commercialEnv)) {
+        const raw = fs.readFileSync(commercialEnv, 'utf8');
+        for (const line of raw.split(/\r?\n/)) {
+          const t = line.trim();
+          if (!t || t.startsWith('#')) continue;
+          const eq = t.indexOf('=');
+          if (eq <= 0) continue;
+          const k = t.slice(0, eq).trim();
+          let v = t.slice(eq + 1).trim();
+          if (
+            (v.startsWith('"') && v.endsWith('"')) ||
+            (v.startsWith("'") && v.endsWith("'"))
+          ) {
+            v = v.slice(1, -1);
+          }
+          if (k && process.env[k] === undefined) process.env[k] = v;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function initPaths() {

@@ -104,9 +104,19 @@ async function main() {
         'Cảnh 1\n\nĐêm mưa. Cửa sổ kẹt lại. Hàn Dực nghe tiếng gõ từ phía trong.\n\nCảnh 2\n\nAnh đưa tay chạm khung gỗ lạnh.',
     },
     chapterHooks: {
-      hook: 'Đêm ấy cửa sổ kẹt lại…',
-      thumbnailLine: 'CỬA SỔ KẸT',
-      seoTitle: 'Test Novel Ch1',
+      hook: 'Đêm ấy cửa sổ kẹt lại — tiếng gõ từ phía trong khiến Hàn Dực không dám thở.',
+      // Must pass hooksMeetProductSeoGates + scoreYoutubeMetaFields (all ≥ 8.5)
+      thumbnailLine: '3 tiếng gõ — đừng mở…',
+      seoTitle:
+        'Sự thật sau cửa sổ kẹt: 3 tiếng gõ nửa đêm không ai dám kể… xem đến cuối',
+      seoDescription:
+        '3 tiếng gõ — đừng mở… Một đêm mưa, cửa sổ kẹt cứng từ phía trong. Hàn Dực lần theo manh mối dưới lớp sơn cũ ' +
+        'và phát hiện chuỗi sự kiện không thể giải thích bằng logic thường. ' +
+        'Sai một bước là mất sạch manh mối. Bí mật lộ ra từng mảnh khi khung gỗ lạnh run lên. ' +
+        '📌 Chapters timeline: 0:00 cold open · 0:30 cửa sổ · 1:20 chữ trên tường. ' +
+        '#truyenaudio #kinhditamly #cuasoket Like và đăng ký để theo dõi chương tiếp theo trước khi cửa sổ mở lại.',
+      seoTags: 'truyện audio,kinh dị tâm lý,cửa sổ kẹt,đêm mưa,manh mối',
+      thumbnailPrompt: 'rainy night stuck window wooden frame cinematic noir',
     },
     voiceCast: {
       enabled: true,
@@ -168,6 +178,19 @@ async function main() {
       tieu_de: 'Cửa sổ kẹt',
       dan_y: '',
       noi_dung: 'Nội dung dài cho longform chapter one with multiple beats.',
+    },
+    chapterHooks: {
+      hook: 'Đêm ấy cửa sổ kẹt lại — tiếng gõ từ phía trong khiến Hàn Dực không dám thở.',
+      thumbnailLine: '3 tiếng gõ — đừng mở…',
+      seoTitle:
+        'Sự thật sau cửa sổ kẹt: 3 tiếng gõ nửa đêm không ai dám kể… xem đến cuối',
+      seoDescription:
+        '3 tiếng gõ — đừng mở… Một đêm mưa, cửa sổ kẹt cứng từ phía trong. Hàn Dực lần theo manh mối dưới lớp sơn cũ ' +
+        'và phát hiện chuỗi sự kiện không thể giải thích bằng logic thường. ' +
+        'Sai một bước là mất sạch manh mối. Bí mật lộ ra từng mảnh khi khung gỗ lạnh run lên. ' +
+        '📌 Chapters timeline: 0:00 cold open · 0:30 cửa sổ · 1:20 chữ trên tường. ' +
+        '#truyenaudio #kinhditamly #cuasoket Like và đăng ký để theo dõi chương tiếp theo trước khi cửa sổ mở lại.',
+      seoTags: 'truyện audio,kinh dị tâm lý,cửa sổ kẹt,đêm mưa,manh mối',
     },
     generatedImages: { '1_0_0': 'D:/tmp/img.png' },
   });

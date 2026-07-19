@@ -1,5 +1,17 @@
 # Project memory (AI Novel)
 
+## Commercial publish readiness (2026-07-18)
+
+- **Model:** License + BYOK + Free/Trial/Pro/VIP — `src/lib/commercial/*` · master `docs/COMMERCIAL.md`.
+- **Entitlement:** enforce fail-closed; HWID; trial fallback in `assertProAccess`; **no** force owner Pro on rehydrate/persist; boot `useEntitlementSync`.
+- **API:** issue|verify|hwid|activate|trial|webhook|codes + `/api/commercial/status`.
+- **UI:** LicenseActivationCard (token + AINOVEL code + Trial + pricing); Header FREE/TRIAL/PRO/VIP; CapCut/Ship/Toolbox Pro gray; video headers entitlement.
+- **Trial badge fix (2026-07-19):** Trial sync still sets `is_pro=true` (Pro-equivalent rights) **and** `is_trial=true`. Header/logo badge shows **TRIAL** (cyan), not paid **PRO**. Store field `is_trial`; `setVipStatus(vip, pro, trial?)`.
+- **Seller:** `npm run license:issue` · vault `data/licenses/`.
+- **Legal:** LEGAL_TOS / PRIVACY / THIRD_PARTY / FLOW_DISCLAIMER · INSTALL_SUPPORT · PRICING.
+- **Packaged Electron:** MODE=enforce; `%APPDATA%/.../.env.commercial`.
+- **Smoke:** `npm run smoke:commercial` PASS · remaining ops: code-sign + update feed.
+
 ## Pipeline P0–P2 packages (2026-07-17)
 
 - **Code:** `src/lib/pipeline/*` — Quality Gate, Memory/foreshadow, Media Preflight, Stage job helpers, Long-form arc.

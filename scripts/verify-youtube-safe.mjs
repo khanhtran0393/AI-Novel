@@ -87,12 +87,17 @@ assert.equal(reuse.reused, true);
 const longScript = `[CẢNH 1: NGOẠI CẢNH. PHỐ - ĐÊM]
 Khói bốc lên từ xác xe. Hàn Dực siết chặt dao gỉ. "Đừng lại gần." Gió mang mùi xăng cháy. Phía cuối phố, bóng người khập khiễng. Hắn nín thở, đếm nhịp tim. Một tiếng sắt cạo nền bê tông. Anh biết mình không còn đường lùi. Liễu Yên thì thầm sau lưng. "Còn ba viên." Họ nhìn nhau. Không ai dám nói từ chết. Ánh đèn đỏ nhấp nháy từ tòa nhà đổ. Bão cát kéo tới trong năm phút. Phải chọn: hầm hoặc chết đói trên đường. Hàn Dực bước tới. Dao run nhưng mắt không.
 `;
-const hook = extractHookFromScript(longScript, { targetSec: 30, wpm: 140 });
+const hook = extractHookFromScript(longScript, {
+  targetSec: 30,
+  wpm: 140,
+  // B10: Visual DNA must be provided — no invent default
+  visualDna: 'cinematic moody lighting, desaturated film grain, tight frame',
+});
 assert.ok(hook.hook.split(/\s+/).length >= 40);
 assert.ok(hook.seoTitle.length > 5);
 assert.ok(hook.seoTitle.length <= 100);
 assert.ok(!/\s{2}/.test(hook.seoTitle));
-assert.ok(hook.thumbnailPrompt.includes('thumbnail'));
+assert.ok(hook.thumbnailPrompt.length > 10);
 assert.ok(hook.seoDescription.length > 20);
 assert.ok(toHashtag('truyện audio') === '#truyệnaudio' || toHashtag('truyen audio') === '#truyenaudio');
 assert.ok(normalizeHashtagField('truyện audio, mạt thế').includes('#'));
@@ -126,7 +131,11 @@ const motion = motionBudgetScore(8, 2);
 assert.equal(motion.pct, 20);
 
 // speech fingerprint
-assert.ok(buildSpeechFingerprintBlock(['Hàn Dực'], { 'Hàn Dực': { thoi_quen: 'cười lạnh' } }).includes('Hàn Dực'));
+assert.ok(
+  buildSpeechFingerprintBlock(['Hàn Dực'], {
+    'Hàn Dực': { thoi_quen: 'cười lạnh', giong_thoai: 'cộc, câu ngắn' },
+  }).includes('Hàn Dực'),
+);
 assert.ok(buildAudioReadabilityBlock().includes('AUDIO-READABILITY'));
 assert.ok(buildHumanizeScriptBlock(true).includes('TÍNH NGƯỜI'));
 assert.ok(buildShotDiversityBlock().includes('SHOT'));

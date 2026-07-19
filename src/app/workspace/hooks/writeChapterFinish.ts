@@ -282,6 +282,8 @@ export async function finishChapterWrite(
         maxRounds: 4,
         usedTitles: chProfile?.usedHooks || [],
         usedThumbLines: chProfile?.usedThumbnailNotes || [],
+        visualDna,
+        characterHint: (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
       });
       live.setChapterHook(params.chapterNumber, {
         hook: pack.hook,

@@ -14,13 +14,22 @@ import {
   type ToolKey,
 } from './toolboxRegistry';
 import FloatingMenu from '../../shared/FloatingMenu';
+import { useProAccess } from '../../hooks/useProAccess';
+import { toast } from '@/lib/toastBus';
 
 export default function ToolboxHost() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState<ToolKey | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const { isProEquivalent, requirePro } = useProAccess();
 
   const openTool = (key: ToolKey) => {
+    const gate = requirePro('toolbox_labs');
+    if (!gate.ok) {
+      toast.info('Pro', gate.message);
+      setMenuOpen(false);
+      return;
+    }
     setActive(key);
     setMenuOpen(false);
   };
@@ -37,13 +46,24 @@ export default function ToolboxHost() {
             e.stopPropagation();
             setMenuOpen((v) => !v);
           }}
-          className="flex shrink-0 whitespace-nowrap items-center justify-center gap-1 rounded-2xl border border-sky-500/20 bg-sky-500/5 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer"
-          title="Toolbox"
+          className={`flex shrink-0 whitespace-nowrap items-center justify-center gap-1 rounded-2xl border px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+            isProEquivalent
+              ? 'border-sky-500/20 bg-sky-500/5 text-sky-400 hover:bg-sky-500/10'
+              : 'border-zinc-700/60 bg-zinc-900/40 text-zinc-500 opacity-70'
+          }`}
+          title={
+            isProEquivalent
+              ? 'Toolbox'
+              : 'Toolbox (Pro) — nhấp logo up to PRO'
+          }
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
           <Briefcase className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">CÔNG CỤ</span>
+          {!isProEquivalent ? (
+            <span className="text-[8px] text-amber-600">PRO</span>
+          ) : null}
         </button>
 
         <FloatingMenu

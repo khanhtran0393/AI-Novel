@@ -23,7 +23,6 @@ import {
   NVENC_DRIVER_LINKS,
   openNvencDriverUrl,
 } from '@/lib/ffmpeg/nvencDriverLinks';
-
 /** Sau khi user tải/cài driver NVIDIA — app tự quét lại khi focus / mở Cài đặt */
 const NVENC_PENDING_KEY = 'ainovel.nvencDriverPending';
 
@@ -386,6 +385,8 @@ export default function SettingsPanel() {
             <h3 className="mb-4 text-sm font-bold text-zinc-100 uppercase tracking-wide border-b border-zinc-800 pb-2 flex items-center gap-2">
               ⚙️ Cài đặt chung
             </h3>
+
+            {/* License moved to logo click → LicenseModal (features/license) */}
 
             {/* API Keys */}
             <div>

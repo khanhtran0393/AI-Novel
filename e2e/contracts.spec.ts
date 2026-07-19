@@ -43,7 +43,7 @@ import {
   portableStatePatch,
   toRelativeMediaPath,
 } from '../src/lib/projectPortable';
-import { buildDemoProjectPatch } from '../src/lib/onboarding';
+import { CORE_LOOP_STEPS, loadOnboarding } from '../src/lib/onboarding';
 
 test.describe('contracts keys', () => {
   test('scene / image / character keys are stable', () => {
@@ -266,10 +266,12 @@ test.describe('portable + adapters + payloads', () => {
     expect(round.state.ten_tac_pham).toBe('Portable Demo');
   });
 
-  test('demo onboarding patch has chapter content', () => {
-    const p = buildDemoProjectPatch();
-    expect(p.giai_doan).toBe(2);
-    expect(Array.isArray(p.danh_sach_chuong)).toBe(true);
-    expect((p.danh_sach_chuong as { noi_dung: string }[])[0].noi_dung.length).toBeGreaterThan(20);
+  test('onboarding core-loop steps exist (no demo seed)', () => {
+    expect(CORE_LOOP_STEPS.length).toBeGreaterThanOrEqual(5);
+    expect(CORE_LOOP_STEPS.map((s) => s.id)).toContain('setup');
+    expect(CORE_LOOP_STEPS.map((s) => s.id)).toContain('write');
+    // loadOnboarding is SSR-safe (dismissed default when no window)
+    const s = loadOnboarding();
+    expect(Array.isArray(s.completedSteps)).toBe(true);
   });
 });

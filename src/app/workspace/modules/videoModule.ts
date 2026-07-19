@@ -194,9 +194,10 @@ async function postVideoGeneration(params: GenerateVideoParams) {
     );
   }
 
+  const { buildClientApiHeaders } = await import('./apiClient');
   const response = await fetch(API.generateVideo, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildClientApiHeaders(),
     body: JSON.stringify({
       chapterNum,
       sceneIndex,

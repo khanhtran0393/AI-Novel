@@ -26,6 +26,7 @@ import { useImagePromptActions } from './hooks/useImagePromptActions';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { useFolderActions } from './hooks/useFolderActions';
 import { useProjectActions } from './hooks/useProjectActions';
+import { useEntitlementSync } from './hooks/useEntitlementSync';
 
 import { parseScenes, getWordCount } from './utils/stringUtils';
 import { imageAssetKey, sceneAssetKey } from '@/contracts';
@@ -64,6 +65,9 @@ export default function Workspace() {
   const [setupDismissed, setSetupDismissed] = useState(false);
   const prevGiaiDoanRef = React.useRef(giaiDoan);
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
+
+  // Commercial Free/Pro/Trial sync (open mode → unlimited for dev)
+  useEntitlementSync();
 
   useEffect(() => {
     const prev = prevGiaiDoanRef.current;

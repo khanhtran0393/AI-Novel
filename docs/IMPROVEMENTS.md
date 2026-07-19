@@ -19,7 +19,7 @@
 | 15 | Job center export error report | ✅ |
 | 16 | Project **portable** multi-máy (strip secret + relative paths) | ✅ |
 | 17 | Store ↔ DTO adapters (chapter, setup, characters) | ✅ |
-| 18 | Onboarding core-loop + demo 1 chương | ✅ |
+| 18 | Onboarding core-loop (checklist only, no demo seed) | ✅ commercial-clean |
 | 19 | Empty workspace hint (chưa outline/content) | ✅ |
 | 20 | Optional Labs isolation docs | ✅ `docs/OPTIONAL_LABS.md` |
 | 21 | Client API headers (correlation + entitlement token) | ✅ `apiClient.buildClientApiHeaders` |
@@ -69,7 +69,8 @@ Routes gated: `export-capcut`, `ship-pack`, `generate-video`, `integrations/pipe
 
 - Playwright **full UI** browser (cần Next/Electron live server)
 - Golden path **live TTS Edge** (network, opt-in)
-- Payment gắn issue entitlement token (commercial)
+- ~~Payment gắn issue entitlement token (commercial)~~ → ✅ webhook + activation codes + trial (`docs/COMMERCIAL.md`)
+- Code signing Authenticode + electron-updater feed (ops P2)
 - Mass-move `domains/` folders (ROI thấp)
 - Tách git submodule Voice Studio / OpenMontage (ops, không bắt buộc)
 

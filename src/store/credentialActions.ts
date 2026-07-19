@@ -210,7 +210,13 @@ export function createCredentialActions(
 
       setGoogleUser: (googleUser) => set({ googleUser }),
 
-      setVipStatus: (is_vip, is_pro) => set({ is_vip, is_pro }),
+      setVipStatus: (is_vip, is_pro, is_trial = false) =>
+        set({
+          is_vip: !!is_vip,
+          is_pro: !!is_pro,
+          // Trial chỉ gắn khi không VIP; paid Pro/VIP/Free luôn xóa cờ trial
+          is_trial: !!is_trial && !is_vip,
+        }),
 
       setCredits: (credits) => set({ credits: Math.max(0, Number(credits) || 0) }),
 

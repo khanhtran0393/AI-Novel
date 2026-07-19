@@ -92,6 +92,21 @@ test.describe('output criteria from toolbar settings', () => {
         dan_y: '',
         noi_dung: SCRIPT,
       },
+      // B10: ship requires real SEO hooks (no invent) — fixture must pass product SEO gate (score ≥ 8.5)
+      chapterHooks: {
+        hook: 'Mở cảnh cold-open: tiếng gõ cửa lúc nửa đêm khiến cả dãy phố im bặt.',
+        thumbnailLine: '3 tiếng gõ — đừng mở…',
+        seoTitle:
+          'Sự thật sau cửa sổ kẹt: 3 tiếng gõ nửa đêm không ai dám kể… xem đến cuối',
+        seoDescription:
+          '3 tiếng gõ — đừng mở… Một đêm mưa, cửa sổ kẹt cứng từ phía trong. Hàn Dực lần theo manh mối dưới lớp sơn cũ ' +
+          'và phát hiện chuỗi sự kiện không thể giải thích bằng logic thường. ' +
+          'Sai một bước là mất sạch manh mối. Bí mật lộ ra từng mảnh khi khung gỗ lạnh run lên. ' +
+          '📌 Chapters timeline: 0:00 cold open · 0:30 cửa sổ · 1:20 chữ trên tường. ' +
+          '#truyenaudio #kinhditamly #cuasoket Like và đăng ký để theo dõi chương tiếp theo trước khi cửa sổ mở lại.',
+        seoTags: 'truyện short,audio,hook,e2e,kinh dị tâm lý',
+        thumbnailPrompt: 'midnight door knock cinematic short vertical',
+      },
       generatedAudioPaths: { '1_0': { path: 'a.mp3', duration: 5 } },
       generatedImages: { '1_0_0': 'i.png' },
     });

@@ -45,6 +45,51 @@ export function resolveBundledFfmpeg(root = process.cwd()): string | null {
 export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
   const items: HealthItem[] = [];
 
+  // Commercial entitlement posture
+  try {
+    // Lazy import keeps this module free of circular deps in pure probes
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getEntitlementPublicStatus } = require('@/lib/entitlement') as typeof import('@/lib/entitlement');
+    const ent = getEntitlementPublicStatus();
+    if (ent.readyForCommercial) {
+      items.push(
+        item(
+          'entitlement',
+          'License (enforce)',
+          'ok',
+          `mode=${ent.mode} · secret OK · admin key OK`,
+        ),
+      );
+    } else if (ent.mode === 'open') {
+      items.push(
+        item(
+          'entitlement',
+          'License mode',
+          'warn',
+          'open (dev) — Pro mở tự do. Publish: AINOVEL_ENTITLEMENT_MODE=enforce + secret + admin key',
+        ),
+      );
+    } else {
+      items.push(
+        item(
+          'entitlement',
+          'License (enforce)',
+          'fail',
+          ent.blockers.join(' · ') || 'chưa sẵn sàng commercial',
+        ),
+      );
+    }
+  } catch (e) {
+    items.push(
+      item(
+        'entitlement',
+        'License',
+        'warn',
+        e instanceof Error ? e.message : 'entitlement probe failed',
+      ),
+    );
+  }
+
   // FFmpeg
   const ff = resolveBundledFfmpeg(root);
   if (ff) {

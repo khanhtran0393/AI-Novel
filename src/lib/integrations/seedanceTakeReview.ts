@@ -500,9 +500,12 @@ export function promotePreviousShotForContinuation(
   if (parent.status !== 'generated' && parent.status !== 'reviewed') {
     return { state, promoted: null };
   }
+  type TakeHist = { clip_id?: string; video_path?: string; media_id?: string };
   const lastTake = [...(state.take_history || [])]
     .reverse()
-    .find((t) => t?.clip_id === parent.clip_id);
+    .find((t) => (t as TakeHist | undefined)?.clip_id === parent.clip_id) as
+    | TakeHist
+    | undefined;
   const result = autoAcceptGeneratedTake(state, parent.clip_id, {
     videoPath: lastTake?.video_path,
     mediaId: lastTake?.media_id,

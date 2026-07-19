@@ -12,23 +12,30 @@ import {
   toCapCutAspect,
 } from '@/lib/outputCriteria';
 import { evaluateShipGate, healthInputFromStore } from '@/lib/shipGate';
+import { buildClientApiHeaders } from '../../modules/apiClient';
+import { useProAccess } from '../../hooks/useProAccess';
 
 /** Project export — busy riêng; không dang_tai global (không khóa nút khác) */
 export default function CapCutExportButton() {
-  const isPro = useNovelStore((s) => s.is_pro);
-  const isVip = useNovelStore((s) => s.is_vip);
+  const { isProEquivalent, requirePro } = useProAccess();
   const [exporting, setExporting] = useState(false);
 
   return (
     <button
       type="button"
-      disabled={exporting || (!isPro && !isVip)}
+      disabled={exporting || !isProEquivalent}
+      title={
+        isProEquivalent
+          ? 'Xuất CapCut'
+          : 'Cần Pro/Trial — nhấp logo up to PRO'
+      }
       onClick={async () => {
-        const store = useNovelStore.getState();
-        if (!store.is_pro && !store.is_vip) {
-          toast.info('Notice', '⚠️ Tính năng này yêu cầu nâng cấp gói Pro/VIP!');
+        const gatePro = requirePro('export_capcut');
+        if (!gatePro.ok) {
+          toast.info('Pro', gatePro.message);
           return;
         }
+        const store = useNovelStore.getState();
         const okExport = await appConfirm({
           title: 'Xuất CapCut',
           message:
@@ -164,7 +171,7 @@ export default function CapCutExportButton() {
 
           const res = await fetch(API.exportCapcut, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildClientApiHeaders(),
             body: JSON.stringify({
               chapterNum: store.chuong_dang_chon,
               ten_tac_pham: store.ten_tac_pham,

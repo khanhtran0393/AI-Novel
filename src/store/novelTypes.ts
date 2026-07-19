@@ -200,9 +200,11 @@ export interface NovelState {
   wpm?: number;
   secondsPerBeat?: number;
 
-  // --- H? TH?NG THUONG M?I H�A (VIP/PRO) ---
+  // --- Hệ thống thương mại (VIP/PRO/TRIAL) ---
   is_vip: boolean;
   is_pro: boolean;
+  /** Trial 3 ngày: mở quyền Pro-equivalent; badge UI = TRIAL (không gộp nhầm PRO trả phí) */
+  is_trial: boolean;
   credits: number;
   
   // --- H? TH?NG C?U H�NH GI?NG �?C TO�N C?C ---
@@ -385,8 +387,9 @@ export interface NovelActions {
   setWpm: (wpm: number) => void;
   setSecondsPerBeat: (secs: number) => void;
 
-  // Actions cho Thuong m?i h�a (VIP/PRO)
-  setVipStatus: (is_vip: boolean, is_pro: boolean) => void;
+  // Actions cho thương mại (VIP/PRO/TRIAL)
+  /** is_trial=true chỉ khi trial active; paid Pro/VIP truyền false/omit */
+  setVipStatus: (is_vip: boolean, is_pro: boolean, is_trial?: boolean) => void;
   setCredits: (credits: number) => void;
   deductCredits: (amount: number) => boolean;
 

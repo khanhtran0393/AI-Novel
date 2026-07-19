@@ -380,6 +380,20 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
   const mapX = (x: unknown) => Math.floor(parseNumber(x, 0) * metadata.width / previewW);
   const mapY = (y: unknown) => Math.floor(parseNumber(y, 0) * metadata.height / previewH);
 
+  // Declare before use (was TDZ: video.loop before const video)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const video: any = payload.video || {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sub: any = payload.sub || {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bgm: any = payload.bgm || {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const brand: any = payload.brand || {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trim: any = payload.trim || {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const phantom: any = payload.phantom || {};
+
   const inputsRaw = ['-y'];
   if (video.loop || payload.loopVideo) inputsRaw.push('-stream_loop', '-1');
   inputsRaw.push('-i', videoPath.replace(/\\/g, '/'));
@@ -389,13 +403,6 @@ export function buildCapAssistantCommand(payload: any): CapAssistantBuildResult 
   let currV = '0:v';
   let currA = '0:a';
   let ptr = 1;
-
-  const video = payload.video || {};
-  const sub = payload.sub || {};
-  const bgm = payload.bgm || {};
-  const brand = payload.brand || {};
-  const trim = payload.trim || {};
-  const phantom = payload.phantom || {};
 
   const speedFactor = parsePercent(video.speed ?? payload.speed, 100) / 100;
   if (speedFactor !== 1 && speedFactor > 0) {

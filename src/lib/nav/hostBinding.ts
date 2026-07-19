@@ -78,6 +78,7 @@ export function hostBindingChildEnv(options?: {
   const timeoutMs = options?.timeoutMs ?? 600_000;
   const ttlSeconds = Math.max(120, Math.ceil(timeoutMs / 1000) + 60);
   return {
+    ...process.env,
     AINOVEL_HOST: '1',
     AINOVEL_HOST_APP: HOST_APP_NAME,
     AINOVEL_HOST_TOKEN: issueHostToken({

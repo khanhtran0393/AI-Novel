@@ -11,6 +11,8 @@ import {
 } from '@/lib/outputCriteria';
 import { evaluateShipGate, healthInputFromStore } from '@/lib/shipGate';
 import { appConfirm } from '@/lib/confirmDialog';
+import { buildClientApiHeaders } from '../../modules/apiClient';
+import { toast } from '@/lib/toastBus';
 
 interface ShipPackModalProps {
   isOpen: boolean;
@@ -70,6 +72,13 @@ export default function ShipPackModal({ isOpen, onClose }: ShipPackModalProps) {
   const handleShip = async () => {
     if (!channel || !chapter) {
       setResult({ error: 'Thiếu kênh hoặc chương.' });
+      return;
+    }
+    if (!store.is_pro && !store.is_vip) {
+      const msg =
+        'Ship pack cần Pro/Trial. Nhấp logo app (up to PRO) để mở Bản quyền / kích hoạt.';
+      setResult({ error: msg });
+      toast.info('Pro', msg);
       return;
     }
     setBusy(true);
@@ -225,7 +234,7 @@ export default function ShipPackModal({ isOpen, onClose }: ShipPackModalProps) {
 
       const res = await fetch(API.shipPack, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildClientApiHeaders(),
         body: JSON.stringify({
           mode,
           channel: live,

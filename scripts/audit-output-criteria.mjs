@@ -83,6 +83,20 @@ hardCheck('word-gate fails short text', !gateFail.wordsOk);
 
 // Ship pack must honor so_tu_chuong (not hardcode 4250)
 const customGoal = 2000;
+const PASSING_SEO_HOOKS = {
+  hook: 'Đêm ấy cửa sổ kẹt lại — tiếng gõ từ phía trong khiến Hàn Dực không dám thở.',
+  thumbnailLine: '3 tiếng gõ — đừng mở…',
+  seoTitle:
+    'Sự thật sau cửa sổ kẹt: 3 tiếng gõ nửa đêm không ai dám kể… xem đến cuối',
+  seoDescription:
+    '3 tiếng gõ — đừng mở… Một đêm mưa, cửa sổ kẹt cứng từ phía trong. Hàn Dực lần theo manh mối dưới lớp sơn cũ ' +
+    'và phát hiện chuỗi sự kiện không thể giải thích bằng logic thường. ' +
+    'Sai một bước là mất sạch manh mối. Bí mật lộ ra từng mảnh khi khung gỗ lạnh run lên. ' +
+    '📌 Chapters timeline: 0:00 cold open · 0:30 cửa sổ · 1:20 chữ trên tường. ' +
+    '#truyenaudio #kinhditamly #cuasoket Like và đăng ký để theo dõi chương tiếp theo trước khi cửa sổ mở lại.',
+  seoTags: 'truyện audio,kinh dị tâm lý,cửa sổ kẹt,đêm mưa,manh mối',
+};
+
 const packGoalProbe = buildShipPack({
   channel: createChannelProfile('Probe Goal', { niche: 'Horror', defaultShipMode: 'radio' }),
   mode: 'radio',
@@ -93,6 +107,7 @@ const packGoalProbe = buildShipPack({
     dan_y: '',
     noi_dung: SCRIPT,
   },
+  chapterHooks: PASSING_SEO_HOOKS,
   so_tu_chuong: customGoal,
   generatedAudioPaths: { '1_0': { path: 'public/audio/demo.mp3', duration: 12 } },
 });
@@ -110,6 +125,7 @@ const meta = generateYoutubeMetaWithQA({
   novelTitle: 'Tiếng Vọng Tường Cổ',
   chapter: 1,
   maxRounds: 5,
+  visualDna: 'cinematic moody lighting, desaturated film grain, tight frame',
 });
 hardCheck('title ≤100', meta.seoTitle.length <= 100, String(meta.seoTitle.length));
 hardCheck('thumb ≤30', meta.thumbnailLine.length <= 30, `"${meta.thumbnailLine}"`);
@@ -178,7 +194,7 @@ const ch = createChannelProfile('Kênh Audit Criteria', {
   visualDna: 'foggy alley',
   language: 'vi',
 });
-// Intentionally BAD hooks (dialogue dump) — pack must self-heal via Meta QA
+// B10: ship hard-fails bad SEO (no invent/self-heal). Fixture must already pass product SEO gate.
 const pack = buildShipPack({
   channel: ch,
   mode: 'short',
@@ -189,14 +205,7 @@ const pack = buildShipPack({
     dan_y: '',
     noi_dung: SCRIPT,
   },
-  chapterHooks: {
-    hook: '"Kiến, tòa nhà này muốn bay lên trời à?" Khánh Ân nói. "Không... không phải."',
-    thumbnailLine: 'Tòa nhà bay',
-    seoTitle:
-      'Đừng bỏ lỡ: Cô chỉ vào một góc màn hình, nơi Kiến vừa vẽ… Tòa nhà này có muốn bay lên trời',
-    seoDescription: 'Sai một bước là mất sạch. Bí mật lộ ra từng mảnh — không có chỗ lùi.',
-    seoTags: '#muốn #trời #không #phải #truyenaudio',
-  },
+  chapterHooks: PASSING_SEO_HOOKS,
   generatedAudioPaths: { '1_0': { path: 'public/audio/demo.mp3', duration: 12 } },
   generatedImages: {
     '1_0_0': 'public/images/a.png',
@@ -313,6 +322,7 @@ const dnaPack = buildShipPack({
     dan_y: '',
     noi_dung: SCRIPT,
   },
+  chapterHooks: PASSING_SEO_HOOKS,
   generatedAudioPaths: { '1_0': { path: 'a.mp3', duration: 5 } },
   generatedImages: { '1_0_0': 'i.png' },
 });

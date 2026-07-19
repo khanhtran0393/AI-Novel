@@ -65,10 +65,17 @@ export function createNovelStorePersistOptions(storeAccess: {
         ...current,
         ...p,
         giai_doan: mergedPhase,
-        // Owner local build: always PRO + unlimited credits (never locked by old free snapshots)
-        is_vip: true,
-        is_pro: true,
-        credits: 999_999_999,
+        // Entitlement: keep rehydrated plan; boot hook useEntitlementSync may promote
+        is_vip: typeof p.is_vip === 'boolean' ? p.is_vip : current.is_vip,
+        is_pro: typeof p.is_pro === 'boolean' ? p.is_pro : current.is_pro,
+        is_trial:
+          typeof (p as { is_trial?: boolean }).is_trial === 'boolean'
+            ? !!(p as { is_trial?: boolean }).is_trial
+            : current.is_trial,
+        credits:
+          typeof p.credits === 'number' && Number.isFinite(p.credits)
+            ? Math.max(0, p.credits)
+            : current.credits,
         // Media / DNA output settings — never lose non-empty values to empty defaults
         visualDnaPrompt: preferStr(p.visualDnaPrompt, current.visualDnaPrompt),
         mediaStylePreset:
@@ -315,10 +322,14 @@ export function createNovelStorePersistOptions(storeAccess: {
       videoProvider: state.videoProvider,
       videoApiKey: state.videoApiKey,
 
-      // Always persist owner unlimited entitlement
-      is_vip: true,
-      is_pro: true,
-      credits: 999_999_999,
+      // Persist actual plan (commercial Free/Pro/VIP/Trial)
+      is_vip: !!state.is_vip,
+      is_pro: !!state.is_pro,
+      is_trial: !!state.is_trial,
+      credits:
+        typeof state.credits === 'number' && Number.isFinite(state.credits)
+          ? Math.max(0, state.credits)
+          : 0,
       ttsConfig: state.ttsConfig,
       voiceCast: state.voiceCast,
       youtubeSafe: state.youtubeSafe,
@@ -373,13 +384,7 @@ export function createNovelStorePersistOptions(storeAccess: {
       };
       forceHydrated();
 
-      // Force unlimited entitlement after every rehydrate (owner local)
-      try {
-        state?.setVipStatus?.(true, true);
-        state?.setCredits?.(999_999_999);
-      } catch {
-        // ignore
-      }
+      // Do NOT force Pro here — commercial builds stay Free until activate/trial/open-mode sync
       // Bootstrap / normalize multi-channel after rehydrate
       try {
         const live = storeAccess.getState();
@@ -420,11 +425,6 @@ export function createNovelStorePersistOptions(storeAccess: {
       if (typeof window !== 'undefined') {
         queueMicrotask(() => {
           try {
-            const live = storeAccess.getState();
-            if (!live.is_pro || !live.is_vip || (live.credits ?? 0) < 999_999_999) {
-              live.setVipStatus?.(true, true);
-              live.setCredits?.(999_999_999);
-            }
             syncLocalStoreToDurable();
           } catch {
             // ignore

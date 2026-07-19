@@ -1,20 +1,17 @@
 'use client';
 
 /**
- * Core-loop onboarding — first visit guide + load demo project.
+ * Core-loop onboarding — first visit guide (no demo seed / no test story).
  */
 import React, { useEffect, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import { selectIsHydrated } from '@/store/useNovelStoreSelectors';
 import {
   CORE_LOOP_STEPS,
-  buildDemoProjectPatch,
   dismissOnboarding,
   loadOnboarding,
-  saveOnboarding,
   type OnboardingState,
 } from '@/lib/onboarding';
-import { toast } from '@/lib/toastBus';
 import { X, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function OnboardingBanner() {
@@ -33,31 +30,6 @@ export default function OnboardingBanner() {
     setState(dismissOnboarding());
   };
 
-  const handleLoadDemo = () => {
-    try {
-      const patch = buildDemoProjectPatch();
-      useNovelStore.setState(patch as Partial<ReturnType<typeof useNovelStore.getState>>);
-      const next = {
-        ...loadOnboarding(),
-        demoLoaded: true,
-        completedSteps: Array.from(
-          new Set([...loadOnboarding().completedSteps, 'setup', 'outline', 'write']),
-        ),
-      };
-      saveOnboarding(next);
-      setState(next);
-      toast.success(
-        'Đã nạp Demo Core Loop',
-        'Chương 1 sẵn sàng — thử TTS Edge hoặc gen prompt ảnh.',
-      );
-    } catch (e) {
-      toast.error(
-        'Nạp demo thất bại',
-        e instanceof Error ? e.message : String(e),
-      );
-    }
-  };
-
   return (
     <div className="shrink-0 border-b border-amber-900/40 bg-gradient-to-r from-amber-950/80 via-zinc-950 to-zinc-950 px-3 py-2 sm:px-4">
       <div className="flex items-start gap-3">
@@ -67,7 +39,7 @@ export default function OnboardingBanner() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-              Core loop · 5 phút
+              Bắt đầu · Core loop
             </h3>
             <span className="text-[10px] text-zinc-500">
               Setup → Outline → Viết → TTS → Ảnh → Export
@@ -97,13 +69,6 @@ export default function OnboardingBanner() {
             })}
           </ol>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleLoadDemo}
-              className="rounded-lg bg-emerald-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-black shadow-md shadow-emerald-500/20 hover:bg-emerald-400 cursor-pointer"
-            >
-              Nạp truyện demo 1 chương
-            </button>
             <button
               type="button"
               onClick={handleDismiss}

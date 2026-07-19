@@ -375,7 +375,13 @@ function splitSentencesVi(text: string): string[] {
  */
 export function extractHookFromScript(
   script: string,
-  opts?: { targetSec?: number; wpm?: number },
+  opts?: {
+    targetSec?: number;
+    wpm?: number;
+    /** Visual DNA / media style — required for non-empty thumbnailPrompt (B10: no invent) */
+    visualDna?: string;
+    characterHint?: string;
+  },
 ): {
   hook: string;
   thumbnailLine: string;
@@ -453,10 +459,17 @@ export function extractHookFromScript(
     thumbnailLine,
     tags: seoTags,
   });
-  const thumbnailPrompt = buildThumbnailPrompt({
-    hook,
-    thumbnailLine,
-  });
+  // B10: no invent Visual DNA — empty prompt if missing (caller supplies style)
+  let thumbnailPrompt = '';
+  const visualDna = (opts?.visualDna || '').trim();
+  if (visualDna) {
+    thumbnailPrompt = buildThumbnailPrompt({
+      hook,
+      thumbnailLine,
+      visualDna,
+      characterHint: opts?.characterHint,
+    });
+  }
 
   return { hook, thumbnailLine, seoTitle, seoDescription, seoTags, thumbnailPrompt };
 }
@@ -737,6 +750,9 @@ export function generateYoutubeMetaWithQA(params: {
   usedTitles?: string[];
   usedThumbLines?: string[];
   chapter?: number;
+  /** Visual DNA / media style — required for thumbnail prompt (B10: no invent) */
+  visualDna?: string;
+  characterHint?: string;
 }): {
   hook: string;
   seoTitle: string;
@@ -750,7 +766,18 @@ export function generateYoutubeMetaWithQA(params: {
   titleLawName?: string;
 } {
   const maxRounds = params.maxRounds ?? 5;
-  const base = extractHookFromScript(params.script, { targetSec: 30, wpm: 140 });
+  const visualDna = (params.visualDna || '').trim();
+  if (!visualDna) {
+    throw new Error(
+      'Thieu visualDna (Visual DNA / Media Style) de generateYoutubeMetaWithQA. App khong tu bi a style thumbnail.',
+    );
+  }
+  const base = extractHookFromScript(params.script, {
+    targetSec: 30,
+    wpm: 140,
+    visualDna,
+    characterHint: params.characterHint,
+  });
   const seed0 = hashSeed(
     base.hook + (params.novelTitle || '') + String(params.chapter || 0),
   );
@@ -840,6 +867,8 @@ export function generateYoutubeMetaWithQA(params: {
     const thumbnailPrompt = buildThumbnailPrompt({
       hook: base.hook,
       thumbnailLine,
+      visualDna,
+      characterHint: params.characterHint,
       psychBias: biases[(round + seed) % biases.length],
     });
 
