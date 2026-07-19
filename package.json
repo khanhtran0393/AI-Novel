@@ -44,7 +44,7 @@
     "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
     "test:e2e:ui": "playwright test --project=ui",
     "test:e2e:api": "playwright test --project=api-and-contracts",
-    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs",
+    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts",
     "smoke:credential-vault": "node scripts/run-electron-smoke.cjs scripts/smoke-credential-vault.cjs",
     "smoke:capcut-live": "npx tsx scripts/smoke-capcut-live.mts",
     "license:issue": "node scripts/issue-license.mjs",
@@ -64,7 +64,8 @@
     "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
     "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
     "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run verify:core",
-    "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs"
+    "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs",
+    "smoke:license-trust": "npx tsx scripts/smoke-license-trust.mts"
   },
   "build": {
     "appId": "com.ainovel.desktop",

@@ -38,6 +38,22 @@ function resolveFeedUrl() {
     const url = new URL(raw);
     if (url.protocol !== 'https:') return null;
     if (url.hostname === 'example.com' || url.hostname.endsWith('.example.com')) return null;
+    // Host pin: builtin + AINOVEL_UPDATE_FEED_HOSTS (bundled). Reject rogue feeds.
+    const builtin = ['azlizrbjkqcyqnsmuccv.supabase.co'];
+    const extra = String(process.env.AINOVEL_UPDATE_FEED_HOSTS || '')
+      .split(/[,\s]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const allowed = new Set([...builtin, ...extra]);
+    if (!allowed.has(url.hostname.toLowerCase())) {
+      console.warn(
+        '[updater] feed host not in pin allowlist:',
+        url.hostname,
+        'allowed=',
+        [...allowed].join(','),
+      );
+      return null;
+    }
     return url.toString().replace(/\/$/, '');
   } catch {
     return null;

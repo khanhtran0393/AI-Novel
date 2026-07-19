@@ -8,6 +8,13 @@
 - **L5 HWID v2:** MachineGuid + dual-accept v1 tokens.
 - **Docs:** `docs/DEFENSE_LAYERS.md` · smokes extended commercial + electron-security.
 
+## License trust pin (2026-07-20)
+
+- `src/lib/commercial/licenseTrust.ts`: host pin license API + optional TLS SPKI pin + update feed host pin
+- Proxy dùng `fetchPinnedLicenseApi`; packaged fail-closed empty keyring (`assertVerificationKeyringReady`)
+- main.js: customer cannot expand `LICENSE_API_HOSTS` / `TLS_PINS`; smoke `npm run smoke:license-trust`
+- Ed25519 remains source of truth vs fake keys
+
 ## Commercial admin complete (2026-07-20)
 
 - **API** `GET /api/cloud/license/list` (admin key) · **UI** `/admin` list/filter/revoke/issue HWID

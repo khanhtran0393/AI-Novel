@@ -8,6 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import {
+  assertVerificationKeyringReady,
   claimsIsTrial,
   getEntitlementPublicStatus,
   getHwid,
@@ -167,6 +168,8 @@ async function ensureCloudLicenseFromToken(input: {
 
 export async function POST(req: Request) {
   try {
+    // Fail-closed before any activate path: no public keyring → no Pro
+    assertVerificationKeyringReady();
     const body = (await req.json().catch(() => ({}))) as {
       token?: string;
       code?: string;

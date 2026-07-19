@@ -34,6 +34,17 @@ API:
 3. Khách dán **1 dòng** bắt đầu `AINOVEL2.` → Kích hoạt → badge **PRO**.
 4. Key cũ `eyJ…` (HMAC) = vứt; cấp lại.
 
+## Trust layers (chống server/key giả)
+
+| Lớp | Việc |
+|-----|------|
+| **Ed25519** | Token `AINOVEL2` ký private seller; app chỉ có public key |
+| **Host pin** | License API chỉ host allowlist (`ai-novel-flax.vercel.app` + `AINOVEL_LICENSE_API_HOSTS` bundled) |
+| **TLS pin (optional)** | `AINOVEL_LICENSE_TLS_PINS` SPKI — `node scripts/print-license-tls-pin.mjs` |
+| **Fail-closed keyring** | Packaged thiếu `public-keys` → không Pro / activate 503 |
+
+Customer `.env.commercial` **không** được mở rộng HOSTS/PINS (main.js strip + chỉ bundle).
+
 ## Secrets (không được lộ)
 
 | Secret | Nơi |

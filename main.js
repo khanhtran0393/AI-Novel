@@ -185,12 +185,26 @@ function ensureEnv() {
     process.env.AINOVEL_PUBLISH = '1';
     process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
     // Customer config: public endpoints/switches only — never mode / local-trial escape.
+    // Customer may only override public endpoints — NOT host allowlist / TLS pins
+    // (those come only from bundled public.env so users cannot expand pin set).
     const customerEnvKeys = new Set([
       'AINOVEL_LICENSE_API_URL',
       'AINOVEL_TRIAL_ENABLED',
       'AINOVEL_TRIAL_DAYS',
       'AINOVEL_UPDATE_CHANNEL',
       'AINOVEL_UPDATE_FEED_URL',
+      'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
+      'AINOVEL_UPDATE_ALLOW_PRERELEASE',
+    ]);
+    const bundledPinKeys = new Set([
+      'AINOVEL_LICENSE_API_URL',
+      'AINOVEL_LICENSE_API_HOSTS',
+      'AINOVEL_LICENSE_TLS_PINS',
+      'AINOVEL_TRIAL_ENABLED',
+      'AINOVEL_TRIAL_DAYS',
+      'AINOVEL_UPDATE_CHANNEL',
+      'AINOVEL_UPDATE_FEED_URL',
+      'AINOVEL_UPDATE_FEED_HOSTS',
       'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
       'AINOVEL_UPDATE_ALLOW_PRERELEASE',
     ]);
@@ -201,9 +215,11 @@ function ensureEnv() {
       // ignore
     }
     // Bundled public defaults (loadEnvFile never overwrites already-set keys).
+    // Pin hosts / TLS pins: load bundled first for keys customer cannot set,
+    // then re-apply after wipe so customer cannot inject HOSTS/PINS via machine env.
     loadEnvFile(
       path.join(runtimeRoot, 'commercial', 'public.env'),
-      customerEnvKeys,
+      bundledPinKeys,
     );
     // Re-assert after any env file load (belt against whitelist mistakes).
     process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
@@ -227,6 +243,27 @@ function ensureEnv() {
       'AINOVEL_OWNER_UNLIMITED',
     ]) {
       delete process.env[key];
+    }
+    // Customer must not expand pin allowlist via inherited env
+    delete process.env.AINOVEL_LICENSE_API_HOSTS;
+    delete process.env.AINOVEL_LICENSE_TLS_PINS;
+    delete process.env.AINOVEL_UPDATE_FEED_HOSTS;
+    // Re-load ONLY pin keys from bundle so allowlist is seller-controlled
+    loadEnvFile(
+      path.join(runtimeRoot, 'commercial', 'public.env'),
+      new Set([
+        'AINOVEL_LICENSE_API_HOSTS',
+        'AINOVEL_LICENSE_TLS_PINS',
+        'AINOVEL_UPDATE_FEED_HOSTS',
+      ]),
+    );
+    // If customer set a rogue LICENSE_API_URL, host pin rejects at runtime.
+    // Prefer bundled URL when customer URL missing:
+    if (!String(process.env.AINOVEL_LICENSE_API_URL || '').trim()) {
+      loadEnvFile(
+        path.join(runtimeRoot, 'commercial', 'public.env'),
+        new Set(['AINOVEL_LICENSE_API_URL']),
+      );
     }
     const publicKeysDir = path.join(runtimeRoot, 'license', 'public-keys');
     process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEYS_DIR = publicKeysDir;
