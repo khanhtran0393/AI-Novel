@@ -71,12 +71,46 @@ def normalize_text(text: str) -> str:
     return text
 
 
+def load_vocab_char_map(vocab_file: str) -> dict[str, int]:
+    """Load vocab without deleting the leading space token at index 0."""
+    with open(vocab_file, "r", encoding="utf-8") as f:
+        vocab = [line.rstrip("\r\n") for line in f]
+    return {token: i for i, token in enumerate(vocab)}
+
+
 def list_str_to_idx(text: str, vocab_char_map: dict) -> np.ndarray:
     idx_list = []
     for c in text:
         if c in vocab_char_map:
             idx_list.append(vocab_char_map[c])
     return np.array([idx_list], dtype=np.int32)
+
+
+_PAUSE_PUNCTUATION_RE = re.compile(r"[。，、；：？！]")
+
+
+def weighted_text_len(text: str) -> int:
+    """F5-ONNX duration heuristic: UTF-8 bytes plus CJK pause weight."""
+    return len(text.encode("utf-8")) + 3 * len(
+        _PAUSE_PUNCTUATION_RE.findall(text)
+    )
+
+
+def plan_max_duration(
+    audio_len: int,
+    ref_text: str,
+    generated_text: str,
+    speed: float,
+    hop_length: int = 256,
+) -> int:
+    """Plan total frames from reference audio plus generated text only."""
+    ref_text_for_len = ref_text if ref_text else generated_text
+    ref_text_len = max(weighted_text_len(ref_text_for_len), 1)
+    generated_text_len = max(weighted_text_len(generated_text), 1)
+    ref_audio_len = audio_len // hop_length + 1
+    return ref_audio_len + int(
+        ref_audio_len / ref_text_len * generated_text_len / speed
+    )
 
 
 def apply_seeds(speaker_seed: int, style_seed: int) -> None:
@@ -467,9 +501,7 @@ def main() -> int:
     if not os.path.isfile(vocab_file):
         print(f"[vina_infer] ERROR: missing vocab {vocab_file}", file=sys.stderr)
         return 4
-    with open(vocab_file, "r", encoding="utf-8") as f:
-        vocab = [line.strip() for line in f.readlines()]
-    vocab_char_map = {c: i for i, c in enumerate(vocab)}
+    vocab_char_map = load_vocab_char_map(vocab_file)
 
     # Concat ref transcript + gen text (F5-style conditioning)
     if ref_text:
@@ -520,23 +552,9 @@ def main() -> int:
     audio_len = refaudio.shape[-1]
     refaudio = refaudio.reshape(1, 1, -1)
 
-    zh_pause_punc = r"[a-zA-Z0-9]"
-    ref_text_for_len = ref_text if ref_text else gen_only
-    ref_text_len = len(ref_text_for_len.encode("utf-8")) + 3 * len(
-        re.findall(zh_pause_punc, ref_text_for_len)
-    )
-    gen_text_len = len(gen_text.encode("utf-8")) + 3 * len(
-        re.findall(zh_pause_punc, gen_text)
-    )
-    ref_text_len = max(ref_text_len, 1)
-
-    ref_audio_len = audio_len // HOP_LENGTH + 1
     speed = max(0.5, min(2.0, float(args.speed) or 1.0))
     max_duration = np.array(
-        [
-            ref_audio_len
-            + int(ref_audio_len / ref_text_len * gen_text_len / speed)
-        ],
+        [plan_max_duration(audio_len, ref_text, gen_only, speed, HOP_LENGTH)],
         dtype=np.int64,
     )
 

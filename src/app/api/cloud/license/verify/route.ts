@@ -1,5 +1,5 @@
 /**
- * POST — online license verify / heartbeat (HMAC + optional Supabase revoke).
+ * POST — online license verify / heartbeat (Ed25519 + optional Supabase revoke).
  * Body: { token, hwid? }
  */
 import { NextResponse } from 'next/server';
@@ -7,6 +7,8 @@ import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { verifyLicenseCloud } from '@/lib/cloud/licenseBridge';
 import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
 import { createServiceSupabase } from '@/lib/supabase/server';
+import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
+import { proxyLicenseApiPost } from '@/lib/commercial/licenseApiProxy';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +24,14 @@ export async function POST(req: Request) {
         { ok: false, valid: false, error: 'Thiếu token' },
         { status: 400 },
       );
+    }
+
+    if (isPackagedCustomerRuntime()) {
+      const remote = await proxyLicenseApiPost('/api/cloud/license/verify', {
+        token,
+        hwid: body.hwid,
+      });
+      return NextResponse.json(remote.payload, { status: remote.status });
     }
 
     const service = isSupabaseAdminConfigured()

@@ -41,8 +41,15 @@ const SECRET_KEYS = new Set([
   'openaiApiKeys',
   'grokApiKey',
   'grokApiKeys',
+  'claudeApiKey',
+  'claudeApiKeys',
   'lumaApiKey',
   'lumaApiKeys',
+  'runwayApiKeys',
+  'falaiApiKeys',
+  'imageApiKey',
+  'videoApiKey',
+  'aiMasterApiKey',
   'googleStudioCookie',
   'googleStudioCookies',
   'tiktokSessionIds',
@@ -191,6 +198,10 @@ export function buildPortableProject(
       const t = { ...(slice.ttsConfig as Record<string, unknown>) };
       delete t.tiktokSessionId;
       delete t.apiKey;
+      delete t.googleCloudApiKey;
+      delete t.vbeeApiKey;
+      delete t.vbeeAppId;
+      delete t.vinaReferenceAudioB64;
       slice.ttsConfig = t;
     }
   }
@@ -239,7 +250,17 @@ export function portableStatePatch(
   for (const [k, v] of Object.entries(portable.state || {})) {
     if (!allowed.has(k)) continue;
     if (SECRET_KEYS.has(k)) continue;
-    patch[k] = v;
+    if (k === 'ttsConfig' && v && typeof v === 'object') {
+      const t = { ...(v as Record<string, unknown>) };
+      delete t.tiktokSessionId;
+      delete t.googleCloudApiKey;
+      delete t.vbeeApiKey;
+      delete t.vbeeAppId;
+      delete t.vinaReferenceAudioB64;
+      patch[k] = t;
+    } else {
+      patch[k] = v;
+    }
   }
   return patch;
 }

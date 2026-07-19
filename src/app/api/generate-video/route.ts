@@ -8,6 +8,7 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { localVideoFilename } from '@/contracts';
 import { BrowserAgent } from '@/lib/agents/BrowserAgent';
 import { assertProAccess } from '@/lib/entitlement';
+import { probeVisualArtifact } from '@/lib/mediaArtifactValidation';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 
@@ -27,7 +28,7 @@ function findChromePath(): string | null {
 
 export const runtime = 'nodejs';
 /** Flow Veo can take several minutes (upload + captcha + poll). */
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 function getApiKeyPath(): string {
   return path.join(process.cwd(), 'apikey.txt');
@@ -115,11 +116,27 @@ function resolveLocalImagePath(imageRef?: string): string | null {
   return fs.existsSync(localImagePath) ? localImagePath : null;
 }
 
-function runwayRatioFromAspect(aspectRatio: string): string {
-  if (aspectRatio === '9:16') return '768:1280';
-  if (aspectRatio === '1:1') return '960:960';
-  if (aspectRatio === '4:5') return '768:960';
-  return '1280:768';
+function runwayRatioFromAspect(aspectRatio: string, model: string): string {
+  const legacyGen3 = model === 'gen3a_turbo';
+  const supportedCurrentModel = model === 'gen4.5' || model === 'gen4_turbo';
+  if (!legacyGen3 && !supportedCurrentModel) {
+    throw new Error(`Runway model is not mapped for image_to_video: ${model}`);
+  }
+  const ratios: Record<string, string> = legacyGen3
+    ? {
+        '16:9': '1280:768',
+        '9:16': '768:1280',
+      }
+    : {
+        '16:9': '1280:720',
+        '9:16': '720:1280',
+        '1:1': '960:960',
+      };
+  const resolved = ratios[aspectRatio];
+  if (!resolved) {
+    throw new Error(`Runway ${model} does not support configured aspect ratio: ${aspectRatio}`);
+  }
+  return resolved;
 }
 
 function quoteCmdArg(arg: string): string {
@@ -177,7 +194,7 @@ export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
   // Pro gate (open mode = desktop allow-all)
   try {
-    assertProAccess(req);
+    await assertProAccess(req);
   } catch (err) {
     return NextResponse.json(toErrorJson(err, correlationId), {
       status: httpStatusFromError(err),
@@ -204,10 +221,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '[Video API] Thieu prompt video thuc te. He thong khong tu chen prompt mau.' }, { status: 400 });
     }
 
-    seedanceGenCtx = {
+    const videoDuration = Number(duration);
+    if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+      return NextResponse.json({ error: '[Video API] Thieu thoi luong video hop le.' }, { status: 400 });
+    }
+
+    const secondsPerBeat = Number(body.secondsPerBeat);
+    if (!Number.isFinite(secondsPerBeat) || secondsPerBeat <= 0) {
+      return NextResponse.json({ error: '[Video API] Thieu secondsPerBeat hop le. He thong khong tu gan 6 giay.' }, { status: 400 });
+    }
+
+    const videoProvider = typeof body.videoProvider === 'string' ? body.videoProvider.trim() : '';
+    const supportedVideoProviders = ['flow', 'sora', 'veo', 'grok', 'luma', 'runway', 'ffmpeg'];
+    if (!videoProvider) {
+      return NextResponse.json({ error: '[Video API] Thieu videoProvider. He thong khong tu chay provider mac dinh.' }, { status: 400 });
+    }
+    if (!supportedVideoProviders.includes(videoProvider)) {
+      return NextResponse.json({ error: `[Video API] Provider ${videoProvider} khong duoc ho tro trong che do production.` }, { status: 400 });
+    }
+    if (videoProvider === 'flow' && ![4, 6, 8].includes(videoDuration)) {
+      return NextResponse.json({ error: `[Video API] Flow chi nhan thoi luong 4/6/8 giay, khong nhan ${videoDuration}s.` }, { status: 400 });
+    }
+
+    const seedanceGenCtx: SeedanceGenerationContext = {
       chapterNum: Number(chapterNum),
       sceneIndex: Number(sceneIndex),
       promptIndex: Number(promptIndex) || 0,
+      durationSec: videoDuration,
+      secondsPerBeat,
       projectSlug:
         typeof body.projectTitle === 'string'
           ? body.projectTitle
@@ -215,6 +256,14 @@ export async function POST(req: Request) {
             ? body.ten_tac_pham
             : undefined,
       promptText,
+      styleHint:
+        typeof body.styleHint === 'string' && body.styleHint.trim()
+          ? body.styleHint.trim()
+          : undefined,
+      genre:
+        typeof body.genre === 'string' && body.genre.trim()
+          ? body.genre.trim()
+          : undefined,
     };
 
     // Seedance 2.0 — sequence-aware video_prompt (continuation / directed clip) baked in
@@ -222,9 +271,6 @@ export async function POST(req: Request) {
       const { resolveVideoPromptWithSequence } = await import(
         '@/lib/integrations/seedanceAuto'
       );
-      const durationSec = Number(duration) > 0 ? Number(duration) : 5;
-      const secondsPerBeat =
-        Number(body.secondsPerBeat) > 0 ? Number(body.secondsPerBeat) : undefined;
       const chNum = Number(chapterNum);
       const scIdx = Number(sceneIndex);
       const pIdx = Number(promptIndex) || 0;
@@ -252,7 +298,7 @@ export async function POST(req: Request) {
             : undefined,
         hasStartImage: Boolean(startImage),
         hasEndImage: Boolean(endImage),
-        durationSec,
+        durationSec: videoDuration,
         secondsPerBeat,
         title:
           typeof body.projectTitle === 'string'
@@ -270,34 +316,31 @@ export async function POST(req: Request) {
         laterSentences: later,
       });
       promptText = resolved.promptText;
-      if (seedanceGenCtx) seedanceGenCtx.promptText = promptText;
+      seedanceGenCtx.promptText = promptText;
       console.log(
         `[Video API] Seedance sequence relation=${resolved.sequenceRelation} cont=${resolved.usedContinuation} clip=${resolved.clipId}`,
       );
     } catch (e) {
-      // Continuity bake is best-effort at gen-video; Gen Prompt Studio already hard-fails on sequence.
-      // Keep original promptText so gen still runs when only handoff metadata fails.
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[Video API] Seedance sequence continuity skipped:', msg);
-    }
-
-    const videoDuration = Number(duration);
-    if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
-      return NextResponse.json({ error: '[Video API] Thieu thoi luong video hop le.' }, { status: 400 });
+      console.error('[Video API] Seedance sequence continuity failed:', msg);
+      return NextResponse.json(
+        { error: `[Video API] Seedance sequence failed: ${msg}` },
+        { status: 502 },
+      );
     }
 
     const filename = localVideoFilename(chapterNum, sceneIndex);
-    const videoProvider = typeof body.videoProvider === 'string' ? body.videoProvider.trim() : '';
-    const supportedVideoProviders = ['flow', 'sora', 'veo', 'grok', 'luma', 'runway', 'ffmpeg'];
-    if (!videoProvider) {
-      return NextResponse.json({ error: '[Video API] Thieu videoProvider. He thong khong tu chay provider mac dinh.' }, { status: 400 });
-    }
-    if (!supportedVideoProviders.includes(videoProvider)) {
-      return NextResponse.json({ error: `[Video API] Provider ${videoProvider} khong duoc ho tro trong che do production.` }, { status: 400 });
-    }
-
     const videoApiKey = body.videoApiKey || '';
-    const videoAspectRatio = body.videoAspectRatio || '16:9';
+    const videoAspectRatio =
+      typeof body.videoAspectRatio === 'string'
+        ? body.videoAspectRatio.trim()
+        : '';
+    if (!videoAspectRatio) {
+      return NextResponse.json(
+        { error: '[Video API] Thieu videoAspectRatio. He thong khong tu gan 16:9.' },
+        { status: 400 },
+      );
+    }
 
     console.log(`[Video API] Bắt đầu sinh video cho Cảnh ${sceneIndex} | Provider: ${videoProvider} | Duration: ${videoDuration}s`);
 
@@ -331,21 +374,38 @@ export async function POST(req: Request) {
         } = await import('@/lib/flow-bridge');
         await ensureBridgeStarted();
         let snap = await getBridgeSnapshotAsync();
+        const activeAccount = snap.accounts?.find(
+          (account) => account.id === snap.activeAccountId,
+        );
         // Need BOTH extension socket + token. Stale flowKeyPresent alone = false green.
         const sessionReady =
-          Boolean(snap.extensionConnected) && Boolean(snap.flowKeyPresent);
+          Boolean(activeAccount?.extensionConnected) &&
+          Boolean(activeAccount?.email && activeAccount.email.includes('@')) &&
+          Boolean(activeAccount?.sessionVerified) &&
+          Boolean(activeAccount?.flowKeyPresent);
         if (!sessionReady) {
           console.log(
             `[Flow Video] Session incomplete ext=${snap.extensionConnected} key=${snap.flowKeyPresent} — auto bootstrap…`,
           );
           const boot = await bootstrapFlow({
-            forceChrome: !snap.extensionConnected || !snap.flowKeyPresent,
+            forceChrome: !sessionReady,
+            accountId: snap.activeAccountId || undefined,
             engine: 'auto',
             waitExtensionMs: 40000,
             waitLoginMs: 25000,
           });
           snap = await getBridgeSnapshotAsync();
-          if (!snap.flowKeyPresent || !snap.extensionConnected) {
+          const activeAfterBootstrap = snap.accounts?.find(
+            (account) => account.id === snap.activeAccountId,
+          );
+          const readyAfterBootstrap = Boolean(
+            activeAfterBootstrap?.extensionConnected &&
+              activeAfterBootstrap?.email &&
+              activeAfterBootstrap.email.includes('@') &&
+              activeAfterBootstrap.sessionVerified &&
+              activeAfterBootstrap.flowKeyPresent,
+          );
+          if (!readyAfterBootstrap) {
             const detail =
               boot.message ||
               (!snap.extensionConnected
@@ -364,7 +424,16 @@ export async function POST(req: Request) {
             );
           }
         }
-        if (!snap.flowKeyPresent) {
+        const activeReady = snap.accounts?.find(
+          (account) => account.id === snap.activeAccountId,
+        );
+        if (
+          !snap.flowKeyPresent ||
+          !activeReady?.email ||
+          !activeReady.email.includes('@') ||
+          !activeReady.sessionVerified ||
+          !activeReady.flowKeyPresent
+        ) {
           return NextResponse.json(
             {
               error:
@@ -446,10 +515,16 @@ export async function POST(req: Request) {
         }
         const src = result.resultPaths[0];
         try {
-          fs.mkdirSync(path.dirname(localSavePath), { recursive: true });
-          if (src !== localSavePath) fs.copyFileSync(src, localSavePath);
-        } catch {
-          /* ignore */
+          persistExistingVideoFile(src, localSavePath);
+        } catch (copyError) {
+          return NextResponse.json(
+            {
+              error: `[Google Flow Video] Generated video could not be persisted: ${
+                copyError instanceof Error ? copyError.message : String(copyError)
+              }`,
+            },
+            { status: 502 },
+          );
         }
         // Persist Flow mediaId for Extend (B)
         try {
@@ -475,6 +550,7 @@ export async function POST(req: Request) {
           chapterNum,
           'flow',
           result.mediaIds,
+          seedanceGenCtx,
         );
       } catch (e: unknown) {
         return NextResponse.json(
@@ -494,9 +570,24 @@ export async function POST(req: Request) {
       let lastError = '';
       for (const currentKey of providerKeysToTry) {
         try {
+          const requestedModel = String(model || '').trim();
+          if (!requestedModel) {
+            return NextResponse.json(
+              { error: '[Luma Error] Thieu model Luma cu the.' },
+              { status: 400 },
+            );
+          }
+          if (startImage && !publicImageUrl) {
+            return NextResponse.json(
+              { error: '[Luma Error] Khong the tai anh dau vao len host cong khai; khong chuyen ngam sang text-to-video.' },
+              { status: 502 },
+            );
+          }
           const payload: any = {
             prompt: promptText,
-            aspect_ratio: videoAspectRatio
+            aspect_ratio: videoAspectRatio,
+            model: requestedModel,
+            duration: `${videoDuration}s`,
           };
           if (publicImageUrl) {
             payload.keyframes = {
@@ -516,8 +607,37 @@ export async function POST(req: Request) {
           });
           if (res.ok) {
             const data = await res.json();
-            console.log(`[Video API] Luma job created: ${data.id}`);
-            return NextResponse.json({ success: true, message: `Luma job created: ${data.id}`, jobId: data.id });
+            const jobId = String(data.id || '').trim();
+            if (!jobId) {
+              return NextResponse.json(
+                { error: '[Luma Dream Machine Error] Create response did not contain a job id.' },
+                { status: 502 },
+              );
+            }
+            console.log(`[Video API] Luma job created: ${jobId}; polling real artifact`);
+            try {
+              const videoData = await pollLumaVideo(jobId, currentKey, 240_000);
+              return await persistDownloadedVideo({
+                bytes: videoData,
+                localSavePath,
+                filename,
+                duration: videoDuration,
+                drivePath,
+                chapterNum,
+                method: `Luma ${requestedModel}`,
+                seedanceCtx: seedanceGenCtx,
+              });
+            } catch (pollError) {
+              return NextResponse.json(
+                {
+                  error: `[Luma Dream Machine Error] ${
+                    pollError instanceof Error ? pollError.message : String(pollError)
+                  }`,
+                  jobId,
+                },
+                { status: 502 },
+              );
+            }
           } else {
             lastError = await res.text();
             try { lastError = JSON.parse(lastError).detail || lastError; } catch {}
@@ -537,24 +657,67 @@ export async function POST(req: Request) {
       let lastError = '';
       for (const currentKey of providerKeysToTry) {
         try {
+          const requestedModel = String(model || '').trim();
+          if (!requestedModel) {
+            return NextResponse.json(
+              { error: '[Runway Error] Thieu model Runway cu the.' },
+              { status: 400 },
+            );
+          }
+          if (startImage && !publicImageUrl) {
+            return NextResponse.json(
+              { error: '[Runway Error] Khong the tai anh dau vao len host cong khai; khong bo qua anh ngam.' },
+              { status: 502 },
+            );
+          }
           const res = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${currentKey}`,
-              'X-Runway-Version': '2024-09-13',
+              'X-Runway-Version': '2024-11-06',
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'gen3a_turbo',
+              model: requestedModel,
               promptText: promptText,
               promptImage: publicImageUrl || undefined,
-              ratio: runwayRatioFromAspect(videoAspectRatio)
+              ratio: runwayRatioFromAspect(videoAspectRatio, requestedModel),
+              duration: videoDuration,
             })
           });
           if (res.ok) {
             const data = await res.json();
-            console.log(`[Video API] Runway job created: ${data.id}`);
-            return NextResponse.json({ success: true, message: `Runway job created: ${data.id}`, jobId: data.id });
+            const jobId = String(data.id || '').trim();
+            if (!jobId) {
+              return NextResponse.json(
+                { error: '[Runway Error] Create response did not contain a task id.' },
+                { status: 502 },
+              );
+            }
+            console.log(`[Video API] Runway job created: ${jobId}; polling real artifact`);
+            try {
+              const videoData = await pollRunwayVideo(jobId, currentKey, 240_000);
+              return await persistDownloadedVideo({
+                bytes: videoData,
+                localSavePath,
+                filename,
+                duration: videoDuration,
+                drivePath,
+                chapterNum,
+                method: `Runway ${requestedModel}`,
+                seedanceCtx: seedanceGenCtx,
+              });
+            } catch (pollError) {
+              return NextResponse.json(
+                {
+                  error: `[Runway Error] ${
+                    pollError instanceof Error ? pollError.message : String(pollError)
+                  }`,
+                  jobId,
+                },
+                { status: 502 },
+              );
+            }
           } else {
             lastError = await res.text();
             try { lastError = JSON.parse(lastError).error || lastError; } catch {}
@@ -576,7 +739,7 @@ export async function POST(req: Request) {
       }
 
       const imageUrl = imageDataUriFromLocalFile(sourceImagePath);
-      const requestDuration = Math.max(1, Math.min(15, Number(videoDuration) || 6));
+      const requestDuration = Math.max(1, Math.min(15, videoDuration));
       let lastError = '';
       for (const currentKey of providerKeysToTry) {
         try {
@@ -598,8 +761,16 @@ export async function POST(req: Request) {
           if (res.ok && data.request_id) {
             const videoData = await pollXaiVideo(data.request_id, currentKey, 180000);
             if (videoData) {
-              fs.writeFileSync(localSavePath, videoData);
-              return await createSuccessResponse(localSavePath, filename, requestDuration, drivePath, chapterNum, 'Grok Imagine Video 1.5');
+              return await persistDownloadedVideo({
+                bytes: videoData,
+                localSavePath,
+                filename,
+                duration: requestDuration,
+                drivePath,
+                chapterNum,
+                method: 'Grok Imagine Video 1.5',
+                seedanceCtx: seedanceGenCtx,
+              });
             }
             lastError = 'Timeout while waiting for Grok Imagine video result.';
           } else {
@@ -620,21 +791,88 @@ export async function POST(req: Request) {
       let lastError = '';
       for (const currentKey of providerKeysToTry) {
         try {
-          const res = await fetch('https://api.openai.com/v1/videos/generations', {
+          const requestedModel = String(model || '').trim();
+          if (!['sora-2', 'sora-2-pro'].includes(requestedModel)) {
+            return NextResponse.json(
+              { error: `[OpenAI Sora Error] Model phai la sora-2 hoac sora-2-pro, nhan: ${requestedModel || '(missing)'}.` },
+              { status: 400 },
+            );
+          }
+          if (![4, 8, 12].includes(videoDuration)) {
+            return NextResponse.json(
+              { error: `[OpenAI Sora Error] Duration phai la 4, 8 hoac 12 giay, nhan: ${videoDuration}.` },
+              { status: 400 },
+            );
+          }
+          const soraSize = videoAspectRatio === '16:9'
+            ? '1280x720'
+            : videoAspectRatio === '9:16'
+              ? '720x1280'
+              : '';
+          if (!soraSize) {
+            return NextResponse.json(
+              { error: `[OpenAI Sora Error] Aspect ratio ${videoAspectRatio} khong duoc ho tro; chon 16:9 hoac 9:16.` },
+              { status: 400 },
+            );
+          }
+          const form = new FormData();
+          form.append('model', requestedModel);
+          form.append('prompt', promptText);
+          form.append('seconds', String(videoDuration));
+          form.append('size', soraSize);
+          if (sourceImagePath) {
+            const ext = path.extname(sourceImagePath).toLowerCase();
+            const mime = ext === '.jpg' || ext === '.jpeg'
+              ? 'image/jpeg'
+              : ext === '.webp'
+                ? 'image/webp'
+                : 'image/png';
+            form.append(
+              'input_reference',
+              new Blob([fs.readFileSync(sourceImagePath)], { type: mime }),
+              path.basename(sourceImagePath),
+            );
+          }
+          const res = await fetch('https://api.openai.com/v1/videos', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${currentKey}`,
-              'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              model: "sora-1.0",
-              prompt: promptText,
-              resolution: videoAspectRatio === '16:9' ? '1920x1080' : '1080x1920'
-            })
+            body: form,
           });
           if (res.ok) {
             const data = await res.json();
-            return NextResponse.json({ success: true, data });
+            const jobId = String(data.id || '').trim();
+            if (!jobId) {
+              return NextResponse.json(
+                { error: '[OpenAI Sora Error] Create response did not contain a video id.' },
+                { status: 502 },
+              );
+            }
+            console.log(`[Video API] OpenAI Sora job created: ${jobId}; polling real artifact`);
+            try {
+              const videoData = await pollOpenAiVideo(jobId, currentKey, 240_000);
+              return await persistDownloadedVideo({
+                bytes: videoData,
+                localSavePath,
+                filename,
+                duration: videoDuration,
+                drivePath,
+                chapterNum,
+                method: `OpenAI ${requestedModel}`,
+                seedanceCtx: seedanceGenCtx,
+              });
+            } catch (pollError) {
+              return NextResponse.json(
+                {
+                  error: `[OpenAI Sora Error] ${
+                    pollError instanceof Error ? pollError.message : String(pollError)
+                  }`,
+                  jobId,
+                },
+                { status: 502 },
+              );
+            }
           } else {
             lastError = await res.text();
             try { lastError = JSON.parse(lastError).error?.message || lastError; } catch {}
@@ -689,8 +927,16 @@ export async function POST(req: Request) {
               if (data.name && data.name.includes('operations/')) {
                 const videoData = await pollOperation(data.name, key, 120000);
                 if (videoData) {
-                  fs.writeFileSync(localSavePath, videoData);
-                  return await createSuccessResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, veoModel);
+                  return await persistDownloadedVideo({
+                    bytes: videoData,
+                    localSavePath,
+                    filename,
+                    duration: videoDuration,
+                    drivePath,
+                    chapterNum,
+                    method: veoModel,
+                    seedanceCtx: seedanceGenCtx,
+                  });
                 }
               }
               if (data.candidates) {
@@ -699,8 +945,16 @@ export async function POST(req: Request) {
                     for (const part of candidate.content.parts) {
                       if (part.inlineData?.mimeType?.startsWith('video/')) {
                         const videoBuffer = Buffer.from(part.inlineData.data, 'base64');
-                        fs.writeFileSync(localSavePath, videoBuffer);
-                        return await createSuccessResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, veoModel);
+                        return await persistDownloadedVideo({
+                          bytes: videoBuffer,
+                          localSavePath,
+                          filename,
+                          duration: videoDuration,
+                          drivePath,
+                          chapterNum,
+                          method: veoModel,
+                          seedanceCtx: seedanceGenCtx,
+                        });
                       }
                     }
                   }
@@ -720,7 +974,7 @@ export async function POST(req: Request) {
 
     // 5. FFMPEG VIDEO BUILDER (Ken Burns)
     else if (videoProvider === 'ffmpeg') {
-      return await createFfmpegVideoResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, body.useGpuAcceleration, sourceImagePath);
+      return await createFfmpegVideoResponse(localSavePath, filename, videoDuration, drivePath, chapterNum, body.useGpuAcceleration, sourceImagePath, seedanceGenCtx);
     }
 
     else {
@@ -755,6 +1009,209 @@ function isSvgLikeFile(localFilePath: string) {
   } catch {
     return false;
   }
+}
+
+function replaceFileTransactionally(tempPath: string, destinationPath: string): void {
+  try {
+    fs.renameSync(tempPath, destinationPath);
+    return;
+  } catch (renameError) {
+    if (!fs.existsSync(destinationPath)) throw renameError;
+  }
+
+  const backupPath = `${destinationPath}.backup-${process.pid}-${Date.now()}`;
+  fs.renameSync(destinationPath, backupPath);
+  try {
+    fs.renameSync(tempPath, destinationPath);
+  } catch (error) {
+    if (!fs.existsSync(destinationPath) && fs.existsSync(backupPath)) {
+      fs.renameSync(backupPath, destinationPath);
+    }
+    throw error;
+  }
+  try {
+    fs.unlinkSync(backupPath);
+  } catch {
+    console.warn(`[Video API] Could not remove replacement backup: ${backupPath}`);
+  }
+}
+
+function persistExistingVideoFile(sourcePath: string, destinationPath: string): void {
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Generated video source does not exist: ${sourcePath}`);
+  }
+  const tempPath = `${destinationPath}.copy-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.copyFileSync(sourcePath, tempPath);
+    const artifact = probeVisualArtifact(tempPath, 'video');
+    if (!artifact.ok) {
+      throw new Error(`Generated video artifact rejected: ${artifact.error}`);
+    }
+    replaceFileTransactionally(tempPath, destinationPath);
+  } finally {
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        /* best-effort cleanup; destination and prior asset stay untouched */
+      }
+    }
+  }
+}
+
+async function persistDownloadedVideo(opts: {
+  bytes: Buffer;
+  localSavePath: string;
+  filename: string;
+  duration: number;
+  drivePath: string;
+  chapterNum: number;
+  method: string;
+  seedanceCtx?: SeedanceGenerationContext;
+}) {
+  const tempPath = `${opts.localSavePath}.download-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(opts.localSavePath), { recursive: true });
+    fs.writeFileSync(tempPath, opts.bytes);
+    const artifact = probeVisualArtifact(tempPath, 'video');
+    if (!artifact.ok) {
+      throw new Error(`Downloaded video artifact rejected: ${artifact.error}`);
+    }
+    replaceFileTransactionally(tempPath, opts.localSavePath);
+    return await createSuccessResponse(
+      opts.localSavePath,
+      opts.filename,
+      opts.duration,
+      opts.drivePath,
+      opts.chapterNum,
+      opts.method,
+      undefined,
+      opts.seedanceCtx,
+    );
+  } finally {
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        /* best-effort cleanup; validated destination is never removed */
+      }
+    }
+  }
+}
+
+async function downloadVideoBytes(
+  url: string,
+  label: string,
+  headers?: Record<string, string>,
+): Promise<Buffer> {
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`${label} download failed: HTTP ${response.status}`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error(`${label} download returned an empty artifact`);
+  }
+  return bytes;
+}
+
+async function pollLumaVideo(
+  jobId: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<Buffer> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const response = await fetch(
+      `https://api.lumalabs.ai/dream-machine/v1/generations/${encodeURIComponent(jobId)}`,
+      { headers: { Authorization: `Bearer ${apiKey}`, accept: 'application/json' } },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || `Luma poll failed: HTTP ${response.status}`);
+    }
+    const state = String(data.state || '').toLowerCase();
+    if (state === 'completed') {
+      const videoUrl = String(data.assets?.video || '').trim();
+      if (!videoUrl) throw new Error('Luma completed without assets.video');
+      return downloadVideoBytes(videoUrl, 'Luma');
+    }
+    if (state === 'failed') {
+      throw new Error(data.failure_reason || 'Luma generation failed');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error(`Luma generation timed out after ${Math.round(timeoutMs / 1000)}s`);
+}
+
+async function pollRunwayVideo(
+  jobId: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<Buffer> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const response = await fetch(
+      `https://api.dev.runwayml.com/v1/tasks/${encodeURIComponent(jobId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'X-Runway-Version': '2024-11-06',
+          accept: 'application/json',
+        },
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `Runway poll failed: HTTP ${response.status}`);
+    }
+    const status = String(data.status || '').toUpperCase();
+    if (status === 'SUCCEEDED') {
+      const videoUrl = Array.isArray(data.output)
+        ? String(data.output[0] || '').trim()
+        : '';
+      if (!videoUrl) throw new Error('Runway succeeded without an output URL');
+      return downloadVideoBytes(videoUrl, 'Runway');
+    }
+    if (status === 'FAILED' || status === 'CANCELED') {
+      throw new Error(data.failure || data.error || `Runway task ${status.toLowerCase()}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error(`Runway generation timed out after ${Math.round(timeoutMs / 1000)}s`);
+}
+
+async function pollOpenAiVideo(
+  jobId: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<Buffer> {
+  const auth = { Authorization: `Bearer ${apiKey}` };
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const response = await fetch(
+      `https://api.openai.com/v1/videos/${encodeURIComponent(jobId)}`,
+      { headers: auth },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || `OpenAI video poll failed: HTTP ${response.status}`);
+    }
+    const status = String(data.status || '').toLowerCase();
+    if (status === 'completed') {
+      return downloadVideoBytes(
+        `https://api.openai.com/v1/videos/${encodeURIComponent(jobId)}/content`,
+        'OpenAI Sora',
+        auth,
+      );
+    }
+    if (status === 'failed') {
+      throw new Error(data.error?.message || 'OpenAI Sora generation failed');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error(`OpenAI Sora generation timed out after ${Math.round(timeoutMs / 1000)}s`);
 }
 
 async function pollXaiVideo(requestId: string, apiKey: string, timeoutMs: number): Promise<Buffer | null> {
@@ -826,14 +1283,18 @@ async function pollOperation(operationName: string, apiKey: string, timeoutMs: n
   return null;
 }
 
-/** Seedance sequence context for the in-flight generate-video request */
-let seedanceGenCtx: {
+/** Seedance sequence context scoped to one generate-video request. */
+type SeedanceGenerationContext = {
   chapterNum: number;
   sceneIndex: number;
   promptIndex: number;
+  durationSec: number;
+  secondsPerBeat: number;
   projectSlug?: string;
   promptText?: string;
-} | null = null;
+  styleHint?: string;
+  genre?: string;
+};
 
 function tryMarkSeedanceGenerated(opts: {
   chapterNum: number;
@@ -843,6 +1304,10 @@ function tryMarkSeedanceGenerated(opts: {
   mediaId?: string;
   projectSlug?: string;
   promptText?: string;
+  durationSec: number;
+  secondsPerBeat: number;
+  styleHint?: string;
+  genre?: string;
 }): { clipId?: string; accepted?: boolean } {
   try {
     const {
@@ -868,9 +1333,9 @@ function tryMarkSeedanceGenerated(opts: {
             title: `Sc ${opts.sceneIndex}`,
           },
         ],
-        styleHint: 'cinematic',
-        secondsPerBeat: 6,
-        videoDuration: 6,
+        styleHint: opts.styleHint,
+        secondsPerBeat: opts.secondsPerBeat,
+        videoDuration: opts.durationSec,
         projectSlug: opts.projectSlug,
         forceRebuild: false,
       });
@@ -894,9 +1359,10 @@ function tryMarkSeedanceGenerated(opts: {
           promptIndex: opts.promptIndex,
           sceneText: opts.promptText,
           videoPrompt: opts.promptText,
-          styleHint: String(state.story?.tone || 'cinematic'),
-          durationSec: 6,
-          secondsPerBeat: state.seconds_per_beat || 6,
+          styleHint: opts.styleHint || String(state.story?.tone || ''),
+          genre: opts.genre,
+          durationSec: opts.durationSec,
+          secondsPerBeat: opts.secondsPerBeat,
           hasStartImage: true,
         });
         const exists = state.clips.some((c) => c.clip_id === pack.contract.clip_id);
@@ -1015,7 +1481,18 @@ async function createSuccessResponse(
   chapterNum: number,
   method: string,
   mediaIds?: string[],
+  seedanceCtx?: SeedanceGenerationContext,
 ) {
+  const artifact = probeVisualArtifact(localSavePath, 'video');
+  if (!artifact.ok) {
+    return NextResponse.json(
+      {
+        error: `[Video API] Provider returned an invalid video artifact: ${artifact.error}`,
+      },
+      { status: 502 },
+    );
+  }
+
   // Lưu vào Drive nếu có
   let driveSaved = false;
   let driveFilePath = '';
@@ -1032,15 +1509,19 @@ async function createSuccessResponse(
   const mids = Array.isArray(mediaIds) ? mediaIds.filter(Boolean) : [];
   const videoPath = `/video/${filename}`;
   let seedanceMeta: { clipId?: string; accepted?: boolean } = {};
-  if (seedanceGenCtx) {
+  if (seedanceCtx) {
     seedanceMeta = tryMarkSeedanceGenerated({
-      chapterNum: seedanceGenCtx.chapterNum,
-      sceneIndex: seedanceGenCtx.sceneIndex,
-      promptIndex: seedanceGenCtx.promptIndex,
+      chapterNum: seedanceCtx.chapterNum,
+      sceneIndex: seedanceCtx.sceneIndex,
+      promptIndex: seedanceCtx.promptIndex,
       videoPath,
       mediaId: mids[0],
-      projectSlug: seedanceGenCtx.projectSlug,
-      promptText: seedanceGenCtx.promptText,
+      projectSlug: seedanceCtx.projectSlug,
+      promptText: seedanceCtx.promptText,
+      durationSec: seedanceCtx.durationSec,
+      secondsPerBeat: seedanceCtx.secondsPerBeat,
+      styleHint: seedanceCtx.styleHint,
+      genre: seedanceCtx.genre,
     });
   }
 
@@ -1053,7 +1534,7 @@ async function createSuccessResponse(
         localSavePath,
         videoPath,
         chapterNum,
-        sceneIndex: seedanceGenCtx?.sceneIndex ?? 0,
+        sceneIndex: seedanceCtx?.sceneIndex ?? 0,
       }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 25_000)),
     ]);
@@ -1062,7 +1543,7 @@ async function createSuccessResponse(
       fs.mkdirSync(dir, { recursive: true });
       watchQcPath = path.join(
         dir,
-        `qc_ch${chapterNum}_sc${seedanceGenCtx?.sceneIndex ?? 0}_${Date.now()}.md`,
+        `qc_ch${chapterNum}_sc${seedanceCtx?.sceneIndex ?? 0}_${Date.now()}.md`,
       );
       fs.writeFileSync(watchQcPath, qc.brief, 'utf8');
       watchQcOk = qc.ok;
@@ -1080,8 +1561,15 @@ async function createSuccessResponse(
     driveSaved,
     driveFilePath,
     filename,
-    duration,
+    duration: artifact.durationSec || duration,
     method,
+    artifact: {
+      codec: artifact.codec,
+      width: artifact.width,
+      height: artifact.height,
+      durationSec: artifact.durationSec,
+      sizeBytes: artifact.sizeBytes,
+    },
     mediaIds: mids.length ? mids : undefined,
     mediaId: mids[0] || undefined,
     seedance: seedanceMeta.clipId
@@ -1097,7 +1585,7 @@ async function createSuccessResponse(
 }
 
 // Tạo response bằng FFmpeg từ ảnh đã gen
-async function createFfmpegVideoResponse(localSavePath: string, filename: string, duration: number, drivePath: string, chapterNum: number, useGpu = false, sourceImagePath?: string | null) {
+async function createFfmpegVideoResponse(localSavePath: string, filename: string, duration: number, drivePath: string, chapterNum: number, useGpu = false, sourceImagePath?: string | null, seedanceCtx?: SeedanceGenerationContext) {
   try {
     const publicVideoDir = path.dirname(localSavePath);
     let tempImagePath = path.join(publicVideoDir, `temp_${Date.now()}.jpg`);
@@ -1210,6 +1698,8 @@ async function createFfmpegVideoResponse(localSavePath: string, filename: string
       drivePath,
       chapterNum,
       'Generated Image + FFmpeg Ken Burns',
+      undefined,
+      seedanceCtx,
     );
   } catch (err: unknown) {
     console.error(`[FFmpeg Video Builder] Lỗi:`, (err as Error).message);

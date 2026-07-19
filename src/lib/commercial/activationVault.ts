@@ -1,8 +1,9 @@
 /**
- * Activation codes vault — seller pre-issues codes; buyer redeems once with HWID.
+ * Activation codes vault — seller pre-issues codes; buyer redeems with HWID.
  * File: data/licenses/activation-codes.json
  *
  * Code format: AINOVEL-XXXX-XXXX-XXXX (Crockford-ish uppercase)
+ * Multi-seat: maxSeats (default 1) + seats[] of HWIDs that redeemed.
  */
 
 import crypto from 'crypto';
@@ -12,9 +13,14 @@ import { issueEntitlementToken } from '@/lib/entitlement';
 
 export type ActivationCodeRecord = {
   code: string;
-  plan: 'pro' | 'vip';
+  plan: 'pro';
   expSeconds: number;
   createdAt: number;
+  /** Max concurrent machines (default 1) */
+  maxSeats?: number;
+  /** HWIDs that have redeemed this code */
+  seats?: string[];
+  /** Legacy single-seat fields (synced with seats[0]) */
   redeemedAt?: number;
   redeemedHwid?: string;
   note?: string;
@@ -73,29 +79,61 @@ export function normalizeCode(code: string): string {
     .replace(/\s+/g, '');
 }
 
+/** Normalize legacy redeemedHwid → seats[] */
+function normalizeSeats(rec: ActivationCodeRecord): string[] {
+  if (Array.isArray(rec.seats) && rec.seats.length > 0) {
+    return rec.seats.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+  }
+  if (rec.redeemedHwid) {
+    return [String(rec.redeemedHwid).trim().toLowerCase()];
+  }
+  return [];
+}
+
+function syncLegacyFields(rec: ActivationCodeRecord): ActivationCodeRecord {
+  // Historical VIP records remain redeemable, but the product tier is Pro.
+  rec.plan = 'pro';
+  const seats = normalizeSeats(rec);
+  rec.seats = seats;
+  rec.maxSeats = Math.max(1, rec.maxSeats ?? 1);
+  if (seats.length > 0) {
+    rec.redeemedHwid = seats[0];
+    if (!rec.redeemedAt) rec.redeemedAt = Math.floor(Date.now() / 1000);
+  } else {
+    delete rec.redeemedHwid;
+    delete rec.redeemedAt;
+  }
+  return rec;
+}
+
 export function createActivationCodes(options: {
   count?: number;
-  plan?: 'pro' | 'vip';
+  plan?: 'pro';
   expSeconds?: number;
   note?: string;
   orderId?: string;
+  /** Concurrent machines allowed (1–20). Default 1. */
+  maxSeats?: number;
 }): ActivationCodeRecord[] {
   const count = Math.max(1, Math.min(100, options.count ?? 1));
-  const plan = options.plan === 'vip' ? 'vip' : 'pro';
+  const plan = 'pro' as const;
   const expSeconds = options.expSeconds ?? 60 * 60 * 24 * 365;
+  const maxSeats = Math.max(1, Math.min(20, options.maxSeats ?? 1));
   const vault = loadVault();
   const out: ActivationCodeRecord[] = [];
   for (let i = 0; i < count; i++) {
     let code = generateActivationCode();
     while (vault.codes[code]) code = generateActivationCode();
-    const rec: ActivationCodeRecord = {
+    const rec: ActivationCodeRecord = syncLegacyFields({
       code,
       plan,
       expSeconds,
       createdAt: Math.floor(Date.now() / 1000),
       note: options.note,
       orderId: options.orderId,
-    };
+      maxSeats,
+      seats: [],
+    });
     vault.codes[code] = rec;
     out.push(rec);
   }
@@ -109,9 +147,11 @@ export function redeemActivationCode(
 ): {
   ok: boolean;
   token?: string;
-  plan?: 'pro' | 'vip';
+  plan?: 'pro';
   error?: string;
   alreadyRedeemedSameMachine?: boolean;
+  seatsUsed?: number;
+  maxSeats?: number;
 } {
   const code = normalizeCode(rawCode);
   if (!code.startsWith('AINOVEL-')) {
@@ -126,31 +166,46 @@ export function redeemActivationCode(
   if (!id) {
     return { ok: false, error: 'Thiếu HWID máy.' };
   }
-  if (rec.redeemedAt && rec.redeemedHwid) {
-    if (rec.redeemedHwid === id) {
-      // Re-issue token for same machine (reinstall)
-      const token = issueEntitlementToken({
-        is_pro: true,
-        is_vip: false,
-        plan: 'pro',
-        hwid: id,
-        expSeconds: rec.expSeconds,
-      });
-      return {
-        ok: true,
-        token,
-        plan: 'pro',
-        alreadyRedeemedSameMachine: true,
-      };
-    }
+
+  const maxSeats = Math.max(1, rec.maxSeats ?? 1);
+  const seats = normalizeSeats(rec);
+
+  // Same machine reinstall → re-issue token
+  if (seats.includes(id)) {
+    const token = issueEntitlementToken({
+      is_pro: true,
+      is_vip: false,
+      plan: 'pro',
+      hwid: id,
+      expSeconds: rec.expSeconds,
+    });
     return {
-      ok: false,
-      error: 'Mã đã gắn máy khác. Liên hệ seller để chuyển license.',
+      ok: true,
+      token,
+      plan: 'pro',
+      alreadyRedeemedSameMachine: true,
+      seatsUsed: seats.length,
+      maxSeats,
     };
   }
 
-  rec.redeemedAt = Math.floor(Date.now() / 1000);
-  rec.redeemedHwid = id;
+  if (seats.length >= maxSeats) {
+    return {
+      ok: false,
+      error:
+        maxSeats <= 1
+          ? 'Mã đã gắn máy khác. Liên hệ seller để chuyển license (1 máy).'
+          : `Mã đã đủ ${maxSeats} máy. Liên hệ seller để chuyển seat / nâng max seats.`,
+      seatsUsed: seats.length,
+      maxSeats,
+    };
+  }
+
+  seats.push(id);
+  rec.seats = seats;
+  rec.maxSeats = maxSeats;
+  if (!rec.redeemedAt) rec.redeemedAt = Math.floor(Date.now() / 1000);
+  rec.redeemedHwid = seats[0];
   vault.codes[code] = rec;
   saveVault(vault);
 
@@ -161,12 +216,72 @@ export function redeemActivationCode(
     hwid: id,
     expSeconds: rec.expSeconds,
   });
-  return { ok: true, token, plan: 'pro' };
+  return {
+    ok: true,
+    token,
+    plan: 'pro',
+    seatsUsed: seats.length,
+    maxSeats,
+  };
+}
+
+export function getActivationCode(rawCode: string): ActivationCodeRecord | null {
+  const code = normalizeCode(rawCode);
+  const vault = loadVault();
+  const rec = vault.codes[code];
+  if (!rec) return null;
+  return syncLegacyFields({ ...rec });
+}
+
+/** Release one HWID seat so another machine can redeem. */
+export function releaseSeat(
+  rawCode: string,
+  hwid: string,
+): { ok: boolean; record?: ActivationCodeRecord; error?: string } {
+  const code = normalizeCode(rawCode);
+  const id = String(hwid || '').trim().toLowerCase();
+  if (!id) return { ok: false, error: 'Thiếu HWID cần giải phóng.' };
+  const vault = loadVault();
+  const rec = vault.codes[code];
+  if (!rec) return { ok: false, error: 'Mã không tồn tại.' };
+  const seats = normalizeSeats(rec);
+  if (!seats.includes(id)) {
+    return { ok: false, error: 'HWID không có trong danh sách seat của mã này.' };
+  }
+  rec.seats = seats.filter((s) => s !== id);
+  syncLegacyFields(rec);
+  vault.codes[code] = rec;
+  saveVault(vault);
+  return { ok: true, record: { ...rec } };
+}
+
+export function setMaxSeats(
+  rawCode: string,
+  maxSeats: number,
+): { ok: boolean; record?: ActivationCodeRecord; error?: string } {
+  const code = normalizeCode(rawCode);
+  const n = Math.max(1, Math.min(20, Math.floor(maxSeats)));
+  const vault = loadVault();
+  const rec = vault.codes[code];
+  if (!rec) return { ok: false, error: 'Mã không tồn tại.' };
+  const seats = normalizeSeats(rec);
+  if (n < seats.length) {
+    return {
+      ok: false,
+      error: `Đang có ${seats.length} seat — không hạ maxSeats xuống ${n}. Giải phóng seat trước.`,
+    };
+  }
+  rec.maxSeats = n;
+  syncLegacyFields(rec);
+  vault.codes[code] = rec;
+  saveVault(vault);
+  return { ok: true, record: { ...rec } };
 }
 
 export function listActivationCodes(limit = 50): ActivationCodeRecord[] {
   const vault = loadVault();
   return Object.values(vault.codes)
+    .map((c) => syncLegacyFields({ ...c }))
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, Math.max(1, Math.min(500, limit)));
 }

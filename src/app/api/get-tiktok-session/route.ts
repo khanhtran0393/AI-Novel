@@ -8,7 +8,7 @@ import path from 'path';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 /** Poll login up to ~5 minutes */
-export const maxDuration = 360;
+export const maxDuration = 300;
 
 function findChromePath(): string | undefined {
   const paths = [

@@ -21,14 +21,33 @@ import type {
   YoutubeSafeConfig,
 } from './novelTypes';
 
+const FLOWAGENT_LEGACY_VIDEO_MODEL = 'veo_3_1_i2v_lite_low_priority';
+
+/** One-time persisted-config upgrade to the model family proven by FlowAgent. */
+export function migrateFlowAgentVideoModel(value?: string): string | undefined {
+  return value === FLOWAGENT_LEGACY_VIDEO_MODEL ? 'OMNI_FLASH' : value;
+}
+
 export function createNovelStorePersistOptions(storeAccess: {
   getState: () => NovelStore;
   setState: (patch: Partial<NovelStore>) => void;
 }) {
+  const ttsConfigWithoutSecrets = (config: NovelState['ttsConfig']) => {
+    const {
+      tiktokSessionId: _tiktokSessionId,
+      googleCloudApiKey: _googleCloudApiKey,
+      vbeeApiKey: _vbeeApiKey,
+      vbeeAppId: _vbeeAppId,
+      vinaReferenceAudioB64: _vinaReferenceAudioB64,
+      ...safe
+    } = config;
+    return safe;
+  };
+
   return {
     name: STORE_KEY,
     storage: createJSONStorage(() => dualStorage),
-    version: 3,
+    version: 5,
     // v3: ensure every channel has outputDna + ttsDna (channel media/TTS lock)
     migrate: (persistedState: unknown, fromVersion: number) => {
       const state = { ...(persistedState as NovelState) };
@@ -39,6 +58,51 @@ export function createNovelStorePersistOptions(storeAccess: {
           if (n) next[n.id] = n;
         }
         state.channels = next;
+      }
+      if (fromVersion < 4) {
+        const mutable = state as NovelState & Record<string, unknown>;
+        for (const key of [
+          'apiKey', 'apiKeys', 'openaiApiKey', 'openaiApiKeys',
+          'grokApiKey', 'grokApiKeys', 'claudeApiKey', 'claudeApiKeys',
+          'lumaApiKey', 'lumaApiKeys', 'runwayApiKey', 'runwayApiKeys',
+          'falaiApiKey', 'falaiApiKeys', 'imageApiKey', 'videoApiKey',
+          'aiMasterApiKey', 'googleStudioCookie', 'googleStudioCookies',
+          'tiktokSessionIds',
+        ]) {
+          delete mutable[key];
+        }
+        if (state.ttsConfig) state.ttsConfig = ttsConfigWithoutSecrets(state.ttsConfig) as NovelState['ttsConfig'];
+      }
+      if (fromVersion < 5) {
+        state.videoModel = migrateFlowAgentVideoModel(state.videoModel) || state.videoModel;
+        if (state.channels && typeof state.channels === 'object') {
+          const next: Record<string, ChannelProfile> = {};
+          for (const [id, channel] of Object.entries(state.channels)) {
+            if (!channel) continue;
+            const outputDna = channel.outputDna
+              ? {
+                  ...channel.outputDna,
+                  videoModel:
+                    migrateFlowAgentVideoModel(channel.outputDna.videoModel) ||
+                    channel.outputDna.videoModel,
+                }
+              : channel.outputDna;
+            const projectSnapshot = channel.projectSnapshot
+              ? {
+                  ...channel.projectSnapshot,
+                  videoModel:
+                    migrateFlowAgentVideoModel(channel.projectSnapshot.videoModel) ||
+                    channel.projectSnapshot.videoModel,
+                }
+              : channel.projectSnapshot;
+            next[id] = {
+              ...channel,
+              outputDna,
+              projectSnapshot,
+            };
+          }
+          state.channels = next;
+        }
       }
       return state as NovelState;
     },
@@ -83,15 +147,17 @@ export function createNovelStorePersistOptions(storeAccess: {
           current.mediaStylePreset,
         imageProvider: p.imageProvider || current.imageProvider,
         imageModel: p.imageModel || current.imageModel,
-        imageApiKey: p.imageApiKey || current.imageApiKey,
+        imageApiKey: current.imageApiKey,
         imageAspectRatio: p.imageAspectRatio || current.imageAspectRatio,
         imageCount:
           typeof p.imageCount === 'number' && p.imageCount > 0
             ? p.imageCount
             : current.imageCount,
         videoProvider: p.videoProvider || current.videoProvider,
-        videoModel: p.videoModel || current.videoModel,
-        videoApiKey: p.videoApiKey || current.videoApiKey,
+        videoModel:
+          migrateFlowAgentVideoModel(p.videoModel || current.videoModel) ||
+          current.videoModel,
+        videoApiKey: current.videoApiKey,
         videoAspectRatio: p.videoAspectRatio || current.videoAspectRatio,
         videoDuration:
           typeof p.videoDuration === 'number' && p.videoDuration > 0
@@ -103,10 +169,13 @@ export function createNovelStorePersistOptions(storeAccess: {
             ? p.secondsPerBeat
             : current.secondsPerBeat,
         aiMasterModel: p.aiMasterModel || current.aiMasterModel,
-        aiMasterApiKey: p.aiMasterApiKey || current.aiMasterApiKey,
+        aiMasterApiKey: current.aiMasterApiKey,
         setup: { ...current.setup, ...(p.setup || {}) },
         ttsConfig: (() => {
-          const merged = { ...current.ttsConfig, ...(p.ttsConfig || {}) };
+          const persistedTts = p.ttsConfig
+            ? ttsConfigWithoutSecrets(p.ttsConfig)
+            : {};
+          const merged = { ...current.ttsConfig, ...persistedTts };
           // One-time YouTube-safe upgrade: legacy mass-TTS default (tiktok + flat pitch)
           const isLegacyMassTts =
             merged.platform === 'tiktok_tts' &&
@@ -204,62 +273,24 @@ export function createNovelStorePersistOptions(storeAccess: {
           (p as { activeChannelId?: string }).activeChannelId ||
           current.activeChannelId,
         editorReviews: { ...current.editorReviews, ...(p.editorReviews || {}) },
-        // Prefer non-empty secret fields from either side
-        apiKey: p.apiKey || current.apiKey,
-        apiKeys:
-          Array.isArray(p.apiKeys) && p.apiKeys.length ? p.apiKeys : current.apiKeys,
-        openaiApiKey: p.openaiApiKey || current.openaiApiKey,
-        openaiApiKeys:
-          Array.isArray(p.openaiApiKeys) && p.openaiApiKeys.length
-            ? p.openaiApiKeys
-            : current.openaiApiKeys,
-        grokApiKey: p.grokApiKey || current.grokApiKey,
-        grokApiKeys:
-          Array.isArray(p.grokApiKeys) && p.grokApiKeys.length
-            ? p.grokApiKeys
-            : current.grokApiKeys,
-        claudeApiKey: (p as { claudeApiKey?: string }).claudeApiKey || current.claudeApiKey,
-        claudeApiKeys:
-          Array.isArray((p as { claudeApiKeys?: string[] }).claudeApiKeys) &&
-          (p as { claudeApiKeys: string[] }).claudeApiKeys.length
-            ? (p as { claudeApiKeys: string[] }).claudeApiKeys
-            : current.claudeApiKeys,
-        lumaApiKey: p.lumaApiKey || current.lumaApiKey,
-        lumaApiKeys:
-          Array.isArray(p.lumaApiKeys) && p.lumaApiKeys.length
-            ? p.lumaApiKeys
-            : current.lumaApiKeys,
-        runwayApiKey: p.runwayApiKey || current.runwayApiKey,
-        runwayApiKeys:
-          Array.isArray(p.runwayApiKeys) && p.runwayApiKeys.length
-            ? p.runwayApiKeys
-            : current.runwayApiKeys,
-        falaiApiKey: p.falaiApiKey || current.falaiApiKey,
-        falaiApiKeys:
-          Array.isArray(p.falaiApiKeys) && p.falaiApiKeys.length
-            ? p.falaiApiKeys
-            : current.falaiApiKeys,
-        // imageApiKey / videoApiKey / aiMasterApiKey already set above (media block)
-        googleStudioCookie: p.googleStudioCookie || current.googleStudioCookie,
-        googleStudioCookies:
-          Array.isArray(p.googleStudioCookies) && p.googleStudioCookies.length
-            ? p.googleStudioCookies
-            : current.googleStudioCookies,
-        tiktokSessionIds: (() => {
-          const fromP = Array.isArray((p as { tiktokSessionIds?: string[] }).tiktokSessionIds)
-            ? (p as { tiktokSessionIds: string[] }).tiktokSessionIds.filter(Boolean)
-            : [];
-          if (fromP.length) return fromP;
-          if (Array.isArray(current.tiktokSessionIds) && current.tiktokSessionIds.length) {
-            return current.tiktokSessionIds;
-          }
-          // Migrate legacy single sessionid into multi list
-          const legacy =
-            (p as { ttsConfig?: { tiktokSessionId?: string } }).ttsConfig?.tiktokSessionId ||
-            current.ttsConfig?.tiktokSessionId ||
-            '';
-          return legacy.trim() ? [legacy.trim()] : [];
-        })(),
+        // Credentials are hydrated separately from Electron safeStorage.
+        apiKey: current.apiKey,
+        apiKeys: current.apiKeys,
+        openaiApiKey: current.openaiApiKey,
+        openaiApiKeys: current.openaiApiKeys,
+        grokApiKey: current.grokApiKey,
+        grokApiKeys: current.grokApiKeys,
+        claudeApiKey: current.claudeApiKey,
+        claudeApiKeys: current.claudeApiKeys,
+        lumaApiKey: current.lumaApiKey,
+        lumaApiKeys: current.lumaApiKeys,
+        runwayApiKey: current.runwayApiKey,
+        runwayApiKeys: current.runwayApiKeys,
+        falaiApiKey: current.falaiApiKey,
+        falaiApiKeys: current.falaiApiKeys,
+        googleStudioCookie: current.googleStudioCookie,
+        googleStudioCookies: current.googleStudioCookies,
+        tiktokSessionIds: current.tiktokSessionIds,
         // Keep UI unblocked; rehydrate may still replace fields from disk
         isHydrated: true,
       } as NovelStore;
@@ -274,23 +305,6 @@ export function createNovelStorePersistOptions(storeAccess: {
       chuong_dang_chon: state.chuong_dang_chon,
       projectResetEpoch: Number(state.projectResetEpoch) || 0,
       tab_hien_tai: state.tab_hien_tai,
-      apiKey: state.apiKey,
-      apiKeys: state.apiKeys,
-      openaiApiKey: state.openaiApiKey,
-      openaiApiKeys: state.openaiApiKeys,
-      grokApiKey: state.grokApiKey,
-      grokApiKeys: state.grokApiKeys,
-      claudeApiKey: state.claudeApiKey,
-      claudeApiKeys: state.claudeApiKeys,
-      lumaApiKey: state.lumaApiKey,
-      lumaApiKeys: state.lumaApiKeys,
-      runwayApiKey: state.runwayApiKey,
-      runwayApiKeys: state.runwayApiKeys,
-      falaiApiKey: state.falaiApiKey,
-      falaiApiKeys: state.falaiApiKeys,
-      googleStudioCookie: state.googleStudioCookie,
-      googleStudioCookies: state.googleStudioCookies,
-      tiktokSessionIds: state.tiktokSessionIds,
       googleDrivePath: state.googleDrivePath,
       googleDriveConnected: state.googleDriveConnected,
       googleLoggedIn: state.googleLoggedIn,
@@ -318,11 +332,9 @@ export function createNovelStorePersistOptions(storeAccess: {
       imageModel: state.imageModel,
       videoModel: state.videoModel,
       imageProvider: state.imageProvider,
-      imageApiKey: state.imageApiKey,
       videoProvider: state.videoProvider,
-      videoApiKey: state.videoApiKey,
 
-      // Persist actual plan (commercial Free/Pro/VIP/Trial)
+      // Persist actual plan (commercial Free/Trial/Pro)
       is_vip: !!state.is_vip,
       is_pro: !!state.is_pro,
       is_trial: !!state.is_trial,
@@ -330,7 +342,7 @@ export function createNovelStorePersistOptions(storeAccess: {
         typeof state.credits === 'number' && Number.isFinite(state.credits)
           ? Math.max(0, state.credits)
           : 0,
-      ttsConfig: state.ttsConfig,
+      ttsConfig: ttsConfigWithoutSecrets(state.ttsConfig),
       voiceCast: state.voiceCast,
       youtubeSafe: state.youtubeSafe,
       humanEditFlags: state.humanEditFlags,
@@ -346,7 +358,6 @@ export function createNovelStorePersistOptions(storeAccess: {
       useGpuAcceleration: state.useGpuAcceleration,
 
       aiMasterModel: state.aiMasterModel,
-      aiMasterApiKey: state.aiMasterApiKey,
       visualDnaPrompt: state.visualDnaPrompt,
       mediaStylePreset: state.mediaStylePreset,
       imageAspectRatio: state.imageAspectRatio,

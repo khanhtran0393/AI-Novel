@@ -127,7 +127,14 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
     const currentChapter = startState.danh_sach_chuong.find(
       (c) => c.so_chuong === chapterNumber,
     );
-    if (!currentChapter) return;
+    if (!currentChapter) {
+      pushToast(
+        'warn',
+        'Viết chương',
+        'Chưa có / chưa chọn chương. Mở Setup sinh dàn ý hoặc chọn chương ở sidebar.',
+      );
+      return;
+    }
 
     // Preflight hồ sơ thoại — popup ngay, không gọi API / không unhandledRejection
     const fpErr = validateSpeechFingerprints(

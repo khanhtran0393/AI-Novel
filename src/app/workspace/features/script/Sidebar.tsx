@@ -88,11 +88,19 @@ export default function Sidebar({
         void silentEnrichArcHooks({
           hypothesis: `Arc ${store.cung_hien_tai + 1} của ${store.ten_tac_pham || 'truyện'} — nhánh cốt truyện tiếp theo`,
         });
+        toast.success(
+          'Arc mới',
+          `Đã thêm ${newChapters.length} chương dàn ý cho cung tiếp theo.`,
+        );
         return true;
       }
+      toast.warn(
+        'Arc mới',
+        'AI không trả danh sách chương. Thử lại hoặc giảm số chương/cung.',
+      );
     } catch (err) {
       console.error('Lỗi khi lập kế hoạch cung mới:', err);
-      toast.info('Notice', 'Lỗi khi lên kế hoạch: ' + (err as Error).message);
+      toast.error('Lên dàn ý arc', (err as Error).message || String(err));
     } finally {
       setIsPlanningArc(false);
     }

@@ -5,7 +5,7 @@ import {
   mergeSettings,
   resolveSamplePath,
 } from '../src/lib/vinaVoice/profiles';
-import { resolveSpeaker, SpeakerResolveError } from '../src/lib/vinaVoice/speakerRegistry';
+import { resolveSpeaker } from '../src/lib/vinaVoice/speakerRegistry';
 import { provider_piper } from '../src/app/api/generate-tts/platforms/piper';
 import { provider_vieneu_tts } from '../src/app/api/generate-tts/platforms/vieneu_tts';
 import { provider_vina_voice } from '../src/app/api/generate-tts/platforms/vina_voice';
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   const edgeInVinaMsg = await assertRejects(
     () =>
       provider_vina_voice.generate('Xin chao.', opts('vi-VN-NamMinhNeural')),
-    /khong phai profile Zero-Shot/i,
+    /kh[oô]ng ph[aả]i profile Zero-Shot/i,
   );
 
   const piperMsg = await assertRejects(
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   const vieneuMsg = await assertRejects(
     () =>
       provider_vieneu_tts.generate('Xin chao.', opts('not-a-real-vieneu-voice')),
-    /not-a-real-vieneu-voice|Khong fallback/i,
+    /not-a-real-vieneu-voice|Kh[oô]ng fallback/i,
   );
 
   console.log(

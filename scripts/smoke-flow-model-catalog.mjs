@@ -51,14 +51,27 @@ assert(detectVideoModelFamily('veo_3_1_r2v_fast') === 'reference', 'r2v family')
 assert(detectVideoModelFamily('veo_3_1_i2v_lite_low_priority') === 'i2v', 'lite i2v');
 assert(detectVideoModelFamily('veo_3_1_i2v_s_fast_fl') === 'i2v', 'fl i2v');
 
-// Duration is clamped in catalog for UI/credits; aisandbox rejects videoLengthSeconds field
+// Duration may be clamped for UI/credit estimates, but generation must reject invalid values.
 assert(clampFlowVideoDuration(10, 'veo_3_1_t2v_fast') === 8, 'clamp 10→8 for payload path');
+
+let invalidDurationRejected = false;
+try {
+  buildVideoT2VBody({
+    projectId: 'p',
+    prompt: 'x',
+    videoModel: 'veo_3_1_t2v_fast',
+    durationSec: 10,
+  });
+} catch (error) {
+  invalidDurationRejected = String(error).includes('FLOW_DURATION_INVALID');
+}
+assert(invalidDurationRejected, 'generation rejects 10s instead of silently clamping');
 
 const t2v = buildVideoT2VBody({
   projectId: 'p',
   prompt: 'x',
   videoModel: 'veo_3_1_t2v_fast',
-  durationSec: 10,
+  durationSec: 8,
 });
 const t2vReq = t2v.body.requests[0];
 assert(t2vReq.videoModelKey === 'veo_3_1_t2v_fast', 't2v key');
@@ -123,6 +136,7 @@ assert(threw, 'MODEL_MISMATCH t2v on i2v');
 
 const ui = listFlowVideoModelsForUi();
 assert(ui.some((m) => m.id === 'veo_3_1_r2v_fast'), 'ui r2v');
+assert(ui.some((m) => m.id === 'OMNI_FLASH'), 'ui FlowAgent Omni Flash parity model');
 assert(ui.every((m) => !m.uiHidden), 'no hidden in ui');
 assert(ui.some((m) => m.id === 'veo_3_1_i2v_lite_low_priority'), 'ui lite lp');
 

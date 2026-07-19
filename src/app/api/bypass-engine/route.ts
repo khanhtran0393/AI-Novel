@@ -8,7 +8,7 @@ import {
 } from '@/lib/bypass-engine';
 
 export const runtime = 'nodejs';
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 const VALID_IDS = new Set(BYPASS_FILTER_CATALOG.map((c) => c.id));
 

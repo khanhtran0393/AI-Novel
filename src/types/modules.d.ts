@@ -30,7 +30,15 @@ interface AinovelToolsApi {
   openPath?: (targetPath: string) => Promise<{ ok?: boolean; error?: string }>;
 }
 
+interface AinovelCredentialsApi {
+  isElectron: boolean;
+  getSync: () => Record<string, unknown>;
+  get: () => Promise<Record<string, unknown>>;
+  set: (credentials: Record<string, unknown>) => Promise<{ ok?: boolean; error?: string }>;
+}
+
 interface Window {
   ainovelPersist?: AinovelPersistApi;
   ainovelTools?: AinovelToolsApi;
+  ainovelCredentials?: AinovelCredentialsApi;
 }

@@ -68,7 +68,11 @@ export const API = {
   entitlementTrial: '/api/entitlement/trial',
   entitlementWebhook: '/api/entitlement/webhook',
   entitlementCodes: '/api/entitlement/codes',
+  /** Multi-seat: transfer / expand / summary (admin) */
+  entitlementSeats: '/api/entitlement/seats',
   entitlementPaymentNotify: '/api/entitlement/payment-notify',
+  /** Telegram bot webhook (Vercel public) — inline Cấp Key / Từ chối */
+  entitlementTelegramWebhook: '/api/entitlement/telegram-webhook',
   commercialStatus: '/api/commercial/status',
   /** Supabase + Vercel cloud hybrid */
   cloudStatus: '/api/cloud/status',

@@ -8,13 +8,18 @@ import {
   processPaymentWebhook,
   type PaymentWebhookBody,
 } from '@/lib/commercial/paymentWebhook';
-import { getEntitlementMode, resolveEntitlementSecret } from '@/lib/entitlement';
+import {
+  assertLicenseSignerConfigured,
+  assertSellerRuntime,
+} from '@/lib/commercial/sellerRuntime';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
+    assertSellerRuntime();
+    assertLicenseSignerConfigured();
     const body = (await req.json().catch(() => ({}))) as PaymentWebhookBody;
     const auth = authorizePaymentWebhook(req, body);
     if (!auth.ok) {
@@ -22,16 +27,6 @@ export async function POST(req: Request) {
         code: 'AUTH',
         status: 403,
       });
-    }
-
-    if (getEntitlementMode() === 'enforce') {
-      const sec = resolveEntitlementSecret();
-      if (!sec.ok) {
-        throw new AppError(sec.reason || 'Secret misconfigured', {
-          code: 'INFRA',
-          status: 503,
-        });
-      }
     }
 
     const result = processPaymentWebhook(body);

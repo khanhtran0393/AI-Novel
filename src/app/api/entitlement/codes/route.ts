@@ -7,7 +7,11 @@ import {
   createActivationCodes,
   listActivationCodes,
 } from '@/lib/commercial/activationVault';
-import { getEntitlementMode, resolveEntitlementSecret } from '@/lib/entitlement';
+import { getEntitlementMode } from '@/lib/entitlement';
+import {
+  assertLicenseSignerConfigured,
+  assertSellerRuntime,
+} from '@/lib/commercial/sellerRuntime';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 
 export const runtime = 'nodejs';
@@ -32,30 +36,25 @@ function assertAdmin(body: { adminKey?: string }) {
 
 export async function POST(req: Request) {
   try {
+    assertSellerRuntime();
+    assertLicenseSignerConfigured();
     const body = (await req.json().catch(() => ({}))) as {
       adminKey?: string;
       count?: number;
-      plan?: 'pro' | 'vip';
+      plan?: 'pro';
       expSeconds?: number;
       note?: string;
       orderId?: string;
+      maxSeats?: number;
     };
     assertAdmin(body);
-    if (getEntitlementMode() === 'enforce') {
-      const sec = resolveEntitlementSecret();
-      if (!sec.ok) {
-        throw new AppError(sec.reason || 'Secret misconfigured', {
-          code: 'INFRA',
-          status: 503,
-        });
-      }
-    }
     const codes = createActivationCodes({
       count: body.count,
       plan: body.plan,
       expSeconds: body.expSeconds,
       note: body.note,
       orderId: body.orderId,
+      maxSeats: body.maxSeats,
     });
     return NextResponse.json({
       ok: true,
@@ -64,6 +63,7 @@ export async function POST(req: Request) {
         code: c.code,
         plan: c.plan,
         expSeconds: c.expSeconds,
+        maxSeats: c.maxSeats ?? 1,
         createdAt: c.createdAt,
       })),
     });
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
+    assertSellerRuntime();
     const url = new URL(req.url);
     const adminKey = url.searchParams.get('adminKey') || '';
     assertAdmin({ adminKey });
@@ -86,8 +87,11 @@ export async function GET(req: Request) {
       codes: list.map((c) => ({
         code: c.code,
         plan: c.plan,
-        redeemed: Boolean(c.redeemedAt),
+        redeemed: Boolean(c.redeemedAt) || (c.seats?.length ?? 0) > 0,
         redeemedHwid: c.redeemedHwid || null,
+        maxSeats: c.maxSeats ?? 1,
+        seats: c.seats || [],
+        seatsUsed: c.seats?.length ?? (c.redeemedHwid ? 1 : 0),
         orderId: c.orderId || null,
         createdAt: c.createdAt,
       })),

@@ -93,6 +93,17 @@ try {
   } catch {
     localRaw = null;
   }
+  if (localRaw) {
+    try {
+      const migrated = ipcRenderer.sendSync('ainovel-credentials-migrate-raw', localRaw);
+      if (typeof migrated === 'string' && migrated) {
+        localRaw = migrated;
+        localStorage.setItem(STORE_KEY, migrated);
+      }
+    } catch {
+      // Main process also sanitizes every durable write.
+    }
+  }
   const localScore = scoreRaw(localRaw);
 
   if (diskRaw && diskScore > localScore) {
@@ -138,6 +149,21 @@ contextBridge.exposeInMainWorld('ainovelPersist', {
   isElectron: true,
 });
 
+let bootCredentials = {};
+try {
+  bootCredentials = ipcRenderer.sendSync('ainovel-credentials-get-sync') || {};
+} catch {
+  bootCredentials = {};
+}
+
+/** OS-protected credentials (DPAPI via Electron safeStorage on Windows). */
+contextBridge.exposeInMainWorld('ainovelCredentials', {
+  isElectron: true,
+  getSync: () => bootCredentials,
+  get: () => ipcRenderer.invoke('ainovel-credentials-get'),
+  set: (credentials) => ipcRenderer.invoke('ainovel-credentials-set', credentials),
+});
+
 /** Tools: text reports + TTS chapter queue persistence */
 contextBridge.exposeInMainWorld('ainovelTools', {
   isElectron: true,
@@ -150,4 +176,31 @@ contextBridge.exposeInMainWorld('ainovelTools', {
     maximize: () => ipcRenderer.send('window-maximize'),
     close: () => ipcRenderer.send('window-close'),
   }
+});
+
+/** Desktop auto-update (electron-updater) — no-op when feed URL unset */
+contextBridge.exposeInMainWorld('ainovelUpdater', {
+  isElectron: true,
+  getStatus: () => ipcRenderer.invoke('ainovel-update-status'),
+  check: () => ipcRenderer.invoke('ainovel-update-check'),
+  download: () => ipcRenderer.invoke('ainovel-update-download'),
+  install: () => ipcRenderer.invoke('ainovel-update-install'),
+  onStatus: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const fn = (_e, payload) => {
+      try {
+        handler(payload);
+      } catch {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on('ainovel-update-status', fn);
+    return () => {
+      try {
+        ipcRenderer.removeListener('ainovel-update-status', fn);
+      } catch {
+        /* ignore */
+      }
+    };
+  },
 });

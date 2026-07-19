@@ -50,6 +50,48 @@ chrome.runtime.onMessage.addListener((msg, _, reply) => {
     return true;
   }
 
+  if (msg.type === 'FLOW_TRPC_REQUEST') {
+    const request = msg.request || {};
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    fetch(request.url, {
+      method: request.method || 'POST',
+      headers: request.headers || { 'Content-Type': 'application/json' },
+      body: request.body ? JSON.stringify(request.body) : undefined,
+      credentials: 'include',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const text = await response.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = { raw: text.slice(0, 1000) };
+        }
+        reply({
+          ok: true,
+          responseOk: response.ok,
+          status: response.status,
+          data,
+        });
+      })
+        .catch((error) =>
+          reply({
+            ok: false,
+            error:
+              error?.name === 'AbortError'
+                ? 'TRPC_CONTENT_TIMEOUT'
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
+          }),
+        )
+        .finally(() => clearTimeout(timeoutId));
+    return true;
+  }
+
   if (msg.type !== 'GET_CAPTCHA') return;
 
   const { requestId, pageAction } = msg;

@@ -13,13 +13,19 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    if (!Number.isFinite(targetHeight) || targetHeight <= 0) {
+      return NextResponse.json(
+        { error: 'Missing or invalid "targetHeight"; it must be greater than zero' },
+        { status: 400 },
+      );
+    }
 
     const result = await callNavGateway({
       action: 'upscale',
       payload: {
         image_path: imagePath,
         out_path: outPath,
-        target_height: targetHeight ?? 0,
+        target_height: targetHeight,
       },
       timeoutMs: 300_000,
     });

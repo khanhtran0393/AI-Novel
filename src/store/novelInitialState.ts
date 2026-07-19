@@ -101,8 +101,8 @@ export const INITIAL_STATE: NovelState = {
   pipeline_step: 'outline',
   nhan_vat_prompts: {},
   imageModel: 'GEM_PIX_2',
-  /** Non-ultra first — TIER_ONE Flow accounts often reject *_ultra */
-  videoModel: 'veo_3_1_t2v_fast',
+  /** FlowAgent parity: model key resolves to abra_t2v_{4|6|8}s by duration. */
+  videoModel: 'OMNI_FLASH',
 
   aiMasterModel: 'aistudio',
   aiMasterApiKey: '',

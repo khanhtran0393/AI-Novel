@@ -268,8 +268,12 @@ export default function SetupPhase({
                 disabled={isGeneratingIdea}
                 className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-500 hover:text-amber-400 disabled:opacity-40"
               >
-                <Sparkles className="h-3 w-3" />
-                AI ý tưởng
+                {isGeneratingIdea ? (
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                {isGeneratingIdea ? 'Đang sinh…' : 'AI ý tưởng'}
               </button>
             </div>
             <textarea
@@ -498,23 +502,46 @@ export default function SetupPhase({
           </div>
         </div>
 
-        {/* Footer: chỉ CTA sinh kịch bản — đóng bằng nút X (header) / Esc / click nền */}
+        {/* Footer: CTA + lỗi sticky (không ẩn giữa form khi cuộn) */}
         <div
-          className="shrink-0 border-t border-zinc-800/80 bg-zinc-950 p-3 sm:px-4"
+          className="relative z-20 shrink-0 border-t border-zinc-800/80 bg-zinc-950/95 p-3 sm:px-4 space-y-2"
           style={setupModalNoDragStyle}
         >
+          {promptError ? (
+            <p
+              role="alert"
+              className="flex items-start gap-1.5 text-xs text-red-400 leading-snug max-h-24 overflow-y-auto"
+            >
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span className="whitespace-pre-wrap">{promptError}</span>
+            </p>
+          ) : (
+            <p className="text-[10px] text-zinc-500 leading-snug">
+              Cần: Chủ đề + Phong cách + Cốt truyện + API Key → bấm nút. Toast báo tiến trình /
+              lỗi (không silent).
+            </p>
+          )}
           <button
             type="button"
             disabled={isGeneratingOutline}
-            onClick={() => void handleGenerateOutline()}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (isGeneratingOutline) return;
+              void handleGenerateOutline();
+            }}
+            className="relative z-[30] flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none"
             style={setupModalNoDragStyle}
-            title="Nút riêng — không khóa gen NV / viết chương"
+            title="Sinh dàn ý + danh sách chương AI"
+            aria-busy={isGeneratingOutline}
           >
             {isGeneratingOutline ? (
               <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Đang thiết lập dàn ý...
+                <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
+                Đang sinh kịch bản AI… (chờ toast)
               </>
             ) : (
               <>🚀 TIẾN HÀNH SINH KỊCH BẢN AI</>

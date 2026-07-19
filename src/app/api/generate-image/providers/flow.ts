@@ -33,20 +33,37 @@ export async function generateWithFlow(
   try {
     await ensureBridgeStarted();
     let snap = await getBridgeSnapshotAsync();
+    const activeAccount = snap.accounts?.find(
+      (account) => account.id === snap.activeAccountId,
+    );
     const sessionReady =
-      Boolean(snap.extensionConnected) && Boolean(snap.flowKeyPresent);
+      Boolean(activeAccount?.extensionConnected) &&
+      Boolean(activeAccount?.email && activeAccount.email.includes('@')) &&
+      Boolean(activeAccount?.sessionVerified) &&
+      Boolean(activeAccount?.flowKeyPresent);
     if (!sessionReady) {
       console.log(
         `[Flow Image] Session incomplete ext=${snap.extensionConnected} key=${snap.flowKeyPresent} — auto bootstrap…`,
       );
       const boot = await bootstrapFlow({
-        forceChrome: !snap.extensionConnected || !snap.flowKeyPresent,
+        forceChrome: !sessionReady,
+        accountId: snap.activeAccountId || undefined,
         engine: 'auto',
         waitExtensionMs: 40000,
         waitLoginMs: 25000,
       });
       snap = await getBridgeSnapshotAsync();
-      if (!snap.flowKeyPresent || !snap.extensionConnected) {
+      const activeAfterBootstrap = snap.accounts?.find(
+        (account) => account.id === snap.activeAccountId,
+      );
+      const readyAfterBootstrap = Boolean(
+        activeAfterBootstrap?.extensionConnected &&
+          activeAfterBootstrap?.email &&
+          activeAfterBootstrap.email.includes('@') &&
+          activeAfterBootstrap.sessionVerified &&
+          activeAfterBootstrap.flowKeyPresent,
+      );
+      if (!readyAfterBootstrap) {
         const detail =
           boot.message ||
           (!snap.extensionConnected
@@ -65,7 +82,16 @@ export async function generateWithFlow(
         );
       }
     }
-    if (!snap.flowKeyPresent) {
+    const activeReady = snap.accounts?.find(
+      (account) => account.id === snap.activeAccountId,
+    );
+    if (
+      !snap.flowKeyPresent ||
+      !activeReady?.email ||
+      !activeReady.email.includes('@') ||
+      !activeReady.sessionVerified ||
+      !activeReady.flowKeyPresent
+    ) {
       return NextResponse.json(
         {
           error:
@@ -101,6 +127,21 @@ export async function generateWithFlow(
           ? ctx.body.quality
           : 'hd';
 
+    const explicitFlowModel = String(model || '').trim();
+    if (
+      !explicitFlowModel ||
+      explicitFlowModel === 'flow' ||
+      explicitFlowModel === 'imagen'
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            '[Google Flow] FLOW_IMAGE_MODEL_REQUIRED: chọn model ảnh cụ thể trong Cấu hình đầu ra.',
+        },
+        { status: 400 },
+      );
+    }
+
     const result = await runGenerateOne({
       kind: ctx.body.edit === true || ctx.body.kind === 'edit' ? 'edit' : 'image',
       prompt: providerPrompt,
@@ -110,8 +151,7 @@ export async function generateWithFlow(
       aspectRatio: imageAspectRatio,
       imageCount,
       // resolveFlowImageModelName applied inside payloadBuilder
-      imageModel:
-        model && model !== 'flow' && model !== 'imagen' ? model : 'GEM_PIX_2',
+      imageModel: explicitFlowModel,
       referenceImagePath,
       quality,
       camera:

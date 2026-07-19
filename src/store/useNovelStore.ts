@@ -2,6 +2,7 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createChannelActions } from './channelActions';
 import { createCredentialActions } from './credentialActions';
+import { installCredentialVault } from './credentialVault';
 import { createMediaAssetActions } from './mediaAssetActions';
 import { createStoryActions } from './storyActions';
 import { createTtsCastActions } from './ttsCastActions';
@@ -47,6 +48,8 @@ export const useNovelStore: UseBoundStore<StoreApi<NovelStore>> = create<NovelSt
     }),
   ),
 );
+
+installCredentialVault(useNovelStore);
 
 /**
  * Multi-stage failsafe: never leave UI on "Đang nạp trạng thái bộ nhớ..." forever.

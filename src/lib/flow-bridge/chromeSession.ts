@@ -180,10 +180,11 @@ export function ensureAccountExtension(
       'manifest.json',
       'popup.js',
       'side_panel.js',
+      'tabGuard.js',
     ];
     for (const f of hotFiles) {
-      const from = path.join(src, f);
-      const to = path.join(extDest, f);
+      const from = path.join(/* turbopackIgnore: true */ src, f);
+      const to = path.join(/* turbopackIgnore: true */ extDest, f);
       if (!fs.existsSync(from)) continue;
       try {
         const srcStat = fs.statSync(from);
@@ -357,7 +358,7 @@ export function prepareBlankLoginProfile(
   // Locks
   for (const base of [profileDir, rootDir]) {
     for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
-      const lock = path.join(base, name);
+      const lock = path.join(/* turbopackIgnore: true */ base, name);
       try {
         if (fs.existsSync(lock)) fs.unlinkSync(lock);
       } catch {
@@ -570,6 +571,70 @@ export function reconcileLoginBrowserClosed(accountId?: string | null): {
   return { closed: false, accountId: accountId || gstate.lastActiveAccountId || null };
 }
 
+/**
+ * Remove only Chromium's restored-tab metadata before a forced Flow relaunch.
+ * Cookies, Local Storage, IndexedDB and the Google login session are preserved.
+ */
+export function clearProfileTabRestoreState(profileDir: string): string[] {
+  const root = path.resolve(profileDir);
+  const defaultDir = path.join(root, 'Default');
+  const candidates = [
+    path.join(defaultDir, 'Sessions'),
+    path.join(defaultDir, 'Current Session'),
+    path.join(defaultDir, 'Current Tabs'),
+    path.join(defaultDir, 'Last Session'),
+    path.join(defaultDir, 'Last Tabs'),
+  ];
+  const removed: string[] = [];
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    if (!resolved.startsWith(`${root}${path.sep}`) || !fs.existsSync(resolved)) {
+      continue;
+    }
+    try {
+      fs.rmSync(resolved, { recursive: true, force: true });
+      removed.push(resolved);
+    } catch (error) {
+      console.warn(
+        `[FlowChrome] Cannot clear restored-tab state ${resolved}`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  return removed;
+}
+
+/**
+ * Clear only Chromium's service-worker registration/script cache before a
+ * forced relaunch so an updated unpacked Flow extension cannot keep executing
+ * stale background.js bytecode. Google cookies and site storage are untouched.
+ */
+export function clearProfileServiceWorkerCache(profileDir: string): string[] {
+  const root = path.resolve(profileDir);
+  const serviceWorkerDir = path.join(root, 'Default', 'Service Worker');
+  const candidates = [
+    path.join(serviceWorkerDir, 'ScriptCache'),
+    path.join(serviceWorkerDir, 'Database'),
+  ];
+  const removed: string[] = [];
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    if (!resolved.startsWith(`${root}${path.sep}`) || !fs.existsSync(resolved)) {
+      continue;
+    }
+    try {
+      fs.rmSync(resolved, { recursive: true, force: true });
+      removed.push(resolved);
+    } catch (error) {
+      console.warn(
+        `[FlowChrome] Cannot clear service-worker cache ${resolved}`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  return removed;
+}
+
 export function launchChrome(opts: {
   chromePath: string;
   /** Source extension dir OR already per-account ext — will isolate if needed */
@@ -624,6 +689,20 @@ export function launchChrome(opts: {
   const isolated = ensureIsolatedAccountProfile(accountId, opts.extDir);
   const userData = path.resolve(isolated.profileDir);
   const extAbs = path.resolve(isolated.extDir);
+  if (opts.forceClean !== false) {
+    const removedTabState = clearProfileTabRestoreState(userData);
+    const removedWorkerCache = clearProfileServiceWorkerCache(userData);
+    if (removedTabState.length > 0) {
+      console.log(
+        `[FlowChrome] Cleared ${removedTabState.length} restored-tab artifact(s) for account=${accountId}`,
+      );
+    }
+    if (removedWorkerCache.length > 0) {
+      console.log(
+        `[FlowChrome] Cleared ${removedWorkerCache.length} stale service-worker cache artifact(s) for account=${accountId}`,
+      );
+    }
+  }
 
   if (!fs.existsSync(path.join(extAbs, 'manifest.json'))) {
     throw new Error(`Extension missing manifest.json at ${extAbs}`);
@@ -642,7 +721,7 @@ export function launchChrome(opts: {
 
   try {
     for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
-      const lock = path.join(userData, name);
+      const lock = path.join(/* turbopackIgnore: true */ userData, name);
       if (fs.existsSync(lock)) fs.unlinkSync(lock);
     }
   } catch {
@@ -815,7 +894,11 @@ export function launchFirefoxFamily(opts: {
 }
 
 /**
- * After token captured: close login Chrome for THAT account only, relaunch background.
+ * After token capture, retain the same authenticated Chrome process whenever
+ * background operation is requested. The extension minimizes the window; this
+ * function only changes its tracked role from login to background. Killing and
+ * relaunching the same profile here dropped the live socket and restored extra
+ * Flow tabs on some Chromium builds.
  */
 export async function closeLoginSessionAfterCapture(opts?: {
   delayMs?: number;
@@ -886,6 +969,27 @@ export async function closeLoginSessionAfterCapture(opts?: {
   await new Promise((r) => setTimeout(r, delayMs));
 
   try {
+    if (keepBg && isProfileBrowserAlive(profileDir)) {
+      s.bgPid = s.loginPid || s.bgPid;
+      s.loginPid = undefined;
+      s.loginOpen = false;
+      s.lastTokenCloseAt = Date.now();
+      try {
+        const { setLoginSessionOpen } = await import('./bridgeServer');
+        setLoginSessionOpen(false);
+      } catch {
+        /* ignore */
+      }
+      console.log(
+        `[FlowChrome] Login window retained as background account=${accountId} dir=${profileDir}`,
+      );
+      return {
+        closed: true,
+        relaunched: false,
+        message: `Đã hạ cửa sổ đăng nhập xuống nền; giữ nguyên phiên ${accountId}.`,
+      };
+    }
+
     let killed = killChromeForProfile(profileDir);
     if (killed === 0) {
       for (const pid of [s.loginPid, s.bgPid]) {

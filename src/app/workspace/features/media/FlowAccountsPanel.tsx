@@ -87,15 +87,6 @@ type BootstrapResult = {
   snapshot?: BridgeSnapshot;
 };
 
-type BrowserItem = {
-  engine: string;
-  exe: string;
-  label: string;
-  isStockChrome?: boolean;
-  family?: string;
-  warning?: string;
-};
-
 const AUTO_KEY = 'ainovel_flow_auto_bootstrap_v1';
 const ENGINE_KEY = 'ainovel_flow_browser_engine';
 
@@ -169,7 +160,6 @@ export default function FlowAccountsPanel() {
   >({});
   const [name, setName] = useState('');
   const [engine, setEngine] = useState('auto');
-  const [browsers, setBrowsers] = useState<BrowserItem[]>([]);
   const [installHint, setInstallHint] = useState('');
   /** Per-profile project catalogs (Sync/select update only that card) */
   const [projectsByAccount, setProjectsByAccount] = useState<
@@ -453,6 +443,8 @@ export default function FlowAccountsPanel() {
           wasLoginOpen.current &&
           !a.loginSessionOpen &&
           a.flowKeyPresent &&
+          a.sessionVerified &&
+          Boolean(a.email && a.email.includes('@')) &&
           !hadTokenByProfile.current[a.id]
         ) {
           hadTokenByProfile.current[a.id] = true;
@@ -596,7 +588,6 @@ export default function FlowAccountsPanel() {
     void fetch(API.flowBrowsers, { cache: 'no-store' })
       .then((r) => r.json())
       .then((j) => {
-        if (Array.isArray(j.detected)) setBrowsers(j.detected);
         if (j.installHint) setInstallHint(String(j.installHint));
       })
       .catch(() => undefined);
@@ -756,15 +747,6 @@ export default function FlowAccountsPanel() {
           <option value="chrome">Google Chrome (hay bị chặn)</option>
           <option value="mullvad">Mullvad / Firefox (load tay)</option>
         </select>
-        {browsers.length > 0 ? (
-          <div className="sm:col-span-2 text-[9px] text-zinc-600">
-            Detect:{' '}
-            {browsers
-              .slice(0, 4)
-              .map((b) => b.label + (b.isStockChrome ? ' ⚠' : ''))
-              .join(' · ')}
-          </div>
-        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -1008,11 +990,7 @@ export default function FlowAccountsPanel() {
                 ) : tokenOnly ? (
                   <div className="rounded-lg border border-amber-500/40 bg-amber-950/25 px-2 py-1.5 text-[10px] text-amber-100">
                     <div className="font-semibold">
-                      Chưa đăng nhập Google (token cũ / thiếu email)
-                    </div>
-                    <div className="mt-0.5 text-[9px] text-amber-200/75">
-                      {a.lastError ||
-                        'Profile có token cũ trên đĩa nhưng chưa login Google. Bấm Đăng nhập trên card này.'}
+                      Chưa đăng nhập Google — bấm Đăng nhập
                     </div>
                   </div>
                 ) : extMissing ? (
@@ -1070,24 +1048,11 @@ export default function FlowAccountsPanel() {
                   </ul>
                 ) : null}
 
-                {a.lastError ? (
-                  <div className="truncate text-[9px] text-red-400/80">
-                    {a.lastError}
-                  </div>
-                ) : null}
               </div>
             );
           })
         )}
       </div>
-
-      {snap?.metrics ? (
-        <div className="text-[9px] text-zinc-600">
-          Queue metrics: {snap.metrics.successCount}/{snap.metrics.requestCount}{' '}
-          ok
-          {snap.metrics.lastError ? ` · last: ${snap.metrics.lastError}` : ''}
-        </div>
-      ) : null}
     </div>
   );
 }

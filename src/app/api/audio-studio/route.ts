@@ -20,13 +20,18 @@ export async function POST(req: Request) {
 
     let abs = audioPath;
     if (audioPath.startsWith('/')) {
-      abs = path.join(process.cwd(), 'public', audioPath.replace(/^\//, ''));
+      abs = path.join(
+        /* turbopackIgnore: true */ process.cwd(),
+        'public',
+        audioPath.replace(/^\//, ''),
+      );
     }
-    if (!fs.existsSync(abs)) {
-      return NextResponse.json({ error: `Audio not found: ${abs}` }, { status: 404 });
+    const resolvedInput = path.resolve(/* turbopackIgnore: true */ abs);
+    if (!fs.existsSync(/* turbopackIgnore: true */ resolvedInput)) {
+      return NextResponse.json({ error: `Audio not found: ${resolvedInput}` }, { status: 404 });
     }
 
-    const input = fs.readFileSync(abs);
+    const input = fs.readFileSync(/* turbopackIgnore: true */ resolvedInput);
     const { buffer, applied } = await applyAudioStudioMix(input, {
       roomTone: roomTone !== false,
       bgmMix: !!bgmMix,
@@ -34,7 +39,7 @@ export async function POST(req: Request) {
       loudnormI: -14,
     });
 
-    const outName = `studio_${path.basename(abs).replace(/\.[^.]+$/, '')}_${Date.now()}.mp3`;
+    const outName = `studio_${path.basename(resolvedInput).replace(/\.[^.]+$/, '')}_${Date.now()}.mp3`;
     const outDir = path.join(process.cwd(), 'public', 'audio', 'studio');
     fs.mkdirSync(outDir, { recursive: true });
     const outAbs = path.join(outDir, outName);

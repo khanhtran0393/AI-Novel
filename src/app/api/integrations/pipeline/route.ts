@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const correlationId = correlationIdFromRequest(req);
   try {
     const body = await req.json();
-    assertFeatureAccess(req, 'integrations_pipeline', body);
+    await assertFeatureAccess(req, 'integrations_pipeline', body);
     slog({
       level: 'info',
       msg: 'pipeline_start',

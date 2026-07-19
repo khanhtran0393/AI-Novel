@@ -26,6 +26,12 @@ function trialDays(): number {
 }
 
 export function isTrialEnabled(): boolean {
+  if (
+    process.env.AI_NOVEL_PACKAGED === '1' &&
+    process.env.AINOVEL_ALLOW_LOCAL_TRIAL !== '1'
+  ) {
+    return false;
+  }
   const v = (process.env.AINOVEL_TRIAL_ENABLED || '1').trim().toLowerCase();
   return !(v === '0' || v === 'false' || v === 'off' || v === 'no');
 }

@@ -8,11 +8,11 @@
  */
 import { NextResponse } from 'next/server';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
-import { createActivationCodes } from '@/lib/commercial/activationVault';
+import { generateActivationCode } from '@/lib/commercial/activationVault';
 import {
   auditLog,
   hashToken,
-  issueHmacForPlan,
+  issueProLicenseForPlan,
   paidPlanToLicense,
 } from '@/lib/cloud/licenseBridge';
 import type { PaidPlanId } from '@/lib/commercial/pricingPlans';
@@ -23,7 +23,10 @@ import {
   requireAdminFromRequest,
 } from '@/lib/supabase/server';
 import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
-import { resolveEntitlementSecret } from '@/lib/entitlement';
+import {
+  assertLicenseSignerConfigured,
+  assertSellerRuntime,
+} from '@/lib/commercial/sellerRuntime';
 
 export const runtime = 'nodejs';
 
@@ -36,6 +39,8 @@ function isEnvAdminKey(key: string | undefined | null): boolean {
 
 export async function POST(req: Request) {
   try {
+    assertSellerRuntime();
+    assertLicenseSignerConfigured();
     const body = (await req.json().catch(() => ({}))) as {
       planId?: string;
       hwid?: string;
@@ -77,16 +82,6 @@ export async function POST(req: Request) {
       });
     }
 
-    if (process.env.AINOVEL_ENTITLEMENT_MODE === 'enforce') {
-      const sec = resolveEntitlementSecret();
-      if (!sec.ok) {
-        throw new AppError(sec.reason || 'Secret misconfigured', {
-          code: 'INFRA',
-          status: 503,
-        });
-      }
-    }
-
     const issueMode = body.issueMode || 'token';
     const meta = paidPlanToLicense(planId);
     const expAt = new Date(Date.now() + meta.expSeconds * 1000).toISOString();
@@ -96,15 +91,11 @@ export async function POST(req: Request) {
     let tokenHash: string | null = null;
 
     if (issueMode === 'code') {
-      const codes = createActivationCodes({
-        count: 1,
-        plan: meta.licensePlan === 'vip' ? 'vip' : 'pro',
-        expSeconds: meta.expSeconds,
-        note: 'cloud-direct-issue',
-      });
-      activationCode = codes[0]?.code;
+      // Cloud issue persists directly to Supabase. Do not touch the local
+      // activation vault because serverless filesystems are read-only/ephemeral.
+      activationCode = generateActivationCode();
     } else {
-      const issued = issueHmacForPlan(planId, hwid);
+      const issued = issueProLicenseForPlan(planId, hwid);
       token = issued.token;
       tokenHash = hashToken(token);
     }

@@ -21,7 +21,7 @@ function resolveOutDir(
   const root =
     (savePathRoot && savePathRoot.trim()) ||
     path.join(process.cwd(), 'exports', 'ship-packs');
-  return path.join(root, folderName);
+  return path.join(/* turbopackIgnore: true */ root, folderName);
 }
 
 function stripQuery(p: string): string {
@@ -42,7 +42,7 @@ function stripQuery(p: string): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    assertProAccess(req, body);
+    await assertProAccess(req, body);
     const mode = (body.mode || body.defaultShipMode || 'longform') as ShipMode;
     const channelRaw = body.channel as Partial<ChannelProfile> | undefined;
     const channel = normalizeChannelProfile(channelRaw);

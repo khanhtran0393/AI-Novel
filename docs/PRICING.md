@@ -8,7 +8,7 @@ Giá tiền do **seller** tự set. Đây là ma trận quyền (sync code `PRIC
 | Trial | 0 | 3 ngày / 1 HWID | + video, CapCut, ship, TTS premium |
 | Pro tháng | **478.000đ** | 30 ngày | + pipeline, multi-channel, toolbox, multi Flow |
 | Pro năm | **4.780.000đ** | 365 ngày | như Pro |
-| Trọn đời (VIP) | **8.999.000đ** | lifetime | Pro + không gia hạn |
+| Pro trọn đời | **8.999.000đ** | không hết hạn | Toàn bộ quyền Pro, không gia hạn |
 
 **CK:** Techcombank · STK `1903 2706 3540 18` · **TRAN HUU KHANH**  
 **Nội dung động:** `CAP THANG|CAP NAM|CAP TRON DOI` + mã thiết bị (HWID)  

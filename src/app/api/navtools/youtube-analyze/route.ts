@@ -7,14 +7,19 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const url = typeof body.url === 'string' ? body.url.trim() : '';
+    const model = typeof body.model === 'string' ? body.model.trim() : '';
     if (!url) {
       return NextResponse.json({ success: false, error: 'Missing "url"' }, { status: 400 });
+    }
+    if (!model) {
+      return NextResponse.json({ success: false, error: 'Missing "model"' }, { status: 400 });
     }
 
     const result = await callNavGateway({
       action: 'youtube_analyze',
       payload: {
         url,
+        model,
         gemini_api_key: body.gemini_api_key ?? body.apiKey,
       },
       timeoutMs: 900_000,

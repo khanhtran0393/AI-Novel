@@ -5,7 +5,7 @@ import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 /** Có thể tự tải Chromium ~150MB lần đầu — cho phép tới 10 phút */
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);

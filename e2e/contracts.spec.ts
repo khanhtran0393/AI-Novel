@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   sceneAssetKey,
   imageAssetKey,
@@ -32,6 +36,7 @@ import {
 import { AppError, toErrorJson } from '../src/lib/errors';
 import { maskSecret, maskSecretsInText } from '../src/lib/secrets';
 import { newCorrelationId } from '../src/lib/requestContext';
+import { probeVisualArtifact } from '../src/lib/mediaArtifactValidation';
 import { probeRuntimeHealth } from '../src/lib/runtimeHealth';
 import {
   setupToDto,
@@ -150,6 +155,21 @@ test.describe('zod validation', () => {
 });
 
 test.describe('entitlement', () => {
+  test.beforeEach(() => {
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+    process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY = privateKey
+      .export({ type: 'pkcs8', format: 'pem' })
+      .toString();
+    process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEY = publicKey
+      .export({ type: 'spki', format: 'pem' })
+      .toString();
+  });
+
+  test.afterEach(() => {
+    delete process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY;
+    delete process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEY;
+  });
+
   test('mode defaults to open', () => {
     expect(['open', 'enforce']).toContain(getEntitlementMode());
   });
@@ -289,5 +309,59 @@ test.describe('portable + adapters + payloads', () => {
     // loadOnboarding is SSR-safe (dismissed default when no window)
     const s = loadOnboarding();
     expect(Array.isArray(s.completedSteps)).toBe(true);
+  });
+});
+
+test.describe('commercial media artifact contracts', () => {
+  test('artifact validation is packaged and does not require ffprobe', () => {
+    const source = fs.readFileSync(
+      'src/lib/mediaArtifactValidation.ts',
+      'utf8',
+    );
+    expect(source).toContain('inspectImage');
+    expect(source).toContain('inspectMp4');
+    expect(source).not.toContain('spawnSync');
+    expect(source.toLowerCase()).not.toContain('ffprobe');
+
+    const iconPath = path.join(process.cwd(), 'build', 'icon.png');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainovel-artifact-contract-'));
+    try {
+      const realImage = probeVisualArtifact(iconPath, 'image');
+      expect(realImage.ok).toBe(true);
+      const truncatedPath = path.join(tempDir, 'truncated.png');
+      const realBytes = fs.readFileSync(iconPath);
+      fs.writeFileSync(truncatedPath, realBytes.subarray(0, 24));
+      expect(probeVisualArtifact(truncatedPath, 'image').ok).toBe(false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('async video providers settle a real artifact before success', () => {
+    const route = fs.readFileSync(
+      'src/app/api/generate-video/route.ts',
+      'utf8',
+    );
+    const client = fs.readFileSync(
+      'src/app/workspace/modules/videoModule.ts',
+      'utf8',
+    );
+    const mediaConfig = fs.readFileSync(
+      'src/app/workspace/features/media/MediaConfigModal.tsx',
+      'utf8',
+    );
+    expect(route).toContain('pollLumaVideo');
+    expect(route).toContain('pollRunwayVideo');
+    expect(route).toContain('pollOpenAiVideo');
+    expect(route.match(/success:\s*true/g) || []).toHaveLength(1);
+    expect(route).toContain('replaceFileTransactionally');
+    expect(route).toContain('persistExistingVideoFile(src, localSavePath)');
+    expect(route).toContain("'16:9': '1280:720'");
+    expect(route).toContain("'16:9': '1280:768'");
+    expect(route.match(/2024-11-06/g) || []).toHaveLength(2);
+    expect(route).not.toContain('2024-09-13');
+    expect(client).toContain('data.success !== true');
+    expect(client).toContain('!data.videoPath.trim()');
+    expect(mediaConfig).toContain('sora: [4, 8, 12]');
   });
 });

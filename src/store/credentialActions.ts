@@ -214,7 +214,7 @@ export function createCredentialActions(
         set({
           is_vip: !!is_vip,
           is_pro: !!is_pro,
-          // Trial chỉ gắn khi không VIP; paid Pro/VIP/Free luôn xóa cờ trial
+          // is_vip chỉ tương thích dữ liệu cũ; sản phẩm trả phí duy nhất là Pro.
           is_trial: !!is_trial && !is_vip,
         }),
 
@@ -223,7 +223,7 @@ export function createCredentialActions(
       deductCredits: (_amount) => {
         let success = false;
         set((state) => {
-          // Paid Pro / VIP unlimited — trial + free deduct from balance
+          // Paid Pro unlimited — trial + free deduct from balance.
           if (state.is_vip || (state.is_pro && !state.is_trial)) {
             success = true;
             if ((state.credits ?? 0) < 999_999_999) {

@@ -1,18 +1,15 @@
 /**
- * Server-side Pro/VIP entitlement (HMAC token) — commercial ready.
+ * Free · Trial · Pro entitlement.
  *
- * Modes:
- * - AINOVEL_ENTITLEMENT_MODE=open (dev only): Pro routes open
- * - AINOVEL_ENTITLEMENT_MODE=enforce (publish): valid HMAC token required
- *
- * Publish rules:
- * - enforce WITHOUT a strong secret → fail-closed (no Pro access, no issue)
- * - Forbidden default secrets in enforce
- * - Optional HWID bind: token.hwid must match this machine
+ * Tokens are signed with Ed25519. Customer builds contain public verification
+ * keys only; private signing keys stay on the seller machine / hosted backend.
+ * This prevents a customer from extracting a shared HMAC secret and minting Pro.
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
 import os from 'os';
+import path from 'path';
 import { AppError } from '@/lib/errors';
 import { getTrialStatus, trialGrantsPro } from '@/lib/commercial/trial';
 import {
@@ -22,8 +19,7 @@ import {
   type PlanTier,
 } from '@/lib/commercial/featureMatrix';
 
-/** License plan on the wire (HMAC payload). Legacy tokens omit plan/is_trial → paid pro. */
-export type EntitlementPlan = 'trial' | 'pro' | 'vip';
+export type EntitlementPlan = 'trial' | 'pro';
 
 export type EntitlementClaims = {
   is_pro: boolean;
@@ -32,24 +28,13 @@ export type EntitlementClaims = {
   is_trial?: boolean;
   plan?: EntitlementPlan;
   exp: number; // unix seconds
+  iat?: number;
+  ver?: 2;
+  license_id?: string;
   hwid?: string;
 };
 
 export type EntitlementMode = 'open' | 'enforce';
-
-/** Known-insecure placeholders — never allowed in enforce */
-const FORBIDDEN_SECRETS = new Set([
-  '',
-  'ainovel-local-dev-secret-change-me',
-  'ainovel-enterprise-commercial-secret-key-2026',
-  'change-me',
-  'secret',
-  'password',
-  'dev',
-  'test',
-]);
-
-const MIN_SECRET_LEN = 24;
 
 export function getEntitlementMode(): EntitlementMode {
   const m = (process.env.AINOVEL_ENTITLEMENT_MODE || 'open').toLowerCase();
@@ -64,77 +49,184 @@ export function isPackagedPublishHint(): boolean {
   );
 }
 
-function rawSecretEnv(): string {
-  return (
-    process.env.AINOVEL_ENTITLEMENT_SECRET ||
-    process.env.ENTITLEMENT_SECRET ||
-    ''
-  ).trim();
+function decodeKeyMaterial(value: string): string | Buffer {
+  const normalized = String(value || '').trim().replace(/\\n/g, '\n');
+  if (!normalized) return '';
+  if (normalized.includes('-----BEGIN')) return normalized;
+  return Buffer.from(normalized, 'base64');
 }
 
-export function isInsecureEntitlementSecret(secret: string): boolean {
-  const s = (secret || '').trim();
-  if (!s) return true;
-  if (FORBIDDEN_SECRETS.has(s)) return true;
-  if (s.length < MIN_SECRET_LEN) return true;
-  if (/^(.)\1{8,}$/.test(s)) return true; // aaaaaaaaa
-  return false;
+function readKeyFile(filePath: string | undefined): string {
+  const p = String(filePath || '').trim();
+  if (!p) return '';
+  try {
+    return fs.readFileSync(path.resolve(p), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function publicKeyId(key: crypto.KeyObject): string {
+  const der = key.export({ type: 'spki', format: 'der' });
+  return crypto.createHash('sha256').update(der).digest('hex').slice(0, 16);
+}
+
+/** Bundled public keys (dev + packaged). Electron main also sets PUBLIC_KEYS_DIR. */
+function defaultPublicKeysDir(): string {
+  const candidates = [
+    path.join(process.cwd(), 'resources', 'license', 'public-keys'),
+    path.join(process.cwd(), 'license', 'public-keys'),
+  ];
+  for (const d of candidates) {
+    try {
+      if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
+    } catch {
+      /* ignore */
+    }
+  }
+  return '';
 }
 
 /**
- * Resolve HMAC secret.
- * - open: allow weak dev default (never used for real licenses)
- * - enforce: must be strong env secret
+ * Seller private key on this machine (dev/seller only).
+ * Never used when AI_NOVEL_PACKAGED=1 (customer app).
  */
-export function resolveEntitlementSecret(): {
-  secret: string;
-  ok: boolean;
-  reason?: string;
-} {
-  const mode = getEntitlementMode();
-  const fromEnv = rawSecretEnv();
-
-  if (mode === 'enforce') {
-    if (!fromEnv) {
-      return {
-        secret: '',
-        ok: false,
-        reason:
-          'AINOVEL_ENTITLEMENT_MODE=enforce nhưng thiếu AINOVEL_ENTITLEMENT_SECRET.',
-      };
-    }
-    if (isInsecureEntitlementSecret(fromEnv)) {
-      return {
-        secret: '',
-        ok: false,
-        reason:
-          'AINOVEL_ENTITLEMENT_SECRET quá yếu hoặc là secret mặc định. Dùng chuỗi ≥24 ký tự ngẫu nhiên.',
-      };
-    }
-    return { secret: fromEnv, ok: true };
+function defaultSellerPrivateKeyFile(): string {
+  if (
+    process.env.AI_NOVEL_PACKAGED === '1' ||
+    process.env.AINOVEL_PUBLISH === '1'
+  ) {
+    return '';
   }
-
-  // open / dev
-  if (fromEnv && !isInsecureEntitlementSecret(fromEnv)) {
-    return { secret: fromEnv, ok: true };
+  const localApp =
+    process.env.LOCALAPPDATA ||
+    process.env.XDG_DATA_HOME ||
+    '';
+  if (!localApp) return '';
+  const p = path.join(localApp, 'AI Novel Seller', 'entitlement-private.pem');
+  try {
+    if (fs.existsSync(p)) return p;
+  } catch {
+    /* ignore */
   }
-  return {
-    secret: 'ainovel-local-dev-secret-change-me',
-    ok: true,
-    reason: 'dev-default-secret (open mode only)',
-  };
+  return '';
 }
 
-function secret(): string {
-  const r = resolveEntitlementSecret();
-  if (!r.ok || !r.secret) {
-    throw new AppError(
-      r.reason ||
-        'Entitlement secret chưa cấu hình. Đặt AINOVEL_ENTITLEMENT_SECRET trước khi enforce.',
-      { code: 'INFRA', status: 503 },
-    );
+function loadPublicKeyCandidates(): Array<string | Buffer> {
+  const candidates: Array<string | Buffer> = [];
+  const single =
+    process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEY ||
+    readKeyFile(process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEY_FILE);
+  if (single) candidates.push(decodeKeyMaterial(single));
+
+  const rawMany = String(process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEYS || '').trim();
+  if (rawMany) {
+    try {
+      const parsed = JSON.parse(rawMany) as unknown;
+      const values = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === 'object'
+          ? Object.values(parsed as Record<string, unknown>)
+          : [];
+      for (const value of values) {
+        if (typeof value === 'string' && value.trim()) {
+          candidates.push(decodeKeyMaterial(value));
+        }
+      }
+    } catch {
+      // Invalid key-ring JSON is handled as no usable keys below.
+    }
   }
-  return r.secret;
+
+  const dir =
+    String(process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEYS_DIR || '').trim() ||
+    defaultPublicKeysDir();
+  if (dir) {
+    try {
+      for (const name of fs.readdirSync(path.resolve(dir)).sort()) {
+        if (!/\.(pem|pub)$/i.test(name)) continue;
+        const value = readKeyFile(path.join(dir, name));
+        if (value) candidates.push(value);
+      }
+    } catch {
+      // Missing key directory is surfaced by resolveEntitlementVerificationKeys.
+    }
+  }
+
+  const privateValue =
+    process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY ||
+    readKeyFile(
+      process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE ||
+        defaultSellerPrivateKeyFile(),
+    );
+  if (privateValue) {
+    try {
+      const privateKey = crypto.createPrivateKey(decodeKeyMaterial(privateValue));
+      candidates.push(crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }));
+    } catch {
+      // Signing key validation happens separately.
+    }
+  }
+  return candidates;
+}
+
+export function resolveEntitlementVerificationKeys(): {
+  ok: boolean;
+  keys: Map<string, crypto.KeyObject>;
+  reason?: string;
+} {
+  const keys = new Map<string, crypto.KeyObject>();
+  for (const candidate of loadPublicKeyCandidates()) {
+    try {
+      const key = crypto.createPublicKey(candidate);
+      if (key.asymmetricKeyType !== 'ed25519') continue;
+      keys.set(publicKeyId(key), key);
+    } catch {
+      // Ignore malformed entries and require at least one valid Ed25519 key.
+    }
+  }
+  if (keys.size === 0) {
+    return {
+      ok: false,
+      keys,
+      reason:
+        'Thiếu public key Ed25519 xác minh license. Cấu hình AINOVEL_ENTITLEMENT_PUBLIC_KEY_FILE hoặc key ring.',
+    };
+  }
+  return { ok: true, keys };
+}
+
+export function resolveEntitlementSigningKey(): {
+  ok: boolean;
+  key: crypto.KeyObject | null;
+  kid?: string;
+  reason?: string;
+} {
+  const raw =
+    process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY ||
+    readKeyFile(
+      process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE ||
+        defaultSellerPrivateKeyFile(),
+    );
+  if (!raw) {
+    return {
+      ok: false,
+      key: null,
+      reason:
+        'Thiếu private key Ed25519 trên seller/backend. Đặt AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE hoặc chạy npm run commercial:secrets.',
+    };
+  }
+  try {
+    const key = crypto.createPrivateKey(decodeKeyMaterial(raw));
+    if (key.asymmetricKeyType !== 'ed25519') throw new Error('not-ed25519');
+    return { ok: true, key, kid: publicKeyId(crypto.createPublicKey(key)) };
+  } catch {
+    return {
+      ok: false,
+      key: null,
+      reason: 'Private key license không hợp lệ hoặc không phải Ed25519.',
+    };
+  }
 }
 
 function b64url(buf: Buffer): string {
@@ -161,10 +253,13 @@ export function getHwid(): string {
   return crypto.createHash('sha256').update(hwidBase, 'utf8').digest('hex').slice(0, 16);
 }
 
-/** Public status for UI / health (no secret leak). */
+/** Public verification status for UI / health (never exposes key material). */
 export function getEntitlementPublicStatus(): {
   mode: EntitlementMode;
   open: boolean;
+  publicKeyConfigured: boolean;
+  signerConfigured: boolean;
+  /** @deprecated compatibility aliases for older UI */
   secretConfigured: boolean;
   secretInsecure: boolean;
   adminKeyConfigured: boolean;
@@ -174,9 +269,9 @@ export function getEntitlementPublicStatus(): {
   blockers: string[];
 } {
   const mode = getEntitlementMode();
-  const fromEnv = rawSecretEnv();
-  const secretConfigured = Boolean(fromEnv);
-  const secretInsecure = isInsecureEntitlementSecret(fromEnv || 'ainovel-local-dev-secret-change-me');
+  const verifier = resolveEntitlementVerificationKeys();
+  const signer = resolveEntitlementSigningKey();
+  const publicKeyConfigured = verifier.ok;
   const adminKeyConfigured = Boolean(
     (process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY || '').trim(),
   );
@@ -184,17 +279,16 @@ export function getEntitlementPublicStatus(): {
   if (mode !== 'enforce') {
     blockers.push('MODE chưa enforce (dev open — Pro mở tự do)');
   }
-  if (!secretConfigured || secretInsecure) {
-    blockers.push('Secret yếu/thiếu — không publish');
-  }
-  if (mode === 'enforce' && !adminKeyConfigured) {
-    blockers.push('Thiếu AINOVEL_ENTITLEMENT_ADMIN_KEY (issue license)');
+  if (!publicKeyConfigured) {
+    blockers.push(verifier.reason || 'Thiếu public key xác minh license');
   }
   return {
     mode,
     open: mode === 'open',
-    secretConfigured,
-    secretInsecure: mode === 'enforce' ? secretInsecure || !secretConfigured : secretInsecure,
+    publicKeyConfigured,
+    signerConfigured: signer.ok,
+    secretConfigured: publicKeyConfigured,
+    secretInsecure: !publicKeyConfigured,
     adminKeyConfigured,
     publishHint: isPackagedPublishHint(),
     hwid: getHwid(),
@@ -205,7 +299,8 @@ export function getEntitlementPublicStatus(): {
 
 function normalizeClaims(raw: EntitlementClaims): EntitlementClaims {
   // Collapse legacy VIP → Pro (product: Free | Trial | Pro only)
-  const legacyVip = !!raw.is_vip || raw.plan === 'vip';
+  const legacyPlan = (raw as unknown as { plan?: string }).plan;
+  const legacyVip = !!raw.is_vip || legacyPlan === 'vip';
   const is_trial =
     !legacyVip && (!!raw.is_trial || raw.plan === 'trial');
   const is_pro = legacyVip || !!raw.is_pro || is_trial;
@@ -218,25 +313,35 @@ function normalizeClaims(raw: EntitlementClaims): EntitlementClaims {
     is_vip: false,
     exp: raw.exp,
   };
+  if (raw.iat) out.iat = raw.iat;
+  if (raw.ver === 2) out.ver = 2;
+  if (raw.license_id) out.license_id = String(raw.license_id);
   if (is_trial) out.is_trial = true;
   if (plan) out.plan = plan;
   if (raw.hwid) out.hwid = String(raw.hwid).trim().toLowerCase();
   return out;
 }
 
-/** True when claims represent time-boxed trial (not paid Pro/VIP). */
+/** True when claims represent time-boxed trial (not paid Pro). */
 export function claimsIsTrial(claims: EntitlementClaims | null | undefined): boolean {
   if (!claims) return false;
   if (claims.is_vip) return false;
   return !!claims.is_trial || claims.plan === 'trial';
 }
 
-/** Issue token for admin / seller (never call from untrusted client without admin key). */
+/** Sign a v2 token. Private key must exist only on seller/backend. */
 export function issueEntitlementToken(
   claims: Omit<EntitlementClaims, 'exp'> & { expSeconds?: number },
 ): string {
-  const exp =
-    Math.floor(Date.now() / 1000) + (claims.expSeconds ?? 60 * 60 * 24 * 30);
+  const signer = resolveEntitlementSigningKey();
+  if (!signer.ok || !signer.key || !signer.kid) {
+    throw new AppError(signer.reason || 'License signer chưa cấu hình.', {
+      code: 'INFRA',
+      status: 503,
+    });
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + (claims.expSeconds ?? 60 * 60 * 24 * 30);
   // Issue: never write is_vip (Pro-only paid product)
   const is_trial = !!claims.is_trial || claims.plan === 'trial';
   const is_pro = !!claims.is_pro || !!claims.is_vip || is_trial;
@@ -249,42 +354,68 @@ export function issueEntitlementToken(
     is_pro,
     is_vip: false,
     exp,
+    iat: now,
+    ver: 2,
   };
   if (is_trial) payload.is_trial = true;
   if (plan) payload.plan = plan;
   if (claims.hwid && String(claims.hwid).trim()) {
     payload.hwid = String(claims.hwid).trim().toLowerCase();
   }
+  if (claims.license_id && String(claims.license_id).trim()) {
+    payload.license_id = String(claims.license_id).trim();
+  }
   const body = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
-  const sig = b64url(
-    crypto.createHmac('sha256', secret()).update(body).digest(),
-  );
-  return `${body}.${sig}`;
+  const signingInput = `AINOVEL2.${signer.kid}.${body}`;
+  const sig = b64url(crypto.sign(null, Buffer.from(signingInput, 'utf8'), signer.key));
+  return `${signingInput}.${sig}`;
 }
 
 export function verifyEntitlementToken(
   token: string | null | undefined,
   options?: { requireHwidMatch?: boolean },
 ): EntitlementClaims | null {
-  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
-  let sec: string;
+  if (!token || typeof token !== 'string') return null;
+  const [prefix, kid, body, sig] = token.trim().split('.');
+  if (prefix !== 'AINOVEL2' || !kid || !body || !sig) return null;
+  const verifier = resolveEntitlementVerificationKeys();
+  if (!verifier.ok) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[entitlement] verify fail: no public keys loaded —',
+        verifier.reason || 'missing PUBLIC_KEY / public-keys dir',
+      );
+    }
+    return null;
+  }
+  const key = verifier.keys.get(kid);
+  if (!key) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[entitlement] verify fail: kid=${kid} not in keyring (have: ${[...verifier.keys.keys()].join(',') || 'none'}). Token signed by different key pair.`,
+      );
+    }
+    return null;
+  }
+  const signingInput = `${prefix}.${kid}.${body}`;
+  let valid = false;
   try {
-    sec = secret();
+    valid = crypto.verify(
+      null,
+      Buffer.from(signingInput, 'utf8'),
+      key,
+      fromB64url(sig),
+    );
   } catch {
     return null;
   }
-  const [body, sig] = token.split('.');
-  if (!body || !sig) return null;
-  const expect = b64url(
-    crypto.createHmac('sha256', sec).update(body).digest(),
-  );
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expect);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  if (!valid) return null;
   try {
     const raw = JSON.parse(fromB64url(body).toString('utf8')) as EntitlementClaims;
-    if (!raw || typeof raw.exp !== 'number') return null;
-    if (raw.exp < Math.floor(Date.now() / 1000)) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (!raw || raw.ver !== 2 || typeof raw.exp !== 'number') return null;
+    if (raw.exp < now) return null;
+    if (raw.iat && raw.iat > now + 300) return null;
     const hwid = raw.hwid ? String(raw.hwid).trim().toLowerCase() : undefined;
     if (hwid && (options?.requireHwidMatch !== false)) {
       if (hwid !== getHwid().toLowerCase()) return null;
@@ -310,9 +441,17 @@ export function extractEntitlementToken(req: Request, body?: unknown): string | 
   return null;
 }
 
+function freeClaims(): EntitlementClaims {
+  return {
+    is_pro: false,
+    is_vip: false,
+    exp: Math.floor(Date.now() / 1000),
+  };
+}
+
 /**
- * Resolve effective plan for this request (enforce path).
- * open / ownerUnlimited → Pro-shaped synthetic claims (not VIP badge).
+ * Resolve effective plan — **sync local path** (no Supabase).
+ * Prefer {@link resolveRequestAccessAsync} so Supabase is authority when configured.
  */
 export function resolveRequestAccess(req: Request, body?: unknown): {
   tier: PlanTier;
@@ -352,10 +491,10 @@ export function resolveRequestAccess(req: Request, body?: unknown): {
     /* ignore */
   }
 
-  const sec = resolveEntitlementSecret();
-  if (!sec.ok) {
+  const verifier = resolveEntitlementVerificationKeys();
+  if (!verifier.ok) {
     throw new AppError(
-      `License server misconfigured: ${sec.reason} Không cấp Pro cho đến khi cấu hình secret.`,
+      `License verifier misconfigured: ${verifier.reason} Không cấp Pro cho đến khi cấu hình public key.`,
       { code: 'INFRA', status: 503 },
     );
   }
@@ -363,7 +502,6 @@ export function resolveRequestAccess(req: Request, body?: unknown): {
   const token = extractEntitlementToken(req, body);
   const claims = verifyEntitlementToken(token, { requireHwidMatch: true });
   if (claims && (claims.is_pro || claims.is_vip || claimsIsTrial(claims))) {
-    // Product tiers: free | trial | pro (legacy is_vip → pro)
     const tier: PlanTier = claimsIsTrial(claims)
       ? 'trial'
       : claims.is_pro || claims.is_vip
@@ -372,7 +510,6 @@ export function resolveRequestAccess(req: Request, body?: unknown): {
     return { tier, claims };
   }
 
-  // Local trial vault (no token / expired paid token)
   if (trialGrantsPro()) {
     const st = getTrialStatus();
     return {
@@ -387,63 +524,143 @@ export function resolveRequestAccess(req: Request, body?: unknown): {
     };
   }
 
-  return {
-    tier: 'free',
-    claims: {
-      is_pro: false,
-      is_vip: false,
-      exp: Math.floor(Date.now() / 1000),
-    },
-  };
+  return { tier: 'free', claims: freeClaims() };
 }
 
 /**
- * Assert minimum plan tier for a route (product matrix).
- * trial-tier features: video / CapCut / ship.
- * pro-tier features: integrations pipeline, …
+ * Resolve plan with **Supabase as source of truth** when SERVICE_ROLE configured.
+ * - Active row for machine HWID → that plan (trial/pro)
+ * - No row / deleted / revoked → Free (local token alone does NOT grant)
+ * - Supabase not configured → fall back to local Ed25519 token + trial vault
  */
-export function assertTierAtLeast(
+export async function resolveRequestAccessAsync(
+  req: Request,
+  body?: unknown,
+): Promise<{
+  tier: PlanTier;
+  claims: EntitlementClaims;
+  authority: 'open' | 'owner' | 'supabase' | 'local';
+}> {
+  const nowExp = Math.floor(Date.now() / 1000) + 86400;
+
+  if (getEntitlementMode() === 'open') {
+    return {
+      tier: 'pro',
+      authority: 'open',
+      claims: {
+        is_pro: true,
+        is_vip: false,
+        plan: 'pro',
+        exp: nowExp,
+      },
+    };
+  }
+
+  try {
+    const owner = (process.env.AINOVEL_OWNER_UNLIMITED || '').trim().toLowerCase();
+    if (
+      (owner === '1' || owner === 'true' || owner === 'yes') &&
+      !isPackagedPublishHint()
+    ) {
+      return {
+        tier: 'pro',
+        authority: 'owner',
+        claims: {
+          is_pro: true,
+          is_vip: false,
+          plan: 'pro',
+          exp: nowExp,
+        },
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Dynamic import avoids circular dep with licenseBridge
+  try {
+    const { isSupabaseAdminConfigured } = await import('@/lib/supabase/env');
+    if (isSupabaseAdminConfigured()) {
+      const { createServiceSupabase } = await import('@/lib/supabase/server');
+      const { verifyLicenseCloud } = await import('@/lib/cloud/licenseBridge');
+      const token = extractEntitlementToken(req, body);
+      if (!token) {
+        return { tier: 'free', claims: freeClaims(), authority: 'supabase' };
+      }
+      const service = createServiceSupabase();
+      const cloud = await verifyLicenseCloud({ service, token });
+      if (cloud.valid && cloud.claims) {
+        const c = cloud.claims;
+        const tier: PlanTier = claimsIsTrial(c)
+          ? 'trial'
+          : c.is_pro || c.is_vip
+            ? 'pro'
+            : 'free';
+        return { tier, claims: c, authority: 'supabase' };
+      }
+      // Missing/invalid/revoked signed token → Free. A body-supplied HWID is
+      // customer-controlled input and is never authorization.
+      return { tier: 'free', claims: freeClaims(), authority: 'supabase' };
+    }
+  } catch (e) {
+    // Supabase configured but query failed — fail closed in enforce
+    if (getEntitlementMode() === 'enforce') {
+      throw new AppError(
+        `Không đọc được license Supabase: ${e instanceof Error ? e.message : String(e)}`,
+        { code: 'INFRA', status: 503 },
+      );
+    }
+  }
+
+  const local = resolveRequestAccess(req, body);
+  return { ...local, authority: 'local' };
+}
+
+/**
+ * Assert minimum plan tier (Supabase-first when configured).
+ */
+export async function assertTierAtLeast(
   req: Request,
   minTier: PlanTier,
   body?: unknown,
-): EntitlementClaims {
-  const { tier, claims } = resolveRequestAccess(req, body);
+): Promise<EntitlementClaims> {
+  const { tier, claims } = await resolveRequestAccessAsync(req, body);
   if (tierAtLeast(tier, minTier)) {
     return claims;
   }
   const need =
-    minTier === 'vip'
-      ? 'VIP'
-      : minTier === 'pro'
-        ? 'Pro (trả phí) — Trial không đủ'
-        : minTier === 'trial'
-          ? 'Pro/Trial'
-          : 'license';
+    minTier === 'pro'
+      ? 'Pro (trả phí) — Trial không đủ'
+      : minTier === 'trial'
+        ? 'Pro/Trial'
+        : 'license';
   throw new AppError(
-    `Tính năng cần gói ${need}. Nhấp logo app → Bản quyền để dán key, mua Pro, hoặc bật Trial (nếu đủ quyền).`,
+    `Tính năng cần gói ${need}. Gói hiện tại lấy từ Supabase (HWID). Nhấp logo → Bản quyền / liên hệ admin cấp key.`,
     { code: 'AUTH', status: 403 },
   );
 }
 
 /** Assert feature by matrix id (server). */
-export function assertFeatureAccess(
+export async function assertFeatureAccess(
   req: Request,
   featureId: CommercialFeatureId,
   body?: unknown,
-): EntitlementClaims {
-  const { tier, claims } = resolveRequestAccess(req, body);
+): Promise<EntitlementClaims> {
+  const { tier, claims } = await resolveRequestAccessAsync(req, body);
   if (canAccessFeature(tier, featureId)) return claims;
   throw new AppError(
-    `Tính năng «${featureId}» cần gói cao hơn (hiện: ${tier}). Nhấp logo app → Bản quyền.`,
+    `Tính năng «${featureId}» cần gói cao hơn (hiện: ${tier}, nguồn Supabase/local). Nhấp logo app → Bản quyền.`,
     { code: 'AUTH', status: 403 },
   );
 }
 
 /**
- * Assert Pro-equivalent (trial | pro | vip) for premium routes.
- * open: always pass (desktop/dev).
- * enforce: valid token is_pro|is_vip|is_trial, or active local trial vault.
+ * Assert Pro-equivalent (trial | pro).
+ * When Supabase configured: only active licenses row for HWID grants access.
  */
-export function assertProAccess(req: Request, body?: unknown): EntitlementClaims {
+export async function assertProAccess(
+  req: Request,
+  body?: unknown,
+): Promise<EntitlementClaims> {
   return assertTierAtLeast(req, 'trial', body);
 }

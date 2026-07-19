@@ -24,7 +24,7 @@ function resolveWatermarkOutputPath(audioPath: string, outputPath?: unknown): st
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { audioPath, mode, outputPath } = body;
+    const { audioPath, mode, outputPath, engine } = body;
 
     if (!audioPath || typeof audioPath !== 'string') {
       return NextResponse.json({ error: 'Missing or invalid "audioPath" parameter' }, { status: 400 });
@@ -32,6 +32,12 @@ export async function POST(req: NextRequest) {
     if (!mode || !['embed', 'detect'].includes(mode)) {
       return NextResponse.json(
         { error: 'Missing or invalid "mode" parameter. Must be "embed" or "detect"' },
+        { status: 400 },
+      );
+    }
+    if (!engine || !['audioseal', 'ffmpeg_metadata'].includes(engine)) {
+      return NextResponse.json(
+        { error: 'Missing or invalid "engine". Must be "audioseal" or "ffmpeg_metadata"' },
         { status: 400 },
       );
     }
@@ -49,6 +55,7 @@ export async function POST(req: NextRequest) {
       payload: {
         audio_path: audioPath,
         mode,
+        engine,
         output_path: resolvedOutputPath || undefined,
       },
       timeoutMs: 300_000,

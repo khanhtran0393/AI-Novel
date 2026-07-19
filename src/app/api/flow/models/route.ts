@@ -66,7 +66,7 @@ export async function GET() {
     defaultQuality: ops.defaultQuality,
     defaults: {
       imageModel: FLOW_IMAGE_MODELS[0]?.id,
-      videoModel: 'veo_3_1_t2v_fast',
+      videoModel: 'OMNI_FLASH',
       videoDurationSec: FLOW_DEFAULT_VIDEO_DURATION_SEC,
       nativeVideoScale: '720p',
     },

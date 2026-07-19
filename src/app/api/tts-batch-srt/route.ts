@@ -25,7 +25,7 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 900;
+export const maxDuration = 300;
 
 function parsePipelineMode(raw: unknown): TtsBatchPipelineMode {
   return normalizePipelineMode(raw);

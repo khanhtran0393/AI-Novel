@@ -28,7 +28,7 @@ type MediaAssetActions = Pick<
 
 export function createMediaAssetActions(
   set: StoreSet,
-  _get: StoreGet,
+  get: StoreGet,
 ): MediaAssetActions {
   return {
     addGeneratedAudio: (key, path, duration) =>
@@ -243,7 +243,17 @@ export function createMediaAssetActions(
 
     setVideoDuration: (videoDuration, opts) => {
       const mirror = opts?.mirrorChannel !== false;
-      const n = Math.max(1, Math.min(15, Number(videoDuration) || 6));
+      const n = Number(videoDuration);
+      if (!Number.isFinite(n) || n <= 0 || n > 15) {
+        throw new Error(
+          'VIDEO_DURATION_INVALID: Hãy chọn thời lượng video hợp lệ; app không tự thay bằng 6 giây.',
+        );
+      }
+      if (get().videoProvider === 'flow' && ![4, 6, 8].includes(n)) {
+        throw new Error(
+          `FLOW_DURATION_INVALID: Flow chỉ nhận 4/6/8 giây, không nhận ${n}s.`,
+        );
+      }
       set((state) => ({
         videoDuration: n,
         channels: mirror

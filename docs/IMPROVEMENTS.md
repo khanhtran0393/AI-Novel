@@ -10,7 +10,7 @@
 | 6 | Labs tools flag | ✅ |
 | 7 | CONTRIBUTING checklist | ✅ |
 | 8 | Playwright contracts (`npm run test:e2e`) | ✅ |
-| 9 | Pro/VIP server entitlement HMAC | ✅ (gate: ship-pack, export-capcut, generate-video, integrations/pipeline) |
+| 9 | Pro server entitlement Ed25519 | ✅ (gate: ship-pack, export-capcut, generate-video, integrations/pipeline) |
 | 10 | TTS platforms split (`platforms/*`) | ✅ |
 | 11 | Domain ownership map (logical) | ✅ |
 | 12 | Structured log + `correlationId` (hot APIs) | ✅ |
@@ -43,7 +43,7 @@ npm run verify:ci
 |-----|---------|
 | `AINOVEL_ENTITLEMENT_MODE=open` | Default desktop/dev — Pro routes luôn cho phép |
 | `AINOVEL_ENTITLEMENT_MODE=enforce` | Bắt token `x-ainovel-entitlement` hoặc `body.entitlementToken` |
-| `AINOVEL_ENTITLEMENT_SECRET` | HMAC secret |
+| `AINOVEL_ENTITLEMENT_PUBLIC_KEYS_DIR` | Public key ring xác minh Ed25519 |
 | `POST /api/entitlement/issue` | Cấp token |
 | Client | `localStorage.ainovel.entitlementToken` → header tự gắn |
 

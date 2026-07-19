@@ -9,6 +9,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { inspectTtsAudioFile } from './audioQuality';
+
+/** Bump when synthesis conditioning or the signal-quality contract changes. */
+const PREVIEW_CACHE_VERSION = 'v2-conditioning-quality';
 
 export type PreviewCacheKeyInput = {
   platform: string;
@@ -96,6 +100,7 @@ export function normalizePreviewCacheInput(
 export function buildPreviewCacheId(input: PreviewCacheKeyInput): string {
   const n = normalizePreviewCacheInput(input);
   const payload = [
+    ...(n.platform === 'vina_voice' ? [PREVIEW_CACHE_VERSION] : []),
     n.platform,
     n.voice,
     String(n.speed),
@@ -166,6 +171,13 @@ function hitFromFile(
     if (st.size < 500) return null;
     const ageMs = Date.now() - st.mtimeMs;
     if (typeof maxAgeMs === 'number' && ageMs > maxAgeMs) return null;
+    const quality = inspectTtsAudioFile(filePath);
+    if (!quality.ok) {
+      console.warn(
+        `[TTS Preview] reject corrupt cache ${filename}: ${quality.reasons.join('; ')}`,
+      );
+      return null;
+    }
 
     if (publicPathToEnsure && publicPathToEnsure !== filePath) {
       const pubDir = path.dirname(publicPathToEnsure);

@@ -43,7 +43,13 @@ export const provider_vieneu_tts: TTSProvider = {
       .replace(/Đ/g, 'D')
       .replace(/\.onnx$/i, '')
       .replace(/\s+/g, '');
-    const voiceId = VOICE_ALIAS[key] || (key.includes('nu') || key.includes('female') ? 'female' : key.includes('nam') || key.includes('male') ? 'male' : 'female');
+    const voiceId = VOICE_ALIAS[key];
+    if (!voiceId) {
+      throw new Error(
+        `VieNeu: voice "${opts.voice || ''}" không hợp lệ. ` +
+          `Chọn một voice có trong Cấu Hình Giọng Đọc Toàn Cục. Không fallback sang female/male.`,
+      );
+    }
 
     const scratchDir = path.join(process.cwd(), 'scratch', 'vieneu');
     fs.mkdirSync(scratchDir, { recursive: true });

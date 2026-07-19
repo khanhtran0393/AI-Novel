@@ -1,39 +1,34 @@
 /**
- * Issue HMAC entitlement token (seller / admin only).
+ * Issue Ed25519 entitlement token (seller / backend only).
  *
  * enforce mode: AINOVEL_ENTITLEMENT_ADMIN_KEY required on every request.
- * Body: { is_pro?, is_vip?, expSeconds?, hwid?, adminKey }
+ * Body: { expSeconds?, hwid?, adminKey }
  */
 import { NextResponse } from 'next/server';
 import {
   getEntitlementMode,
   getEntitlementPublicStatus,
   issueEntitlementToken,
-  resolveEntitlementSecret,
 } from '@/lib/entitlement';
+import {
+  assertLicenseSignerConfigured,
+  assertSellerRuntime,
+} from '@/lib/commercial/sellerRuntime';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
+    assertSellerRuntime();
+    assertLicenseSignerConfigured();
     const body = (await req.json().catch(() => ({}))) as {
-      is_pro?: boolean;
-      is_vip?: boolean;
       expSeconds?: number;
       hwid?: string;
       adminKey?: string;
     };
 
     const mode = getEntitlementMode();
-    const sec = resolveEntitlementSecret();
-    if (mode === 'enforce' && !sec.ok) {
-      throw new AppError(sec.reason || 'Secret misconfigured', {
-        code: 'INFRA',
-        status: 503,
-      });
-    }
-
     // Admin gate: always required in enforce; optional in open only if ADMIN_KEY set
     const admin = (process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY || '').trim();
     if (mode === 'enforce') {
@@ -58,19 +53,18 @@ export async function POST(req: Request) {
     }
 
     const hwid = typeof body.hwid === 'string' ? body.hwid.trim() : '';
-    // Default Pro ON; VIP only when explicitly true
-    const is_pro = body.is_pro !== false;
-    const is_vip = body.is_vip === true;
     const token = issueEntitlementToken({
-      is_pro,
-      is_vip,
+      is_pro: true,
+      is_vip: false,
+      plan: 'pro',
       expSeconds: body.expSeconds,
       ...(hwid ? { hwid } : {}),
     });
 
     const claimsPreview = {
-      is_pro,
-      is_vip,
+      is_pro: true,
+      is_vip: false,
+      plan: 'pro',
       hwid: hwid || null,
       expSeconds: body.expSeconds ?? 60 * 60 * 24 * 30,
     };

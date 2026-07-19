@@ -1,5 +1,60 @@
 # Project memory (AI Novel)
 
+## Activate fail kid mismatch (2026-07-19)
+
+- **Cause:** Telegram đã cấp key **HMAC cũ** (`eyJ….sig` 43 chars) — app chỉ verify **Ed25519 `AINOVEL2.<kid>.…`**. Lỗi UI hiện `kid=ROhq…` (thực ra là signature HMAC bị parse nhầm) vs keyring `3ac9c18a6691a09e`.
+- **Fix:** diagnose legacy HMAC trong activate + LicenseModal; bridge approveText bắt buộc AINOVEL2; `issueProLicenseForPlan` (alias `issueHmacForPlan`); redeploy bridge `ainovel-telegram-bridge.vercel.app` với `PRIVATE_KEY_B64` seller kid `3ac9c18a6691a09e`.
+- **Seller pair OK:** `%LOCALAPPDATA%\AI Novel Seller\entitlement-private.pem` ↔ `resources/license/public-keys/3ac9c18a6691a09e.pem`.
+- Khách dán lại key **bắt đầu `AINOVEL2.`** (key HMAC/eyJ… vứt).
+
+## Go-live status (2026-07-19 late)
+
+- **softwareReady: true** · **authenticodeReady: false** (no CSC_LINK / WIN_CSC_* on machine)
+- Docs: `docs/COMMERCIAL_GO_LIVE.md` · scripts: `commercial:go-live-status`, `commercial:complete`
+- prepare:publish PASS · smoke-unpacked Free 403 PASS · license:issue Ed25519 PASS
+- Residual only: buy Windows code-signing cert → build:desktop or tag v1.0.0 CI
+
+## Commercial complete local (2026-07-19)
+
+- **prepare:publish PASS** (fixed ELECTRON_RUN_AS_NODE breaking credential vault smoke via `scripts/run-electron-smoke.cjs`)
+- **release:source staged** required packaging files for `audit:release-source`
+- **release:verify** still needs Authenticode env (CSC_LINK / WIN_CSC_*) — no code-sign cert on machine
+- **pack:unsigned:qa** produced `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe` + win-unpacked
+- **audit-packaged-artifact PASS** (public keys, no private markers)
+- **smoke-unpacked-desktop PASS**: enforce, free, video 403
+- **Pro activate E2E PASS**: issue AINOVEL2 → activate → tier pro → video not 403 (400 validation)
+- Customer `.env.commercial` public-only (license API + update feed)
+- Feed verify PASS; Telegram bridge + ai-novel-flax ready
+- Residual for production publish: buy/configure Windows Authenticode → `npm run build:desktop` / tag `v1.0.0` CI
+
+## Commercial readiness audit (2026-07-19)
+
+- **ship:check PASS** (fixed python_core filters: `!ffmpeg/**`, `!MediaCrawler/**`, `!assets/**`)
+- **smoke:commercial PASS** (Ed25519 + multiseat)
+- **License:** issue `AINOVEL2.<kid>.…` + verify same HWID + tamper reject; feature matrix Free/Trial/Pro OK
+- **Prod API** `https://ai-novel-flax.vercel.app` enforce, publicKey+signer, readyForCommercial
+- **Telegram bridge** webhook live; desktop activates offline Ed25519 (server HWID ≠ client — by design)
+- **Security:** credentialVault DPAPI, public.env no secrets, asar+signing gates, electron security smoke PASS
+- **Ops remaining for full sell:** code-sign cert on build machine, white-machine install once, optional update artifact on feed
+
+## Telegram Vercel bridge LIVE (2026-07-19)
+
+- **URL:** `https://ainovel-telegram-bridge.vercel.app`
+- **Webhook:** `/api/entitlement/telegram-webhook` (getWebhookInfo confirmed)
+- **Code:** `deploy/telegram-bridge/` slim Next; deploy `npm run telegram:deploy-bridge`
+- **Secrets:** Ed25519 `AINOVEL_ENTITLEMENT_PRIVATE_KEY_B64` (seller PEM base64, kid `3ac9c18a6691a09e`) + bot token/chat/webhook secret — **không** dùng HMAC secret để cấp license
+- Full monorepo Vercel blocked (1.4GB / CVE next) — bridge only is intentional
+- Redeploy 2026-07-19: webhook live; Cấp Key → AINOVEL2 only
+
+## Commercial full ship pack (2026-07-19)
+
+- **Updater:** `electron/updater.js` + main/preload `ainovelUpdater`; dep `electron-updater`; env `AINOVEL_UPDATE_*`; builder `publish.generic` placeholder URL.
+- **Multi-seat:** `activationVault` maxSeats/seats + `releaseSeat` / `setMaxSeats`; API `/api/entitlement/seats`; CLI `license:transfer`; issue `--seats N`.
+- **Seller log:** `sellerLog` + webhook/issue/transfer append `data/licenses/seller-orders.jsonl`.
+- **Ops scripts:** `commercial:secrets`, `commercial:setup-env`, `ship:check`, `commercial:white-machine`.
+- **Docs:** `docs/COMMERCIAL_OPS.md`, `.env.commercial.example`; SHIP/INSTALL/COMMERCIAL updated.
+- **Ops still human:** buy Authenticode cert, host CDN feed, fill Telegram/Vercel secrets, white-machine tick.
+
 ## Docs truth rewrite (2026-07-19) — full set
 
 - **Rewrote for runtime truth:** `AGENTS.md`, `docs/IRON_LAWS.md`, `docs/DOMAIN_MAP.md`, `docs/RESET_POINT.md`, `docs/COMMERCIAL.md`, `docs/integrations-hub.md`, `src/app/workspace/ARCHITECTURE.md`, `src/contracts/domainOwnership.ts` (credentials + license/cloud).
@@ -11,6 +66,11 @@
 - **Cause:** `shouldGrantOwnerUnlimited()` returned true when `MODE=open` → status `ownerUnlimited` → sync `setVipStatus(true,true)` → badge VIP.
 - **Fix:** owner unlimited **only** `AINOVEL_OWNER_UNLIMITED=1`. MODE=open no longer elevates UI.
 - `.env.local` set to `enforce` for commercial test; restart Next after env change.
+
+## Cleanup safe junk (2026-07-19)
+
+- Deleted non-runtime: `OpenMontage/` (~696MB, excluded from Electron package), `scratch/`, root `test_webhook*.ts`, `tsconfig.tsbuildinfo`.
+- Kept: `src`, `public`, `bin`, `data`, `accounts_data`, `python_core`, `node_modules`, `.next`, `vendor`.
 
 ## Product tiers = Free | Trial | Pro only (2026-07-19)
 

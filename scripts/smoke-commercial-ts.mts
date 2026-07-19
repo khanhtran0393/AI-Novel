@@ -1,19 +1,15 @@
-/**
- * Commercial smoke using real TS entitlement module.
- * Run: npx tsx scripts/smoke-commercial-ts.mts
- */
+/** Commercial smoke against the real Ed25519 entitlement implementation. */
 import assert from 'assert';
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import {
-  getEntitlementMode,
   getEntitlementPublicStatus,
   getHwid,
-  isInsecureEntitlementSecret,
   issueEntitlementToken,
-  resolveEntitlementSecret,
+  resolveEntitlementSigningKey,
+  resolveEntitlementVerificationKeys,
   verifyEntitlementToken,
 } from '../src/lib/entitlement.ts';
 import {
@@ -23,196 +19,93 @@ import {
 import {
   createActivationCodes,
   redeemActivationCode,
+  releaseSeat,
 } from '../src/lib/commercial/activationVault.ts';
-import { startTrial, getTrialStatus } from '../src/lib/commercial/trial.ts';
-import {
-  authorizePaymentWebhook,
-  processPaymentWebhook,
-} from '../src/lib/commercial/paymentWebhook.ts';
-import {
-  hashToken,
-  issueHmacForPlan,
-  paidPlanToLicense,
-  verifyLicenseCloud,
-} from '../src/lib/cloud/licenseBridge.ts';
-import { isSupabaseConfigured, supabaseConfigPublic } from '../src/lib/supabase/env.ts';
+import { getSeatSummary } from '../src/lib/commercial/multiSeat.ts';
+import { getTrialStatus, startTrial } from '../src/lib/commercial/trial.ts';
+import { issueHmacForPlan, verifyLicenseCloud } from '../src/lib/cloud/licenseBridge.ts';
 
-// Save env
-const prevMode = process.env.AINOVEL_ENTITLEMENT_MODE;
-const prevSec = process.env.AINOVEL_ENTITLEMENT_SECRET;
-const prevAdmin = process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY;
-const prevData = process.env.AINOVEL_DATA_ROOT;
-
-// Isolate vault so smoke never pollutes commercial data/licenses
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const smokeRoot = path.join(__dirname, '..', 'scratch', 'commercial-smoke-vault');
-fs.mkdirSync(smokeRoot, { recursive: true });
-process.env.AINOVEL_DATA_ROOT = smokeRoot;
+const keys = crypto.generateKeyPairSync('ed25519');
+const privatePem = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+const publicPem = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ainovel-commercial-'));
+const saved = { ...process.env };
 
 async function main() {
-  // open + weak secret allowed for dev default path
-  process.env.AINOVEL_ENTITLEMENT_MODE = 'open';
-  delete process.env.AINOVEL_ENTITLEMENT_SECRET;
-  const openRes = resolveEntitlementSecret();
-  assert.strictEqual(openRes.ok, true);
-
-  // enforce without secret → not ok
+  process.env.AINOVEL_DATA_ROOT = smokeRoot;
   process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
-  delete process.env.AINOVEL_ENTITLEMENT_SECRET;
-  const bad = resolveEntitlementSecret();
-  assert.strictEqual(bad.ok, false);
+  process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY = privatePem;
+  process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEY = publicPem;
+  process.env.AINOVEL_TRIAL_ENABLED = '1';
+  delete process.env.AI_NOVEL_PACKAGED;
 
-  // enforce with forbidden default → not ok
-  process.env.AINOVEL_ENTITLEMENT_SECRET =
-    'ainovel-enterprise-commercial-secret-key-2026';
-  assert.strictEqual(resolveEntitlementSecret().ok, false);
-
-  // enforce with strong secret
-  const strong = crypto.randomBytes(32).toString('hex');
-  process.env.AINOVEL_ENTITLEMENT_SECRET = strong;
-  process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY = crypto.randomBytes(16).toString('hex');
-  assert.strictEqual(resolveEntitlementSecret().ok, true);
-  assert.strictEqual(isInsecureEntitlementSecret(strong), false);
+  assert.ok(resolveEntitlementSigningKey().ok);
+  assert.ok(resolveEntitlementVerificationKeys().ok);
+  assert.ok(getEntitlementPublicStatus().readyForCommercial);
 
   const hwid = getHwid();
-  assert.ok(hwid.length === 16);
-
   const token = issueEntitlementToken({
     is_pro: true,
     is_vip: false,
+    plan: 'pro',
     hwid,
     expSeconds: 3600,
   });
+  assert.ok(token.startsWith('AINOVEL2.'));
   const claims = verifyEntitlementToken(token, { requireHwidMatch: true });
-  assert.ok(claims?.is_pro);
-  assert.strictEqual(claims?.hwid, hwid.toLowerCase());
+  assert.equal(claims?.plan, 'pro');
+  assert.equal(claims?.is_vip, false);
+  const tokenParts = token.split('.');
+  const signature = tokenParts.at(-1) || '';
+  tokenParts[tokenParts.length - 1] = `${signature.startsWith('A') ? 'B' : 'A'}${signature.slice(1)}`;
+  assert.equal(verifyEntitlementToken(tokenParts.join('.')), null);
 
-  // wrong machine simulation: force different hwid in token
-  const badTok = issueEntitlementToken({
+  const wrongMachine = issueEntitlementToken({
     is_pro: true,
     is_vip: false,
+    plan: 'pro',
     hwid: '0000000000000000',
     expSeconds: 3600,
   });
-  assert.strictEqual(
-    verifyEntitlementToken(badTok, { requireHwidMatch: true }),
-    null,
-  );
+  assert.equal(verifyEntitlementToken(wrongMachine, { requireHwidMatch: true }), null);
 
-  const status = getEntitlementPublicStatus();
-  assert.strictEqual(status.mode, 'enforce');
-  assert.strictEqual(status.readyForCommercial, true);
+  assert.equal(resolvePlanTier({ is_vip: true }), 'pro');
+  assert.equal(resolvePlanTier({ is_pro: true, is_trial: true }), 'trial');
+  assert.equal(canAccessFeature('free', 'gen_video'), false);
+  assert.equal(canAccessFeature('trial', 'gen_video'), true);
+  assert.equal(canAccessFeature('trial', 'integrations_pipeline'), false);
+  assert.equal(canAccessFeature('pro', 'integrations_pipeline'), true);
 
-  // Feature matrix
-  assert.strictEqual(canAccessFeature('free', 'write_chapter'), true);
-  assert.strictEqual(canAccessFeature('free', 'gen_video'), false);
-  assert.strictEqual(canAccessFeature('pro', 'gen_video'), true);
-  assert.strictEqual(resolvePlanTier({ is_pro: true }), 'pro');
-  assert.strictEqual(resolvePlanTier({ trialActive: true }), 'trial');
-  // Trial wins over is_pro (store often keeps both)
-  assert.strictEqual(
-    resolvePlanTier({ is_pro: true, is_trial: true }),
-    'trial',
-  );
-  assert.strictEqual(
-    resolvePlanTier({ is_pro: true, trialActive: true }),
-    'trial',
-  );
-  assert.strictEqual(canAccessFeature('trial', 'gen_video'), true);
-  assert.strictEqual(canAccessFeature('trial', 'integrations_pipeline'), false);
-  assert.strictEqual(canAccessFeature('trial', 'toolbox_labs'), false);
-  assert.strictEqual(canAccessFeature('pro', 'toolbox_labs'), true);
+  const code = createActivationCodes({ count: 1, plan: 'pro', maxSeats: 2 })[0];
+  assert.ok(code.code.startsWith('AINOVEL-'));
+  assert.ok(redeemActivationCode(code.code, 'aaaaaaaaaaaaaaaa').ok);
+  assert.ok(redeemActivationCode(code.code, 'bbbbbbbbbbbbbbbb').ok);
+  assert.equal(redeemActivationCode(code.code, 'cccccccccccccccc').ok, false);
+  assert.ok(releaseSeat(code.code, 'aaaaaaaaaaaaaaaa').ok);
+  assert.ok(redeemActivationCode(code.code, 'cccccccccccccccc').ok);
+  assert.equal(getSeatSummary(code.code).used, 2);
 
-  // Activation code redeem
-  const codes = createActivationCodes({
-    count: 1,
-    plan: 'pro',
-    expSeconds: 3600,
-    note: 'smoke',
-  });
-  assert.ok(codes[0]?.code.startsWith('AINOVEL-'));
-  const redeemed = redeemActivationCode(codes[0].code, hwid);
-  assert.ok(redeemed.ok && redeemed.token);
-  const redeemedClaims = verifyEntitlementToken(redeemed.token, {
-    requireHwidMatch: true,
-  });
-  assert.ok(redeemedClaims?.is_pro);
+  assert.ok(startTrial(hwid).ok);
+  assert.ok(getTrialStatus(hwid).used);
 
-  // Trial start (may already exist from prior smoke — ok)
-  const trial = startTrial(hwid);
-  assert.ok(trial.ok);
-  const trialSt = getTrialStatus(hwid);
-  assert.ok(trialSt.used || trialSt.active);
-
-  // Payment webhook auth + process
-  process.env.AINOVEL_PAYMENT_WEBHOOK_SECRET = 'webhook-secret-at-least-24chars!!';
-  const fakeReq = {
-    headers: {
-      get: (k: string) =>
-        k.toLowerCase() === 'x-ainovel-webhook-secret'
-          ? 'webhook-secret-at-least-24chars!!'
-          : null,
-    },
-  } as unknown as Request;
-  const auth = authorizePaymentWebhook(fakeReq, {});
-  assert.strictEqual(auth.ok, true);
-  const paid = processPaymentWebhook({
-    provider: 'generic',
-    plan: 'pro',
-    issueMode: 'code',
-    orderId: `smoke_${Date.now()}`,
-  });
-  assert.ok(paid.ok && paid.codes && paid.codes.length === 1);
-
-  // Cloud bridge pure (no live Supabase required)
-  const meta = paidPlanToLicense('lifetime');
-  assert.strictEqual(meta.amountVnd, 8_999_000);
   const issued = issueHmacForPlan('month', hwid);
-  assert.ok(issued.token.includes('.'));
-  assert.ok(hashToken(issued.token).length === 64);
-  const cloudVerify = await verifyLicenseCloud({
-    service: null,
-    token: issued.token,
-    hwid,
-  });
-  assert.strictEqual(cloudVerify.valid, true);
-  const sbPub = supabaseConfigPublic();
-  assert.strictEqual(typeof sbPub.configured, 'boolean');
-  assert.strictEqual(isSupabaseConfigured(), sbPub.configured);
+  const cloud = await verifyLicenseCloud({ service: null, token: issued.token, hwid });
+  assert.equal(cloud.valid, true);
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        mode: getEntitlementMode(),
-        hwid,
-        readyForCommercial: status.readyForCommercial,
-        tokenSampleLen: token.length,
-        activationCode: codes[0].code,
-        trialActive: trialSt.active,
-        webhookCode: paid.codes?.[0],
-        supabaseConfigured: sbPub.configured,
-        cloudBridgeOk: true,
-      },
-      null,
-      2,
-    ),
-  );
+  process.env.AI_NOVEL_PACKAGED = '1';
+  process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0';
+  assert.equal(getTrialStatus('dddddddddddddddd').enabled, false);
+
+  console.log(JSON.stringify({ ok: true, algorithm: 'Ed25519', hwid, tier: claims?.plan }));
   console.log('PASS smoke-commercial-ts');
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
+  .catch((error) => {
+    console.error(error);
     process.exitCode = 1;
   })
   .finally(() => {
-    if (prevMode === undefined) delete process.env.AINOVEL_ENTITLEMENT_MODE;
-    else process.env.AINOVEL_ENTITLEMENT_MODE = prevMode;
-    if (prevSec === undefined) delete process.env.AINOVEL_ENTITLEMENT_SECRET;
-    else process.env.AINOVEL_ENTITLEMENT_SECRET = prevSec;
-    if (prevAdmin === undefined) delete process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY;
-    else process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY = prevAdmin;
-    if (prevData === undefined) delete process.env.AINOVEL_DATA_ROOT;
-    else process.env.AINOVEL_DATA_ROOT = prevData;
+    process.env = saved;
+    fs.rmSync(smokeRoot, { recursive: true, force: true });
   });

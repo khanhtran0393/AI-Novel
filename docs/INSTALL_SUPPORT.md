@@ -1,43 +1,58 @@
-# Cài đặt & hỗ trợ khách — AI Novel
+# Cài đặt và hỗ trợ khách hàng — AI Novel
 
-## Cài đặt (máy trắng)
+## Cài đặt trên máy mới
 
-1. Chạy `AI-Novel-*-Setup.exe` (NSIS) hoặc bản portable.
-2. (Seller) đặt file secrets:
-   - `%APPDATA%\ai-novel-script-generator\.env.commercial`
-   - Nội dung tối thiểu:
-     ```env
-     AINOVEL_ENTITLEMENT_MODE=enforce
-     AINOVEL_ENTITLEMENT_SECRET=<chuỗi ≥24 random>
-     AINOVEL_ENTITLEMENT_ADMIN_KEY=<seller only — không đưa khách>
-     ```
-3. Mở app → **Cài đặt → Bản quyền** → copy **HWID**.
-4. Gửi HWID cho seller (hoặc redeem mã `AINOVEL-…` đã mua).
-5. Dán API key LLM (Gemini/OpenAI…) — **BYOK**.
-6. Setup chủ đề + phong cách → viết 1 chương thử.
+1. Chạy bộ cài `AI-Novel-*-Setup.exe` đã ký số.
+2. Mở ứng dụng. Bản thương mại đã chứa cấu hình công khai tới license API; khách hàng không cần nhận file bí mật từ seller.
+3. Nhấp logo góc trái → **Bản quyền** → sao chép HWID.
+4. Dùng mã `AINOVEL-…`, token đã mua, hoặc bắt đầu Trial nếu máy đủ điều kiện.
+5. Nhập API key LLM/ảnh của khách hàng (BYOK), chọn chủ đề + phong cách, rồi viết một chương thử.
 
-## Trial
+File `%APPDATA%\ai-novel-script-generator\.env.commercial` chỉ dùng khi cần ghi đè endpoint công khai. File này tuyệt đối không chứa private key, admin key, webhook secret hoặc Supabase service-role key.
 
-- Nút **Trial** trong Bản quyền: 3 ngày / 1 máy (nếu seller bật `AINOVEL_TRIAL_ENABLED=1`, `AINOVEL_TRIAL_DAYS=3`).
-- Hết trial → Free (mất video/CapCut/ship) hoặc mua Pro.
+## Free / Trial / Pro
+
+- **Free:** viết, outline, Gen Prompt, TTS Edge cơ bản, ảnh BYOK, project portable.
+- **Trial:** 3 ngày / 1 HWID; mở quyền Trial theo ma trận thương mại.
+- **Pro:** license gắn HWID; mở video, CapCut/ship và các tính năng Pro tương ứng.
+
+Trial thật được cấp bởi license server. Bản Electron packaged không tạo trial local.
+
+## Thành phần media tùy chọn
+
+Bản public là bản **core sạch** và không phân phối các binary/model chưa có đủ hồ sơ quyền thương mại:
+
+- FFmpeg/Piper trong `bin/`;
+- Vina Voice ONNX trong `src/python_core/models/vina_voice/*.onnx`;
+- MediaCrawler và audio tham chiếu giọng;
+- bộ font gốc chưa xác minh.
+
+Khi một luồng cần thành phần chưa được cài hợp lệ, app phải báo thiếu thành phần; không tự đổi provider, engine hoặc voice. Chỉ bổ sung các thành phần này từ gói riêng đã được seller xác minh quyền phân phối, đúng đường dẫn runtime được tài liệu kỹ thuật quy định.
+
+### Điều kiện dùng CapCut TTS
+
+CapCut TTS là tích hợp tùy chọn và chỉ chạy khi máy khách đã cài:
+
+- CapCut Desktop hợp lệ, có `sscronet.dll` từ chính bản cài của khách hàng;
+- CPython x64;
+- `cryptography==48.0.0`: `python -m pip install cryptography==48.0.0`.
+
+Kiểm tra Python trước khi hỗ trợ: `python -c "import cryptography; print(cryptography.__version__)"`. AI Novel chỉ đóng gói adapter do dự án sở hữu; không đóng gói CapCut, `sscronet.dll`, tài khoản, cookie hoặc voice của bên thứ ba. Khi thiếu điều kiện, CapCut TTS báo lỗi thẳng và không đổi sang engine khác.
 
 ## FAQ nhanh
 
-| Lỗi | Cách xử |
-|-----|---------|
-| 403 Pro/VIP | Kích hoạt token/code hoặc Trial |
-| CapCut fail | Cài CapCut PC; **không** auto Edge (B10) |
-| Flow fail | Login lại profile; xem `flow-environment-setup.md` |
-| Thiếu FFmpeg | `bin/ffmpeg.exe` trong gói; kiểm tra Health |
-| Token HWID sai | Token gắn máy khác — xin seller re-issue |
+| Lỗi | Cách xử lý |
+|---|---|
+| 403 Pro | Kích hoạt token/code hoặc Trial. |
+| License API không kết nối | Kiểm tra Internet và `https://ai-novel-flax.vercel.app/api/cloud/status`. |
+| Token sai HWID | Xin seller transfer seat hoặc cấp lại token đúng máy. |
+| CapCut fail | Cài CapCut Desktop + CPython x64, rồi chạy `python -m pip install cryptography==48.0.0`; app không tự chuyển sang Edge TTS. |
+| Flow fail | Đăng nhập lại profile và kiểm tra Flow Bridge. |
+| Thiếu FFmpeg/Piper/Vina | Cài gói thành phần đã được cấp quyền; app không đóng gói các file development-only. |
+| SmartScreen chặn | Chỉ phát hành bộ cài sau khi có chứng thư ký Windows tin cậy. |
+| Không tự cập nhật | Kiểm tra Internet và feed `https://azlizrbjkqcyqnsmuccv.supabase.co/storage/v1/object/public/desktop-updates/latest/latest.yml`; app chỉ cài bản đúng publisher đã ký số. |
 
-## Kênh hỗ trợ
+## Hỗ trợ
 
-- Zalo admin: **0868.715.114** (`https://zalo.me/0868715114`)
-- Telegram: cấu hình bot env — khách bấm **Đã thanh toán** trong Bản quyền → tin nhắn gói + HWID + nội dung CK.
-- Đính kèm: version app, HWID, correlation id lỗi (nếu có).
-
-## Gói Free làm được gì?
-
-Viết chương, outline, Gen Prompt, TTS Edge/Piper, gen ảnh BYOK, portable project.  
-**Pro/Trial:** gen video, CapCut, ship pack, toolbox labs, multi-channel nâng cao.
+- Zalo admin: **0868.715.114** — `https://zalo.me/0868715114`
+- Khi báo lỗi, gửi version app, HWID và correlation id; không gửi API key hoặc token bí mật qua chat công khai.

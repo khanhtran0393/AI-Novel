@@ -73,13 +73,23 @@ function copyIntoMedia(src: string, mediaDir: string, preferredName?: string): s
   if (!src || !fs.existsSync(src)) return null;
   fs.mkdirSync(mediaDir, { recursive: true });
   const base = safeName(preferredName || path.basename(src));
-  let dest = path.join(mediaDir, base);
-  if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(src)) {
+  let dest = path.join(/* turbopackIgnore: true */ mediaDir, base);
+  if (
+    fs.existsSync(dest) &&
+    path.resolve(/* turbopackIgnore: true */ dest) !==
+      path.resolve(/* turbopackIgnore: true */ src)
+  ) {
     const ext = path.extname(base);
     const stem = path.basename(base, ext);
-    dest = path.join(mediaDir, `${stem}_${Date.now()}${ext}`);
+    dest = path.join(
+      /* turbopackIgnore: true */ mediaDir,
+      `${stem}_${Date.now()}${ext}`,
+    );
   }
-  if (path.resolve(dest) !== path.resolve(src)) {
+  if (
+    path.resolve(/* turbopackIgnore: true */ dest) !==
+    path.resolve(/* turbopackIgnore: true */ src)
+  ) {
     fs.copyFileSync(src, dest);
   }
   return dest;

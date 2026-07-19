@@ -11,6 +11,8 @@ const SECRET_KEYS = [
   'openaiApiKeys',
   'grokApiKey',
   'grokApiKeys',
+  'claudeApiKey',
+  'claudeApiKeys',
   'lumaApiKey',
   'lumaApiKeys',
   'runwayApiKey',
@@ -23,7 +25,14 @@ const SECRET_KEYS = [
   'googleStudioCookie',
   'googleStudioCookies',
   'tiktokSessionIds',
-  'ttsConfig',
+] as const;
+
+const TTS_SECRET_KEYS = [
+  'tiktokSessionId',
+  'googleCloudApiKey',
+  'vbeeApiKey',
+  'vbeeAppId',
+  'vinaReferenceAudioB64',
 ] as const;
 
 function resolveUserData(): string | null {
@@ -69,12 +78,6 @@ function getAllBackupPaths(): string[] {
   return list;
 }
 
-function getSecretsPath(): string | null {
-  const userData = resolveUserData();
-  if (!userData) return null;
-  return path.join(userData, 'store', 'secrets.json');
-}
-
 export function scorePersistedStore(raw: string | null | undefined): {
   score: number;
   chapterContentChars: number;
@@ -94,26 +97,7 @@ export function scorePersistedStore(raw: string | null | undefined): {
     const readyChapters = chapters.filter(
       (chapter: { noi_dung?: string }) => String(chapter?.noi_dung || '').trim().length > 0,
     ).length;
-    const keyCount = [
-      state?.apiKey,
-      state?.openaiApiKey,
-      state?.grokApiKey,
-      state?.lumaApiKey,
-      state?.runwayApiKey,
-      state?.falaiApiKey,
-      state?.imageApiKey,
-      state?.videoApiKey,
-      state?.aiMasterApiKey,
-      state?.googleStudioCookie,
-      ...(Array.isArray(state?.apiKeys) ? state.apiKeys : []),
-      ...(Array.isArray(state?.openaiApiKeys) ? state.openaiApiKeys : []),
-      ...(Array.isArray(state?.grokApiKeys) ? state.grokApiKeys : []),
-      ...(Array.isArray(state?.lumaApiKeys) ? state.lumaApiKeys : []),
-      ...(Array.isArray(state?.runwayApiKeys) ? state.runwayApiKeys : []),
-      ...(Array.isArray(state?.falaiApiKeys) ? state.falaiApiKeys : []),
-      ...(Array.isArray(state?.googleStudioCookies) ? state.googleStudioCookies : []),
-      ...(Array.isArray(state?.tiktokSessionIds) ? state.tiktokSessionIds : []),
-    ].filter(Boolean).length;
+    const keyCount = 0;
     const generatedAssets =
       Object.keys(state?.generatedAudioPaths || {}).length +
       Object.keys(state?.generatedPrompts || {}).length +
@@ -170,30 +154,17 @@ function atomicWrite(filePath: string, content: string) {
   }
 }
 
-function mergeSecrets(raw: string): string {
-  const secretsPath = getSecretsPath();
-  if (!secretsPath || !fs.existsSync(secretsPath)) return raw;
+export function stripSecretsFromStoreRaw(raw: string): string {
   try {
-    const secrets = JSON.parse(fs.readFileSync(secretsPath, 'utf8'));
     const parsed = JSON.parse(raw);
     const hasWrapper = parsed && typeof parsed === 'object' && parsed.state;
-    const state = hasWrapper ? { ...parsed.state } : { ...parsed };
-    let changed = false;
-    for (const key of SECRET_KEYS) {
-      const incoming = secrets[key];
-      if (incoming === undefined || incoming === null || incoming === '') continue;
-      const current = state[key];
-      const empty =
-        current === undefined ||
-        current === null ||
-        current === '' ||
-        (Array.isArray(current) && current.length === 0);
-      if (empty) {
-        state[key] = incoming;
-        changed = true;
-      }
+    const state = { ...(hasWrapper ? parsed.state : parsed) };
+    for (const key of SECRET_KEYS) delete state[key];
+    if (state.ttsConfig && typeof state.ttsConfig === 'object') {
+      const ttsConfig = { ...state.ttsConfig };
+      for (const key of TTS_SECRET_KEYS) delete ttsConfig[key];
+      state.ttsConfig = ttsConfig;
     }
-    if (!changed) return raw;
     return JSON.stringify(hasWrapper ? { ...parsed, state } : state);
   } catch {
     return raw;
@@ -226,7 +197,7 @@ export function readStoreBackup(): string | null {
   }
 
   if (!best) return null;
-  return mergeSecrets(best.raw);
+  return stripSecretsFromStoreRaw(best.raw);
 }
 
 export function writeStoreBackup(raw: string): { ok: boolean; path: string; error?: string } {
@@ -236,7 +207,8 @@ export function writeStoreBackup(raw: string): { ok: boolean; path: string; erro
       return { ok: false, path: primary, error: 'Empty payload' };
     }
     JSON.parse(raw);
-    const incoming = scorePersistedStore(raw);
+    const safeRaw = stripSecretsFromStoreRaw(raw);
+    const incoming = scorePersistedStore(safeRaw);
     if (incoming.score <= 0) {
       return { ok: false, path: primary, error: 'score_zero' };
     }
@@ -257,28 +229,10 @@ export function writeStoreBackup(raw: string): { ok: boolean; path: string; erro
 
     for (const target of targets) {
       try {
-        atomicWrite(target, raw);
+        atomicWrite(target, safeRaw);
       } catch (err) {
         console.warn('[PersistStore] write fail', target, (err as Error)?.message);
       }
-    }
-
-    // secrets sidecar
-    try {
-      const parsed = JSON.parse(raw);
-      const state = parsed?.state || parsed;
-      const secrets: Record<string, unknown> = {};
-      for (const key of SECRET_KEYS) {
-        if (state?.[key] !== undefined && state[key] !== null && state[key] !== '') {
-          secrets[key] = state[key];
-        }
-      }
-      const secretsPath = getSecretsPath();
-      if (secretsPath && Object.keys(secrets).length) {
-        atomicWrite(secretsPath, JSON.stringify(secrets, null, 2));
-      }
-    } catch {
-      // ignore secrets errors
     }
 
     return { ok: true, path: primary };

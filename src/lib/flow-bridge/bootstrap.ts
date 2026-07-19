@@ -16,7 +16,11 @@ import {
   type FlowBrowserEngine,
 } from './browserResolver';
 import { ensurePortableBrowser } from './ensurePortableBrowser';
-import { ensureBridgeStarted, getBridgeSnapshot } from './bridgeServer';
+import {
+  ensureBridgeStarted,
+  getAccountFlowKey,
+  getBridgeSnapshot,
+} from './bridgeServer';
 import {
   getChromeSessionInfo,
   ensureIsolatedAccountProfile,
@@ -49,6 +53,26 @@ export type BootstrapResult = {
   snapshot: ReturnType<typeof getBridgeSnapshot>;
   installHint?: string;
 };
+
+export type FlowLoginReadinessInput = {
+  email?: string | null;
+  sessionVerified?: boolean;
+  flowKeyPresent?: boolean;
+  freshTokenPresent?: boolean;
+};
+
+/**
+ * Login readiness used by bootstrap. Kept pure so token-only regressions can be
+ * tested without launching Chromium or the Flow bridge.
+ */
+export function isFlowLoginReady(input: FlowLoginReadinessInput): boolean {
+  const email = String(input.email || '').trim();
+  return Boolean(
+    email.includes('@') &&
+      input.sessionVerified &&
+      (input.flowKeyPresent || input.freshTokenPresent),
+  );
+}
 
 function extensionDir(): string {
   const candidates = [
@@ -340,14 +364,22 @@ export async function bootstrapFlow(opts?: {
   const loginStartedAt = Date.now();
   let snap = getBridgeSnapshot();
   const accNow = loadAccounts().find((a) => a.id === accountId);
+  const accountExtensionConnected = Boolean(
+    snap.accounts?.find((account) => account.id === accountId)?.extensionConnected,
+  );
+  const accountFlowKeyPresent = Boolean(getAccountFlowKey(accountId));
   // Chỉ skip login nếu CHÍNH profile này đã verify email (không tin token global)
   // freshSession / forceChrome: LUÔN mở browser
   if (
     !opts?.forceChrome &&
     !freshSession &&
-    accNow?.sessionVerified &&
-    accNow.email &&
-    snap.extensionConnected
+    accNow &&
+    accountExtensionConnected &&
+    isFlowLoginReady({
+      email: accNow?.email,
+      sessionVerified: accNow?.sessionVerified,
+      flowKeyPresent: accountFlowKeyPresent,
+    })
   ) {
     steps.push(`Session đã verify: ${accNow.email}`);
     return {
@@ -487,7 +519,7 @@ export async function bootstrapFlow(opts?: {
         const { commandExtension, syncAccountIdentity } = await import(
           './bridgeServer'
         );
-        await commandExtension('force_token_harvest', {}, 30_000).catch(
+        await commandExtension('force_token_harvest', {}, 30_000, accountId).catch(
           () => undefined,
         );
         // Prefer session poll (email) over waiting only for webRequest Bearer
@@ -529,7 +561,7 @@ export async function bootstrapFlow(opts?: {
         if (isProfileBrowserAlive(launch.profileDir) || isProfileBrowserAlive(profileDir)) {
           try {
             const { commandExtension } = await import('./bridgeServer');
-            await commandExtension('force_token_harvest', {}, 30_000);
+            await commandExtension('force_token_harvest', {}, 30_000, accountId);
           } catch {
             /* ignore */
           }
@@ -596,15 +628,20 @@ export async function bootstrapFlow(opts?: {
     }
 
     // Chỉ nhận session của ĐÚNG profile này (token bind / email sau khi mở browser)
-    if (freshOk) {
+    if (freshOk && !gotToken) {
       gotToken = true;
-      steps.push('Token mới gắn đúng profile — đóng login');
-      break;
+      steps.push(
+        'Token mới gắn đúng profile — tiếp tục chờ email Google',
+      );
     }
     if (
-      accLive?.email &&
-      accLive.email.includes('@') &&
-      (accLive.flowKeyPresent || accLive.sessionVerified) &&
+      accLive &&
+      isFlowLoginReady({
+        email: accLive.email,
+        sessionVerified: accLive.sessionVerified,
+        flowKeyPresent: accLive.flowKeyPresent,
+        freshTokenPresent: freshOk,
+      }) &&
       Number(accLive.updatedAt || 0) >= loginStartedAt - 2000
     ) {
       gotToken = true;
@@ -614,15 +651,15 @@ export async function bootstrapFlow(opts?: {
     if (
       !freshSession &&
       accLive &&
-      (accLive.flowKeyPresent || accLive.sessionVerified) &&
-      (accLive.email || accLive.status === 'active')
+      isFlowLoginReady({
+        email: accLive.email,
+        sessionVerified: accLive.sessionVerified,
+        flowKeyPresent: accLive.flowKeyPresent,
+        freshTokenPresent: freshOk,
+      })
     ) {
       gotToken = true;
-      steps.push(
-        accLive.email
-          ? `Session: ${accLive.email}`
-          : 'Token đã nhận cho profile này',
-      );
+      steps.push(`Session: ${accLive.email}`);
       break;
     }
     // CẤM: tin flowKeyPresent global của profile khác
@@ -648,7 +685,15 @@ export async function bootstrapFlow(opts?: {
           const idr = await syncAccountIdentity(accountId);
           if (idr.identity?.email) {
             const again = loadAccounts().find((a) => a.id === accountId);
-            if (again?.email === idr.identity.email || again?.sessionVerified) {
+            if (
+              again &&
+              isFlowLoginReady({
+                email: again.email,
+                sessionVerified: again.sessionVerified,
+                flowKeyPresent: again.flowKeyPresent,
+                freshTokenPresent: isFreshTokenForAccount(accountId),
+              })
+            ) {
               gotToken = true;
               steps.push(`Nhận session: ${idr.identity.email}`);
               break;
@@ -680,29 +725,33 @@ export async function bootstrapFlow(opts?: {
     /* ignore */
   }
   const verified = Boolean(
-    gotToken ||
-      freshOkFinal ||
-      (accFinal?.sessionVerified && accFinal.email) ||
-      (accFinal?.flowKeyPresent &&
-        (!freshSession || Boolean(accFinal.email || freshOkFinal))),
+    accFinal &&
+      isFlowLoginReady({
+        email: accFinal.email,
+        sessionVerified: accFinal.sessionVerified,
+        flowKeyPresent: accFinal.flowKeyPresent,
+        freshTokenPresent: freshOkFinal,
+      }),
   );
 
-  if (verified || gotToken) {
+  // Persist a newly captured Bearer as partial state, but never call it a
+  // verified Google login until the same profile also has an email session.
+  if (gotToken && accFinal && !accFinal.flowKeyPresent) {
+    const hasEmail = Boolean(
+      accFinal.email && String(accFinal.email).includes('@'),
+    );
+    updateAccount(accountId, {
+      status: hasEmail ? 'active' : 'connecting',
+      flowKeyPresent: true,
+      sessionVerified: hasEmail && Boolean(accFinal.sessionVerified),
+      lastError: hasEmail
+        ? null
+        : 'Có token nhưng chưa đăng nhập Google (thiếu email) — hoàn tất login trên cửa sổ đang mở',
+    });
+  }
+
+  if (verified) {
     steps.push('Đã nhận token/session');
-    // Ensure account flags if only bridge has key
-    if (gotToken && accFinal && !accFinal.flowKeyPresent) {
-      const hasEmail = Boolean(
-        accFinal.email && String(accFinal.email).includes('@'),
-      );
-      updateAccount(accountId, {
-        status: hasEmail ? 'active' : 'idle',
-        flowKeyPresent: true,
-        sessionVerified: hasEmail,
-        lastError: hasEmail
-          ? null
-          : 'Có token nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập',
-      });
-    }
     // Close login UI; background only after verified (not if user aborted)
     try {
       if (getChromeSessionInfo(accountId).loginOpen) {
@@ -740,6 +789,17 @@ export async function bootstrapFlow(opts?: {
     }
     await waitFor(() => getBridgeSnapshot().extensionConnected, 15_000);
     snap = getBridgeSnapshot();
+  } else if (gotToken) {
+    steps.push(
+      'Đã có token nhưng chưa có email Google — giữ cửa sổ login mở',
+    );
+    updateAccount(accountId, {
+      status: 'connecting',
+      flowKeyPresent: true,
+      sessionVerified: false,
+      lastError:
+        'Có token nhưng chưa đăng nhập Google (thiếu email) — hoàn tất login trên cửa sổ đang mở',
+    });
   } else if (browserClosedByUser) {
     steps.push('Người dùng đã đóng trình duyệt');
   } else {
@@ -761,10 +821,16 @@ export async function bootstrapFlow(opts?: {
   snap = getBridgeSnapshot();
   const accReady = loadAccounts().find((a) => a.id === accountId);
   const ready = Boolean(
-    accReady?.sessionVerified ||
-      accReady?.flowKeyPresent ||
-      (snap.flowKeyPresent && snap.activeAccountId === accountId) ||
-      gotToken,
+    snap.extensionConnected &&
+      snap.flowKeyPresent &&
+      snap.activeAccountId === accountId &&
+      accReady &&
+      isFlowLoginReady({
+        email: accReady.email,
+        sessionVerified: accReady.sessionVerified,
+        flowKeyPresent: accReady.flowKeyPresent,
+        freshTokenPresent: snap.flowKeyPresent,
+      }),
   );
   return {
     ok: ready,
@@ -782,9 +848,7 @@ export async function bootstrapFlow(opts?: {
     isStockChrome: browser.isStockChrome,
     engine: browser.engine,
     message: ready
-      ? accReady?.email
-        ? `OK · ${accReady.email} · ${accReady.credits ?? '—'} cr`
-        : 'Token OK — browser sẽ đóng; bấm Check để lấy email/credits'
+      ? `OK · ${accReady?.email} · ${accReady?.credits ?? '—'} cr`
       : browserClosedByUser
         ? 'Browser đã đóng — chưa hoàn tất đăng nhập'
         : snap.extensionConnected

@@ -88,6 +88,8 @@ type BridgeState = {
 };
 
 const g = globalThis as unknown as { __ainovelFlowBridge?: BridgeState };
+// Durable bundles retain identity/project diagnostics, never live auth.
+const ALLOW_DURABLE_BEARER_REHYDRATION = false;
 
 function state(): BridgeState {
   if (!g.__ainovelFlowBridge) {
@@ -178,19 +180,42 @@ export function getAccountFlowKey(accountId?: string | null): string | null {
     if (s.flowKeyAccountId === aid && s.flowKey && s.flowKey.length >= 20) {
       return s.flowKey;
     }
-    try {
-      const { loadSessionBundle } = require('./sessionInherit') as typeof import('./sessionInherit');
-      const b = loadSessionBundle(aid);
-      if (b?.flowKey && String(b.flowKey).length >= 20) {
-        s.flowKeysByAccount.set(aid, String(b.flowKey));
-        return String(b.flowKey);
-      }
-    } catch {
-      /* ignore */
-    }
     return null;
   }
   return s.flowKey && s.flowKey.length >= 20 ? s.flowKey : null;
+}
+
+/** A rejected bearer must never be resurrected from disk or another callback. */
+function clearAccountFlowKey(accountId: string, reason: string): void {
+  const id = String(accountId || '').trim();
+  if (!id) return;
+  const s = state();
+  const rejected = s.flowKeysByAccount.get(id) || null;
+  s.flowKeysByAccount.delete(id);
+  if (s.flowKeyAccountId === id || (rejected && s.flowKey === rejected)) {
+    s.flowKey = null;
+    s.flowKeyAccountId = null;
+    s.tokenCapturedAt = null;
+  }
+  try {
+    const { writeSessionBundle } = require('./sessionInherit') as typeof import('./sessionInherit');
+    writeSessionBundle(id, {
+      flowKey: null,
+      flowKeyPresent: false,
+      tokenCapturedAt: null,
+      note: `Live bearer rejected: ${reason}`,
+    });
+  } catch {
+    /* ignore */
+  }
+  const prev = loadAccounts().find((account) => account.id === id);
+  updateAccount(id, {
+    status: 'connecting',
+    flowKeyPresent: false,
+    sessionVerified: false,
+    lastError: 'Phiên Flow hết hạn hoặc token bị từ chối — đang lấy token mới từ browser',
+    email: prev?.email || '',
+  });
 }
 
 function sendWs(obj: unknown, accountId?: string): boolean {
@@ -305,7 +330,7 @@ function reconcileLiveBrowserState(): void {
     if (acc && (acc.status === 'connecting' || !acc.sessionVerified)) {
       updateAccount(r.accountId, {
         status: acc.sessionVerified ? 'active' : 'idle',
-        flowKeyPresent: Boolean(acc.flowKeyPresent) || Boolean(acc.sessionVerified && acc.email),
+        flowKeyPresent: Boolean(getAccountFlowKey(r.accountId)),
         lastError: acc.sessionVerified
           ? acc.lastError
           : 'Browser đã đóng — chưa hoàn tất đăng nhập',
@@ -323,9 +348,6 @@ export function getBridgeSnapshot(): BridgeSnapshot {
   // NEVER paint global s.flowKey onto every account — that made Account 1 green without login.
   const chromeInfo = getChromeSessionInfo();
   const bridgeUp = isBridgeRunning();
-  const anyExt =
-    Array.from(s.sockets.values()).some((sck) => sck.readyState === 1) ||
-    Boolean(s.extSocket && s.extSocket.readyState === 1);
 
   const accounts = loadAccounts().map((a) => {
     const perChrome = getChromeSessionInfo(a.id);
@@ -337,22 +359,15 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     // Extension socket bound to THIS accountId (or active bind while login)
     const sock = s.sockets.get(a.id);
     const sockLive = Boolean(sock && sock.readyState === 1);
-    const extForProfile =
-      sockLive ||
-      (isBound && anyExt) ||
-      (s.activeAccountId === a.id && anyExt);
+    const extForProfile = sockLive;
 
     // Token: persisted on account OR live key owned by THIS account only
     // (cấm s.flowKey của profile A sơn xanh profile B)
-    const liveToken =
-      Boolean(a.flowKeyPresent) ||
-      Boolean(s.flowKey && s.flowKeyAccountId === a.id);
+    const liveToken = Boolean(s.flowKey && s.flowKeyAccountId === a.id);
     // Real Google login = email from labs session. NEVER paint verified from token alone
     // (stale SESSION_BUNDLE Bearer was making "Trình duyệt 1 · sẵn sàng" without login).
     const hasEmail = Boolean(a.email && String(a.email).includes('@'));
-    const verified = Boolean(
-      hasEmail && (a.sessionVerified || liveToken || a.flowKeyPresent),
-    );
+    const verified = Boolean(hasEmail && a.sessionVerified);
 
     let browserAlive = Boolean(perChrome.profileBrowserAlive);
     if (!browserAlive && (a.status === 'connecting' || isBound || liveToken)) {
@@ -368,18 +383,21 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     const projectReady = Boolean(projectId);
     // Per-profile token (map / bundle) — not global s.flowKey of another card
     const ownKey = Boolean(getAccountFlowKey(a.id));
-    const tokenOk = liveToken || ownKey;
+    const tokenOk = ownKey;
 
     let status = a.status;
     // Token alone ≠ logged-in ready. Keep active only when email verified.
     if (verified && tokenOk && status !== 'cooldown' && status !== 'error') {
       status = 'active';
-    } else if (!verified && status === 'active' && !loginOpen) {
+    } else if ((!verified || !tokenOk) && status === 'active' && !loginOpen) {
       // Stale "active" from old token paint — idle until real Google login
       status = 'idle';
     } else if (status === 'connecting' && !loginOpen && !browserAlive) {
       status = 'idle';
     }
+
+    const generationReady = verified && tokenOk && projectReady;
+    const previousCapabilities = a.capabilities;
 
     return {
       ...a,
@@ -400,6 +418,19 @@ export function getBridgeSnapshot(): BridgeSnapshot {
       extensionConnected: extForProfile,
       loginSessionOpen: loginOpen,
       projectReady,
+      capabilities: {
+        canGenerateImage: generationReady,
+        canGenerateVideo: generationReady,
+        canUpload: generationReady,
+        canListProjects: verified && tokenOk,
+        paygateTier: a.paygateTier ?? null,
+        credits: a.credits ?? null,
+        projectCount: a.projects?.length || 0,
+        flowKeyPresent: tokenOk,
+        browserCookies: previousCapabilities?.browserCookies ?? false,
+        proxyParity: generationReady,
+        updatedAt: previousCapabilities?.updatedAt || Date.now(),
+      },
     } as FlowAccount;
   });
 
@@ -524,12 +555,38 @@ export function applyAccountIdentity(
     : null;
   const syncedAt =
     typeof payload.syncedAt === 'number' ? payload.syncedAt : Date.now();
+  const challengeRequired = payload.challengeRequired === true;
+  const payloadSessionReady = payload.ok !== false && !challengeRequired;
 
   const targetId =
     String(accountIdHint || payload.accountId || s.activeAccountId || '').trim() ||
     loadAccounts().find((a) => a.status === 'connecting')?.id ||
     loadAccounts()[0]?.id ||
     '';
+  const storedAccount = targetId
+    ? loadAccounts().find((account) => account.id === targetId)
+    : undefined;
+  // A service-worker session fetch can transiently return an empty payload
+  // while the authenticated Flow tab still has a verified email/session.
+  // Empty optional fields may enrich nothing; only an explicit failed/challenge
+  // payload is allowed to downgrade trusted identity state.
+  const preserveTrustedState = payloadSessionReady && !email;
+  const effectiveEmail =
+    email || (preserveTrustedState ? storedAccount?.email || s.identity?.email || '' : '');
+  const effectiveName =
+    name || (preserveTrustedState ? storedAccount?.displayName || storedAccount?.name || s.identity?.name || '' : '');
+  const effectiveCredits =
+    credits ?? (preserveTrustedState ? storedAccount?.credits ?? s.identity?.credits ?? null : null);
+  const effectivePaygateTier =
+    paygateTier ??
+    (preserveTrustedState
+      ? storedAccount?.paygateTier ?? s.identity?.paygateTier ?? null
+      : null);
+  const effectiveSessionExpires =
+    sessionExpires ??
+    (preserveTrustedState
+      ? storedAccount?.sessionExpires ?? s.identity?.sessionExpires ?? null
+      : null);
 
   // Harvest projects → global catalog + THIS profile only
   const harvested: { id: string; title: string; source: 'capture' }[] = [];
@@ -562,20 +619,24 @@ export function applyAccountIdentity(
   }
 
   s.identity = {
-    email,
-    name,
+    email: effectiveEmail,
+    name: effectiveName,
     image: payload.image ? String(payload.image) : undefined,
-    credits,
-    paygateTier,
-    sessionExpires,
+    credits: effectiveCredits,
+    paygateTier: effectivePaygateTier,
+    sessionExpires: effectiveSessionExpires,
     lastSyncedAt: syncedAt,
     projectCount: harvested.length || loadProjects().length,
   };
 
-  const verified = Boolean(email && email.includes('@'));
+  const verified = Boolean(
+    payloadSessionReady && effectiveEmail && effectiveEmail.includes('@'),
+  );
 
   if (targetId) {
-    const acc = loadAccounts().find((a) => a.id === targetId);
+    const acc = storedAccount;
+    const targetFlowKey = getAccountFlowKey(targetId);
+    const generationReady = verified && Boolean(targetFlowKey);
     const prevProjects = acc?.projects || [];
     // Merge harvested into this profile's project list (do not wipe manual/create)
     const byId = new Map<string, {
@@ -623,22 +684,25 @@ export function applyAccountIdentity(
     }
 
     updateAccount(targetId, {
-      email: email || acc?.email || '',
-      displayName: name || acc?.displayName,
-      name: name || email || acc?.name || 'Tài khoản',
-      credits,
-      paygateTier,
-      sessionExpires,
+      email: effectiveEmail,
+      displayName: effectiveName || acc?.displayName,
+      name: effectiveName || effectiveEmail || acc?.name || 'Tài khoản',
+      credits: effectiveCredits,
+      paygateTier: effectivePaygateTier,
+      sessionExpires: effectiveSessionExpires,
       lastSyncedAt: syncedAt,
       sessionVerified: verified,
-      flowKeyPresent:
-        Boolean(s.flowKey) || Boolean(acc?.flowKeyPresent) || verified,
-      status: verified ? 'active' : 'idle',
+      flowKeyPresent: Boolean(targetFlowKey),
+      status: generationReady ? 'active' : verified ? 'connecting' : 'idle',
       projectId: nextProjectId,
       projects: mergedProjects,
-      lastError: verified
+      lastError: generationReady
         ? null
-        : acc?.lastError || 'Session không có email',
+        : challengeRequired
+          ? 'GOOGLE_CHALLENGE_REQUIRED — hoàn tất xác minh Google trên cửa sổ Chromium'
+        : verified
+          ? 'Session có email nhưng chưa có Bearer token của đúng profile'
+          : acc?.lastError || 'Session không có email',
     });
     s.activeAccountId = targetId;
   } else if (verified) {
@@ -653,8 +717,8 @@ export function applyAccountIdentity(
       sessionExpires,
       lastSyncedAt: syncedAt,
       sessionVerified: true,
-      flowKeyPresent: Boolean(s.flowKey),
-      status: 'active',
+      flowKeyPresent: false,
+      status: 'connecting',
       projectId: payloadProjectId || harvested[0]?.id || '',
       projects: harvested.map((p) => ({
         id: p.id,
@@ -663,7 +727,7 @@ export function applyAccountIdentity(
         createdAt: Date.now(),
         updatedAt: Date.now(),
       })),
-      lastError: null,
+      lastError: 'Session có email nhưng chưa bind Bearer token vào profile mới',
     });
     s.activeAccountId = acc.id;
   }
@@ -675,7 +739,7 @@ export function applyAccountIdentity(
     payloadProjectId ||
     '';
   console.log(
-    `[FlowBridge] identity synced account=${s.activeAccountId || '—'} email=${email || '—'} credits=${credits ?? 'n/a'} projects=${harvested.length} projectId=${finalPid || '—'} verified=${verified}`,
+    `[FlowBridge] identity synced account=${s.activeAccountId || '—'} email=${effectiveEmail || '—'} credits=${effectiveCredits ?? 'n/a'} projects=${harvested.length} projectId=${finalPid || '—'} verified=${verified}`,
   );
 }
 
@@ -726,9 +790,10 @@ export async function inheritAccountSession(accountId: string): Promise<{
     `user-data-dir=${profileDir} cookies=${disk.hasCookies} ls=${disk.hasLocalStorage} cache=${disk.hasCache}`,
   );
 
-  // Rehydrate durable token from previous inherit if live map empty
+  // SESSION_BUNDLE is diagnostic metadata only. A rejected generation bearer
+  // must be reacquired from this live browser, never resurrected from disk.
   let key = getAccountFlowKey(id);
-  if (!key) {
+  if (ALLOW_DURABLE_BEARER_REHYDRATION && !key) {
     const b = loadSessionBundle(id);
     if (b?.flowKey && b.flowKey.length >= 20) {
       setAccountFlowKey(id, b.flowKey);
@@ -828,45 +893,58 @@ export async function inheritAccountSession(accountId: string): Promise<{
     accNow?.email && String(accNow.email).includes('@'),
   );
   const projectCount = accNow?.projects?.length || 0;
-  // Gen readiness = Google email + (token or cookies). Token alone is NOT enough.
+  const authenticated = Boolean(
+    inheritEmail && accNow?.sessionVerified && finalKey,
+  );
+  const projectReady = Boolean(
+    (accNow?.projectId && isPlausibleProjectId(accNow.projectId)) ||
+      (accNow?.projects || []).some((project) =>
+        isPlausibleProjectId(project.id),
+      ),
+  );
+  const generationReady = authenticated && projectReady;
+  // Gen readiness requires the authenticated profile AND a real Flow project.
+  // A Bearer plus email is login-ready, not proof that Google permits creation.
   const capabilities = {
-    canGenerateImage: inheritEmail && Boolean(finalKey || disk.hasCookies),
-    canGenerateVideo: inheritEmail && Boolean(finalKey || disk.hasCookies),
-    canUpload: inheritEmail && Boolean(finalKey),
-    canListProjects: inheritEmail && Boolean(finalKey || projectCount > 0),
+    canGenerateImage: generationReady,
+    canGenerateVideo: generationReady,
+    canUpload: generationReady,
+    canListProjects: authenticated,
     paygateTier: accNow?.paygateTier ?? null,
     credits: accNow?.credits ?? null,
     projectCount,
     flowKeyPresent: Boolean(finalKey),
     browserCookies: disk.hasCookies,
     /** App can invoke any Flow API as this account and receive full results */
-    proxyParity: inheritEmail && Boolean(finalKey || disk.hasCookies),
+    proxyParity: generationReady,
     updatedAt: Date.now(),
   };
 
   updateAccount(id, {
-    status: inheritEmail && (finalKey || accNow?.flowKeyPresent)
+    status: authenticated
       ? 'active'
       : accNow?.status === 'connecting'
         ? 'connecting'
         : 'idle',
-    flowKeyPresent: Boolean(finalKey || accNow?.flowKeyPresent),
+    flowKeyPresent: Boolean(finalKey),
     // Inherit token without email must NOT paint sessionVerified / sẵn sàng
-    sessionVerified: inheritEmail,
+    sessionVerified: authenticated,
     sessionInheritedAt: Date.now(),
     profileDir,
     browserExe: browserExe || accNow?.browserExe || '',
     capabilities,
-    lastError: inheritEmail
+    lastError: generationReady
       ? null
-      : finalKey
+      : inheritEmail
+        ? 'Đã có email Google nhưng chưa có Bearer token của đúng profile'
+        : finalKey
         ? 'Có token nhưng chưa đăng nhập Google (thiếu email) — giữ browser, hoàn tất login Google trên tab Flow'
         : accNow?.lastError ||
           'Chưa inherit được token/email — mở browser login',
   });
 
-  // ready = real Google session (email). Token-only is NOT ready (avoids false "Inherit OK").
-  const ready = inheritEmail;
+  // ready = real Google session + Bearer of this profile.
+  const ready = generationReady;
   console.log(
     `[FlowBridge] inherit account=${id} email=${accNow?.email || '—'} key=${Boolean(finalKey)} projects=${accNow?.projects?.length || 0} ready=${ready}`,
   );
@@ -952,6 +1030,7 @@ export async function syncAccountIdentity(accountId?: string): Promise<{
       'sync_account',
       { accountId: accountId || state().activeAccountId || '' },
       90_000,
+      accountId || state().activeAccountId || undefined,
     );
     if (res.error) {
       return { ok: false, error: String(res.error) };
@@ -1041,6 +1120,77 @@ export function setProjectId(
  * Create a new Google Flow project via extension tRPC
  * POST labs.google/fx/api/trpc/project.createProject
  */
+async function explainCreateProjectFailure(
+  baseError: string,
+  accountId?: string,
+): Promise<string> {
+  try {
+    const inspected = await commandExtension(
+      'inspect_flow_page',
+      {},
+      20_000,
+      accountId || state().activeAccountId || undefined,
+    );
+    const page = inspected.result as Record<string, unknown> | undefined;
+    const controls = Array.isArray(page?.controls)
+      ? page.controls
+          .map((row) =>
+            row && typeof row === 'object'
+              ? String((row as Record<string, unknown>).text || '')
+              : '',
+          )
+          .join(' ')
+      : '';
+    const pageText = `${String(page?.bodyText || '')} ${controls}`;
+    if (/upgrade to create/i.test(pageText)) {
+      return [
+        'FLOW_ACCOUNT_UPGRADE_REQUIRED',
+        'Google Flow đang hiển thị "Upgrade to create" cho tài khoản này và chưa có dự án khả dụng.',
+        `Upstream: ${baseError}`,
+      ].join(': ');
+    }
+  } catch {
+    /* Preserve the upstream error when the live page cannot be inspected. */
+  }
+  return baseError;
+}
+
+async function recoverCreatedProjectFromLivePage(
+  expectedTitle: string,
+  accountId?: string,
+): Promise<FlowProject | null> {
+  try {
+    const listed = await commandExtension(
+      'list_projects',
+      {},
+      20_000,
+      accountId || state().activeAccountId || undefined,
+    );
+    const result = listed.result as Record<string, unknown> | undefined;
+    const projects = Array.isArray(result?.projects) ? result.projects : [];
+    const normalizedExpected = expectedTitle.normalize('NFC').trim();
+    const observed = projects.find((row) => {
+      if (!row || typeof row !== 'object') return false;
+      const title = String((row as Record<string, unknown>).title || '')
+        .normalize('NFC')
+        .trim();
+      return title === normalizedExpected;
+    }) as Record<string, unknown> | undefined;
+    const id = String(observed?.id || '').trim();
+    if (!id || !isPlausibleProjectId(id)) return null;
+    const title = String(observed?.title || expectedTitle).trim();
+    const row = upsertProject({ id, title, source: 'capture' });
+    setProjectId(
+      id,
+      title,
+      accountId || state().activeAccountId || undefined,
+    );
+    return row;
+  } catch {
+    return null;
+  }
+}
+
 export async function createFlowProject(
   title?: string,
   accountId?: string,
@@ -1061,12 +1211,26 @@ export async function createFlowProject(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: { json: { projectTitle: name, toolName: 'PINHOLE' } },
+        preferPageContext: true,
       },
       60_000,
       accountId || state().activeAccountId || undefined,
     );
     if (res.error) {
-      return { ok: false, error: String(res.error) };
+      const recovered = await recoverCreatedProjectFromLivePage(
+        name,
+        accountId,
+      );
+      if (recovered) {
+        return { ok: true, project: recovered };
+      }
+      return {
+        ok: false,
+        error: await explainCreateProjectFailure(
+          String(res.error),
+          accountId,
+        ),
+      };
     }
     const data = res.data as Record<string, unknown> | undefined;
     const result = data?.result as Record<string, unknown> | undefined;
@@ -1096,9 +1260,17 @@ export async function createFlowProject(
     setProjectId(projectId, projectTitle, accountId || state().activeAccountId || undefined);
     return { ok: true, project: row };
   } catch (e) {
+    const baseError = e instanceof Error ? e.message : String(e);
+    const recovered = await recoverCreatedProjectFromLivePage(
+      name,
+      accountId,
+    );
+    if (recovered) {
+      return { ok: true, project: recovered };
+    }
     return {
       ok: false,
-      error: e instanceof Error ? e.message : String(e),
+      error: await explainCreateProjectFailure(baseError, accountId),
     };
   }
 }
@@ -1270,6 +1442,20 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
     return;
   }
 
+  if (msg.type === 'token_rejected') {
+    const bindId =
+      socketAccountId && socketAccountId !== 'default'
+        ? socketAccountId
+        : s.activeAccountId || '';
+    if (bindId) {
+      clearAccountFlowKey(bindId, String(msg.reason || 'upstream_401'));
+      console.warn(
+        `[FlowBridge] rejected bearer cleared account=${bindId} reason=${String(msg.reason || 'upstream_401')}`,
+      );
+    }
+    return;
+  }
+
   if (msg.type === 'account_identity') {
     const bind =
       socketAccountId && socketAccountId !== 'default'
@@ -1335,13 +1521,19 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
           // First solid email → full inherit (projects/credits)
           scheduleInheritAccountSession(bind, 1000);
         } else if (hasToken && bind) {
-          // Token without email — NOT ready/sẵn sàng (user must finish Google login)
+          const existing = loadAccounts().find((account) => account.id === bind);
+          const alreadyVerified = Boolean(
+            existing?.sessionVerified && existing.email?.includes('@'),
+          );
+          // A partial SW poll must not erase a verified tab session. Token-only
+          // is incomplete only when this profile has never established email.
           updateAccount(bind, {
-            status: 'idle',
+            status: alreadyVerified ? 'active' : 'idle',
             flowKeyPresent: true,
-            sessionVerified: false,
-            lastError:
-              'Có token nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập',
+            sessionVerified: alreadyVerified,
+            lastError: alreadyVerified
+              ? null
+              : 'Có token nhưng chưa đăng nhập Google (thiếu email) — bấm Đăng nhập',
           });
         }
 
@@ -1732,10 +1924,11 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           `[FlowBridge] cleared fake projectId on ${p} account(s)`,
         );
       }
-      // Rehydrate per-account Bearers from SESSION_BUNDLE on disk
+      // SESSION_BUNDLE remains diagnostic metadata. Only a live extension
+      // socket may repopulate generation bearers after process startup.
       const { loadSessionBundle } = await import('./sessionInherit');
       let rehydrated = 0;
-      for (const a of loadAccounts()) {
+      for (const a of ALLOW_DURABLE_BEARER_REHYDRATION ? loadAccounts() : []) {
         const b = loadSessionBundle(a.id);
         if (b?.flowKey && String(b.flowKey).length >= 20) {
           s.flowKeysByAccount.set(a.id, String(b.flowKey));

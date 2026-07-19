@@ -26,7 +26,7 @@ function normalizeCapCutAspect(raw: unknown, fallbackVideo?: unknown): CapCutAsp
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    assertProAccess(req, body);
+    await assertProAccess(req, body);
     const {
       chapterNum,
       ten_tac_pham,

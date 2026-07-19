@@ -41,6 +41,7 @@ export async function getNavCapabilities() {
 
 export async function runScript2Prompt(payload: {
   text: string;
+  model: string;
   num_scenes?: number;
   style_preset?: string;
   gemini_api_key?: string;
@@ -51,6 +52,7 @@ export async function runScript2Prompt(payload: {
 
 export async function runStoryboard(payload: {
   idea: string;
+  model: string;
   num_scenes?: number;
   style?: string;
   gemini_api_key?: string;
@@ -58,12 +60,17 @@ export async function runStoryboard(payload: {
   return callNavApi('storyboard', payload, 300_000);
 }
 
-export async function runYoutubeAnalyze(payload: { url: string; gemini_api_key?: string }) {
+export async function runYoutubeAnalyze(payload: {
+  url: string;
+  model: string;
+  gemini_api_key?: string;
+}) {
   return callNavApi('youtube_analyze', payload, 900_000);
 }
 
 export async function runYoutubeSeo(payload: {
   text: string;
+  model: string;
   novel_title?: string;
   gemini_api_key?: string;
 }) {
@@ -73,7 +80,7 @@ export async function runYoutubeSeo(payload: {
 export async function runColorGrade(payload: {
   video_path: string;
   output_path?: string;
-  preset?: string;
+  preset: string;
 }) {
   return callNavApi('color_grade', payload, 600_000);
 }
@@ -114,8 +121,8 @@ export async function runConcatVideos(payload: {
 export async function runResizeVideo(payload: {
   video_path: string;
   output_path?: string;
-  ratio?: string;
-  alignment?: string;
+  ratio: string;
+  alignment: 'fit' | 'fill';
 }) {
   return callNavApi('resize_video', payload, 600_000);
 }

@@ -1,7 +1,8 @@
 /**
  * Host binding for toolbox / NAV tools — mutual auth with python_core.
  *
- * App (Node) issues a short-lived HMAC token; gateway/scripts refuse to run
+ * App (Node) issues a short-lived host-binding HMAC token unrelated to licensing;
+ * gateway/scripts refuse to run
  * without a valid token in env AINOVEL_HOST_TOKEN.
  *
  * Modes (AINOVEL_HOST_BINDING):
@@ -22,13 +23,10 @@ export function getHostBindingMode(): HostBindingMode {
   return m === 'open' || m === 'off' || m === '0' || m === 'false' ? 'open' : 'enforce';
 }
 
+const PROCESS_HOST_BINDING_SECRET = crypto.randomBytes(32).toString('hex');
+
 function hostBindingSecret(): string {
-  return (
-    process.env.AINOVEL_HOST_BINDING_SECRET ||
-    process.env.AINOVEL_ENTITLEMENT_SECRET ||
-    process.env.ENTITLEMENT_SECRET ||
-    'ainovel-local-dev-secret-change-me'
-  );
+  return process.env.AINOVEL_HOST_BINDING_SECRET || PROCESS_HOST_BINDING_SECRET;
 }
 
 function b64url(buf: Buffer): string {
@@ -86,5 +84,6 @@ export function hostBindingChildEnv(options?: {
       ttlSeconds,
     }),
     AINOVEL_HOST_BINDING: getHostBindingMode(),
+    AINOVEL_HOST_BINDING_SECRET: hostBindingSecret(),
   };
 }

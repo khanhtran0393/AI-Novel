@@ -6,3 +6,5 @@ export * from './paymentWebhook';
 export * from './updateChannel';
 export * from './pricingPlans';
 export * from './telegramNotify';
+export * from './multiSeat';
+export * from './sellerLog';

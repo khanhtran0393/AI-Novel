@@ -13,6 +13,8 @@ import {
   extractBearer,
   requireUserFromRequest,
 } from '@/lib/supabase/server';
+import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
+import { proxyLicenseApiPost } from '@/lib/commercial/licenseApiProxy';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +23,11 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as { hwid?: string };
     const hwid =
       (typeof body.hwid === 'string' && body.hwid.trim()) || getHwid();
+
+    if (isPackagedCustomerRuntime()) {
+      const remote = await proxyLicenseApiPost('/api/cloud/license/trial', { hwid });
+      return NextResponse.json(remote.payload, { status: remote.status });
+    }
 
     let userId: string | null = null;
     if (extractBearer(req)) {

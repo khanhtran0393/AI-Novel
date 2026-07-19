@@ -1,5 +1,5 @@
 /**
- * Apply supabase/migrations/001_commercial_rls.sql
+ * Apply every SQL migration in supabase/migrations, in lexical order.
  *
  * Option A — Management API (recommended):
  *   SUPABASE_ACCESS_TOKEN = token từ https://supabase.com/dashboard/account/tokens
@@ -18,12 +18,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const migrationPath = path.join(
-  root,
-  'supabase',
-  'migrations',
-  '001_commercial_rls.sql',
-);
+const migrationsDir = path.join(root, 'supabase', 'migrations');
+const migrationPaths = fs
+  .readdirSync(migrationsDir)
+  .filter((name) => name.toLowerCase().endsWith('.sql'))
+  .sort((a, b) => a.localeCompare(b))
+  .map((name) => path.join(migrationsDir, name));
+if (migrationPaths.length === 0) {
+  throw new Error(`No SQL migrations found in ${migrationsDir}`);
+}
 
 function loadEnvFile(name) {
   const p = path.join(root, name);
@@ -52,7 +55,11 @@ const env = {
   ...loadEnvFile('.env.local'),
 };
 
-const sql = fs.readFileSync(migrationPath, 'utf8');
+const sql = migrationPaths
+  .map((migrationPath) =>
+    `-- BEGIN ${path.basename(migrationPath)}\n${fs.readFileSync(migrationPath, 'utf8')}\n-- END ${path.basename(migrationPath)}`,
+  )
+  .join('\n\n');
 const projectRef =
   (env.SUPABASE_PROJECT_REF || '').trim() ||
   (() => {
@@ -157,6 +164,7 @@ async function main() {
     JSON.stringify(
       {
         projectRef,
+        migrations: migrationPaths.map((migrationPath) => path.basename(migrationPath)),
         migrationBytes: sql.length,
         hasAccessToken: Boolean(accessToken),
         hasDatabaseUrl: Boolean(databaseUrl),

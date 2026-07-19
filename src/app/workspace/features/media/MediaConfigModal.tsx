@@ -67,7 +67,7 @@ const FLOW_VIDEO_RATIOS = [
 /** Flow Veo clip lengths are 4|6|8 only (labs.google). */
 const VIDEO_DURATIONS: Record<string, number[]> = {
   flow: [4, 6, 8],
-  sora: [5, 10, 15],
+  sora: [4, 8, 12],
   veo: [4, 6, 8],
   grok: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15],
 };
@@ -122,7 +122,6 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
   const [flowImageModels, setFlowImageModels] = useState<FlowModelOpt[]>([]);
   const [flowVideoModels, setFlowVideoModels] = useState<FlowModelOpt[]>([]);
   const [flowVideoDurations, setFlowVideoDurations] = useState<number[]>([4, 6, 8]);
-  const [flowCreditNote, setFlowCreditNote] = useState('');
   const [flowQuality, setFlowQuality] = useState('hd');
   const [autoRelogin, setAutoRelogin] = useState(true);
   const [minHealth, setMinHealth] = useState(20);
@@ -180,7 +179,6 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
         if (Array.isArray(models.videoDurationsSec) && models.videoDurationsSec.length) {
           setFlowVideoDurations(models.videoDurationsSec.map(Number).filter((n: number) => n > 0));
         }
-        if (typeof models.creditNote === 'string') setFlowCreditNote(models.creditNote);
         if (opsData?.ops?.defaultQuality) setFlowQuality(String(opsData.ops.defaultQuality));
         if (typeof opsData?.ops?.autoRelogin === 'boolean') {
           setAutoRelogin(opsData.ops.autoRelogin);
@@ -471,10 +469,6 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                     </label>
                   </div>
                 </div>
-                <p className="text-[10px] text-zinc-500">
-                  Quality = scale sau gen (native Flow video 720p → HD 1080 / 4K upsample). Credit theo gói Pro @ 8s; Ultra rẻ hơn Lite/Fast.
-                  {flowCreditNote ? ` ${flowCreditNote}` : ''}
-                </p>
               </div>
             ) : null}
 
@@ -543,15 +537,6 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                 </select>
               </SelectShell>
             </div>
-            {effectiveVideoProvider === 'flow' && selectedFlowVideo ? (
-              <p className="text-[10px] text-zinc-500 -mt-3 px-1">
-                Model: <span className="text-cyan-400/90 font-mono">{selectedFlowVideo.id}</span>
-                {' · '}family {selectedFlowVideo.family || '—'}
-                {' · '}duration {durationOptions.join('/') }s
-                {' · '}scale {selectedFlowVideo.nativeScale || '720p'}
-                {selectedFlowVideo.note ? ` · ${selectedFlowVideo.note}` : ''}
-              </p>
-            ) : null}
 
             <div className="grid gap-3 rounded-lg border border-zinc-800/50 bg-black/30 p-3 lg:grid-cols-[110px_1fr]">
               <span className="flex items-center text-xs font-bold text-zinc-300">KIEU ANH:</span>
@@ -667,14 +652,6 @@ export default function MediaConfigModal({ isOpen, onClose }: MediaConfigModalPr
                   }}
                   className="min-h-56 w-full resize-y rounded-lg border-2 border-dashed border-cyan-500/50 bg-black/50 p-4 font-mono text-sm leading-relaxed text-amber-500 outline-none transition-colors focus:border-cyan-400 focus:bg-black"
                 />
-                <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                  <span className="normal-case tracking-normal text-zinc-600">
-                    Đóng modal hoặc blur ô này để ghi đĩa
-                  </span>
-                  <span>
-                    {(store.visualDnaPrompt || '').trim().split(/\s+/).filter(Boolean).length} từ DNA
-                  </span>
-                </div>
               </div>
             </div>
           </div>

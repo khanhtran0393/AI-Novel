@@ -34,7 +34,9 @@ from vina_voice_infer import (  # noqa: E402
     assert_core_brain,
     list_str_to_idx,
     load_sessions,
+    load_vocab_char_map,
     normalize_text,
+    plan_max_duration,
     provider_chains,
     remix_noise_with_style,
     run_inference,
@@ -44,7 +46,6 @@ import librosa  # noqa: E402
 import numpy as np  # noqa: E402
 import onnxruntime  # noqa: E402
 import soundfile as sf  # noqa: E402
-import re  # noqa: E402
 
 
 class WarmBrain:
@@ -66,9 +67,7 @@ class WarmBrain:
             return
         assert_core_brain(self.models_dir)
         vocab_file = os.path.join(self.models_dir, "vocab.txt")
-        with open(vocab_file, "r", encoding="utf-8") as f:
-            vocab = [line.strip() for line in f.readlines()]
-        self.vocab_char_map = {c: i for i, c in enumerate(vocab)}
+        self.vocab_char_map = load_vocab_char_map(vocab_file)
 
         session_opts = onnxruntime.SessionOptions()
         session_opts.graph_optimization_level = (
@@ -186,19 +185,7 @@ class WarmBrain:
         refaudio = refaudio.reshape(1, 1, -1)
 
         HOP_LENGTH = 256
-        zh_pause_punc = r"[a-zA-Z0-9]"
-        ref_text_for_len = ref_text if ref_text else text
-        ref_text_len = len(ref_text_for_len.encode("utf-8")) + 3 * len(
-            re.findall(zh_pause_punc, ref_text_for_len)
-        )
-        gen_text_len = len(gen_text.encode("utf-8")) + 3 * len(
-            re.findall(zh_pause_punc, gen_text)
-        )
-        ref_text_len = max(ref_text_len, 1)
-        ref_audio_len = audio_len // HOP_LENGTH + 1
-        planned = ref_audio_len + int(
-            ref_audio_len / ref_text_len * gen_text_len / speed
-        )
+        planned = plan_max_duration(audio_len, ref_text, text, speed, HOP_LENGTH)
         # Hard cap frames (~30s @ 24k hop256) so one hung job cannot freeze GPU forever
         max_frames = int(os.environ.get("VINA_MAX_DURATION_FRAMES", "3000"))
         planned = max(32, min(int(planned), max_frames))

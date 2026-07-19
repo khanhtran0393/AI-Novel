@@ -52,12 +52,16 @@ export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
     const { getEntitlementPublicStatus } = require('@/lib/entitlement') as typeof import('@/lib/entitlement');
     const ent = getEntitlementPublicStatus();
     if (ent.readyForCommercial) {
+      const packaged = process.env.AI_NOVEL_PACKAGED === '1';
+      const licenseApi = (process.env.AINOVEL_LICENSE_API_URL || '').trim();
       items.push(
         item(
           'entitlement',
           'License (enforce)',
           'ok',
-          `mode=${ent.mode} · secret OK · admin key OK`,
+          packaged
+            ? `mode=${ent.mode} · public key OK · license API ${licenseApi ? 'OK' : 'missing'}`
+            : `mode=${ent.mode} · signer/admin ${ent.signerConfigured && ent.adminKeyConfigured ? 'OK' : 'not required'}`,
         ),
       );
     } else if (ent.mode === 'open') {
@@ -109,7 +113,7 @@ export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
 
   // Public media dirs
   for (const rel of ['public/audio', 'public/images', 'public/video']) {
-    const abs = path.join(root, rel);
+    const abs = path.join(/* turbopackIgnore: true */ root, rel);
     try {
       if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true });
       const test = path.join(abs, '.health_write_test');
@@ -130,8 +134,19 @@ export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
 
   // Edge TTS package (node dependency)
   try {
-    const edgePkg = path.join(root, 'node_modules', 'node-edge-tts', 'package.json');
-    if (fs.existsSync(edgePkg)) {
+    let edgeInstalled = false;
+    try {
+      require.resolve('node-edge-tts/package.json');
+      edgeInstalled = true;
+    } catch {
+      try {
+        require.resolve('node-edge-tts');
+        edgeInstalled = true;
+      } catch {
+        edgeInstalled = false;
+      }
+    }
+    if (edgeInstalled) {
       items.push(item('edge_tts_pkg', 'Edge TTS (npm)', 'ok', 'node-edge-tts installed'));
     } else {
       items.push(
@@ -185,9 +200,15 @@ export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
 
   // Contracts present
   const contracts = path.join(root, 'src', 'contracts', 'validate.ts');
+  const contractsCompiled = process.env.AI_NOVEL_PACKAGED === '1';
   items.push(
-    fs.existsSync(contracts)
-      ? item('contracts', 'Contracts', 'ok', 'validate.ts')
+    contractsCompiled || fs.existsSync(contracts)
+      ? item(
+          'contracts',
+          'Contracts',
+          'ok',
+          contractsCompiled ? 'compiled in app bundle' : 'validate.ts',
+        )
       : item('contracts', 'Contracts', 'fail', 'Thiếu src/contracts/validate.ts'),
   );
 

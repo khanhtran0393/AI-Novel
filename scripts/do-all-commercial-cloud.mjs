@@ -3,7 +3,7 @@
  * 1) Validate .env.local
  * 2) Apply SQL migration (ACCESS_TOKEN or DATABASE_URL)
  * 3) Verify tables
- * 4) Smoke issue HMAC + cloud status shape
+ * 4) Smoke issue Ed25519 + cloud status shape
  *
  * If migration cannot run remotely, exits 3 with SQL path — user Run once in Dashboard,
  * then re-run: npm run cloud:bootstrap
@@ -37,10 +37,17 @@ function loadEnvFile(name) {
   return out;
 }
 
+const sellerEnvPath =
+  process.env.AINOVEL_SELLER_ENV_FILE ||
+  (process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'AI Novel Seller', '.env.seller')
+    : '');
+
 const env = {
   ...process.env,
   ...loadEnvFile('.env'),
   ...loadEnvFile('.env.local'),
+  ...(sellerEnvPath ? loadEnvFile(sellerEnvPath) : {}),
 };
 
 const url = (env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL || '').trim();
@@ -51,13 +58,16 @@ const projectRef =
   (env.SUPABASE_PROJECT_REF || '').trim() ||
   (url ? new URL(url).hostname.split('.')[0] : 'azlizrbjkqcyqnsmuccv');
 
-const migrationPath = path.join(
-  root,
-  'supabase',
-  'migrations',
-  '001_commercial_rls.sql',
-);
-const sql = fs.readFileSync(migrationPath, 'utf8');
+const migrationDir = path.join(root, 'supabase', 'migrations');
+const migrationPaths = fs
+  .readdirSync(migrationDir)
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+  .map((name) => path.join(migrationDir, name));
+const migrationPath = migrationPaths[0];
+const sql = migrationPaths
+  .map((file) => `-- ${path.basename(file)}\n${fs.readFileSync(file, 'utf8')}`)
+  .join('\n\n');
 
 function log(step, obj) {
   console.log(`[${step}]`, typeof obj === 'string' ? obj : JSON.stringify(obj));
@@ -116,18 +126,18 @@ async function applyMigration() {
 }
 
 async function smokeIssue() {
-  // Pure local HMAC via existing modules (tsx)
+  // Pure local Ed25519 issue/verify via existing modules (tsx)
   const script = `
-    import { issueEntitlementToken, verifyEntitlementToken, getHwid } from './src/lib/entitlement.ts';
-    import { hashToken, issueHmacForPlan } from './src/lib/cloud/licenseBridge.ts';
+    import { verifyEntitlementToken, getHwid } from '../src/lib/entitlement.ts';
+    import { hashToken, issueHmacForPlan } from '../src/lib/cloud/licenseBridge.ts';
     process.env.AINOVEL_ENTITLEMENT_MODE = process.env.AINOVEL_ENTITLEMENT_MODE || 'open';
     const hwid = getHwid();
     const { token } = issueHmacForPlan('month', hwid);
     const claims = verifyEntitlementToken(token, { requireHwidMatch: true });
-    if (!claims?.is_pro) throw new Error('hmac fail');
+    if (!claims?.is_pro) throw new Error('Ed25519 verify failed');
     console.log(JSON.stringify({ hwid, tokenHash: hashToken(token).slice(0,12), exp: claims.exp }));
   `;
-  const tmp = path.join(root, 'scratch', 'smoke-hmac-tmp.mts');
+  const tmp = path.join(root, 'scratch', 'smoke-ed25519-tmp.mts');
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
   fs.writeFileSync(tmp, script, 'utf8');
   execSync(`npx tsx "${tmp}"`, {

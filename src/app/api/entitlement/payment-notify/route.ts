@@ -8,6 +8,10 @@ import {
   notifyPaymentReported,
   telegramConfigured,
 } from '@/lib/commercial/telegramNotify';
+import {
+  ensureTelegramPoller,
+  getTelegramPollerStatus,
+} from '@/lib/commercial/telegramPoller';
 import type { PaidPlanId } from '@/lib/commercial/pricingPlans';
 import { PAID_PLANS, SELLER_BANK } from '@/lib/commercial/pricingPlans';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
@@ -42,6 +46,9 @@ export async function POST(req: Request) {
       );
     }
 
+    // Desktop: long-poll getUpdates so ✅ Cấp Key works without public webhook
+    ensureTelegramPoller();
+
     const result = await notifyPaymentReported({
       hwid,
       planId,
@@ -58,12 +65,13 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       message:
-        'Đã báo Admin qua Telegram. Vui lòng gửi bill + HWID qua Zalo để nhận key nhanh hơn.',
+        'Đã báo Admin (Telegram có nút Cấp Key / Từ chối). Gửi bill + HWID qua Zalo để nhận key nhanh hơn.',
       messageId: result.messageId,
       hwid: hwid.toUpperCase(),
       planId,
       zalo: SELLER_BANK.zaloDisplay,
       zaloUrl: `https://zalo.me/${SELLER_BANK.zalo}`,
+      poller: getTelegramPollerStatus(),
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {
@@ -73,10 +81,13 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  // Keep poller warm when admin opens settings / health
+  if (telegramConfigured()) ensureTelegramPoller();
   return NextResponse.json({
     ok: true,
     endpoint: '/api/entitlement/payment-notify',
     telegramConfigured: telegramConfigured(),
     zalo: SELLER_BANK.zaloDisplay,
+    poller: getTelegramPollerStatus(),
   });
 }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useNovelStore, Chuong } from '@/store/useNovelStore';
+import { toast } from '@/lib/toastBus';
 import {
   randomTemplateAction,
   generateOutlineAction,
@@ -59,12 +60,27 @@ export function useSetupActions() {
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [isAnalyzingPlot, setIsAnalyzingPlot] = useState(false);
 
+  /** Fail-fast UX: toast + promptError sticky — never silent return */
+  const failSetup = (title: string, msg: string) => {
+    setPromptError(msg);
+    toast.warn(title, msg.replace(/^⚠️\s*/, '').slice(0, 220));
+  };
+  const failOutline = (msg: string) => failSetup('Sinh kịch bản', msg);
+
   // Sinh ý tưởng bối cảnh ngẫu nhiên qua API (classic setup)
   const handleRandomTemplate = async () => {
     const store = getStore();
     const prevMoTa = store.setup.mo_ta;
+    if (!(store.setup.chu_de || '').trim() || !(store.setup.phong_cach || '').trim()) {
+      failSetup(
+        'AI ý tưởng',
+        '⚠️ Chọn Chủ đề + Phong cách trước khi bấm «AI ý tưởng».',
+      );
+      return;
+    }
     setPromptError('');
     setIsGeneratingIdea(true);
+    toast.info('AI ý tưởng', 'Đang sinh cốt truyện gợi ý…');
     store.setSetup({ mo_ta: 'Đang kết nối siêu trí tuệ AI để sáng tạo kịch bản...' });
 
     try {
@@ -75,8 +91,11 @@ export function useSetupActions() {
         phong_cach: store.setup.phong_cach,
       });
       store.setSetup({ mo_ta: idea });
+      toast.success('AI ý tưởng', 'Đã điền cốt truyện — chỉnh rồi bấm Sinh kịch bản.');
     } catch (err: unknown) {
-      setPromptError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setPromptError(friendly);
+      toast.error('AI ý tưởng', friendly.slice(0, 220));
       store.setSetup({
         mo_ta:
           prevMoTa && prevMoTa !== 'Đang kết nối siêu trí tuệ AI để sáng tạo kịch bản...'
@@ -98,12 +117,13 @@ export function useSetupActions() {
     const store = getStore();
     const url = (urlOverride ?? store.youtubeRewriteUrl ?? '').trim();
     if (!url) {
-      setPromptError('⚠️ Dán link YouTube trước khi Phân tích.');
+      failSetup('Phân tích YouTube', '⚠️ Dán link YouTube trước khi Phân tích.');
       return;
     }
 
     setPromptError('');
     setIsAnalyzingPlot(true);
+    toast.info('Phân tích YouTube', 'Đang lấy captions + bóc cốt truyện…');
     try {
       const ngon = (store.setup.ngon_ngu || '').toLowerCase();
       const preferredLangs =
@@ -148,8 +168,11 @@ export function useSetupActions() {
         similarityTarget: store.youtubeSimilarityTarget ?? 80,
       });
       store.setSetup({ mo_ta });
+      toast.success('Phân tích xong', 'Cốt truyện đã điền ô 3 — chỉnh rồi Sinh kịch bản.');
     } catch (err: unknown) {
-      setPromptError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setPromptError(friendly);
+      toast.error('Phân tích YouTube', friendly.slice(0, 220));
     } finally {
       setIsAnalyzingPlot(false);
     }
@@ -160,28 +183,58 @@ export function useSetupActions() {
 
   // Nút khởi tạo kịch bản AI (Phase 1 -> Phase 2)
   const handleGenerateOutline = async () => {
+    if (isGeneratingOutline) {
+      toast.info('Sinh kịch bản', 'Đang chạy rồi — chờ AI trả dàn ý…');
+      return;
+    }
+
     const store = getStore();
     const ytMode =
       store.setupKind === 'youtube' ||
       !!(store.youtubeSourceText || '').trim() ||
       !!(store.youtubeRewriteUrl || '').trim();
 
-    let moTa = (store.setup.mo_ta || '').trim();
+    const moTa = (store.setup.mo_ta || '').trim();
     const captionCache = (store.youtubeSourceText || '').trim();
+    const chuDe = (store.setup.chu_de || '').trim();
+    const phongCach = (store.setup.phong_cach || '').trim();
+    const hasKey = !!(
+      (store.apiKey || '').trim() ||
+      (store.apiKeys || []).some((k) => !!(k || '').trim())
+    );
+
+    if (!hasKey) {
+      failOutline(
+        '⚠️ Chưa có API Key LLM. Mở Cài đặt (⚙️) → dán Gemini/OpenAI key rồi thử lại.',
+      );
+      return;
+    }
+
+    // Classic setup: bắt buộc chủ đề + phong cách (YouTube rewrite có default server-side)
+    if (!ytMode && (!chuDe || !phongCach)) {
+      failOutline(
+        !chuDe && !phongCach
+          ? '⚠️ Chọn Chủ đề (mục 1) và Phong cách (mục 2) trước khi sinh kịch bản.'
+          : !chuDe
+            ? '⚠️ Chọn Chủ đề (mục 1) trước khi sinh kịch bản.'
+            : '⚠️ Chọn Phong cách (mục 2) trước khi sinh kịch bản.',
+      );
+      return;
+    }
 
     // YouTube: bắt buộc đã có cốt truyện (bấm Phân tích) — không auto dump captions
     if (ytMode && (!moTa || isRawYoutubeMoTa(moTa))) {
-      setPromptError(
+      failOutline(
         '⚠️ Bấm «Phân tích» (cạnh link) để lấy chép lời + điền cốt truyện trước khi sinh kịch bản.',
       );
       return;
     }
 
     if (!moTa) {
-      setPromptError(
+      failOutline(
         ytMode
           ? '⚠️ Bấm «Phân tích» để điền cốt truyện (ô 3) trước khi sinh kịch bản!'
-          : '⚠️ Vui lòng nhập mô tả cốt truyện hoặc bấm nút "AI Tự Tạo Ý Tưởng"!',
+          : '⚠️ Nhập mô tả cốt truyện (mục 3) hoặc bấm «AI ý tưởng» trước khi sinh kịch bản.',
       );
       return;
     }
@@ -203,6 +256,10 @@ export function useSetupActions() {
 
     setPromptError('');
     setIsGeneratingOutline(true);
+    toast.info(
+      'Sinh kịch bản AI',
+      `Đang tạo dàn ý ${soChuong} chương… Giữ cửa sổ mở, đợi toast xong.`,
+    );
 
     try {
       const live = useNovelStore.getState();
@@ -239,7 +296,7 @@ export function useSetupActions() {
       }
       if (!title || !outline) {
         throw new Error(
-          'AI không trả đủ tiêu đề / dàn ý tổng thể. Kiểm tra API Key và bấm «Phân tích» lại.',
+          'AI không trả đủ tiêu đề / dàn ý tổng thể. Kiểm tra API Key và thử lại.',
         );
       }
 
@@ -307,8 +364,14 @@ export function useSetupActions() {
       }
 
       store.setGiaiDoan(2);
+      toast.success(
+        'Sinh kịch bản xong',
+        `«${title}» · ${convertedChapters.length} chương — sang workspace viết.`,
+      );
     } catch (err: unknown) {
-      setPromptError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setPromptError(friendly);
+      toast.error('Sinh kịch bản thất bại', friendly.slice(0, 280));
     } finally {
       setIsGeneratingOutline(false);
     }
