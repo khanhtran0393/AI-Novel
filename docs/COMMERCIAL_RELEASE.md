@@ -34,7 +34,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## 3. License flow (seller → buyer)
 
-1. Buyer opens **Cài đặt → Bản quyền**, copies **HWID**.
+1. Buyer mở **Bản quyền** bằng cách **nhấp logo app** (header), copy **HWID**.  
+   Trial / dán token / mã `AINOVEL-…` cũng ở modal này. Badge header: FREE → TRIAL → PRO → VIP.
 2. Seller issues token (server must be enforce + secrets):
 
 ```bash

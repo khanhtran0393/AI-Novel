@@ -1,6 +1,9 @@
 # Điểm Reset — Nút **Làm Mới Dự Án**
 
-> **LOCKED CONTRACT.** Đây là điểm reset chính thức của app. Không đổi semantics khi refactor.
+> **LOCKED CONTRACT.** Điểm reset chính thức. Không đổi semantics khi refactor.  
+> Liên quan: [`IRON_LAWS.md`](./IRON_LAWS.md) A3a · [`AGENTS.md`](../AGENTS.md) §1.4
+
+---
 
 ## Nguồn code (single source of truth)
 
@@ -11,6 +14,8 @@
 | Persist allow | `src/store/persistStorage.ts` → `allowIntentionalStoreReset()` |
 | UI trigger | `src/app/workspace/hooks/useProjectActions.ts` → `handleResetProject` |
 | Nút | Sidebar → **Làm Mới Dự Án** |
+
+---
 
 ## Sau khi bấm — **WIPED (trống)**
 
@@ -23,33 +28,62 @@
 | `dan_y_tong_the` | `''` |
 | `nhan_vat` / `nhan_vat_prompts` | `[]` / `{}` |
 | `tom_tat_cuon_chieu` / `tri_nho_ngan_han` | trống |
-| Generated media maps | `{}` (audio / prompt / ảnh / video) |
-| YouTube rewrite source | url/title/text xóa |
+| Generated media maps | `{}` (audio / prompt / ảnh / video / variants / DNA) |
+| YouTube rewrite source | url / title / text xóa |
 | Chapter hooks / editor reviews / human edit | `{}` |
+| `projectResetEpoch` | `Date.now()` (ưu tiên hydrate) |
+| Pipeline snapshot (nếu có) | clear / không giữ canvas cũ |
+
+---
 
 ## Sau khi bấm — **KEPT (cài đặt nguyên)**
 
 - Toàn bộ **API keys / cookies / TikTok session**
 - Google Drive path + login identity
-- **Settings panel**: TTS config, media style, DNA, providers/models, aspect, WPM, GPU
+- **Settings**: TTS config, media style, DNA, providers/models, aspect, WPM, GPU
 - Save paths (TTS / image / character / video)
 - `youtubeSafe` flags, `userRules` (từ ngữ cấm/mệt)
-- Entitlement PRO / credits
+- **Entitlement** (`is_pro` / `is_vip` / `is_trial` / credits) + token localStorage
+- Multi-channel registry cấu hình (không canvas truyện)
+
+---
+
+## Boot ban đầu ≠ Làm Mới
+
+| | Boot `INITIAL_STATE` | Sau **Làm Mới** |
+|--|----------------------|-----------------|
+| Tên | `'Dự án mới'` | `''` |
+| Chương | Ch.1 + Ch.2 empty | `[]` |
+| Lorebook | khung sản xuất trung tính | `''` |
+| `giai_doan` | `2` (workspace) | về phase setup-ready |
+
+**CẤM** sau reset: nhồi lore mặc định, «Dự án mới», hoặc tự tạo lại Ch.1/Ch.2.
+
+---
 
 ## Quy trình bắt buộc khi gọi reset
 
 ```ts
 allowIntentionalStoreReset(60_000); // bypass wipe-guard persist
-store.resetStore(); // sets projectResetEpoch = Date.now()
-commitIntentionalProjectResetFromLocal(); // force local + IPC + HTTP
+store.resetStore(); // projectResetEpoch = Date.now()
+commitIntentionalProjectResetFromLocal(); // force local + IPC + HTTP durables
 ```
 
 ### Vì sao từng “quay lại” tên / lore / chương?
 
-Lớp `dualStorage` hydrate bằng **điểm nội dung** (`pickRichest`). Bản disk cũ (full truyện) điểm cao hơn canvas trống → **đè lại** sau reload/HMR.
+Lớp dualStorage hydrate bằng **điểm nội dung** (`pickRichest`). Bản disk cũ (full truyện) điểm cao hơn canvas trống → **đè lại** sau reload/HMR.
 
 **Fix (locked):**
-1. `projectResetEpoch` — lần Làm Mới ghi timestamp; hydrate **ưu tiên epoch cao hơn điểm nội dung**.
+
+1. `projectResetEpoch` — Làm Mới ghi timestamp; hydrate **ưu tiên epoch cao hơn điểm nội dung**.
 2. `forceOverwriteAllDurables` / `commitIntentionalProjectResetFromLocal` — ghi đè mọi backend ngay sau reset.
 
-Không được nhồi lại lorebook mặc định, «Dự án mới», hay Chương 1–2 sau reset.
+---
+
+## Checklist agent
+
+- [ ] Reset có gọi `allowIntentionalStoreReset`?
+- [ ] Có set `projectResetEpoch`?
+- [ ] Có force durable overwrite?
+- [ ] Có nhồi lore/chapter mặc định sau reset? → **cấm**
+- [ ] Entitlement / keys vẫn giữ?

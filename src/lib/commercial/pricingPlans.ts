@@ -13,7 +13,8 @@ export type PaidPlan = {
   /** Transfer memo prefix (no HWID) */
   contentPrefix: string;
   expSeconds: number;
-  plan: 'pro' | 'vip';
+  /** Commercial product is Free | Trial | Pro only (lifetime = Pro dài hạn, không VIP) */
+  plan: 'pro';
   highlight?: boolean;
 };
 
@@ -55,7 +56,7 @@ export const PAID_PLANS: PaidPlan[] = [
     priceLabel: '8.999.000đ',
     contentPrefix: 'CAP TRON DOI',
     expSeconds: 60 * 60 * 24 * 365 * 50,
-    plan: 'vip',
+    plan: 'pro',
     highlight: true,
   },
 ];

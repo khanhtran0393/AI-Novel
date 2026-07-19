@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   canAccessFeature,
-  resolvePlanTier,
+  storeFlagsToTier,
   type CommercialFeatureId,
   type PlanTier,
 } from '@/lib/commercial/featureMatrix';
@@ -20,25 +20,31 @@ export function useProAccess() {
 
   const tier: PlanTier = useMemo(
     () =>
-      resolvePlanTier({
-        // Paid Pro only when not on trial (trial stores is_pro for feature unlock)
-        is_pro: is_pro && !is_trial,
+      storeFlagsToTier({
+        is_pro,
         is_vip,
-        trialActive: is_trial,
+        is_trial,
       }),
     [is_pro, is_vip, is_trial],
   );
 
-  /** Trial | Pro | VIP — mở gate Pro-equivalent (video/CapCut/ship…) */
+  /** Trial | Pro | VIP — coarse unlock (video/CapCut/ship…) */
   const isProEquivalent = is_pro || is_vip || is_trial;
 
   const can = (feature: CommercialFeatureId) => canAccessFeature(tier, feature);
 
   const requirePro = (feature: CommercialFeatureId): { ok: boolean; message: string } => {
     if (can(feature)) return { ok: true, message: '' };
+    const need =
+      feature === 'toolbox_labs' ||
+      feature === 'multi_channel' ||
+      feature === 'flow_multi_account' ||
+      feature === 'integrations_pipeline'
+        ? 'Pro trả phí (Trial không đủ)'
+        : 'Pro/Trial';
     return {
       ok: false,
-      message: `Tính năng «${feature}» cần Pro/Trial. Nhấp logo app (up to PRO) để mở Bản quyền / kích hoạt.`,
+      message: `Tính năng «${feature}» cần ${need}. Nhấp logo app (up to PRO) để mở Bản quyền / kích hoạt.`,
     };
   };
 

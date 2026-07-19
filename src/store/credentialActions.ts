@@ -223,7 +223,8 @@ export function createCredentialActions(
       deductCredits: (_amount) => {
         let success = false;
         set((state) => {
-          if (state.is_vip || state.is_pro) {
+          // Paid Pro / VIP unlimited — trial + free deduct from balance
+          if (state.is_vip || (state.is_pro && !state.is_trial)) {
             success = true;
             if ((state.credits ?? 0) < 999_999_999) {
               return { credits: 999_999_999 };

@@ -65,6 +65,7 @@ export default function LicenseModal({ open, onClose }: Props) {
   const setCredits = useNovelStore((s) => s.setCredits);
   const isPro = useNovelStore((s) => s.is_pro);
   const isVip = useNovelStore((s) => s.is_vip);
+  const isTrial = useNovelStore((s) => s.is_trial);
 
   const [mounted, setMounted] = useState(false);
   const [planId, setPlanId] = useState<PaidPlanId>('lifetime');
@@ -77,6 +78,7 @@ export default function LicenseModal({ open, onClose }: Props) {
   const [qrFullscreen, setQrFullscreen] = useState(false);
   const [tier, setTier] = useState('free');
   const [trialDaysLabel, setTrialDaysLabel] = useState(3);
+  const [cloudNote, setCloudNote] = useState('');
 
   useEffect(() => {
     setMounted(true);
@@ -98,13 +100,28 @@ export default function LicenseModal({ open, onClose }: Props) {
   }, [planId, hwid]);
 
   const applyClaims = useCallback(
-    (claims: { is_pro?: boolean; is_vip?: boolean } | null | undefined) => {
-      if (claims && (claims.is_pro || claims.is_vip)) {
-        setVipStatus(
-          !!claims.is_vip,
-          !!claims.is_pro || !!claims.is_vip,
-          false,
-        );
+    (
+      claims: {
+        is_pro?: boolean;
+        is_vip?: boolean;
+        is_trial?: boolean;
+        plan?: string;
+      } | null | undefined,
+    ) => {
+      if (!claims) {
+        setVipStatus(false, false, false);
+        setCredits(100);
+        return;
+      }
+      const trial = !!claims.is_trial || claims.plan === 'trial';
+      if (trial) {
+        setVipStatus(false, true, true);
+        setCredits(50_000);
+        return;
+      }
+      // Paid Pro (legacy VIP tokens → Pro badge)
+      if (claims.is_pro || claims.is_vip || claims.plan === 'pro' || claims.plan === 'vip') {
+        setVipStatus(false, true, false);
         setCredits(999_999_999);
         return;
       }
@@ -129,8 +146,16 @@ export default function LicenseModal({ open, onClose }: Props) {
         ownerUnlimited?: boolean;
         tokenValid?: boolean;
         trial?: { active?: boolean; days?: number };
-        claims?: { is_pro?: boolean; is_vip?: boolean };
+        claims?: {
+          is_pro?: boolean;
+          is_vip?: boolean;
+          is_trial?: boolean;
+          plan?: string;
+        };
         entitlement?: { hwid?: string };
+        supabase?: { adminConfigured?: boolean; configured?: boolean };
+        model?: { cloud?: boolean };
+        cloudRevoked?: boolean;
       };
       const id = (data.entitlement?.hwid || '').toUpperCase();
       if (id) setHwid(id);
@@ -138,14 +163,36 @@ export default function LicenseModal({ open, onClose }: Props) {
       if (typeof data.trial?.days === 'number' && data.trial.days > 0) {
         setTrialDaysLabel(data.trial.days);
       }
+      if (data.cloudRevoked) {
+        setCloudNote('License cloud đã revoke/hết hạn — về Free.');
+        writeStoredToken('');
+      } else if (data.supabase?.adminConfigured) {
+        setCloudNote('Cloud Supabase: bật (order + revoke online).');
+      } else if (data.supabase?.configured) {
+        setCloudNote('Supabase URL/anon có — thiếu SERVICE_ROLE (admin).');
+      } else {
+        setCloudNote('Chế độ local (Zalo + key) — chưa cấu hình Supabase.');
+      }
       if (data.ownerUnlimited) {
-        setVipStatus(true, true, false);
+        setVipStatus(false, true, false);
         setCredits(999_999_999);
+      } else if (data.tier === 'pro' && data.tokenValid && data.claims) {
+        applyClaims(data.claims);
+      } else if (data.tier === 'trial' || data.trial?.active) {
+        if (
+          data.tokenValid &&
+          data.claims &&
+          !data.claims.is_trial &&
+          data.claims.plan !== 'trial' &&
+          (data.claims.is_pro || data.claims.is_vip)
+        ) {
+          applyClaims(data.claims);
+        } else {
+          setVipStatus(false, true, true);
+          setCredits(50_000);
+        }
       } else if (data.tokenValid && data.claims) {
         applyClaims(data.claims);
-      } else if (data.trial?.active) {
-        setVipStatus(false, true, true);
-        setCredits(50_000);
       } else if (!data.tokenValid) {
         setVipStatus(false, false, false);
         setCredits(100);
@@ -250,23 +297,46 @@ export default function LicenseModal({ open, onClose }: Props) {
   const handleStartTrial = async () => {
     setBusy(true);
     try {
-      const res = await fetch(API.entitlementTrial, {
+      // Prefer cloud trial (Supabase) → fallback local entitlement trial
+      let res = await fetch(API.cloudLicenseTrial, {
         method: 'POST',
         headers: buildClientApiHeaders(),
         body: JSON.stringify({ hwid }),
       });
-      const data = (await res.json().catch(() => ({}))) as {
+      let data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
         message?: string;
+        token?: string;
+        cloud?: boolean;
         status?: { active?: boolean };
       };
+
+      if (!res.ok || !data.ok) {
+        res = await fetch(API.entitlementTrial, {
+          method: 'POST',
+          headers: buildClientApiHeaders(),
+          body: JSON.stringify({ hwid }),
+        });
+        data = (await res.json().catch(() => ({}))) as typeof data;
+      }
+
       if (!res.ok || !data.ok) throw new Error(data.error || 'Trial thất bại');
-      if (data.status?.active) {
+
+      if (data.token) {
+        writeStoredToken(data.token);
+        setKeyDraft(data.token);
+        setVipStatus(false, true, true);
+        setCredits(50_000);
+      } else if (data.status?.active) {
         setVipStatus(false, true, true);
         setCredits(50_000);
       }
-      toast.success('Trial', data.message || 'Đã bật trial');
+      toast.success(
+        'Trial',
+        data.message ||
+          (data.cloud ? 'Trial cloud đã bật' : 'Trial local đã bật'),
+      );
       await refresh();
     } catch (e) {
       toast.error('Trial', e instanceof Error ? e.message : String(e));
@@ -334,7 +404,11 @@ export default function LicenseModal({ open, onClose }: Props) {
 
   if (!mounted || !open) return null;
 
-  const proOn = isPro || isVip;
+  const statusLine = isTrial
+    ? ' · Trial đang dùng (chưa mua Pro)'
+    : isPro || isVip
+      ? ' · Pro đã kích hoạt'
+      : ' · Free — nâng Pro bên dưới';
 
   const qrSrc = qrBroken ? STATIC_QR_FALLBACK : qrUrl;
 
@@ -368,8 +442,13 @@ export default function LicenseModal({ open, onClose }: Props) {
               <p className="text-[10px] text-sky-400/80 truncate">
                 Tier hiện tại:{' '}
                 <span className="font-bold text-amber-300 uppercase">{tier}</span>
-                {proOn ? ' · Đã kích hoạt' : ' · Free — nâng Pro bên dưới'}
+                {statusLine}
               </p>
+              {cloudNote ? (
+                <p className="text-[9px] text-zinc-500 truncate" title={cloudNote}>
+                  {cloudNote}
+                </p>
+              ) : null}
             </div>
           </div>
           <button

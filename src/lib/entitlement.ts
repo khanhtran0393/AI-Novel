@@ -15,10 +15,22 @@ import crypto from 'crypto';
 import os from 'os';
 import { AppError } from '@/lib/errors';
 import { getTrialStatus, trialGrantsPro } from '@/lib/commercial/trial';
+import {
+  canAccessFeature,
+  tierAtLeast,
+  type CommercialFeatureId,
+  type PlanTier,
+} from '@/lib/commercial/featureMatrix';
+
+/** License plan on the wire (HMAC payload). Legacy tokens omit plan/is_trial → paid pro. */
+export type EntitlementPlan = 'trial' | 'pro' | 'vip';
 
 export type EntitlementClaims = {
   is_pro: boolean;
   is_vip: boolean;
+  /** Trial token — Pro-equivalent for trial-tier features only */
+  is_trial?: boolean;
+  plan?: EntitlementPlan;
   exp: number; // unix seconds
   hwid?: string;
 };
@@ -191,17 +203,55 @@ export function getEntitlementPublicStatus(): {
   };
 }
 
+function normalizeClaims(raw: EntitlementClaims): EntitlementClaims {
+  // Collapse legacy VIP → Pro (product: Free | Trial | Pro only)
+  const legacyVip = !!raw.is_vip || raw.plan === 'vip';
+  const is_trial =
+    !legacyVip && (!!raw.is_trial || raw.plan === 'trial');
+  const is_pro = legacyVip || !!raw.is_pro || is_trial;
+  let plan: EntitlementPlan | undefined;
+  if (is_trial) plan = 'trial';
+  else if (is_pro) plan = 'pro';
+  const out: EntitlementClaims = {
+    is_pro,
+    // Never expose VIP on wire for new tokens; keep false for store/UI
+    is_vip: false,
+    exp: raw.exp,
+  };
+  if (is_trial) out.is_trial = true;
+  if (plan) out.plan = plan;
+  if (raw.hwid) out.hwid = String(raw.hwid).trim().toLowerCase();
+  return out;
+}
+
+/** True when claims represent time-boxed trial (not paid Pro/VIP). */
+export function claimsIsTrial(claims: EntitlementClaims | null | undefined): boolean {
+  if (!claims) return false;
+  if (claims.is_vip) return false;
+  return !!claims.is_trial || claims.plan === 'trial';
+}
+
 /** Issue token for admin / seller (never call from untrusted client without admin key). */
 export function issueEntitlementToken(
   claims: Omit<EntitlementClaims, 'exp'> & { expSeconds?: number },
 ): string {
   const exp =
     Math.floor(Date.now() / 1000) + (claims.expSeconds ?? 60 * 60 * 24 * 30);
+  // Issue: never write is_vip (Pro-only paid product)
+  const is_trial = !!claims.is_trial || claims.plan === 'trial';
+  const is_pro = !!claims.is_pro || !!claims.is_vip || is_trial;
+  const plan: EntitlementPlan | undefined = is_trial
+    ? 'trial'
+    : is_pro
+      ? 'pro'
+      : undefined;
   const payload: EntitlementClaims = {
-    is_pro: !!claims.is_pro,
-    is_vip: !!claims.is_vip,
+    is_pro,
+    is_vip: false,
     exp,
   };
+  if (is_trial) payload.is_trial = true;
+  if (plan) payload.plan = plan;
   if (claims.hwid && String(claims.hwid).trim()) {
     payload.hwid = String(claims.hwid).trim().toLowerCase();
   }
@@ -232,19 +282,17 @@ export function verifyEntitlementToken(
   const b = Buffer.from(expect);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   try {
-    const claims = JSON.parse(fromB64url(body).toString('utf8')) as EntitlementClaims;
-    if (!claims || typeof claims.exp !== 'number') return null;
-    if (claims.exp < Math.floor(Date.now() / 1000)) return null;
-    const hwid = claims.hwid ? String(claims.hwid).trim().toLowerCase() : undefined;
+    const raw = JSON.parse(fromB64url(body).toString('utf8')) as EntitlementClaims;
+    if (!raw || typeof raw.exp !== 'number') return null;
+    if (raw.exp < Math.floor(Date.now() / 1000)) return null;
+    const hwid = raw.hwid ? String(raw.hwid).trim().toLowerCase() : undefined;
     if (hwid && (options?.requireHwidMatch !== false)) {
       if (hwid !== getHwid().toLowerCase()) return null;
     }
-    return {
-      is_pro: !!claims.is_pro,
-      is_vip: !!claims.is_vip,
-      exp: claims.exp,
+    return normalizeClaims({
+      ...raw,
       ...(hwid ? { hwid } : {}),
-    };
+    });
   } catch {
     return null;
   }
@@ -263,37 +311,47 @@ export function extractEntitlementToken(req: Request, body?: unknown): string | 
 }
 
 /**
- * Assert Pro/VIP for premium routes.
- * open: always pass (desktop/dev).
- * enforce: valid token with is_pro || is_vip (+ optional HWID), or active trial.
+ * Resolve effective plan for this request (enforce path).
+ * open / ownerUnlimited → Pro-shaped synthetic claims (not VIP badge).
  */
-export function assertProAccess(req: Request, body?: unknown): EntitlementClaims {
+export function resolveRequestAccess(req: Request, body?: unknown): {
+  tier: PlanTier;
+  claims: EntitlementClaims;
+} {
+  const nowExp = Math.floor(Date.now() / 1000) + 86400;
+
   if (getEntitlementMode() === 'open') {
     return {
-      is_pro: true,
-      is_vip: true,
-      exp: Math.floor(Date.now() / 1000) + 86400,
+      tier: 'pro',
+      claims: {
+        is_pro: true,
+        is_vip: false,
+        plan: 'pro',
+        exp: nowExp,
+      },
     };
   }
 
-  // Owner unlimited (CISO) — never in packaged enforce without open
   try {
-    // Lazy require avoided — inline env check to keep circular deps low
     const owner = (process.env.AINOVEL_OWNER_UNLIMITED || '').trim().toLowerCase();
-    if (owner === '1' || owner === 'true' || owner === 'yes') {
-      if (!isPackagedPublishHint()) {
-        return {
+    if (
+      (owner === '1' || owner === 'true' || owner === 'yes') &&
+      !isPackagedPublishHint()
+    ) {
+      return {
+        tier: 'pro',
+        claims: {
           is_pro: true,
-          is_vip: true,
-          exp: Math.floor(Date.now() / 1000) + 86400,
-        };
-      }
+          is_vip: false,
+          plan: 'pro',
+          exp: nowExp,
+        },
+      };
     }
   } catch {
     /* ignore */
   }
 
-  // Fail-closed if secret misconfigured
   const sec = resolveEntitlementSecret();
   if (!sec.ok) {
     throw new AppError(
@@ -304,22 +362,88 @@ export function assertProAccess(req: Request, body?: unknown): EntitlementClaims
 
   const token = extractEntitlementToken(req, body);
   const claims = verifyEntitlementToken(token, { requireHwidMatch: true });
-  if (claims && (claims.is_pro || claims.is_vip)) {
-    return claims;
+  if (claims && (claims.is_pro || claims.is_vip || claimsIsTrial(claims))) {
+    // Product tiers: free | trial | pro (legacy is_vip → pro)
+    const tier: PlanTier = claimsIsTrial(claims)
+      ? 'trial'
+      : claims.is_pro || claims.is_vip
+        ? 'pro'
+        : 'free';
+    return { tier, claims };
   }
 
-  // Trial fallback (one HWID, time-boxed)
+  // Local trial vault (no token / expired paid token)
   if (trialGrantsPro()) {
     const st = getTrialStatus();
     return {
-      is_pro: true,
-      is_vip: false,
-      exp: st.record?.endsAt ?? Math.floor(Date.now() / 1000) + 86400,
+      tier: 'trial',
+      claims: {
+        is_pro: true,
+        is_vip: false,
+        is_trial: true,
+        plan: 'trial',
+        exp: st.record?.endsAt ?? nowExp,
+      },
     };
   }
 
+  return {
+    tier: 'free',
+    claims: {
+      is_pro: false,
+      is_vip: false,
+      exp: Math.floor(Date.now() / 1000),
+    },
+  };
+}
+
+/**
+ * Assert minimum plan tier for a route (product matrix).
+ * trial-tier features: video / CapCut / ship.
+ * pro-tier features: integrations pipeline, …
+ */
+export function assertTierAtLeast(
+  req: Request,
+  minTier: PlanTier,
+  body?: unknown,
+): EntitlementClaims {
+  const { tier, claims } = resolveRequestAccess(req, body);
+  if (tierAtLeast(tier, minTier)) {
+    return claims;
+  }
+  const need =
+    minTier === 'vip'
+      ? 'VIP'
+      : minTier === 'pro'
+        ? 'Pro (trả phí) — Trial không đủ'
+        : minTier === 'trial'
+          ? 'Pro/Trial'
+          : 'license';
   throw new AppError(
-    'Tính năng Pro/VIP: thiếu, hết hạn, hoặc token không khớp máy (HWID). Nhấp logo app → Bản quyền để dán key hoặc bật Trial 3 ngày.',
+    `Tính năng cần gói ${need}. Nhấp logo app → Bản quyền để dán key, mua Pro, hoặc bật Trial (nếu đủ quyền).`,
     { code: 'AUTH', status: 403 },
   );
+}
+
+/** Assert feature by matrix id (server). */
+export function assertFeatureAccess(
+  req: Request,
+  featureId: CommercialFeatureId,
+  body?: unknown,
+): EntitlementClaims {
+  const { tier, claims } = resolveRequestAccess(req, body);
+  if (canAccessFeature(tier, featureId)) return claims;
+  throw new AppError(
+    `Tính năng «${featureId}» cần gói cao hơn (hiện: ${tier}). Nhấp logo app → Bản quyền.`,
+    { code: 'AUTH', status: 403 },
+  );
+}
+
+/**
+ * Assert Pro-equivalent (trial | pro | vip) for premium routes.
+ * open: always pass (desktop/dev).
+ * enforce: valid token is_pro|is_vip|is_trial, or active local trial vault.
+ */
+export function assertProAccess(req: Request, body?: unknown): EntitlementClaims {
+  return assertTierAtLeast(req, 'trial', body);
 }

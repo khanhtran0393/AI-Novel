@@ -34,12 +34,16 @@ import { GENRE_PACKS, applyGenrePackDefaults } from '@/lib/genrePacks';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
 import FloatingMenu from '../../shared/FloatingMenu';
+import { useProAccess } from '../../hooks/useProAccess';
 
 /**
  * Multi-channel workspace picker — compact dropdown on the main header row.
  * Shows DNA chips (TTS + media) and genre pack apply.
+ * Tạo kênh thứ 2+ cần Pro (matrix multi_channel).
  */
 export default function ChannelSwitcher() {
+  const { can, requirePro } = useProAccess();
+  const multiOk = can('multi_channel');
   const isHydrated = useNovelStore(selectIsHydrated);
   const activeChannelId = useNovelStore(selectActiveChannelId);
   const channels = useNovelStore(selectChannels);
@@ -122,6 +126,12 @@ export default function ChannelSwitcher() {
   };
 
   const handleCreate = () => {
+    // Free/Trial: 1 kênh; Pro+: multi_channel
+    if (list.length >= 1 && !multiOk) {
+      const gate = requirePro('multi_channel');
+      toast.info('Pro', gate.message || 'Multi-channel cần gói Pro trả phí.');
+      return;
+    }
     const name = (newName || `Kênh ${list.length + 1}`).trim();
     createChannel(name, { cloneFromActive: false });
     setNewName('');

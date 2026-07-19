@@ -43,7 +43,7 @@ export function buildPaymentNotifyMessage(p: PaymentNotifyPayload): string {
   return lines.join('\n');
 }
 
-export async function sendTelegramMessage(text: string): Promise<{
+export async function sendTelegramMessage(text: string, reply_markup?: any): Promise<{
   ok: boolean;
   error?: string;
   messageId?: number;
@@ -67,6 +67,7 @@ export async function sendTelegramMessage(text: string): Promise<{
         chat_id: chatId,
         text,
         disable_web_page_preview: true,
+        ...(reply_markup ? { reply_markup } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -114,7 +115,14 @@ export async function notifyPaymentReported(p: PaymentNotifyPayload): Promise<{
   }
 
   const text = buildPaymentNotifyMessage({ ...p, hwid });
-  const sent = await sendTelegramMessage(text);
+  const sent = await sendTelegramMessage(text, {
+    inline_keyboard: [
+      [
+        { text: '✅ Cấp Key', callback_data: `issue_${hwid}_${p.planId}` },
+        { text: '❌ Từ chối', callback_data: `reject_${hwid}` },
+      ],
+    ],
+  });
   if (!sent.ok) return { ok: false, error: sent.error, text };
   lastReportAt.set(hwid, now);
   return { ok: true, messageId: sent.messageId, text };

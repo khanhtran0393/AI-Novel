@@ -159,6 +159,22 @@ test.describe('entitlement', () => {
     const claims = verifyEntitlementToken(token);
     expect(claims?.is_pro).toBe(true);
     expect(claims?.is_vip).toBe(false);
+    expect(claims?.is_trial).toBeFalsy();
+    expect(claims?.plan).toBe('pro');
+  });
+
+  test('trial token is not paid pro', () => {
+    const token = issueEntitlementToken({
+      is_pro: true,
+      is_vip: false,
+      is_trial: true,
+      plan: 'trial',
+      expSeconds: 3600,
+    });
+    const claims = verifyEntitlementToken(token);
+    expect(claims?.is_pro).toBe(true);
+    expect(claims?.is_trial).toBe(true);
+    expect(claims?.plan).toBe('trial');
   });
 
   test('tampered token fails', () => {

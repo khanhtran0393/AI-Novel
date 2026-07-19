@@ -82,7 +82,8 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
   message: string;
 } {
   const provider: PaymentProvider = body.provider || 'generic';
-  const plan = body.plan === 'vip' ? 'vip' : 'pro';
+  // All paid plans issue as Pro (no VIP product tier)
+  const plan = 'pro' as const;
   const expSeconds = body.expSeconds ?? 60 * 60 * 24 * 365;
   const orderId = body.orderId || `ord_${Date.now()}`;
   const issueMode: 'code' | 'token' =
@@ -92,7 +93,8 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
     const hwid = (body.hwid || getHwid()).trim().toLowerCase();
     const token = issueEntitlementToken({
       is_pro: true,
-      is_vip: plan === 'vip',
+      is_vip: false,
+      plan: 'pro',
       hwid,
       expSeconds,
     });
@@ -103,7 +105,7 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
       token,
       plan,
       orderId,
-      message: `Đã cấp token ${plan.toUpperCase()} gắn HWID ${hwid}.`,
+      message: `Đã cấp token PRO gắn HWID ${hwid}.`,
     };
   }
 

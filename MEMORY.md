@@ -1,11 +1,50 @@
 # Project memory (AI Novel)
 
+## Docs truth rewrite (2026-07-19) — full set
+
+- **Rewrote for runtime truth:** `AGENTS.md`, `docs/IRON_LAWS.md`, `docs/DOMAIN_MAP.md`, `docs/RESET_POINT.md`, `docs/COMMERCIAL.md`, `docs/integrations-hub.md`, `src/app/workspace/ARCHITECTURE.md`, `src/contracts/domainOwnership.ts` (credentials + license/cloud).
+- **Key truths agents must not reverse:** native engine (no ainovel-gui/:8080); NAV host-binding; `isHydrated` default **true**; badge FREE/TRIAL/PRO/VIP + `is_trial`; packaged Electron entitlement **enforce**; Flow 9223/8101; pipeline `src/lib/pipeline/*`; license = logo modal `features/license`.
+- Prefer these docs over any older session memory.
+
+## VIP badge bug (2026-07-19)
+
+- **Cause:** `shouldGrantOwnerUnlimited()` returned true when `MODE=open` → status `ownerUnlimited` → sync `setVipStatus(true,true)` → badge VIP.
+- **Fix:** owner unlimited **only** `AINOVEL_OWNER_UNLIMITED=1`. MODE=open no longer elevates UI.
+- `.env.local` set to `enforce` for commercial test; restart Next after env change.
+
+## Product tiers = Free | Trial | Pro only (2026-07-19)
+
+- **No VIP product:** lifetime / owner / open synthetic / paid issue all → **Pro** (`is_vip=false`, `plan:'pro'`).
+- Legacy VIP tokens collapse on verify/normalize → Pro.
+- Header/logo: TRIAL | PRO | FREE (no VIP chip).
+- `resolvePlanTier`: open/ownerUnlimited/`is_vip` → **pro**.
+
+## Commercial logic unify (2026-07-19)
+
+- HMAC claims: `is_trial` + `plan: 'trial'|'pro'|'vip'`; `issueTrialToken` sets trial; paid issue sets plan pro/vip.
+- `resolvePlanTier`: **trial before is_pro**; `storeFlagsToTier` helper.
+- Server: `resolveRequestAccess` / `assertTierAtLeast` / `assertFeatureAccess`; pipeline uses **pro** feature gate; video/capcut/ship stay trial+.
+- Status + `useEntitlementSync`: cloud trial token → tier **trial** + store `is_trial`.
+- Cloud trial mirrors local `startTrial` vault.
+- Credits: trial deducts; paid pro/vip unlimited.
+- UI: Toolbox/multi-channel/Flow multi gate via `can(feature)`; CapCut/License copy fixed.
+
+
+## Supabase + Vercel cloud hybrid (2026-07-19)
+
+- **SQL/RLS:** `supabase/migrations/001_commercial_rls.sql` (profiles, devices, orders, licenses, audit).
+- **Clients:** `src/lib/supabase/*` — anon JWT + service_role server-only; graceful if env missing.
+- **Bridge:** `src/lib/cloud/licenseBridge.ts` — HMAC issue/verify + order confirm + trial + revoke.
+- **API:** `/api/cloud/status|orders|orders/confirm|license/*` · Admin UI `/admin`.
+- **Desktop:** License modal prefers cloud trial; commercial status exposes supabase + cloudRevoked.
+- **Hybrid:** no Supabase → local Zalo/HMAC still works. Deploy: set NEXT_PUBLIC_SUPABASE_* + SERVICE_ROLE + same ENTITLEMENT_SECRET on Vercel.
+
 ## Commercial publish readiness (2026-07-18)
 
 - **Model:** License + BYOK + Free/Trial/Pro/VIP — `src/lib/commercial/*` · master `docs/COMMERCIAL.md`.
 - **Entitlement:** enforce fail-closed; HWID; trial fallback in `assertProAccess`; **no** force owner Pro on rehydrate/persist; boot `useEntitlementSync`.
 - **API:** issue|verify|hwid|activate|trial|webhook|codes + `/api/commercial/status`.
-- **UI:** LicenseActivationCard (token + AINOVEL code + Trial + pricing); Header FREE/TRIAL/PRO/VIP; CapCut/Ship/Toolbox Pro gray; video headers entitlement.
+- **UI:** `features/license` LicenseModal (logo); Header FREE/TRIAL/PRO/VIP; CapCut/Ship/Toolbox Pro gray; video headers entitlement.
 - **Trial badge fix (2026-07-19):** Trial sync still sets `is_pro=true` (Pro-equivalent rights) **and** `is_trial=true`. Header/logo badge shows **TRIAL** (cyan), not paid **PRO**. Store field `is_trial`; `setVipStatus(vip, pro, trial?)`.
 - **Seller:** `npm run license:issue` · vault `data/licenses/`.
 - **Legal:** LEGAL_TOS / PRIVACY / THIRD_PARTY / FLOW_DISCLAIMER · INSTALL_SUPPORT · PRICING.

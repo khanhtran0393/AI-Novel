@@ -105,6 +105,18 @@ const required = [
   'src/app/workspace/features/license/LicenseModal.tsx',
   'src/app/workspace/features/license/BrandLogoButton.tsx',
   'src/lib/commercial/pricingPlans.ts',
+  'src/lib/supabase/env.ts',
+  'src/lib/supabase/server.ts',
+  'src/lib/cloud/licenseBridge.ts',
+  'src/app/api/cloud/status/route.ts',
+  'src/app/api/cloud/orders/route.ts',
+  'src/app/api/cloud/orders/confirm/route.ts',
+  'src/app/api/cloud/license/issue/route.ts',
+  'src/app/api/cloud/license/verify/route.ts',
+  'src/app/api/cloud/license/trial/route.ts',
+  'src/app/api/cloud/license/revoke/route.ts',
+  'src/app/admin/page.tsx',
+  'supabase/migrations/001_commercial_rls.sql',
   'public/brand/qr-techcombank.jpg',
   'src/app/workspace/hooks/useEntitlementSync.ts',
   'src/app/workspace/hooks/useProAccess.ts',
@@ -145,6 +157,8 @@ assert.ok(apiMap.includes('entitlementActivate'));
 assert.ok(apiMap.includes('entitlementTrial'));
 assert.ok(apiMap.includes('entitlementWebhook'));
 assert.ok(apiMap.includes('commercialStatus'));
+assert.ok(apiMap.includes('cloudStatus'));
+assert.ok(apiMap.includes('cloudLicenseVerify'));
 
 // License lives on logo, not Settings
 const settings = fs.readFileSync(

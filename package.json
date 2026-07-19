@@ -19,10 +19,6 @@
     "dev:desktop": "electron .",
     "build:desktop": "next build && electron-builder --win nsis",
     "pack:portable": "next build && electron-builder --win portable",
-    "test:capassistant": "npx tsx scratch/test-capassistant-independent.mjs",
-    "test:auto-master": "npx tsx scratch/test-auto-master.mjs",
-    "test:self-heal": "npx tsx scratch/test-self-heal-brain.mjs",
-    "test:persist": "node scratch/test-durable-persist.mjs",
     "test:channel-ship": "npx tsx src/scripts/verify-channel-ship.mjs",
     "test:channel-dna": "npx tsx src/scripts/verify-channel-output-dna.mjs",
     "test:integrations": "npx tsx scripts/smoke-pipeline-p0p2.mts",
@@ -43,6 +39,9 @@
     "test:e2e:api": "playwright test --project=api-and-contracts",
     "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts",
     "license:issue": "node scripts/issue-license.mjs",
+    "setup:supabase": "node scripts/setup-supabase-cloud.mjs",
+    "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
+    "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
     "prepare:publish": "npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run verify:core"
   },
   "build": {
@@ -98,8 +97,6 @@
       "!.git/**/*",
       "!dist/**/*",
       "!OpenMontage/**/*",
-      "!Voice Studio/**/*",
-      "!ainovel-cli-main/**/*",
       "!exports/**/*",
       "!test-results/**/*"
     ],
@@ -122,6 +119,8 @@
   },
   "dependencies": {
     "@gradio/client": "^2.3.0",
+    "@supabase/ssr": "^0.12.3",
+    "@supabase/supabase-js": "^2.110.7",
     "@types/fluent-ffmpeg": "^2.1.28",
     "cutsdk": "^1.1.8",
     "express": "^5.2.1",

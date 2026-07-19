@@ -74,7 +74,7 @@ export default function ShipPackModal({ isOpen, onClose }: ShipPackModalProps) {
       setResult({ error: 'Thiếu kênh hoặc chương.' });
       return;
     }
-    if (!store.is_pro && !store.is_vip) {
+    if (!store.is_pro && !store.is_vip && !store.is_trial) {
       const msg =
         'Ship pack cần Pro/Trial. Nhấp logo app (up to PRO) để mở Bản quyền / kích hoạt.';
       setResult({ error: msg });

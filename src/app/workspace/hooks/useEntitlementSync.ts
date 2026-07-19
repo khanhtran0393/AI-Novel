@@ -1,12 +1,13 @@
 'use client';
 
 /**
- * Boot + focus sync of Free/Pro/VIP/Trial from server commercial status + local token.
- * - ownerUnlimited only → Pro unlimited (CISO; never ship)
- * - open mode → KHÔNG ép UI Pro (API server vẫn open khi MODE=open)
- * - valid paid token → claims
- * - active trial → is_pro + is_trial (badge TRIAL)
+ * Boot + focus sync of Free / Trial / Pro (no VIP product tier).
+ * - ownerUnlimited (AINOVEL_OWNER_UNLIMITED) → Pro unlimited (CISO)
+ * - MODE=open → không ép UI (server assert nới riêng)
+ * - paid token → Pro
+ * - trial token / vault → Trial
  * - else Free
+ * Legacy is_vip claims collapse → Pro.
  */
 import { useCallback, useEffect, useRef } from 'react';
 import { API } from '@/contracts';
@@ -21,9 +22,27 @@ type CommercialStatus = {
   ownerUnlimited?: boolean;
   tier?: string;
   tokenValid?: boolean;
-  trial?: { active?: boolean; endsIso?: string | null };
-  claims?: { is_pro?: boolean; is_vip?: boolean } | null;
+  trial?: { active?: boolean; endsIso?: string | null; fromToken?: boolean };
+  claims?: {
+    is_pro?: boolean;
+    is_vip?: boolean;
+    is_trial?: boolean;
+    plan?: string;
+  } | null;
 };
+
+function claimsAreTrial(claims: CommercialStatus['claims'], tier?: string): boolean {
+  if (!claims) return false;
+  if (claims.is_trial || claims.plan === 'trial') return true;
+  return tier === 'trial';
+}
+
+/** Paid Pro (including legacy VIP tokens). */
+function claimsArePaidPro(claims: CommercialStatus['claims']): boolean {
+  if (!claims) return false;
+  if (claimsAreTrial(claims)) return false;
+  return !!(claims.is_pro || claims.is_vip || claims.plan === 'pro' || claims.plan === 'vip');
+}
 
 export function useEntitlementSync() {
   const setVipStatus = useNovelStore((s) => s.setVipStatus);
@@ -40,36 +59,34 @@ export function useEntitlementSync() {
       const data = (await res.json().catch(() => ({}))) as CommercialStatus;
       if (!res.ok || !data.ok) return;
 
-      // Chỉ CISO flag — không ép Pro khi MODE=open (tránh “luôn PRO” khi test Free)
+      // CISO only — Pro full, never VIP badge
       if (data.ownerUnlimited) {
-        setVipStatus(true, true, false);
+        setVipStatus(false, true, false);
         setCredits(999_999_999);
         return;
       }
 
-      if (data.tokenValid && data.claims) {
-        setVipStatus(
-          !!data.claims.is_vip,
-          !!data.claims.is_pro || !!data.claims.is_vip,
-          false,
-        );
+      if (data.tokenValid && data.claims && claimsArePaidPro(data.claims)) {
+        setVipStatus(false, true, false);
         setCredits(999_999_999);
         return;
       }
 
-      if (data.trial?.active) {
-        // Quyền Pro-equivalent + cờ trial để badge UI = TRIAL (không hiện PRO trả phí)
+      if (
+        data.tier === 'trial' ||
+        data.trial?.active ||
+        claimsAreTrial(data.claims, data.tier)
+      ) {
         setVipStatus(false, true, true);
         setCredits(50_000);
         return;
       }
 
-      // Free
       setVipStatus(false, false, false);
       const cur = useNovelStore.getState().credits;
       if (cur > 100_000) setCredits(100);
     } catch {
-      /* offline — keep last known store plan */
+      /* offline */
     }
   }, [setVipStatus, setCredits]);
 
@@ -79,7 +96,6 @@ export function useEntitlementSync() {
     void sync();
     const onFocus = () => void sync();
     window.addEventListener('focus', onFocus);
-    // Re-sync when token storage changes in another tab
     const onStorage = (e: StorageEvent) => {
       if (e.key === ENTITLEMENT_LS_KEY) void sync();
     };

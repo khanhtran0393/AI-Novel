@@ -136,13 +136,31 @@ export function resolvePlanTier(input: {
   ownerUnlimited?: boolean;
   is_pro?: boolean;
   is_vip?: boolean;
+  /** Explicit trial flag (store / claims) — checked BEFORE is_pro */
+  is_trial?: boolean;
   trialActive?: boolean;
 }): PlanTier {
-  if (input.openMode || input.ownerUnlimited) return 'vip';
-  if (input.is_vip) return 'vip';
+  // Dev open / CISO unlimited → Pro full access (NOT VIP badge)
+  if (input.openMode || input.ownerUnlimited) return 'pro';
+  // Legacy is_vip tokens collapse to Pro (product: Free | Trial | Pro only)
+  if (input.is_vip) return 'pro';
+  // Trial before paid Pro (store often keeps is_pro=true during trial)
+  if (input.is_trial || input.trialActive) return 'trial';
   if (input.is_pro) return 'pro';
-  if (input.trialActive) return 'trial';
   return 'free';
+}
+
+/** Map store flags → tier (single mapper for UI). */
+export function storeFlagsToTier(flags: {
+  is_pro?: boolean;
+  is_vip?: boolean;
+  is_trial?: boolean;
+}): PlanTier {
+  return resolvePlanTier({
+    is_pro: flags.is_pro,
+    is_vip: flags.is_vip,
+    is_trial: flags.is_trial,
+  });
 }
 
 export function canAccessFeature(
@@ -203,11 +221,11 @@ export const PRICING_PLANS = [
     ],
   },
   {
-    id: 'vip' as const,
-    name: 'Trọn đời',
+    id: 'pro_lifetime' as const,
+    name: 'Pro trọn đời',
     priceLabel: '8.999.000đ',
     period: 'lifetime',
-    blurb: 'VIP trọn đời — CK Techcombank TRAN HUU KHANH',
+    blurb: 'Pro trọn đời — CK Techcombank TRAN HUU KHANH',
     highlights: ['Mọi quyền Pro', 'Không gia hạn', 'Hỗ trợ Zalo seller'],
   },
 ] as const;

@@ -1,8 +1,9 @@
 /**
- * Owner / CISO local build vs commercial customer build.
+ * Owner / CISO local override vs commercial customer build.
  *
- * - open entitlement mode → treat as full Pro (dev DX)
- * - AINOVEL_OWNER_UNLIMITED=1 → force unlimited (CISO machine only; never ship)
+ * - AINOVEL_OWNER_UNLIMITED=1 → force unlimited VIP UI + server (CISO only; never ship)
+ * - AINOVEL_ENTITLEMENT_MODE=open → **chỉ** nới server assert (dev API),
+ *   **KHÔNG** ép UI Free/Trial/Pro thành VIP (để test trial/free trên dev)
  * - packaged + enforce → never owner unlimited
  */
 
@@ -14,15 +15,14 @@ export function isOwnerUnlimitedEnv(): boolean {
 }
 
 /**
- * Server truth: should this process grant unlimited Pro without a customer token?
+ * Server/UI truth: grant unlimited VIP without a customer token?
+ * Explicit env only — MODE=open does **not** count as owner unlimited.
  */
 export function shouldGrantOwnerUnlimited(): boolean {
-  if (isOwnerUnlimitedEnv()) {
-    // Even owner flag is ignored when packaged publish unless explicitly open
-    if (isPackagedPublishHint() && getEntitlementMode() === 'enforce') {
-      return false;
-    }
-    return true;
+  if (!isOwnerUnlimitedEnv()) return false;
+  // Owner flag ignored on packaged enforce (customer builds)
+  if (isPackagedPublishHint() && getEntitlementMode() === 'enforce') {
+    return false;
   }
-  return getEntitlementMode() === 'open';
+  return true;
 }

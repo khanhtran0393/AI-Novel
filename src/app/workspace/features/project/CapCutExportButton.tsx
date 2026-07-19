@@ -41,7 +41,7 @@ export default function CapCutExportButton() {
           message:
             'Xuất kịch bản chương hiện tại ra CapCut (audio, video, ảnh gắn với chương).',
           details: [
-            'Cần gói Pro/VIP',
+            'Cần gói Pro hoặc Trial',
             'Đảm bảo CapCut đã cài trên máy',
           ],
           confirmLabel: 'Xuất CapCut',

@@ -12,10 +12,12 @@ import {
   Zap,
 } from 'lucide-react';
 import { toast } from '@/lib/toastBus';
+import { useProAccess } from '../../hooks/useProAccess';
 
 /**
  * Mọi trạng thái phiên (Bridge / Extension / Token / Project / Login)
  * sống trên TỪNG profile — không còn dải global.
+ * Multi-account (profile 2+) cần Pro trả phí.
  */
 type FlowAccount = {
   id: string;
@@ -155,6 +157,8 @@ function ProfileSessionLamps({
 }
 
 export default function FlowAccountsPanel() {
+  const { can, requirePro } = useProAccess();
+  const multiFlowOk = can('flow_multi_account');
   const [snap, setSnap] = useState<BridgeSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -619,6 +623,16 @@ export default function FlowAccountsPanel() {
    * Không phải «đăng nhập lại» account cũ.
    */
   const addAccount = async (openBlankBrowser = true) => {
+    const count = snap?.accounts?.length || 0;
+    // Profile 2+ = multi-account (Pro only; Trial/Free: 1 profile)
+    if (count >= 1 && !multiFlowOk) {
+      const gate = requirePro('flow_multi_account');
+      toast.info(
+        'Pro',
+        gate.message || 'Flow multi-account cần gói Pro trả phí.',
+      );
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(API.flowAccounts, {

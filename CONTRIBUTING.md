@@ -47,13 +47,17 @@ npm run test:e2e
 
 Hoặc: `npm run verify:ci`
 
-## Pro/VIP (server)
+## Free / Trial / Pro / VIP (server)
 
-- Default: `AINOVEL_ENTITLEMENT_MODE=open` (desktop).
-- Enforce: set `enforce` + secret; client gửi header `x-ainovel-entitlement`
-  (tự gắn nếu `localStorage.ainovel.entitlementToken` — xem `buildClientApiHeaders`).
-- Issue: `POST /api/entitlement/issue` (xem `src/lib/entitlement.ts`).
+- Dev/web default: `AINOVEL_ENTITLEMENT_MODE=open`.
+- Electron **packaged** default: `enforce` nếu env chưa set (`main.js`).
+- Enforce: secret mạnh + client header `x-ainovel-entitlement`
+  (`localStorage.ainovel.entitlementToken` — `buildClientApiHeaders`).
+- Trial: `POST /api/entitlement/trial` · store `is_trial` · badge **TRIAL** (không gộp PRO).
+- Issue: `POST /api/entitlement/issue` · activate: `/api/entitlement/activate`.
+- UI Bản quyền: logo app → `features/license/LicenseModal`.
 - Routes gated: ship-pack, export-capcut, generate-video, integrations/pipeline.
+- Docs: `docs/COMMERCIAL.md`, `docs/IRON_LAWS.md` A6.
 
 ## Portable project
 

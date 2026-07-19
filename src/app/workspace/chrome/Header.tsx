@@ -63,15 +63,7 @@ export default function Header() {
         }
       >
         <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
-          {isVip ? (
-            <div
-              className="flex items-center gap-1 rounded-2xl bg-gradient-to-r from-fuchsia-400 to-amber-400 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-black shadow-lg shadow-fuchsia-500/20"
-              title="VIP"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              VIP
-            </div>
-          ) : isTrial ? (
+          {isTrial ? (
             <div
               className="flex items-center gap-1 rounded-2xl bg-gradient-to-r from-sky-400 to-cyan-500 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-black shadow-lg shadow-sky-500/20"
               title="Trial — quyền Pro tạm (chưa mua license)"
@@ -79,7 +71,7 @@ export default function Header() {
               <Sparkles className="h-3.5 w-3.5" />
               TRIAL
             </div>
-          ) : isPro ? (
+          ) : isPro || isVip ? (
             <div
               className="flex items-center gap-1 rounded-2xl bg-gradient-to-r from-yellow-400 to-yellow-600 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-black shadow-lg shadow-yellow-500/20"
               title="Pro"

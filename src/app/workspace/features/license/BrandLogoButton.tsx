@@ -78,12 +78,11 @@ export default function BrandLogoButton() {
     if (!isPro && !isVip && !isTrial) setShowFreePromo(true);
   }, [isPro, isVip, isTrial]);
 
-  const planBadge = isVip ? 'VIP' : isTrial ? 'TRIAL' : 'PRO';
-  const planBadgeClass = isVip
-    ? 'bg-gradient-to-r from-fuchsia-400 to-amber-300'
-    : isTrial
-      ? 'bg-gradient-to-r from-sky-300 to-cyan-400'
-      : 'bg-gradient-to-r from-yellow-300 to-amber-400';
+  // Product: Free | Trial | Pro only (legacy is_vip → PRO)
+  const planBadge = isTrial ? 'TRIAL' : 'PRO';
+  const planBadgeClass = isTrial
+    ? 'bg-gradient-to-r from-sky-300 to-cyan-400'
+    : 'bg-gradient-to-r from-yellow-300 to-amber-400';
 
   return (
     <>

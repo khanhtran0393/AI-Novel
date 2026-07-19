@@ -131,14 +131,15 @@ export function redeemActivationCode(
       // Re-issue token for same machine (reinstall)
       const token = issueEntitlementToken({
         is_pro: true,
-        is_vip: rec.plan === 'vip',
+        is_vip: false,
+        plan: 'pro',
         hwid: id,
         expSeconds: rec.expSeconds,
       });
       return {
         ok: true,
         token,
-        plan: rec.plan,
+        plan: 'pro',
         alreadyRedeemedSameMachine: true,
       };
     }
@@ -155,11 +156,12 @@ export function redeemActivationCode(
 
   const token = issueEntitlementToken({
     is_pro: true,
-    is_vip: rec.plan === 'vip',
+    is_vip: false,
+    plan: 'pro',
     hwid: id,
     expSeconds: rec.expSeconds,
   });
-  return { ok: true, token, plan: rec.plan };
+  return { ok: true, token, plan: 'pro' };
 }
 
 export function listActivationCodes(limit = 50): ActivationCodeRecord[] {
