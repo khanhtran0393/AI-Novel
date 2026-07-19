@@ -29,6 +29,7 @@ import {
   promoteHwidLicenseToPaidPro,
   resolveLicenseByHwid,
 } from '@/lib/cloud/licenseBridge';
+import { getLicenseTrustStatus } from '@/lib/commercial/licenseTrust';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -215,9 +216,12 @@ export async function GET(req: Request) {
       ? Boolean(claims && (claims.is_pro || claims.is_vip || claimsIsTrial(claims)))
       : Boolean(claims);
 
+  const licenseTrust = getLicenseTrustStatus();
+
   return NextResponse.json({
     ok: true,
     entitlement: pub,
+    licenseTrust,
     hwid: hwid.toUpperCase(),
     authority,
     cloudLicenseId,
