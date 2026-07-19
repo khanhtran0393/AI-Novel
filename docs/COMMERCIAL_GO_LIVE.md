@@ -18,6 +18,7 @@ Chặn ship installer production: **Windows Authenticode certificate** (chưa c�
 | QA portable              | `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe`                                                                     |
 | API prod                 | `https://ai-novel-flax.vercel.app` ready                                                                      |
 | Telegram bridge          | `https://ainovel-telegram-bridge.vercel.app/.../telegram-webhook`                                             |
+| Seller admin UI          | `/admin` — list licenses, filter HWID, revoke, issue (`docs/COMMERCIAL_ADMIN.md`)                             |
 
 Chạy gộp lại:
 

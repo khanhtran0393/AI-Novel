@@ -47,4 +47,4 @@ npm run build:desktop
 
 `release:verify` fail-closed nếu thiếu feed update HTTPS thật, license API HTTPS, chứng thư/publisher Windows hoặc còn blocker trong manifest. License API đã có; auto-update chỉ bật sau khi phát hành installer ký số lên feed thật.
 
-Tài liệu vận hành: `COMMERCIAL_OPS.md` · `COMMERCIAL_RELEASE.md` · `SHIP_GUIDE.md` · `THIRD_PARTY_MANIFEST.md`.
+Tài liệu vận hành: `COMMERCIAL_ADMIN.md` (admin HWID/revoke) · `COMMERCIAL_OPS.md` · `COMMERCIAL_RELEASE.md` · `SHIP_GUIDE.md` · `THIRD_PARTY_MANIFEST.md`.

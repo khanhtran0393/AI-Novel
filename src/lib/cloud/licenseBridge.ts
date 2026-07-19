@@ -973,3 +973,59 @@ export async function revokeLicense(input: {
     input.actorId,
   );
 }
+
+export type LicenseListRow = {
+  id: string;
+  plan: string;
+  status: string;
+  hwid: string;
+  exp_at: string;
+  created_at?: string;
+  revoked_at?: string | null;
+  activation_code?: string | null;
+  order_id?: string | null;
+};
+
+/** Admin list licenses (service_role). Filters: plan, status, hwid substring. */
+export async function listLicenses(input: {
+  service: SupabaseClient;
+  plan?: string;
+  status?: string;
+  q?: string;
+  limit?: number;
+}): Promise<{ rows: LicenseListRow[]; total: number }> {
+  const limit = Math.min(200, Math.max(1, Number(input.limit) || 50));
+  let query = input.service
+    .from('licenses')
+    .select(
+      'id,plan,status,hwid,exp_at,created_at,revoked_at,activation_code,order_id',
+      { count: 'exact' },
+    )
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  const plan = (input.plan || '').trim().toLowerCase();
+  if (plan && plan !== 'all') {
+    query = query.eq('plan', plan);
+  }
+  const status = (input.status || '').trim().toLowerCase();
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+  const q = (input.q || '').trim();
+  if (q.length >= 3) {
+    query = query.ilike('hwid', `%${q}%`);
+  }
+
+  const { data, error, count } = await query;
+  if (error) {
+    throw new AppError(`List licenses: ${error.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+  return {
+    rows: (data || []) as LicenseListRow[],
+    total: typeof count === 'number' ? count : (data || []).length,
+  };
+}

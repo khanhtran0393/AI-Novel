@@ -63,7 +63,8 @@
     "setup:supabase": "node scripts/setup-supabase-cloud.mjs",
     "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
     "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
-    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run verify:core"
+    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run verify:core",
+    "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs"
   },
   "build": {
     "appId": "com.ainovel.desktop",

@@ -82,6 +82,8 @@ export const API = {
   cloudLicenseVerify: '/api/cloud/license/verify',
   cloudLicenseTrial: '/api/cloud/license/trial',
   cloudLicenseRevoke: '/api/cloud/license/revoke',
+  /** Admin: list licenses (plan/status/hwid filter) */
+  cloudLicenseList: '/api/cloud/license/list',
   selfHealMedia: '/api/self-heal/media',
   castAutoTag: '/api/cast/auto-tag',
   getTiktokSession: '/api/get-tiktok-session',

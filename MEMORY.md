@@ -1,5 +1,12 @@
 # Project memory (AI Novel)
 
+## Commercial admin complete (2026-07-20)
+
+- **API** `GET /api/cloud/license/list` (admin key) · **UI** `/admin` list/filter/revoke/issue HWID
+- **Docs** `docs/COMMERCIAL_ADMIN.md` · backup `npm run commercial:backup-seller`
+- Paid activate promote trial→pro + status Pro (prior fix)
+- Authenticode still human: buy cert — only ship blocker for signed installer
+
 ## Activate OK but badge TRIAL (2026-07-20)
 
 - **Cause:** Supabase còn row `plan=trial` cho HWID; activate/`verifyLicenseCloud` lấy claims cloud trial đè token Pro → badge TRIAL.
