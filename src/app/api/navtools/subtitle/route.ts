@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { callNavGateway } from '@/lib/nav/navPythonBridge';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const { videoPath, outPath, model = 'small', language = 'auto' } = await req.json();
+    const body = await req.json();
+    const denied = await requireFeature(req, 'toolbox_labs', body);
+    if (denied) return denied;
+    const { videoPath, outPath, model = 'small', language = 'auto' } = body;
 
     if (!videoPath || typeof videoPath !== 'string') {
       return NextResponse.json({ error: 'Missing or invalid "videoPath" parameter' }, { status: 400 });

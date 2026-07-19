@@ -24,10 +24,13 @@ import {
   markClipGenerated,
   type TakeVerdict,
 } from '@/lib/integrations/seedanceTakeReview';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireFeature(req, 'integrations_pipeline');
+  if (denied) return denied;
   const paths = getIntegrationPaths();
   return NextResponse.json({
     success: true,
@@ -57,6 +60,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     const persist = Boolean(body.persist);
     const action = String(body.action || 'compile').trim();
     const projectSlug =

@@ -43,6 +43,7 @@ import {
 } from '@/lib/omnivoiceLocal';
 import { buildTtsCacheVariantKey } from '@/lib/tts/prosodyVariant';
 import { assertTtsAudioBufferQuality } from '@/lib/tts/audioQuality';
+import { requireTtsPlatformAccess } from '@/lib/commercial/apiGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +113,9 @@ export async function POST(req: Request) {
         { code: 'VALIDATION', status: 400 },
       );
     }
+    // Free: edge_tts + piper. Premium engines need trial/pro token (server gate).
+    const ttsDenied = await requireTtsPlatformAccess(req, platform, body);
+    if (ttsDenied) return ttsDenied;
     const voice = resolvedVoiceName || voiceName || ttsConfig?.voice || '';
     if (!voice && !(Array.isArray(voiceSegments) && voiceSegments.length > 0)) {
       throw new AppError(

@@ -485,6 +485,7 @@ function buildFormatted(pack: {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
+    // Free product surface (YouTube SEO workspace) — not toolbox_labs gated.
     const text = typeof body.text === 'string' ? body.text : '';
     if (!text.trim()) {
       return NextResponse.json({ success: false, error: 'Missing "text"' }, { status: 400 });

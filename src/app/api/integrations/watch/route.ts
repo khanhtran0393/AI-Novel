@@ -6,10 +6,13 @@ import {
   watchRepoReady,
   type WatchDetail,
 } from '@/lib/integrations/watchVideo';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireFeature(req, 'integrations_pipeline');
+  if (denied) return denied;
   const ready = watchRepoReady();
   const setup = ready ? await runWatchSetupCheck() : { ok: false, output: 'watch repo missing' };
   return NextResponse.json({ success: true, ready, setup });
@@ -18,6 +21,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     const source = String(body.source || body.url || body.path || '').trim();
     if (!source) {
       return NextResponse.json({ success: false, error: 'Missing source (url or path)' }, { status: 400 });

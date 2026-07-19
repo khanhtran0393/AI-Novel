@@ -14,11 +14,13 @@ Mô hình thương mại duy nhất là **License + BYOK + Free / Trial / Pro**.
 
 ## Trust boundary
 
-- Token: `AINOVEL2.<kid>.<payload>.<signature>`, ký Ed25519 và gắn HWID.
+- Token: `AINOVEL2.<kid>.<payload>.<signature>`, ký Ed25519 và gắn HWID (v2 MachineGuid preferred; verify dual-accept v1).
 - App khách chỉ đóng gói public key và endpoint HTTPS công khai.
 - Private key, admin key, payment/Telegram secret và Supabase service-role chỉ nằm ở seller/backend.
 - API seller/admin trả 404 trong Electron packaged.
-- Electron packaged mặc định `AINOVEL_ENTITLEMENT_MODE=enforce`; trial thật do cloud cấp.
+- Electron packaged **force** `AINOVEL_ENTITLEMENT_MODE=enforce` (env / `.env.commercial` **không** mở được Pro).
+- Server gate: video, CapCut, ship, integrations, toolbox NAV, TTS premium, multi-channel, Flow multi-account — xem [`DEFENSE_LAYERS.md`](./DEFENSE_LAYERS.md).
+- UI `is_pro` / credits chỉ cosmetic; authorization = token + `assertFeatureAccess` / `assertProAccess`.
 
 Backend production hiện dùng `https://ai-novel-flax.vercel.app` với Supabase là authority và Ed25519 để verify offline.
 

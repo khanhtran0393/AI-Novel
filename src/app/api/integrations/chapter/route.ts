@@ -8,12 +8,15 @@ import {
   collectChapterAudioDiskPaths,
   resolveMediaToDisk,
 } from '@/lib/integrations/mediaPaths';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     const action = String(body.action || 'pipeline');
     const chapterNum = Number(body.chapterNum || body.so_chuong || 0);
 

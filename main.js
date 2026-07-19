@@ -178,20 +178,17 @@ function ensureEnv() {
     loadEnvFile(path.join(appDir, '.env.local'));
   }
 
-  // Packaged desktop = publish posture (enforce license unless explicitly open)
+  // Packaged desktop = publish posture. License mode is FORCED enforce:
+  // ignore pre-set process env and customer .env.commercial (G1 close).
   if (app.isPackaged) {
     process.env.AI_NOVEL_PACKAGED = '1';
-    process.env.AINOVEL_PUBLISH = process.env.AINOVEL_PUBLISH || '1';
-    if (!process.env.AINOVEL_ENTITLEMENT_MODE) {
-      process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
-    }
-    // Customer config contains public/non-secret values only.
+    process.env.AINOVEL_PUBLISH = '1';
+    process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
+    // Customer config: public endpoints/switches only — never mode / local-trial escape.
     const customerEnvKeys = new Set([
-      'AINOVEL_ENTITLEMENT_MODE',
       'AINOVEL_LICENSE_API_URL',
       'AINOVEL_TRIAL_ENABLED',
       'AINOVEL_TRIAL_DAYS',
-      'AINOVEL_ALLOW_LOCAL_TRIAL',
       'AINOVEL_UPDATE_CHANNEL',
       'AINOVEL_UPDATE_FEED_URL',
       'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
@@ -203,12 +200,14 @@ function ensureEnv() {
     } catch {
       // ignore
     }
-    // Public release defaults are bundled with the app. A customer/userData
-    // config loaded above has priority because loadEnvFile never overwrites.
+    // Bundled public defaults (loadEnvFile never overwrites already-set keys).
     loadEnvFile(
       path.join(runtimeRoot, 'commercial', 'public.env'),
       customerEnvKeys,
     );
+    // Re-assert after any env file load (belt against whitelist mistakes).
+    process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
+    process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0';
 
     // Seller/admin credentials must never be present in the installed client,
     // including values inherited from a machine-wide environment.
@@ -605,8 +604,14 @@ function registerIpc() {
       if (!targetPath || typeof targetPath !== 'string') {
         return { ok: false, error: 'empty path' };
       }
-      const p = String(targetPath).trim();
-      if (!p) return { ok: false, error: 'empty path' };
+      const p = path.resolve(String(targetPath).trim());
+      if (!p || p.includes('\0')) return { ok: false, error: 'empty path' };
+
+      // Soft path policy: allow project/userData roots + absolute user media;
+      // block sensitive Windows system locations.
+      if (!isAllowedShellOpenPath(p)) {
+        return { ok: false, error: 'path not allowed' };
+      }
 
       // Directories → openPath; files → reveal in folder
       try {
@@ -625,6 +630,52 @@ function registerIpc() {
       return { ok: false, error: err?.message || String(err) };
     }
   });
+}
+
+/** Reject shell-open into system-protected trees; allow user project/media paths. */
+function isAllowedShellOpenPath(absolutePath) {
+  try {
+    const resolved = path.resolve(absolutePath);
+    if (!path.isAbsolute(resolved)) return false;
+    const lower = resolved.toLowerCase();
+    const blocked = [
+      `${path.sep}windows${path.sep}system32`,
+      `${path.sep}windows${path.sep}syswow64`,
+      `${path.sep}program files${path.sep}windowsapps`,
+      `${path.sep}windows${path.sep}winsxs`,
+    ];
+    if (blocked.some((b) => lower.includes(b.toLowerCase()))) return false;
+
+    const roots = [];
+    try {
+      roots.push(app.getPath('userData'));
+    } catch {
+      /* ignore */
+    }
+    try {
+      roots.push(app.getPath('documents'));
+      roots.push(app.getPath('desktop'));
+      roots.push(app.getPath('downloads'));
+      roots.push(app.getPath('videos'));
+      roots.push(app.getPath('music'));
+      roots.push(app.getPath('pictures'));
+    } catch {
+      /* ignore */
+    }
+    if (appDir) roots.push(appDir);
+    if (process.env.AI_NOVEL_ROOT) roots.push(process.env.AI_NOVEL_ROOT);
+    if (process.env.AI_NOVEL_USER_DATA) roots.push(process.env.AI_NOVEL_USER_DATA);
+
+    for (const root of roots) {
+      if (!root) continue;
+      const r = path.resolve(root);
+      if (resolved === r || resolved.startsWith(r + path.sep)) return true;
+    }
+    // User-chosen media/output dirs (D:\, custom drives) — absolute non-system only
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function snapshotFromRenderer() {
@@ -850,10 +901,25 @@ function createMainWindow(opts = {}) {
       sandbox: true,
       partition: 'persist:ainovel-v1',
       spellcheck: false,
+      // Packaged: no DevTools (L4). Dev/unpacked keeps tools for CISO debug.
+      devTools: !app.isPackaged,
       // Dev Next on localhost
       webSecurity: true,
     },
   });
+
+  if (app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = String(input.key || '').toUpperCase();
+      if (
+        key === 'F12' ||
+        (input.control && input.shift && (key === 'I' || key === 'J' || key === 'C'))
+      ) {
+        event.preventDefault();
+      }
+    });
+  }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {

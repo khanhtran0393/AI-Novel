@@ -108,6 +108,7 @@
       "shortcutName": "AI Novel"
     },
     "asar": true,
+    "afterPack": "scripts/electron-fuses.cjs",
     "asarUnpack": [
       "node_modules/**/*.node",
       "node_modules/**/bin/**/*"

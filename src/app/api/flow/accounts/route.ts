@@ -12,11 +12,13 @@ import {
   inheritAccountSession,
   syncAccountIdentity,
 } from '@/lib/flow-bridge';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // Free may use a single Flow account (BYOK). Multi-account is Pro-gated on create.
   await ensureBridgeStarted();
   const snap = getBridgeSnapshot();
   return NextResponse.json({
@@ -28,9 +30,24 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  await ensureBridgeStarted();
   const body = await req.json().catch(() => ({}));
+  await ensureBridgeStarted();
   const action = String(body.action || 'create');
+  const existing = loadAccounts();
+
+  // Free: single Flow account (BYOK). 2nd+ create or multi-account farm ops → Pro.
+  const needsMulti =
+    action === 'create'
+      ? existing.length >= 1
+      : action === 'inherit' || action === 'inherit_session'
+        ? true
+        : (action === 'delete' || action === 'patch' || action === 'reset_budget') &&
+          existing.length > 1;
+
+  if (needsMulti) {
+    const denied = await requireFeature(req, 'flow_multi_account', body);
+    if (denied) return denied;
+  }
 
   // Full inherit: browser cookies/cache/token/projects → app profile
   if (action === 'inherit' || action === 'inherit_session') {

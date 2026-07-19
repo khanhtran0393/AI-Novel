@@ -7,6 +7,7 @@
  */
 
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -36,7 +37,16 @@ export type EntitlementClaims = {
 
 export type EntitlementMode = 'open' | 'enforce';
 
+/** Customer packaged / publish builds always enforce — env cannot open Pro. */
+export function isCustomerPackagedRuntime(): boolean {
+  return (
+    process.env.AI_NOVEL_PACKAGED === '1' || process.env.AINOVEL_PUBLISH === '1'
+  );
+}
+
 export function getEntitlementMode(): EntitlementMode {
+  // Defense L3: packaged customer cannot be switched to open via env.
+  if (isCustomerPackagedRuntime()) return 'enforce';
   const m = (process.env.AINOVEL_ENTITLEMENT_MODE || 'open').toLowerCase();
   return m === 'enforce' ? 'enforce' : 'open';
 }
@@ -153,18 +163,26 @@ function loadPublicKeyCandidates(): Array<string | Buffer> {
     }
   }
 
-  const privateValue =
-    process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY ||
-    readKeyFile(
-      process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE ||
-        defaultSellerPrivateKeyFile(),
-    );
-  if (privateValue) {
-    try {
-      const privateKey = crypto.createPrivateKey(decodeKeyMaterial(privateValue));
-      candidates.push(crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }));
-    } catch {
-      // Signing key validation happens separately.
+  // Never seed keyring from private key on packaged customer builds
+  // (private must not exist; if env leaks, ignore it).
+  const packaged =
+    process.env.AI_NOVEL_PACKAGED === '1' || process.env.AINOVEL_PUBLISH === '1';
+  if (!packaged) {
+    const privateValue =
+      process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY ||
+      readKeyFile(
+        process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE ||
+          defaultSellerPrivateKeyFile(),
+      );
+    if (privateValue) {
+      try {
+        const privateKey = crypto.createPrivateKey(decodeKeyMaterial(privateValue));
+        candidates.push(
+          crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }),
+        );
+      } catch {
+        // Signing key validation happens separately.
+      }
     }
   }
   return candidates;
@@ -186,14 +204,31 @@ export function resolveEntitlementVerificationKeys(): {
     }
   }
   if (keys.size === 0) {
+    const packaged =
+      process.env.AI_NOVEL_PACKAGED === '1' || process.env.AINOVEL_PUBLISH === '1';
     return {
       ok: false,
       keys,
-      reason:
-        'Thiếu public key Ed25519 xác minh license. Cấu hình AINOVEL_ENTITLEMENT_PUBLIC_KEY_FILE hoặc key ring.',
+      reason: packaged
+        ? 'FAIL-CLOSED: bản packaged thiếu public keyring (resources/license/public-keys). Không xác minh được license — Pro tắt.'
+        : 'Thiếu public key Ed25519 xác minh license. Cấu hình AINOVEL_ENTITLEMENT_PUBLIC_KEY_FILE hoặc key ring.',
     };
   }
   return { ok: true, keys };
+}
+
+/**
+ * Packaged / enforce: refuse Pro path when keyring empty (never soft-open).
+ * Call at activate / assert / status health.
+ */
+export function assertVerificationKeyringReady(): void {
+  const verifier = resolveEntitlementVerificationKeys();
+  if (verifier.ok) return;
+  throw new AppError(
+    verifier.reason ||
+      'Thiếu public key license — fail-closed, không cấp Pro.',
+    { code: 'INFRA', status: 503 },
+  );
 }
 
 export function resolveEntitlementSigningKey(): {
@@ -243,14 +278,65 @@ function fromB64url(s: string): Buffer {
   return Buffer.from(b64, 'base64');
 }
 
-/** Stable device fingerprint for license binding (not a hardware TPM id). */
-export function getHwid(): string {
+/** Windows MachineGuid (stable across hostname renames). Empty on non-Windows / fail. */
+function windowsMachineGuid(): string {
+  if (process.platform !== 'win32') return '';
+  try {
+    const out = execSync(
+      'reg query "HKLM\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
+      { encoding: 'utf8', windowsHide: true, timeout: 5_000 },
+    );
+    const m = out.match(/MachineGuid\s+REG_SZ\s+(\S+)/i);
+    return (m?.[1] || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function hashHwid(parts: string): string {
+  return crypto.createHash('sha256').update(parts, 'utf8').digest('hex').slice(0, 16);
+}
+
+/** Legacy v1 fingerprint (hostname-based). Kept for token dual-accept. */
+export function getHwidV1(): string {
   const node = os.hostname();
   const processor = os.arch();
   const system = os.type();
   const release = os.release();
-  const hwidBase = `${node}|${processor}|${system}|${release}|ainovel-v1`;
-  return crypto.createHash('sha256').update(hwidBase, 'utf8').digest('hex').slice(0, 16);
+  return hashHwid(`${node}|${processor}|${system}|${release}|ainovel-v1`);
+}
+
+/** Preferred v2 fingerprint (MachineGuid when available). */
+export function getHwidV2(): string {
+  const guid = windowsMachineGuid();
+  const node = os.hostname();
+  const processor = os.arch();
+  if (guid) {
+    return hashHwid(`${guid}|${processor}|ainovel-v2`);
+  }
+  // Non-Windows / no GUID: salt hostname path as v2 so still distinct from v1 string form
+  return hashHwid(`${node}|${processor}|${os.type()}|ainovel-v2`);
+}
+
+/**
+ * All HWID strings this machine may present (v2 preferred first, then v1).
+ * Token verify accepts any candidate so old licenses keep working after HWID upgrade.
+ */
+export function getHwidCandidates(): string[] {
+  const v2 = getHwidV2().toLowerCase();
+  const v1 = getHwidV1().toLowerCase();
+  return v2 === v1 ? [v2] : [v2, v1];
+}
+
+/** Stable device fingerprint for license binding (preferred = v2). */
+export function getHwid(): string {
+  return getHwidV2();
+}
+
+export function hwidMatchesClaim(claim: string | undefined | null): boolean {
+  if (!claim || !String(claim).trim()) return true; // unbound token handled by caller policy
+  const want = String(claim).trim().toLowerCase();
+  return getHwidCandidates().some((c) => c === want);
 }
 
 /** Public verification status for UI / health (never exposes key material). */
@@ -267,6 +353,8 @@ export function getEntitlementPublicStatus(): {
   hwid: string;
   readyForCommercial: boolean;
   blockers: string[];
+  keyringKids: string[];
+  failClosedKeyring: boolean;
 } {
   const mode = getEntitlementMode();
   const verifier = resolveEntitlementVerificationKeys();
@@ -275,6 +363,7 @@ export function getEntitlementPublicStatus(): {
   const adminKeyConfigured = Boolean(
     (process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY || '').trim(),
   );
+  const packaged = isCustomerPackagedRuntime();
   const blockers: string[] = [];
   if (mode !== 'enforce') {
     blockers.push('MODE chưa enforce (dev open — Pro mở tự do)');
@@ -294,6 +383,8 @@ export function getEntitlementPublicStatus(): {
     hwid: getHwid(),
     readyForCommercial: blockers.length === 0,
     blockers,
+    keyringKids: [...verifier.keys.keys()],
+    failClosedKeyring: packaged && !publicKeyConfigured,
   };
 }
 
@@ -417,8 +508,9 @@ export function verifyEntitlementToken(
     if (raw.exp < now) return null;
     if (raw.iat && raw.iat > now + 300) return null;
     const hwid = raw.hwid ? String(raw.hwid).trim().toLowerCase() : undefined;
-    if (hwid && (options?.requireHwidMatch !== false)) {
-      if (hwid !== getHwid().toLowerCase()) return null;
+    if (hwid && options?.requireHwidMatch !== false) {
+      // Dual-accept v1 + v2 fingerprints on this machine
+      if (!hwidMatchesClaim(hwid)) return null;
     }
     return normalizeClaims({
       ...raw,
@@ -624,6 +716,10 @@ export async function assertTierAtLeast(
   minTier: PlanTier,
   body?: unknown,
 ): Promise<EntitlementClaims> {
+  // Fail-closed: no public keyring → never grant paid tiers
+  if (minTier !== 'free') {
+    assertVerificationKeyringReady();
+  }
   const { tier, claims } = await resolveRequestAccessAsync(req, body);
   if (tierAtLeast(tier, minTier)) {
     return claims;

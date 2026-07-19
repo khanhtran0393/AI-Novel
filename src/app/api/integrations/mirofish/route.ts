@@ -4,6 +4,7 @@ import {
   probeMirofishBackend,
   runNativeWhatIf,
 } from '@/lib/integrations/mirofish';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -18,7 +19,9 @@ const ALLOWED_CONTEXTS = new Set([
   'PLAN_ARC',
 ]);
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireFeature(req, 'integrations_pipeline');
+  if (denied) return denied;
   const status = mirofishStatus();
   const backend = await probeMirofishBackend();
   return NextResponse.json({
@@ -33,6 +36,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     const context = String(
       body.context || body.scope || body.phase || body.source || '',
     )

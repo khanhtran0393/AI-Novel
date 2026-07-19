@@ -256,7 +256,34 @@ check(main.includes('assertTrustedIpc'), 'IPC sender validation wired');
 check(main.includes('sandbox: true'), 'renderer sandbox enabled');
 check(
   main.includes("process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce'"),
-  'packaged shell defaults entitlement mode to enforce',
+  'packaged shell force-enforces entitlement mode',
+);
+check(
+  main.includes("process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0'"),
+  'packaged shell disables local trial escape',
+);
+// Customer .env.commercial must not be able to flip MODE / local trial
+check(
+  !/customerEnvKeys\s*=\s*new Set\(\[[\s\S]*?'AINOVEL_ENTITLEMENT_MODE'/.test(main),
+  'customer env whitelist excludes AINOVEL_ENTITLEMENT_MODE',
+);
+check(
+  !/customerEnvKeys\s*=\s*new Set\(\[[\s\S]*?'AINOVEL_ALLOW_LOCAL_TRIAL'/.test(main),
+  'customer env whitelist excludes AINOVEL_ALLOW_LOCAL_TRIAL',
+);
+const entitlementSrc = fs.readFileSync(
+  path.join(root, 'src', 'lib', 'entitlement.ts'),
+  'utf8',
+);
+check(
+  entitlementSrc.includes('isCustomerPackagedRuntime') &&
+    /if\s*\(\s*isCustomerPackagedRuntime\(\)\s*\)\s*return\s*'enforce'/.test(entitlementSrc),
+  'entitlement.ts forces enforce on packaged/publish runtime',
+);
+check(
+  fs.existsSync(path.join(root, 'docs', 'DEFENSE_LAYERS.md')) ||
+    fs.existsSync(path.join(root, 'scripts', 'electron-fuses.cjs')),
+  'defense-in-depth artifacts present (docs or fuses hook)',
 );
 
 const thirdPartyManifest = fs.readFileSync(

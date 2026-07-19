@@ -1,5 +1,13 @@
 # Project memory (AI Novel)
 
+## Defense-in-depth layers (2026-07-20)
+
+- **L3 force enforce:** packaged always `AINOVEL_ENTITLEMENT_MODE=enforce`; customer env cannot set MODE/local trial; `getEntitlementMode()` locks on `AI_NOVEL_PACKAGED`/`AINOVEL_PUBLISH`.
+- **L2 API mesh:** `src/lib/commercial/apiGate.ts` — TTS premium (not edge/piper), navtools (not youtube-seo free), integrations/*, Flow multi create, suggest-channels.
+- **L4:** packaged `devTools: false` + F12 block; `afterPack` `scripts/electron-fuses.cjs`; shell open path system-dir block.
+- **L5 HWID v2:** MachineGuid + dual-accept v1 tokens.
+- **Docs:** `docs/DEFENSE_LAYERS.md` · smokes extended commercial + electron-security.
+
 ## Commercial admin complete (2026-07-20)
 
 - **API** `GET /api/cloud/license/list` (admin key) · **UI** `/admin` list/filter/revoke/issue HWID
