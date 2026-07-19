@@ -176,6 +176,15 @@ export default function LicenseModal({ open, onClose }: Props) {
       if (data.ownerUnlimited) {
         setVipStatus(false, true, false);
         setCredits(999_999_999);
+      } else if (
+        data.tokenValid &&
+        data.claims &&
+        !data.claims.is_trial &&
+        data.claims.plan !== 'trial' &&
+        (data.claims.is_pro || data.claims.is_vip || data.tier === 'pro')
+      ) {
+        // Paid Pro first — never let leftover vault/cloud trial clobber after activate
+        applyClaims(data.claims);
       } else if (data.tier === 'pro' && data.tokenValid && data.claims) {
         applyClaims(data.claims);
       } else if (data.tier === 'trial' || data.trial?.active) {
@@ -351,7 +360,15 @@ export default function LicenseModal({ open, onClose }: Props) {
       writeStoredToken(token);
       setKeyDraft(token);
       applyClaims(data.claims);
-      toast.success('Kích hoạt thành công', 'Pro đã bật trên máy này');
+      const activatedTrial =
+        !!data.claims.is_trial || data.claims.plan === 'trial';
+      toast.success(
+        'Kích hoạt thành công',
+        activatedTrial
+          ? 'Trial đã bật trên máy này'
+          : 'Pro đã bật trên máy này',
+      );
+      // Refresh after token is in localStorage so status can promote trial→pro
       await refresh();
     } catch (e) {
       toast.error('Kích hoạt thất bại', e instanceof Error ? e.message : String(e));

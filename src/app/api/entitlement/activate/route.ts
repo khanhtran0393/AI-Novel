@@ -8,6 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import {
+  claimsIsTrial,
   getEntitlementPublicStatus,
   getHwid,
   verifyEntitlementToken,
@@ -22,7 +23,9 @@ import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
 import { createServiceSupabase } from '@/lib/supabase/server';
 import {
+  claimsArePaidPro,
   hashToken,
+  promoteHwidLicenseToPaidPro,
   redeemCloudActivationCode,
   verifyLicenseCloud,
 } from '@/lib/cloud/licenseBridge';
@@ -312,43 +315,75 @@ export async function POST(req: Request) {
       );
     }
 
+    // Paid Pro token must never collapse to trial claims for the UI response
+    const paidToken = claimsArePaidPro(claims);
+    if (paidToken) {
+      claims = {
+        ...claims,
+        is_pro: true,
+        is_vip: false,
+        is_trial: false,
+        plan: 'pro',
+      };
+    }
+
     let authority: 'local' | 'supabase' = 'local';
     let licenseId: string | undefined;
 
     if (isSupabaseAdminConfigured()) {
       try {
         const service = createServiceSupabase();
-        const cloud = await verifyLicenseCloud({
-          service,
-          token,
-          hwid: machineHwid,
-        });
-        if (cloud.valid && cloud.claims) {
-          claims = cloud.claims;
-          authority = 'supabase';
-          licenseId = cloud.cloud.licenseId;
-        } else if (cloud.cloud.revoked) {
-          throw new AppError('License đã bị thu hồi trên Supabase.', {
-            code: 'AUTH',
-            status: 403,
-          });
-        } else {
-          // Token chữ ký OK + HWID OK nhưng chưa có row (Telegram dbOk:false) → ghi DB
-          const healed = await ensureCloudLicenseFromToken({
+
+        // Paid Pro: always promote trial→pro in DB; keep paid claims for client
+        if (paidToken) {
+          const promoted = await promoteHwidLicenseToPaidPro({
+            service,
             token,
             hwid: machineHwid,
             exp: claims.exp,
-            isTrial: !!claims.is_trial || claims.plan === 'trial',
           });
-          if (!healed.ok) {
+          if (!promoted.ok) {
             throw new AppError(
-              `Key hợp lệ offline nhưng ghi Supabase thất bại: ${healed.error || 'unknown'}. ` +
+              `Key Pro hợp lệ nhưng ghi Supabase thất bại: ${promoted.error || 'unknown'}. ` +
                 'Admin kiểm tra SERVICE_ROLE / bảng licenses.',
               { code: 'INFRA', status: 503 },
             );
           }
           authority = 'supabase';
-          licenseId = healed.licenseId;
+          licenseId = promoted.licenseId;
+        } else {
+          const cloud = await verifyLicenseCloud({
+            service,
+            token,
+            hwid: machineHwid,
+          });
+          if (cloud.valid && cloud.claims) {
+            claims = cloud.claims;
+            authority = 'supabase';
+            licenseId = cloud.cloud.licenseId;
+          } else if (cloud.cloud.revoked) {
+            throw new AppError('License đã bị thu hồi trên Supabase.', {
+              code: 'AUTH',
+              status: 403,
+            });
+          } else {
+            // Trial/self-heal path
+            const healed = await ensureCloudLicenseFromToken({
+              token,
+              hwid: machineHwid,
+              exp: claims.exp,
+              isTrial: claimsIsTrial(claims),
+            });
+            if (!healed.ok) {
+              throw new AppError(
+                `Key hợp lệ offline nhưng ghi Supabase thất bại: ${healed.error || 'unknown'}. ` +
+                  'Admin kiểm tra SERVICE_ROLE / bảng licenses.',
+                { code: 'INFRA', status: 503 },
+              );
+            }
+            authority = 'supabase';
+            licenseId = healed.licenseId;
+          }
         }
       } catch (e) {
         if (e instanceof AppError) throw e;
@@ -359,15 +394,16 @@ export async function POST(req: Request) {
       }
     }
 
+    const trialOut = claimsIsTrial(claims);
     return NextResponse.json({
       ok: true,
       kind: 'token',
       token,
       claims: {
-        is_pro: claims.is_pro,
-        is_vip: claims.is_vip,
-        is_trial: !!claims.is_trial,
-        plan: claims.plan,
+        is_pro: !!claims.is_pro || !!claims.is_vip || trialOut,
+        is_vip: false,
+        is_trial: trialOut,
+        plan: trialOut ? 'trial' : 'pro',
         exp: claims.exp,
         expIso: new Date(claims.exp * 1000).toISOString(),
       },

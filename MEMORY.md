@@ -1,5 +1,11 @@
 # Project memory (AI Novel)
 
+## Activate OK but badge TRIAL (2026-07-20)
+
+- **Cause:** Supabase còn row `plan=trial` cho HWID; activate/`verifyLicenseCloud` lấy claims cloud trial đè token Pro → badge TRIAL.
+- **Fix:** `promoteHwidLicenseToPaidPro` (trial→pro); activate paid token luôn promote + trả `plan:pro`; status ưu tiên paid offline token; LicenseModal/sync Pro trước trial.
+- Empirical: activate → `plan=pro`; status → `tier=pro tokenValid=true trial.active=false`.
+
 ## Activate fail kid mismatch (2026-07-19)
 
 - **Cause:** Telegram đã cấp key **HMAC cũ** (`eyJ….sig` 43 chars) — app chỉ verify **Ed25519 `AINOVEL2.<kid>.…`**. Lỗi UI hiện `kid=ROhq…` (thực ra là signature HMAC bị parse nhầm) vs keyring `3ac9c18a6691a09e`.

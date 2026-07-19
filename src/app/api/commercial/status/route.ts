@@ -24,7 +24,11 @@ import {
   supabaseConfigPublic,
 } from '@/lib/supabase/env';
 import { createServiceSupabase } from '@/lib/supabase/server';
-import { resolveLicenseByHwid } from '@/lib/cloud/licenseBridge';
+import {
+  claimsArePaidPro,
+  promoteHwidLicenseToPaidPro,
+  resolveLicenseByHwid,
+} from '@/lib/cloud/licenseBridge';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,7 +54,9 @@ export async function GET(req: Request) {
   // ── Supabase = primary authority for UI tier ──
   // Local Ed25519 token kept as fallback when cloud has no row (Telegram key
   // issued before DB write, or offline). Explicit revoke still forces Free.
+  // Paid Pro offline token always beats a leftover cloud trial row.
   const localTokenClaims = claims;
+  const localPaidPro = claimsArePaidPro(localTokenClaims);
   if (isSupabaseAdminConfigured() && !ownerUnlimited) {
     try {
       const service = createServiceSupabase();
@@ -58,10 +64,60 @@ export async function GET(req: Request) {
       authority = 'supabase';
       cloudStatus = cloud.status || null;
       if (cloud.found && cloud.claims) {
-        claims = cloud.claims;
-        cloudLicenseId = cloud.licenseId || null;
-        cloudRevoked = false;
+        // Customer activated paid key while trial row still active → promote
+        if (localPaidPro && localTokenClaims && claimsIsTrial(cloud.claims)) {
+          const promoted = await promoteHwidLicenseToPaidPro({
+            service,
+            token: token || '',
+            hwid,
+            exp: localTokenClaims.exp,
+          });
+          if (promoted.ok) {
+            claims = {
+              ...localTokenClaims,
+              is_pro: true,
+              is_vip: false,
+              is_trial: false,
+              plan: 'pro',
+            };
+            cloudLicenseId = promoted.licenseId || cloud.licenseId || null;
+            cloudRevoked = false;
+            cloudStatus = 'active';
+          } else {
+            // Still show Pro from offline token if promote fails
+            claims = {
+              ...localTokenClaims,
+              is_pro: true,
+              is_vip: false,
+              is_trial: false,
+              plan: 'pro',
+            };
+            authority = 'local';
+            cloudLicenseId = cloud.licenseId || null;
+          }
+        } else if (localPaidPro && localTokenClaims && claimsArePaidPro(cloud.claims)) {
+          claims = cloud.claims;
+          cloudLicenseId = cloud.licenseId || null;
+          cloudRevoked = false;
+        } else if (localPaidPro && localTokenClaims) {
+          // Cloud row exists but not paid pro (legacy) — prefer paid token
+          claims = {
+            ...localTokenClaims,
+            is_pro: true,
+            is_vip: false,
+            is_trial: false,
+            plan: 'pro',
+          };
+          cloudLicenseId = cloud.licenseId || null;
+          authority = 'local';
+        } else {
+          claims = cloud.claims;
+          cloudLicenseId = cloud.licenseId || null;
+          cloudRevoked = false;
+        }
       } else if (cloud.status === 'revoked') {
+        // Paid offline token can still win only if not revoked for this HWID
+        // Explicit HWID revoke → Free
         claims = null;
         cloudRevoked = true;
       } else if (
@@ -70,10 +126,35 @@ export async function GET(req: Request) {
           localTokenClaims.is_vip ||
           claimsIsTrial(localTokenClaims))
       ) {
-        // No active row: still honor signed HWID-bound token (Telegram key path)
-        claims = localTokenClaims;
-        authority = 'local';
-        cloudStatus = cloud.status || 'none';
+        // No active row: honor signed HWID-bound token; self-heal paid Pro
+        if (localPaidPro && token) {
+          const promoted = await promoteHwidLicenseToPaidPro({
+            service,
+            token,
+            hwid,
+            exp: localTokenClaims.exp,
+          });
+          if (promoted.ok) {
+            claims = {
+              ...localTokenClaims,
+              is_pro: true,
+              is_vip: false,
+              is_trial: false,
+              plan: 'pro',
+            };
+            authority = 'supabase';
+            cloudLicenseId = promoted.licenseId || null;
+            cloudStatus = 'active';
+          } else {
+            claims = localTokenClaims;
+            authority = 'local';
+            cloudStatus = cloud.status || 'none';
+          }
+        } else {
+          claims = localTokenClaims;
+          authority = 'local';
+          cloudStatus = cloud.status || 'none';
+        }
       } else {
         claims = null;
         cloudRevoked = false;

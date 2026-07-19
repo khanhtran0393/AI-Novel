@@ -115,17 +115,24 @@ export function useEntitlementSync() {
         return;
       }
 
+      // Paid Pro token claims first (before free/trial branches)
+      if (data.tokenValid && data.claims && claimsArePaidPro(data.claims)) {
+        setVipStatus(false, true, false);
+        setCredits(999_999_999);
+        return;
+      }
+
+      if (data.tier === 'pro' || data.tier === 'vip') {
+        setVipStatus(false, true, false);
+        setCredits(999_999_999);
+        return;
+      }
+
       // Prefer server tier (Supabase-first when configured)
       if (data.tier === 'free' || data.tier === 'FREE') {
         setVipStatus(false, false, false);
         const cur = useNovelStore.getState().credits;
         if (cur > 100_000) setCredits(100);
-        return;
-      }
-
-      if (data.tokenValid && data.claims && claimsArePaidPro(data.claims)) {
-        setVipStatus(false, true, false);
-        setCredits(999_999_999);
         return;
       }
 
@@ -136,12 +143,6 @@ export function useEntitlementSync() {
       ) {
         setVipStatus(false, true, true);
         setCredits(50_000);
-        return;
-      }
-
-      if (data.tier === 'pro' || data.tier === 'vip') {
-        setVipStatus(false, true, false);
-        setCredits(999_999_999);
         return;
       }
 

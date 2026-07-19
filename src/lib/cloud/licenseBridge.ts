@@ -5,6 +5,7 @@
 
 import crypto from 'crypto';
 import {
+  claimsIsTrial,
   issueEntitlementToken,
   verifyEntitlementToken,
   type EntitlementClaims,
@@ -427,6 +428,91 @@ function planRank(plan: string): number {
   return 0;
 }
 
+/** True when claims are paid Pro (not time-boxed trial). */
+export function claimsArePaidPro(claims: EntitlementClaims | null | undefined): boolean {
+  if (!claims) return false;
+  if (claimsIsTrial(claims)) return false;
+  const plan = String(claims.plan || '');
+  return !!(claims.is_pro || claims.is_vip || plan === 'pro' || plan === 'vip');
+}
+
+/**
+ * Upsert HWID row to paid Pro (upgrade trial → pro).
+ * Used when customer activates a paid AINOVEL2 key while a trial row still exists.
+ */
+export async function promoteHwidLicenseToPaidPro(input: {
+  service: SupabaseClient;
+  token: string;
+  hwid: string;
+  exp: number;
+}): Promise<{ ok: boolean; licenseId?: string; error?: string }> {
+  const hwidNorm = input.hwid.trim().toLowerCase();
+  if (!hwidNorm || hwidNorm.length < 6) {
+    return { ok: false, error: 'HWID không hợp lệ' };
+  }
+  const expAt = new Date(Math.max(input.exp, 0) * 1000).toISOString();
+  const tokenHash = hashToken(input.token);
+
+  try {
+    // Prefer any active row for this HWID (case-insensitive)
+    const { data: rows, error: selErr } = await input.service
+      .from('licenses')
+      .select('id,status,plan')
+      .ilike('hwid', hwidNorm)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (selErr) return { ok: false, error: selErr.message };
+
+    const active = rows || [];
+    const primary = active[0];
+    if (primary?.id) {
+      const { error: upErr } = await input.service
+        .from('licenses')
+        .update({
+          token_hash: tokenHash,
+          exp_at: expAt,
+          plan: 'pro',
+          hwid: hwidNorm,
+          status: 'active',
+        })
+        .eq('id', primary.id);
+      if (upErr) return { ok: false, error: upErr.message };
+
+      // Expire other active trial rows so resolveLicenseByHwid cannot stick on trial
+      const others = active
+        .filter((r) => r.id !== primary.id && (r.plan === 'trial' || !r.plan))
+        .map((r) => r.id);
+      if (others.length) {
+        await input.service
+          .from('licenses')
+          .update({ status: 'expired' })
+          .in('id', others);
+      }
+      return { ok: true, licenseId: String(primary.id) };
+    }
+
+    const { data, error } = await input.service
+      .from('licenses')
+      .insert({
+        user_id: null,
+        order_id: null,
+        plan: 'pro',
+        hwid: hwidNorm,
+        status: 'active',
+        exp_at: expAt,
+        token_hash: tokenHash,
+        activation_code: null,
+      })
+      .select('id')
+      .single();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, licenseId: data?.id ? String(data.id) : undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export type CloudLicenseLookup = {
   found: boolean;
   claims: EntitlementClaims | null;
@@ -591,6 +677,57 @@ export async function verifyLicenseCloud(input: {
           },
         };
       }
+
+      // Paid Pro offline token upgrades lingering trial row (customer paid after trial)
+      if (
+        claimsArePaidPro(localClaims) &&
+        (claimsIsTrial(byHwid.claims) || planRank(String(byHwid.plan || '')) < planRank('pro'))
+      ) {
+        const promoted = await promoteHwidLicenseToPaidPro({
+          service: input.service,
+          token: input.token,
+          hwid,
+          exp: localClaims.exp,
+        });
+        if (promoted.ok) {
+          return {
+            valid: true,
+            claims: {
+              ...localClaims,
+              is_pro: true,
+              is_vip: false,
+              is_trial: false,
+              plan: 'pro',
+            },
+            cloud: {
+              checked: true,
+              revoked: false,
+              licenseId: promoted.licenseId || byHwid.licenseId,
+              status: 'active',
+              authority: 'supabase',
+            },
+          };
+        }
+        // Promote failed: still honor paid offline token for access
+        return {
+          valid: true,
+          claims: {
+            ...localClaims,
+            is_pro: true,
+            is_vip: false,
+            is_trial: false,
+            plan: 'pro',
+          },
+          cloud: {
+            checked: true,
+            revoked: false,
+            licenseId: byHwid.licenseId,
+            status: byHwid.status,
+            authority: 'local',
+          },
+        };
+      }
+
       return {
         valid: true,
         claims: byHwid.claims,
@@ -603,6 +740,36 @@ export async function verifyLicenseCloud(input: {
         },
       };
     }
+
+    // No active row: paid Pro token self-heals; trial still requires existing grant path
+    if (claimsArePaidPro(localClaims)) {
+      const promoted = await promoteHwidLicenseToPaidPro({
+        service: input.service,
+        token: input.token,
+        hwid,
+        exp: localClaims.exp,
+      });
+      if (promoted.ok) {
+        return {
+          valid: true,
+          claims: {
+            ...localClaims,
+            is_pro: true,
+            is_vip: false,
+            is_trial: false,
+            plan: 'pro',
+          },
+          cloud: {
+            checked: true,
+            revoked: false,
+            licenseId: promoted.licenseId,
+            status: 'active',
+            authority: 'supabase',
+          },
+        };
+      }
+    }
+
     // No active license for HWID → Free even if the offline token is still signed.
     return {
       valid: false,
