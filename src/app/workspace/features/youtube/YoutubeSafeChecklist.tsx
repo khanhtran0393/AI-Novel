@@ -19,6 +19,8 @@ import {
   blendThumbPromptWithCompetitorDna,
   buildThumbnailPrompt,
   normalizeHashtagField,
+  scoreYoutubeMetaFields,
+  YOUTUBE_META_PASS_SCORE,
   YOUTUBE_THUMB_SCENE_INDEX,
   type YoutubeExportPack,
 } from '@/lib/youtubeSafe';
@@ -28,6 +30,10 @@ import {
   regenPromptAction,
 } from '../../modules/imageModule';
 import {
+  fetchYoutubeMetaWithQA,
+  formatMetaScoreLine,
+} from '../../modules/youtubeMetaModule';
+import {
   PlaySquare,
   Download,
   RefreshCw,
@@ -35,7 +41,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { toast } from '@/lib/toastBus';
+import { pushToast, toast } from '@/lib/toastBus';
 import SeoField, { hasImageCredentials } from './SeoField';
 import YoutubeThumbPanel from './YoutubeThumbPanel';
 
@@ -126,6 +132,24 @@ export default function YoutubeSafeChecklist() {
   const hasThumbPrompt = (asset.thumbnailPrompt || '').trim().length > 20;
   const titleLen = (asset.seoTitle || '').length;
 
+  // Tự chấm psych SEO — lọc pass/fail checklist khi điểm thấp
+  const metaScores = useMemo(() => {
+    if (!hasSeoTitle && !hasSeoDescription && !(asset.thumbnailLine || '').trim()) {
+      return null;
+    }
+    return scoreYoutubeMetaFields({
+      seoTitle: asset.seoTitle || '',
+      thumbnailLine: asset.thumbnailLine || '',
+      seoDescription: asset.seoDescription || '',
+    });
+  }, [
+    asset.seoTitle,
+    asset.thumbnailLine,
+    asset.seoDescription,
+    hasSeoTitle,
+    hasSeoDescription,
+  ]);
+
   const items = buildYoutubeChecklist({
     hasScript: script.trim().length > 0,
     wordOk: gate.wordsOk,
@@ -146,6 +170,7 @@ export default function YoutubeSafeChecklist() {
     hasSeoTitle,
     hasSeoDescription,
     hasThumbnailPrompt: hasThumbPrompt,
+    metaScores,
   });
 
   const summary = summarizeChecklist(items);
@@ -446,16 +471,24 @@ export default function YoutubeSafeChecklist() {
     }
   };
 
+  /**
+   * Meta: psych SEO via /api/youtube-meta — server score→rewrite (maxRounds),
+   * client re-score + outer rewrite nếu dưới YOUTUBE_META_PASS_SCORE.
+   * CẤM soft-success điểm thấp (B10).
+   */
   const regeneratePublishMeta = async () => {
     if (!script.trim()) return;
 
-    const geminiKeys = [
-      store().apiKey,
-      ...(Array.isArray(store().apiKeys) ? store().apiKeys : []),
-    ].filter((k): k is string => typeof k === 'string' && k.trim().length > 0);
-
-    if (geminiKeys.length === 0) {
-      toast.info('Notice', '⚠️ Chưa có Gemini API Key. Nhập API Key ở Header rồi bấm Meta.');
+    const visualDna = (
+      store().visualDnaPrompt ||
+      store().mediaStylePreset ||
+      ''
+    ).trim();
+    if (!visualDna) {
+      toast.error(
+        'Meta SEO',
+        'Thiếu Visual DNA / Media Style — mở Media Config trước khi gen Meta.',
+      );
       return;
     }
 
@@ -472,8 +505,8 @@ export default function YoutubeSafeChecklist() {
       const chapters = buildYoutubeChapters(sceneMeta);
       const chaptersText = chapters.map((c) => c.line).join('\n');
 
-      // Channel anti-repeat + chính field hiện tại (tránh gen lại y hệt)
       const chProfile = store().channels?.[store().activeChannelId || ''];
+      // Ban current weak fields so rewrite must diversify
       const usedTitles = [
         ...(chProfile?.usedHooks || []),
         asset.seoTitle || '',
@@ -483,138 +516,64 @@ export default function YoutubeSafeChecklist() {
         asset.thumbnailLine || '',
       ].filter(Boolean);
 
-      const randomSeed = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${ch}`;
-
-      // API-only: Gemini youtube-seo (không local template)
-      const res = await fetch(API.navtools.youtubeSeo, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: script.slice(0, 12000),
-          novelTitle: store().ten_tac_pham,
-          apiKey: geminiKeys[0],
-          apiKeys: geminiKeys,
-          chapter: ch,
-          randomSeed,
-          temperature: 1.0,
-          usedTitles,
-          usedThumbLines,
-        }),
+      const result = await fetchYoutubeMetaWithQA({
+        script,
+        novelTitle: store().ten_tac_pham,
+        chapter: ch,
+        chaptersText,
+        visualDna,
+        characterHint:
+          (store().nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+        usedTitles,
+        usedThumbLines,
+        maxRounds: 5,
+        outerRetries: 2,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) {
-        throw new Error(
-          data?.error || `Meta API lỗi HTTP ${res.status}`,
-        );
-      }
-
-      const payload = (data.data ?? data.result ?? data) as Record<string, unknown>;
-      const title = String(
-        payload.title || payload.seo_title || payload.seoTitle || '',
-      )
-        .normalize('NFC')
-        .trim()
-        .slice(0, 100);
-      let description = String(
-        payload.description ||
-          payload.seo_description ||
-          payload.seoDescription ||
-          '',
-      )
-        .normalize('NFC')
-        .replace(/——\s*HOOK\s*\(?30s?\)?\s*——/gi, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim()
-        .slice(0, 4500);
-      const tagsRaw =
-        (Array.isArray(payload.tags) ? payload.tags.join(' ') : payload.tags) ||
-        payload.hashtags ||
-        payload.seoTags ||
-        '';
-      const thumbnailLine = String(
-        payload.thumbnailLine ||
-          payload.thumbnail_line ||
-          payload.thumb_line ||
-          '',
-      )
-        .normalize('NFC')
-        .trim()
-        .slice(0, 30);
-      const hook = String(payload.hook || asset.hook || '')
-        .normalize('NFC')
-        .trim();
-      let thumbnailPrompt = String(
-        payload.thumbnailPrompt || payload.thumbnail_prompt || '',
-      )
-        .normalize('NFC')
-        .trim();
-
-      if (!title) {
-        throw new Error('API không trả SEO title');
-      }
-
-      // Nếu thiếu field phụ → bổ sung tối thiểu (vẫn giữ title/thumb từ API)
-      if (!description) {
-        description = buildSeoDescription({
-          hook: hook || title,
-          thumbnailLine: thumbnailLine || title.slice(0, 30),
-          tags: String(tagsRaw || ''),
-          chaptersText,
-          novelTitle: store().ten_tac_pham,
-          chapter: ch,
-          forceThumbLead: true,
-        });
-      }
-      if (!thumbnailPrompt) {
-        thumbnailPrompt = buildThumbnailPrompt({
-          hook: hook || title,
-          thumbnailLine: thumbnailLine || title.slice(0, 30),
-          visualDna: store().visualDnaPrompt || store().mediaStylePreset,
-          characterHint:
-            (store().nhan_vat || []).slice(0, 2).join(' and ') || undefined,
-        });
-      }
-
-      const merged = {
-        hook: hook || title,
-        seoTitle: title,
-        thumbnailLine: (thumbnailLine || title).slice(0, 30),
-        seoDescription: description,
-        seoTags: normalizeHashtagField(String(tagsRaw || '')),
-        thumbnailPrompt,
-      };
 
       store().setChapterHook(ch, {
-        hook: merged.hook,
-        thumbnailLine: merged.thumbnailLine,
-        seoTitle: merged.seoTitle,
-        seoDescription: merged.seoDescription,
-        seoTags: merged.seoTags,
-        thumbnailPrompt: merged.thumbnailPrompt,
+        hook: result.hook,
+        thumbnailLine: result.thumbnailLine,
+        seoTitle: result.seoTitle,
+        seoDescription: result.seoDescription,
+        seoTags: normalizeHashtagField(result.seoTags),
+        thumbnailPrompt: result.thumbnailPrompt,
       });
 
       try {
-        if (merged.seoTitle) {
-          store().rememberChannelMotif?.('hook', merged.seoTitle.slice(0, 120));
+        if (result.seoTitle) {
+          store().rememberChannelMotif?.('hook', result.seoTitle.slice(0, 120));
         }
-        if (merged.thumbnailLine) {
-          store().rememberChannelMotif?.('thumb', merged.thumbnailLine.slice(0, 80));
+        if (result.thumbnailLine) {
+          store().rememberChannelMotif?.(
+            'thumb',
+            result.thumbnailLine.slice(0, 80),
+          );
         }
       } catch {
         /* ignore */
       }
 
-      const src = String(data.source || data.provider || 'gemini');
-      if (data.warning || src.includes('local')) {
-        toast.error(
-          'Meta SEO',
-          `API trả local/degraded — không chấp nhận fallback. ${String(data.warning || src).slice(0, 160)}`,
+      const scoreLine = formatMetaScoreLine(result.scores);
+      if (!result.passed) {
+        pushToast(
+          'error',
+          'Meta QA — điểm thấp',
+          `${scoreLine} · đã rewrite ${result.rounds} vòng · chưa đạt ≥${YOUTUBE_META_PASS_SCORE}. Bấm Meta lại hoặc sửa tay Title/Thumb/Desc.`,
+          14_000,
         );
         return;
       }
-      toast.info('Notice', `✅ Meta SEO đã cập nhật · ${src}`);
+      pushToast(
+        'success',
+        'Meta SEO',
+        `✅ Pass · ${scoreLine} · ${result.source} · ${result.rounds} vòng`,
+        8_000,
+      );
     } catch (err) {
-      toast.info('Notice', `❌ Meta API: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(
+        'Meta SEO',
+        err instanceof Error ? err.message : String(err),
+      );
     } finally {
       setMetaLoading(false);
     }
@@ -798,6 +757,19 @@ export default function YoutubeSafeChecklist() {
           >
             {summary.pass}/{items.length}
           </span>
+          {metaScores ? (
+            <span
+              className={`text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded border shrink-0 ${
+                metaScores.pass
+                  ? 'border-sky-800 text-sky-300 bg-sky-950/40'
+                  : 'border-red-900/80 text-red-300 bg-red-950/30'
+              }`}
+              title={formatMetaScoreLine(metaScores)}
+            >
+              SEO {metaScores.average}
+              {metaScores.pass ? '✓' : '↓'}
+            </span>
+          ) : null}
         </button>
 
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
@@ -806,7 +778,7 @@ export default function YoutubeSafeChecklist() {
             onClick={() => void regeneratePublishMeta()}
             disabled={metaLoading || !script.trim()}
             className="flex items-center gap-1 rounded bg-sky-500/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-400 border border-sky-800/40 hover:bg-sky-500/20 disabled:opacity-40 font-sans"
-            title="Gemini youtube-seo + parse cứng + fallback local nếu JSON hỏng"
+            title={`Psych SEO: tự chấm + rewrite đến ≥${YOUTUBE_META_PASS_SCORE}/10 (Title·Thumb·Desc)`}
           >
             {metaLoading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

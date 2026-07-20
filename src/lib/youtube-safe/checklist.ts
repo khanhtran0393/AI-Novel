@@ -1,5 +1,9 @@
 import { HIGH_RISK_TTS_PLATFORMS, type EditorVerdict } from './config';
 import { motionBudgetScore } from './timeline';
+import {
+  YOUTUBE_META_PASS_SCORE,
+  type YoutubeFieldScores,
+} from './seoMeta';
 
 export interface YoutubeChecklistItem {
   id: string;
@@ -29,6 +33,11 @@ export function buildYoutubeChecklist(params: {
   hasSeoTitle?: boolean;
   hasSeoDescription?: boolean;
   hasThumbnailPrompt?: boolean;
+  /**
+   * Psych SEO scores (0–10). When provided, SEO checklist filters by
+   * YOUTUBE_META_PASS_SCORE — presence alone is not enough.
+   */
+  metaScores?: YoutubeFieldScores | null;
 }): YoutubeChecklistItem[] {
   const items: YoutubeChecklistItem[] = [];
 
@@ -97,19 +106,74 @@ export function buildYoutubeChecklist(params: {
     detail: 'Cold-open đọc ~30 giây (khoảng 55–80 từ)',
   });
 
+  const ms = params.metaScores;
+  const titleOkPresence = !!params.hasSeoTitle;
+  const titleScoreOk = ms
+    ? ms.title >= YOUTUBE_META_PASS_SCORE
+    : titleOkPresence;
   items.push({
     id: 'seo_title',
-    label: params.hasSeoTitle ? 'SEO Title' : 'Thiếu SEO Title',
-    ok: !!params.hasSeoTitle,
-    level: params.hasSeoTitle ? 'pass' : 'warn',
+    label: !titleOkPresence
+      ? 'Thiếu SEO Title'
+      : ms
+        ? `SEO Title ${ms.title}/10${titleScoreOk ? '' : ` (<${YOUTUBE_META_PASS_SCORE})`}`
+        : 'SEO Title',
+    ok: titleOkPresence && titleScoreOk,
+    level: !titleOkPresence ? 'warn' : titleScoreOk ? 'pass' : 'fail',
+    detail: titleScoreOk
+      ? undefined
+      : `Điểm thấp — bấm Meta để tự chấm + rewrite (pass≥${YOUTUBE_META_PASS_SCORE})`,
   });
 
+  const thumbLineOk = ms
+    ? ms.thumbnail >= YOUTUBE_META_PASS_SCORE
+    : !!(params.hasSeoTitle || params.hasHook);
+  // Thumbnail line quality is part of meta scoring (shown when scores exist)
+  if (ms) {
+    items.push({
+      id: 'thumb_line',
+      label: `Thumb line ${ms.thumbnail}/10${
+        thumbLineOk ? '' : ` (<${YOUTUBE_META_PASS_SCORE})`
+      }`,
+      ok: thumbLineOk,
+      level: thumbLineOk ? 'pass' : 'fail',
+      detail: thumbLineOk
+        ? undefined
+        : 'Thumbnail line yếu CTR — Meta sẽ rewrite psych laws',
+    });
+  }
+
+  const descOkPresence = !!params.hasSeoDescription;
+  const descScoreOk = ms
+    ? ms.description >= YOUTUBE_META_PASS_SCORE
+    : descOkPresence;
   items.push({
     id: 'seo_desc',
-    label: params.hasSeoDescription ? 'SEO Description' : 'Thiếu mô tả YouTube',
-    ok: !!params.hasSeoDescription,
-    level: params.hasSeoDescription ? 'pass' : 'warn',
+    label: !descOkPresence
+      ? 'Thiếu mô tả YouTube'
+      : ms
+        ? `SEO Desc ${ms.description}/10${descScoreOk ? '' : ` (<${YOUTUBE_META_PASS_SCORE})`}`
+        : 'SEO Description',
+    ok: descOkPresence && descScoreOk,
+    level: !descOkPresence ? 'warn' : descScoreOk ? 'pass' : 'fail',
+    detail: descScoreOk
+      ? undefined
+      : `Mô tả dưới ${YOUTUBE_META_PASS_SCORE} — rewrite Meta bắt buộc`,
   });
+
+  if (ms) {
+    items.push({
+      id: 'meta_qa',
+      label: ms.pass
+        ? `Meta QA pass (TB ${ms.average}/10)`
+        : `Meta QA fail (TB ${ms.average}/10 < ${YOUTUBE_META_PASS_SCORE})`,
+      ok: ms.pass,
+      level: ms.pass ? 'pass' : 'fail',
+      detail: ms.pass
+        ? undefined
+        : 'Title + Thumb + Desc phải ≥ pass score — bấm Meta (tự chấm + rewrite)',
+    });
+  }
 
   items.push({
     id: 'thumb_prompt',

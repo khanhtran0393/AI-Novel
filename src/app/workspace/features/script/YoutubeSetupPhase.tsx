@@ -61,7 +61,10 @@ export default function YoutubeSetupPhase({
   };
 
   const handleAdjustChapters = (amount: number) => {
-    const nextVal = Math.max(1, Math.min(1000, store.setup.so_chuong + amount));
+    const free =
+      !store.is_pro && !store.is_trial && !store.is_vip;
+    const maxCh = free ? 2 : 1000;
+    const nextVal = Math.max(1, Math.min(maxCh, store.setup.so_chuong + amount));
     store.setSetup({ so_chuong: nextVal });
   };
 
@@ -371,14 +374,25 @@ export default function YoutubeSetupPhase({
                         value={store.setup.so_chuong}
                         onChange={(e) => {
                           const val = parseInt(e.target.value, 10);
-                          if (!isNaN(val) && val > 0) store.setSetup({ so_chuong: val });
-                          else if (e.target.value === '') {
+                          const free =
+                            !store.is_pro && !store.is_trial && !store.is_vip;
+                          const maxCh = free ? 2 : 500;
+                          if (!isNaN(val) && val > 0) {
+                            store.setSetup({
+                              so_chuong: Math.min(maxCh, val),
+                            });
+                          } else if (e.target.value === '') {
                             store.setSetup({ so_chuong: '' as unknown as number });
                           }
                         }}
                         onBlur={() => {
+                          const free =
+                            !store.is_pro && !store.is_trial && !store.is_vip;
+                          const maxCh = free ? 2 : 500;
                           if (!store.setup.so_chuong || store.setup.so_chuong < 1) {
                             store.setSetup({ so_chuong: 1 });
+                          } else if (store.setup.so_chuong > maxCh) {
+                            store.setSetup({ so_chuong: maxCh });
                           }
                         }}
                         className="w-full rounded border border-zinc-800 bg-black p-2.5 pr-8 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-amber-500"
@@ -416,17 +430,40 @@ export default function YoutubeSetupPhase({
                       min={500}
                       max={10000}
                       step={500}
-                      value={store.setup.so_tu_chuong || 4250}
+                      value={(() => {
+                        const free =
+                          !store.is_pro && !store.is_trial && !store.is_vip;
+                        return (
+                          store.setup.so_tu_chuong ||
+                          (free ? 600 : 4250)
+                        );
+                      })()}
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val) && val > 0) store.setSetup({ so_tu_chuong: val });
-                        else if (e.target.value === '') {
+                        const free =
+                          !store.is_pro && !store.is_trial && !store.is_vip;
+                        const maxW = free ? 600 : 10000;
+                        if (!isNaN(val) && val > 0) {
+                          store.setSetup({
+                            so_tu_chuong: Math.min(maxW, val),
+                          });
+                        } else if (e.target.value === '') {
                           store.setSetup({ so_tu_chuong: '' as unknown as number });
                         }
                       }}
                       onBlur={() => {
-                        if (!store.setup.so_tu_chuong || store.setup.so_tu_chuong < 500) {
-                          store.setSetup({ so_tu_chuong: 4250 });
+                        const free =
+                          !store.is_pro && !store.is_trial && !store.is_vip;
+                        const maxW = free ? 600 : 10000;
+                        const minW = free ? 100 : 500;
+                        const fallback = free ? 600 : 4250;
+                        if (
+                          !store.setup.so_tu_chuong ||
+                          store.setup.so_tu_chuong < minW
+                        ) {
+                          store.setSetup({ so_tu_chuong: fallback });
+                        } else if (store.setup.so_tu_chuong > maxW) {
+                          store.setSetup({ so_tu_chuong: maxW });
                         }
                       }}
                       className="w-full rounded border border-zinc-800 bg-black p-2.5 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-emerald-500"

@@ -50,7 +50,13 @@ const gate = evaluateWordGate(SCRIPT, 500);
 soft('word count sensible', words > 50, `words=${words}`);
 
 // ── 2) Hook engine ────────────────────────────────────────────
-const hookPack = extractHookFromScript(SCRIPT, { targetSec: 30, wpm: 140 });
+const AUDIT_VISUAL_DNA =
+  'cinematic moody lighting, desaturated film grain, tight frame';
+const hookPack = extractHookFromScript(SCRIPT, {
+  targetSec: 30,
+  wpm: 140,
+  visualDna: AUDIT_VISUAL_DNA,
+});
 hard('hook non-empty', !!hookPack.hook && hookPack.hook.length >= 40, hookPack.hook.slice(0, 80));
 hard('hook has open-loop or tension', /…|\?|nhưng|không|chạy|nứt|chân/i.test(hookPack.hook));
 hard('thumbnailLine ≤30', (hookPack.thumbnailLine || '').length <= 30, hookPack.thumbnailLine);
@@ -63,6 +69,7 @@ const meta = generateYoutubeMetaWithQA({
   novelTitle: 'Tiếng Vọng Tường Cổ',
   chapter: 1,
   maxRounds: 5,
+  visualDna: 'cinematic moody lighting, desaturated film grain, tight frame',
 });
 hard('meta title exists', !!meta.seoTitle);
 hard('meta thumb ≤30', meta.thumbnailLine.length <= 30, meta.thumbnailLine);

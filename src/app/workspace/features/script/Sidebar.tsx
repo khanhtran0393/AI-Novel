@@ -17,6 +17,11 @@ import { planArcAction } from '../../modules/writeModule';
 import { silentEnrichArcHooks } from '../../modules/integrationsModule';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
+import {
+  FREE_LIMITS,
+  freeChapterCapMessage,
+} from '@/lib/commercial/freeLimitsPolicy';
+import { storeIsFreeTier } from '@/app/workspace/hooks/useFreeLimits';
 import ChapterList from './ChapterList';
 import OutlineAccordions from './OutlineAccordions';
 import CharacterRoster from './CharacterRoster';
@@ -55,11 +60,29 @@ export default function Sidebar({
     setIsPlanningArc(true);
     try {
       const store = useNovelStore.getState();
-      const so_chuong_moi_cung = store.setup.so_chuong || 10;
+      if (storeIsFreeTier(store)) {
+        if (store.danh_sach_chuong.length >= FREE_LIMITS.maxChapters) {
+          toast.error('Gói Free', freeChapterCapMessage());
+          return false;
+        }
+      }
+      const so_chuong_moi_cung = storeIsFreeTier(store)
+        ? Math.min(
+            FREE_LIMITS.maxChapters,
+            Math.max(
+              1,
+              FREE_LIMITS.maxChapters - store.danh_sach_chuong.length,
+            ),
+          )
+        : store.setup.so_chuong || 10;
       const chuong_bat_dau =
         store.danh_sach_chuong.length > 0
           ? store.danh_sach_chuong[store.danh_sach_chuong.length - 1].so_chuong + 1
           : 1;
+      if (storeIsFreeTier(store) && chuong_bat_dau > FREE_LIMITS.maxChapters) {
+        toast.error('Gói Free', freeChapterCapMessage());
+        return false;
+      }
 
       const tom_tat_cuon_chieu = store.danh_sach_chuong
         .slice(-10)

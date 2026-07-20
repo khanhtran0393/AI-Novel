@@ -3,15 +3,19 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import {
   buildBypassEngineCommand,
-  BYPASS_FILTER_CATALOG,
   type BypassFilterId,
 } from '@/lib/bypass-engine';
+import {
+  BYPASS_FILTER_CATALOG,
+} from '@/lib/bypass-engine/publicCatalog';
 import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const VALID_IDS = new Set(BYPASS_FILTER_CATALOG.map((c) => c.id));
+const VALID_IDS = new Set(
+  BYPASS_FILTER_CATALOG.map((c: { id: BypassFilterId }) => c.id),
+);
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

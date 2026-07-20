@@ -21,8 +21,13 @@ import {
   DEFAULT_TRANSLATE_CHUNK,
   resolveTranslateRuleDescription,
 } from './translateRules';
+import {
+  TRANSLATE_ANCHOR,
+  buildTranslateBatchPrompt,
+  translateSoftSplitPatternSource,
+} from './translatePromptCrown';
 
-const ANCHOR = ' || ';
+const ANCHOR = TRANSLATE_ANCHOR;
 /**
  * Cap thường chạy worker dịch tuần tự / vài luồng.
  * 3 lô song song: nhanh hơn 1, ít 429 hơn fan-out 6.
@@ -81,9 +86,9 @@ function splitOnAnchor(raw: string, expected: number): string[] | null {
   let parts = cleaned.split(ANCHOR).map((p) => p.trim());
   if (parts.length === expected) return parts;
 
-  // Cap-style soft: "||" with flexible spaces
+  // Cap-style soft: "||" with flexible spaces (pattern from crown module)
   parts = cleaned
-    .split(/\s*\|\|\s*/)
+    .split(new RegExp(translateSoftSplitPatternSource))
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
   if (parts.length === expected) return parts;
@@ -100,23 +105,12 @@ async function translateBatchTextsOnce(
   langName: string,
   ruleDesc: string,
 ): Promise<string[]> {
-  const joined = texts.join(ANCHOR);
-  // Prompt bám Cap: văn phong tự nhiên + rule + neo cứng (không gửi timestamp)
-  const prompt = `Bạn là chuyên gia dịch phụ đề chuyên nghiệp (Google Gemini / AI Studio).
-Nhiệm vụ: Dịch TỪNG đoạn sang ${langName} — văn phong mềm mại, tự nhiên, không khô như máy.
-Quy tắc đặc biệt (phong cách): ${ruleDesc}
-
-INPUT: các đoạn được ngăn bằng đúng chuỗi ${JSON.stringify(ANCHOR)}
-OUTPUT: CÙNG SỐ đoạn, ngăn bằng đúng chuỗi đó.
-
-HARD RULES:
-1. Giữ đúng số đoạn = ${texts.length}. Không gộp, không tách, không bỏ đoạn.
-2. KHÔNG thêm số thứ tự, timestamp, markdown, giải thích.
-3. Chỉ trả về các đoạn đã dịch, nối bằng ${JSON.stringify(ANCHOR)}.
-4. Giữ tên riêng / thuật ngữ quan trọng khi hợp lý với phong cách trên.
-
---- ĐOẠN ---
-${joined}`;
+  const prompt = buildTranslateBatchPrompt({
+    langName,
+    ruleDesc,
+    texts,
+    anchor: ANCHOR,
+  });
 
   // ~50 câu: 8k–16k đủ; scale nhẹ theo batch
   const maxOut = Math.min(32768, Math.max(8192, Math.ceil(texts.length * 100)));

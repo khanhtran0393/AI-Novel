@@ -13,6 +13,9 @@ import {
 import { SELECT_DARK, SELECT_DARK_SM, OPTION_DARK } from '../ttsSelectStyles';
 import TikTokSessionsPanel from '../TikTokSessionsPanel';
 import { useOmniVoiceStatus } from '../hooks/useOmniVoiceStatus';
+import { FREE_TTS_PLATFORMS } from '@/lib/commercial/featureMatrix';
+import { useNovelStore } from '@/store/useNovelStore';
+import { toast } from '@/lib/toastBus';
 
 const LANGUAGES = [...TTS_LANGUAGES];
 
@@ -60,6 +63,9 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
     handleAddTikTokSessionsFromInput,
   } = props;
   const store = { updateTTSConfig };
+  const isFreeTier = useNovelStore(
+    (s) => !s.is_pro && !s.is_trial && !s.is_vip,
+  );
   const isOmni = config.platform === 'omnivoice_local';
   const { status: omniStatus, ensureStart: ensureOmni } = useOmniVoiceStatus(isOmni);
   const platformSelectValue = config.platform;
@@ -110,6 +116,16 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     value={platformSelectValue}
                     onChange={(e) => {
                       const newPlatform = e.target.value as TTSConfig['platform'];
+                      if (
+                        isFreeTier &&
+                        !FREE_TTS_PLATFORMS.has(String(newPlatform).toLowerCase())
+                      ) {
+                        toast.error(
+                          'Gói Free',
+                          `«${newPlatform}» cần Trial/Pro. Free chỉ Edge TTS hoặc Piper.`,
+                        );
+                        return;
+                      }
                       // Đổi nền tảng = luôn gán giọng default hợp lệ (không giữ voice engine cũ)
                       const next = resolveVoiceForPlatform(
                         dynamicVoices,
@@ -133,12 +149,16 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                   >
                     <option className={OPTION_DARK} value="edge_tts">Microsoft Edge TTS</option>
                     <option className={OPTION_DARK} value="piper">Piper VN (.onnx local)</option>
-                    <option className={OPTION_DARK} value="vieneu_tts">VieNeu SDK (local clone)</option>
-                    <option className={OPTION_DARK} value="omnivoice_local">OmniVoice Local</option>
-                    <option className={OPTION_DARK} value="vina_voice">VinaVoice</option>
-                    <option className={OPTION_DARK} value="capcut_tts">CapCut TTS</option>
-                    <option className={OPTION_DARK} value="tiktok_tts">TikTok TTS</option>
-                    <option className={OPTION_DARK} value="gemini_tts">Gemini TTS</option>
+                    {!isFreeTier ? (
+                      <>
+                        <option className={OPTION_DARK} value="vieneu_tts">VieNeu SDK (local clone)</option>
+                        <option className={OPTION_DARK} value="omnivoice_local">OmniVoice Local</option>
+                        <option className={OPTION_DARK} value="vina_voice">VinaVoice</option>
+                        <option className={OPTION_DARK} value="capcut_tts">CapCut TTS</option>
+                        <option className={OPTION_DARK} value="tiktok_tts">TikTok TTS</option>
+                        <option className={OPTION_DARK} value="gemini_tts">Gemini TTS</option>
+                      </>
+                    ) : null}
                     {/* Hotai: API fetch fail trên môi trường này — không liệt kê (B10: không fallback) */}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />

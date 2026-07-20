@@ -13,7 +13,24 @@ export default function MediaToolbarButton() {
 
   useEffect(() => {
     let dead = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    /** Idle badge: 20s. While Google login open: 6s. Hidden tab: skip. */
+    const IDLE_MS = 20_000;
+    const LOGIN_MS = 6_000;
+
+    const schedule = (ms: number) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void tick();
+      }, ms);
+    };
+
     const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        schedule(IDLE_MS);
+        return;
+      }
+      let nextMs = IDLE_MS;
       try {
         const res = await fetch(API.flowStatus, { cache: 'no-store' });
         const j = await res.json();
@@ -39,22 +56,25 @@ export default function MediaToolbarButton() {
         const login = Boolean(j.loginSessionOpen);
         setFlowReady((prev) => (prev === ready ? prev : ready));
         setLoginOpen((prev) => (prev === login ? prev : login));
+        nextMs = login ? LOGIN_MS : IDLE_MS;
       } catch {
         if (!dead) {
           setFlowReady(false);
           setLoginOpen(false);
         }
       }
+      if (!dead) schedule(nextMs);
     };
+
     void tick();
-    // 8s + skip when tab hidden — tránh spam /api/flow/status khi GUI nền
-    const t = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      void tick();
-    }, 8000);
+    const onVis = () => {
+      if (typeof document !== 'undefined' && !document.hidden) void tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       dead = true;
-      clearInterval(t);
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
 

@@ -21,11 +21,11 @@ import { API } from '@/contracts';
 import {
   BYPASS_FILTER_CATALOG,
   GRID_LAYOUT_OPTIONS,
+  VARIANCE_RECOMMENDED,
+  recommendPcForSelection,
   type BypassFilterId,
   type GridLayoutMode,
-} from '@/lib/bypass-engine/filters';
-import { recommendPcForSelection } from '@/lib/bypass-engine/presets';
-import { VARIANCE_RECOMMENDED } from '@/lib/bypass-engine/variance';
+} from '@/lib/bypass-engine/publicCatalog';
 
 export interface BypassEngineModalProps {
   isOpen: boolean;

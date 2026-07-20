@@ -21,6 +21,13 @@ import {
 import { setStreamUi, getStreamUi } from '../modules/streamUiStore';
 import { pushToast } from '@/lib/toastBus';
 import { validateSpeechFingerprints } from '@/lib/youtubeSafe';
+import {
+  FREE_LIMITS,
+  clampFreeWordGoal,
+  freeChapterCapMessage,
+  freeWordCapMessage,
+} from '@/lib/commercial/freeLimitsPolicy';
+import { storeIsFreeTier } from './useFreeLimits';
 
 export type WriteChapterOptions = {
   /** Apply editor review via REVISE_CHAPTER instead of fresh write */
@@ -136,6 +143,37 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       return;
     }
 
+    // Free: ≤2 chương · ≤600 từ (server freeQuota re-check + 3 lượt/ngày)
+    if (storeIsFreeTier(startState)) {
+      if (chapterNumber > FREE_LIMITS.maxChapters) {
+        const msg = freeChapterCapMessage();
+        setPromptError(msg);
+        pushToast('error', 'Gói Free — giới hạn chương', msg, 12_000);
+        return;
+      }
+      if (startState.danh_sach_chuong.length > FREE_LIMITS.maxChapters) {
+        const msg = freeChapterCapMessage();
+        setPromptError(msg);
+        pushToast('error', 'Gói Free — giới hạn chương', msg, 12_000);
+        return;
+      }
+      const goal = Number(startState.setup.so_tu_chuong) || FREE_LIMITS.maxWordsPerChapter;
+      if (goal > FREE_LIMITS.maxWordsPerChapter) {
+        startState.setSetup({
+          so_tu_chuong: clampFreeWordGoal(goal),
+        });
+      }
+      const existingWords = getWordCount(
+        overwrite ? '' : currentChapter.noi_dung || '',
+      );
+      if (existingWords >= FREE_LIMITS.maxWordsPerChapter) {
+        const msg = freeWordCapMessage();
+        setPromptError(msg);
+        pushToast('error', 'Gói Free — giới hạn từ', msg, 12_000);
+        return;
+      }
+    }
+
     // Preflight hồ sơ thoại — popup ngay, không gọi API / không unhandledRejection
     const fpErr = validateSpeechFingerprints(
       startState.nhan_vat,
@@ -183,7 +221,9 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           review,
           mode,
           ngon_ngu: resolveNgonNgu(startState.setup.ngon_ngu),
-          so_tu_chuong: startState.setup.so_tu_chuong || 4250,
+          so_tu_chuong: storeIsFreeTier(startState)
+            ? clampFreeWordGoal(startState.setup.so_tu_chuong)
+            : startState.setup.so_tu_chuong || 4250,
           nhan_vat: startState.nhan_vat,
           nhan_vat_prompts: startState.nhan_vat_prompts,
           signal: controller.signal,
@@ -217,7 +257,9 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
             nhan_vat_prompts: live.nhan_vat_prompts,
             chuong_hien_tai: currentChapter,
             so_chuong: live.setup.so_chuong,
-            so_tu_chuong: live.setup.so_tu_chuong || 4250,
+            so_tu_chuong: storeIsFreeTier(live)
+              ? clampFreeWordGoal(live.setup.so_tu_chuong)
+              : live.setup.so_tu_chuong || 4250,
             ngon_ngu: resolveNgonNgu(live.setup.ngon_ngu),
             noi_dung_hien_tai: workingContent,
             userRules: live.userRules,
@@ -225,7 +267,10 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
             world_state: live.world_state,
             current_beat_type: live.current_beat_type,
             intervention_directive: intervention,
-            force_word_gate_continue: forceGate,
+            // Free: không force word-gate continue vượt 600 từ
+            force_word_gate_continue: storeIsFreeTier(live)
+              ? false
+              : forceGate,
             signal: controller.signal,
           });
 
@@ -242,6 +287,14 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           publishLiveText(workingContent);
 
           intervention = undefined;
+
+          // Free: dừng auto-continue khi đã đạt cap từ
+          if (storeIsFreeTier(live)) {
+            const freeWords = getWordCount(workingContent);
+            if (freeWords >= FREE_LIMITS.maxWordsPerChapter) {
+              break;
+            }
+          }
 
           const gate = evaluateWordGate(
             workingContent,

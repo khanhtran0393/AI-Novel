@@ -22,6 +22,8 @@ import {
   totalScaleMinutes,
 } from './setupScaleDuration';
 import { closeSetupModal, setupModalNoDragStyle } from './closeSetupModal';
+import { useFreeLimits } from '@/app/workspace/hooks/useFreeLimits';
+import { FREE_LIMITS } from '@/lib/commercial/freeLimitsPolicy';
 
 interface SetupPhaseProps {
   promptError: string;
@@ -109,6 +111,10 @@ export default function SetupPhase({
   onClose,
 }: SetupPhaseProps) {
   const store = useNovelStore();
+  const { free, FREE_LIMITS: freeCaps } = useFreeLimits();
+  const maxChapters = free ? freeCaps.maxChapters : 1000;
+  const maxWords = free ? freeCaps.maxWordsPerChapter : 10000;
+  const minWords = free ? 100 : 500;
 
   const handleClose = (e?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     e?.preventDefault?.();
@@ -119,9 +125,25 @@ export default function SetupPhase({
   };
 
   const handleAdjustChapters = (amount: number) => {
-    const nextVal = Math.max(1, Math.min(1000, store.setup.so_chuong + amount));
+    const nextVal = Math.max(1, Math.min(maxChapters, store.setup.so_chuong + amount));
     store.setSetup({ so_chuong: nextVal });
   };
+
+  // Free: ép quy mô về cap (2 chương · 600 từ)
+  useEffect(() => {
+    if (!free) return;
+    const ch = Number(store.setup.so_chuong) || 1;
+    const words = Number(store.setup.so_tu_chuong) || FREE_LIMITS.maxWordsPerChapter;
+    const nextCh = Math.min(FREE_LIMITS.maxChapters, Math.max(1, ch));
+    const nextWords = Math.min(
+      FREE_LIMITS.maxWordsPerChapter,
+      Math.max(minWords, words),
+    );
+    if (ch !== nextCh || words !== nextWords) {
+      store.setSetup({ so_chuong: nextCh, so_tu_chuong: nextWords });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [free]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -320,18 +342,23 @@ export default function SetupPhase({
                   <input
                     type="number"
                     min={1}
-                    max={500}
+                    max={maxChapters}
                     value={store.setup.so_chuong}
                     onChange={(e) => {
                       const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val) && val > 0) store.setSetup({ so_chuong: val });
-                      else if (e.target.value === '') {
+                      if (!isNaN(val) && val > 0) {
+                        store.setSetup({
+                          so_chuong: Math.min(maxChapters, val),
+                        });
+                      } else if (e.target.value === '') {
                         store.setSetup({ so_chuong: '' as unknown as number });
                       }
                     }}
                     onBlur={() => {
                       if (!store.setup.so_chuong || store.setup.so_chuong < 1) {
                         store.setSetup({ so_chuong: 1 });
+                      } else if (store.setup.so_chuong > maxChapters) {
+                        store.setSetup({ so_chuong: maxChapters });
                       }
                     }}
                     className="w-full rounded border border-zinc-800 bg-black p-2.5 pr-8 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-amber-500"
@@ -351,6 +378,11 @@ export default function SetupPhase({
                 >
                   Tổng dự tính: {total.label}
                 </p>
+                {free ? (
+                  <p className="mt-1 text-center text-[9px] font-semibold text-amber-500/90">
+                    Free: tối đa {FREE_LIMITS.maxChapters} chương
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500">
@@ -358,24 +390,43 @@ export default function SetupPhase({
                 </label>
                 <input
                   type="number"
-                  min={500}
-                  max={10000}
-                  step={500}
-                  value={store.setup.so_tu_chuong || 4250}
+                  min={minWords}
+                  max={maxWords}
+                  step={free ? 50 : 500}
+                  value={
+                    store.setup.so_tu_chuong ||
+                    (free ? FREE_LIMITS.maxWordsPerChapter : 4250)
+                  }
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val > 0) store.setSetup({ so_tu_chuong: val });
-                    else if (e.target.value === '') {
+                    if (!isNaN(val) && val > 0) {
+                      store.setSetup({
+                        so_tu_chuong: Math.min(maxWords, val),
+                      });
+                    } else if (e.target.value === '') {
                       store.setSetup({ so_tu_chuong: '' as unknown as number });
                     }
                   }}
                   onBlur={() => {
-                    if (!store.setup.so_tu_chuong || store.setup.so_tu_chuong < 500) {
-                      store.setSetup({ so_tu_chuong: 4250 });
+                    const fallback = free
+                      ? FREE_LIMITS.maxWordsPerChapter
+                      : 4250;
+                    if (
+                      !store.setup.so_tu_chuong ||
+                      store.setup.so_tu_chuong < minWords
+                    ) {
+                      store.setSetup({ so_tu_chuong: fallback });
+                    } else if (store.setup.so_tu_chuong > maxWords) {
+                      store.setSetup({ so_tu_chuong: maxWords });
                     }
                   }}
                   className="w-full rounded border border-zinc-800 bg-black p-2.5 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-emerald-500"
                 />
+                {free ? (
+                  <p className="mt-1 text-center text-[9px] font-semibold text-emerald-500/90">
+                    Free: tối đa {FREE_LIMITS.maxWordsPerChapter} từ · 3 lượt viết/ngày
+                  </p>
+                ) : null}
                 <p
                   className="mt-1.5 text-center text-[10px] font-bold tabular-nums text-emerald-400/90"
                   title={`${wordsPer} từ ÷ ${wpm} WPM = thời lượng đọc 1 chương`}

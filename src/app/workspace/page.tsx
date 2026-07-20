@@ -11,6 +11,7 @@ import { Download } from 'lucide-react';
  */
 import Header from './chrome/Header';
 import { AppShell } from './layouts';
+import { useShallow } from 'zustand/react/shallow';
 import { SetupPhase, YoutubeSetupPhase, Sidebar, ContentTab } from './features/script';
 import AINovelDashboard from './features/ainovel/AINovelDashboard';
 import { ToastHost, ConfirmHost } from './shared';
@@ -29,10 +30,67 @@ import { useProjectActions } from './hooks/useProjectActions';
 import { useEntitlementSync } from './hooks/useEntitlementSync';
 
 import { parseScenes, getWordCount } from './utils/stringUtils';
-import { imageAssetKey, sceneAssetKey } from '@/contracts';
+import { imageAssetKey, sceneAssetKey, videoAssetKey } from '@/contracts';
 import { YOUTUBE_HOOK_SCENE_INDEX } from '@/lib/youtubeSafe';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
+
+function SceneNavButton({ 
+  sceneIndex, 
+  shortTitle, 
+  chapterNum, 
+  setExpandedScene,
+  expandedScene
+}: { 
+  sceneIndex: number; 
+  shortTitle: string; 
+  chapterNum: number;
+  setExpandedScene: (val: number | null) => void;
+  expandedScene: number | null;
+}) {
+  const status = useNovelStore((state) => {
+    const assetKey = sceneAssetKey(chapterNum, sceneIndex);
+    const prompts = state.generatedPrompts?.[assetKey] || [];
+    let iDone = 0; let vDone = 0;
+    prompts.forEach((_, pIdx) => {
+       if (state.generatedImages?.[imageAssetKey(chapterNum, sceneIndex, pIdx)]) iDone++;
+       if (state.generatedVideos?.[videoAssetKey(chapterNum, sceneIndex, pIdx)]) vDone++;
+    });
+    const hasAudio = !!state.generatedAudioPaths?.[assetKey];
+    
+    if (prompts.length > 0 && iDone === prompts.length && vDone === prompts.length) {
+      return 'complete';
+    }
+    if (prompts.length > 0 || hasAudio) return 'partial';
+    return 'empty';
+  });
+
+  const isActive = expandedScene === sceneIndex;
+
+  let cls = 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800';
+  if (status === 'complete') {
+    cls = 'bg-emerald-500/10 text-emerald-400 border border-emerald-900/50 hover:bg-emerald-500/20';
+  } else if (status === 'partial') {
+    cls = 'bg-amber-500/10 text-amber-400 border border-amber-900/40 hover:bg-amber-500/20';
+  }
+
+  return (
+    <button
+      type="button"
+      title={shortTitle}
+      onClick={() => {
+        setExpandedScene(sceneIndex);
+        setTimeout(() => {
+          document.getElementById(sceneIndex === 990 ? 'scene-card-container-hook' : `scene-card-container-${sceneIndex}`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+      }}
+      className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold transition-all ${cls} ${isActive ? 'ring-1 ring-current shadow-lg' : ''}`}
+    >
+      {shortTitle}
+    </button>
+  );
+}
 
 export default function Workspace() {
   /**
@@ -65,6 +123,7 @@ export default function Workspace() {
   const [setupDismissed, setSetupDismissed] = useState(false);
   const prevGiaiDoanRef = React.useRef(giaiDoan);
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
+  const [expandedScene, setExpandedScene] = useState<number | null>(null);
 
   // Commercial Free/Pro/Trial sync (open mode → unlimited for dev)
   useEntitlementSync();
@@ -209,7 +268,6 @@ export default function Workspace() {
       {/* 1. HEADER CHUNG CAO CẤP */}
       <Header />
       <OnboardingBanner />
-      <MediaDnaBanner />
 
       {/* Workspace 2 cột — trục chính luôn hiện; Setup = modal giữa màn hình */}
       <main className="flex min-h-0 flex-1 overflow-hidden">
@@ -363,17 +421,13 @@ export default function Workspace() {
                 {hasCurrentChapter && (
                   <div className="shrink-0 border-b border-zinc-900/80 bg-zinc-950/95 px-3 sm:px-4 py-1.5 flex items-center gap-2 min-w-0 z-10">
                     <div className="flex flex-1 items-center gap-1 min-w-0 overflow-x-auto scrollbar-thin py-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          document
-                            .getElementById('scene-card-container-hook')
-                            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }}
-                        className="shrink-0 px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-900/40 text-[10px] font-bold hover:bg-amber-500/20"
-                      >
-                        Hook
-                      </button>
+                      <SceneNavButton 
+                        sceneIndex={990}
+                        shortTitle="Hook"
+                        chapterNum={chuongDangChon}
+                        expandedScene={expandedScene}
+                        setExpandedScene={setExpandedScene}
+                      />
                       {scenesList.map((sc, idx) => {
                         let shortTitle = `C${idx + 1}`;
                         if (sc.title.toUpperCase().includes('CẢNH')) {
@@ -383,19 +437,14 @@ export default function Workspace() {
                           shortTitle = 'Mở';
                         }
                         return (
-                          <button
+                          <SceneNavButton 
                             key={idx}
-                            type="button"
-                            title={sc.title}
-                            onClick={() => {
-                              document
-                                .getElementById(`scene-card-container-${idx}`)
-                                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }}
-                            className="shrink-0 px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 hover:text-amber-400 border border-zinc-800 text-[10px] font-bold"
-                          >
-                            {shortTitle}
-                          </button>
+                            sceneIndex={idx}
+                            shortTitle={shortTitle}
+                            chapterNum={chuongDangChon}
+                            expandedScene={expandedScene}
+                            setExpandedScene={setExpandedScene}
+                          />
                         );
                       })}
                     </div>
@@ -509,6 +558,8 @@ export default function Workspace() {
                       generatingPrompt={generatingPrompt}
                       regeneratingSinglePrompt={regeneratingSinglePrompt}
                       onImageZoom={setZoomImageUrl}
+                      expandedScene={expandedScene}
+                      setExpandedScene={setExpandedScene}
                     />
                   </div>
                 </div>
@@ -564,6 +615,7 @@ export default function Workspace() {
         </div>
       )}
 
+      <MediaDnaBanner />
       <ToastHost />
       <ConfirmHost />
     </div>

@@ -6,6 +6,16 @@ import {
 } from '@/contracts';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
+import {
+  FREE_LIMITS,
+  generateRequestToFreeBucket,
+} from '@/lib/commercial/freeLimitsPolicy';
+import {
+  applyFreeWordGoalToPayload,
+  assertAndConsumeFreeQuota,
+  assertFreeOutlineConstraints,
+  assertFreeWriteConstraints,
+} from '@/lib/commercial/freeQuota';
 import { handleVisualDna } from './handlers/visualDna';
 import { handleIdeas } from './handlers/ideas';
 import { handleImagePrompt } from './handlers/imagePrompt';
@@ -78,8 +88,37 @@ export async function POST(req: Request) {
       });
     }
 
+    // Free tier: daily 3/bucket + write ≤600 từ + ≤2 chương (server authority)
+    const freeBucket = generateRequestToFreeBucket(requestType);
+    const payloadObj =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : {};
+    if (freeBucket === 'write_chapter') {
+      const constrained = await assertFreeWriteConstraints(req, payloadObj, body);
+      if (constrained) applyFreeWordGoalToPayload(payloadObj, constrained.wordGoal);
+    } else if (freeBucket === 'outline_ideas') {
+      await assertFreeOutlineConstraints(req, payloadObj, body);
+      // Clamp outline chapter count on payload when present
+      if (payloadObj.so_chuong != null) {
+        const n = Number(payloadObj.so_chuong);
+        if (Number.isFinite(n) && n > FREE_LIMITS.maxChapters) {
+          payloadObj.so_chuong = FREE_LIMITS.maxChapters;
+        }
+      }
+      if (payloadObj.chapterCount != null) {
+        const n = Number(payloadObj.chapterCount);
+        if (Number.isFinite(n) && n > FREE_LIMITS.maxChapters) {
+          payloadObj.chapterCount = FREE_LIMITS.maxChapters;
+        }
+      }
+    }
+    if (freeBucket) {
+      await assertAndConsumeFreeQuota(req, freeBucket, body);
+    }
+
     const ctx: GenerateHandlerContext = {
-      payload: payload ?? {},
+      payload: payloadObj,
       keysToUse,
       model,
       req,

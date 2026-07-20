@@ -1,8 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { TTSConfig } from '@/store/useNovelStore';
 import { Volume2, Loader2, Play, X, Trash2 } from 'lucide-react';
+import {
+  listAvailableCloneFilterOptions,
+} from '@/lib/vinaVoice/profileFilter';
 import { SELECT_DARK_SM, OPTION_DARK } from '../ttsSelectStyles';
 import { appConfirm } from '@/lib/confirmDialog';
 
@@ -64,83 +67,96 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
       ? config.voice
       : filteredCloneProfiles.find((p) => p.hasSample !== false)?.name || '';
 
+  /** Ẩn option không còn giọng (vd. Tin tức + Vui = 0). */
+  const filterOptions = useMemo(
+    () =>
+      listAvailableCloneFilterOptions(cloneProfiles, {
+        gender: config.vinaGender || 'male',
+        group: config.vinaGroup || 'story',
+        emotion: config.vinaEmotion || 'neutral',
+      }),
+    [
+      cloneProfiles,
+      config.vinaGender,
+      config.vinaGroup,
+      config.vinaEmotion,
+    ],
+  );
+
+  const genderValue = filterOptions.genders.some(
+    (o) => o.value === (config.vinaGender || 'male'),
+  )
+    ? config.vinaGender || 'male'
+    : filterOptions.genders[0]?.value || 'male';
+  const groupValue = filterOptions.groups.some(
+    (o) => o.value === (config.vinaGroup || 'story'),
+  )
+    ? config.vinaGroup || 'story'
+    : filterOptions.groups[0]?.value || 'story';
+  const emotionValue = filterOptions.emotions.some(
+    (o) => o.value === (config.vinaEmotion || 'neutral'),
+  )
+    ? config.vinaEmotion || 'neutral'
+    : filterOptions.emotions[0]?.value || 'neutral';
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="space-y-1">
           <label className="text-[9px] font-bold uppercase text-zinc-500">Giới tính</label>
           <select
-            value={config.vinaGender || 'male'}
+            value={genderValue}
             onChange={(e) =>
               onCloneFilterChange({
                 vinaGender: e.target.value as 'male' | 'female',
               })
             }
             className={SELECT_DARK_SM}
+            disabled={filterOptions.genders.length === 0}
           >
-            <option className={OPTION_DARK} value="male">
-              Nam
-            </option>
-            <option className={OPTION_DARK} value="female">
-              Nữ
-            </option>
+            {filterOptions.genders.map((o) => (
+              <option key={o.value} className={OPTION_DARK} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </div>
         <div className="space-y-1">
           <label className="text-[9px] font-bold uppercase text-zinc-500">Phong cách</label>
           <select
-            value={config.vinaGroup || 'story'}
+            value={groupValue}
             onChange={(e) => onCloneFilterChange({ vinaGroup: e.target.value })}
             className={SELECT_DARK_SM}
+            disabled={filterOptions.groups.length === 0}
           >
-            <option className={OPTION_DARK} value="story">
-              Kể chuyện
-            </option>
-            <option className={OPTION_DARK} value="news">
-              Tin tức
-            </option>
-            <option className={OPTION_DARK} value="audiobook">
-              Sách nói
-            </option>
-            <option className={OPTION_DARK} value="ads">
-              Quảng cáo
-            </option>
-            <option className={OPTION_DARK} value="dubbing">
-              Lồng tiếng
-            </option>
-            <option className={OPTION_DARK} value="review">
-              Review
-            </option>
+            {filterOptions.groups.map((o) => (
+              <option key={o.value} className={OPTION_DARK} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </div>
         <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase text-zinc-500">Cảm xúc</label>
+          <label className="text-[9px] font-bold uppercase text-zinc-500">
+            Cảm xúc
+            {filterOptions.emotions.length > 0 &&
+              filterOptions.emotions.length < 7 && (
+                <span className="ml-1 normal-case font-medium text-zinc-600 tracking-normal">
+                  ({filterOptions.emotions.length} khả dụng)
+                </span>
+              )}
+          </label>
           <select
-            value={config.vinaEmotion || 'neutral'}
+            value={emotionValue}
             onChange={(e) => onCloneFilterChange({ vinaEmotion: e.target.value })}
             className={SELECT_DARK_SM}
+            disabled={filterOptions.emotions.length === 0}
           >
-            <option className={OPTION_DARK} value="neutral">
-              Trung tính
-            </option>
-            <option className={OPTION_DARK} value="happy">
-              Vui
-            </option>
-            <option className={OPTION_DARK} value="sad">
-              Buồn
-            </option>
-            <option className={OPTION_DARK} value="angry">
-              Giận
-            </option>
-            <option className={OPTION_DARK} value="fear">
-              Sợ
-            </option>
-            <option className={OPTION_DARK} value="gentle">
-              Dịu dàng
-            </option>
-            <option className={OPTION_DARK} value="tired">
-              Mệt
-            </option>
+            {filterOptions.emotions.map((o) => (
+              <option key={o.value} className={OPTION_DARK} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -151,7 +167,11 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
             <Volume2 className="h-3.5 w-3.5 text-amber-400" />
             Chọn giọng
             <span className="normal-case font-medium text-zinc-600 tracking-normal">
-              ({filteredCloneProfiles.length || 0}
+              (
+              {filteredCloneProfiles.length || 0}
+              {cloneProfiles.length > 0 && filteredCloneProfiles.length !== cloneProfiles.length
+                ? ` / ${cloneProfiles.length}`
+                : ''}
               {userCount ? ` · ${userCount} USER` : ''})
             </span>
           </span>
@@ -203,9 +223,83 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
 
         <div className="max-h-56 overflow-y-auto rounded-lg border border-zinc-800 bg-black/40 divide-y divide-zinc-800/80">
           {filteredCloneProfiles.length === 0 && (
-            <p className="px-3 py-4 text-[11px] text-zinc-500 text-center">
-              Không có giọng khớp bộ lọc
-            </p>
+            <div className="px-3 py-4 space-y-2 text-center">
+              {cloneProfiles.length === 0 ? (
+                <>
+                  <p className="text-[11px] text-zinc-500">
+                    Chưa nạp được catalog Zero-Shot (0 profile). Kiểm tra server / thư mục{' '}
+                    <span className="font-mono text-zinc-400">data/vina-voices</span>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] text-zinc-400">
+                    Không có giọng khớp bộ lọc hiện tại
+                    {config.vinaGroup === 'news' && config.vinaEmotion && config.vinaEmotion !== 'neutral'
+                      ? ' — giọng Tin tức trong catalog chỉ gắn cảm xúc Trung tính (không có bản «Vui»).'
+                      : '.'}
+                  </p>
+                  <p className="text-[10px] text-zinc-600">
+                    Catalog có {cloneProfiles.length} giọng · đang lọc:{' '}
+                    {config.vinaGender === 'female' ? 'Nữ' : 'Nam'}
+                    {' · '}
+                    {{
+                      story: 'Kể chuyện',
+                      news: 'Tin tức',
+                      audiobook: 'Sách nói',
+                      ads: 'Quảng cáo',
+                      dubbing: 'Lồng tiếng',
+                      review: 'Review',
+                    }[config.vinaGroup || 'story'] || config.vinaGroup || 'Kể chuyện'}
+                    {' · '}
+                    {{
+                      neutral: 'Trung tính',
+                      happy: 'Vui',
+                      sad: 'Buồn',
+                      angry: 'Giận',
+                      fear: 'Sợ',
+                      gentle: 'Dịu dàng',
+                      tired: 'Mệt',
+                    }[config.vinaEmotion || 'neutral'] || config.vinaEmotion || 'Trung tính'}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                    {config.vinaGroup === 'news' && config.vinaEmotion !== 'neutral' && (
+                      <button
+                        type="button"
+                        onClick={() => onCloneFilterChange({ vinaEmotion: 'neutral' })}
+                        className="rounded-md border border-amber-800/50 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold text-amber-300 hover:bg-amber-500/20"
+                      >
+                        Tin tức + Trung tính
+                      </button>
+                    )}
+                    {config.vinaEmotion === 'happy' && config.vinaGroup !== 'story' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onCloneFilterChange({ vinaGroup: 'story', vinaEmotion: 'happy' })
+                        }
+                        className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[10px] font-bold text-zinc-300 hover:bg-zinc-800"
+                      >
+                        Kể chuyện + Vui
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onCloneFilterChange({
+                          vinaGroup: 'story',
+                          vinaEmotion: 'neutral',
+                          vinaGender: (config.vinaGender as 'male' | 'female') || 'male',
+                        })
+                      }
+                      className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[10px] font-bold text-zinc-300 hover:bg-zinc-800"
+                    >
+                      Đặt lại (Kể chuyện · Trung tính)
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
           {filteredCloneProfiles.map((p) => {
             const selected = p.name === selectedName;

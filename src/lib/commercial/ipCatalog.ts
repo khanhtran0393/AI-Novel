@@ -119,6 +119,36 @@ export const IP_CATALOG: IpCatalogEntry[] = [
     features: ['toolbox_labs'],
     notes: 'Local process; Pro gate + heartbeat; no private license secrets',
   },
+  {
+    id: 'phantom_x_bypass',
+    title: 'Phantom-X Bypass formulas (FFmpeg graph)',
+    localPathHint:
+      'src/lib/bypass-engine/* + resources/crown/bypass-formulas.seal',
+    cloudStatus: 'local_ok',
+    features: ['toolbox_labs'],
+    notes:
+      'Crown seal AES-GCM at pack; production Next build uses stubs so plain formula source is not in app.asar. Runtime loads resources/crown/*.seal',
+  },
+  {
+    id: 'tts_batch_srt_translate',
+    title: 'Tool Dịch SRT rules + Cap Gemini prompt kernel',
+    localPathHint:
+      'src/lib/ttsBatchSrt/translateRules.ts + translatePromptCrown.ts + resources/crown/translate-crown.seal',
+    cloudStatus: 'local_ok',
+    features: ['toolbox_labs'],
+    notes:
+      'Crown seal at pack; stubs for sealed production build; orchestration stays local',
+  },
+  {
+    id: 'python_analyzers',
+    title: 'Python script/storyboard/youtube analyzers',
+    localPathHint:
+      'python_core/services/*_analyzer*.py + ip_seal_loader.py',
+    cloudStatus: 'local_ok',
+    features: ['toolbox_labs'],
+    notes:
+      'afterPack seals plain .py → .py.seal (v2 stdlib) + thin stub; install folder does not ship analyzer source as readable text',
+  },
 ];
 
 /**

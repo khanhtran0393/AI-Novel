@@ -9,6 +9,8 @@ export * from './telegramNotify';
 export * from './multiSeat';
 export * from './sellerLog';
 export * from './licenseOnePath';
+export * from './freeLimitsPolicy';
+// freeQuota (fs vault) — import only from server routes: '@/lib/commercial/freeQuota'
 export {
   getLabyrinthPublicStatus,
   CASCADE_LAYER_MESSAGES,

@@ -119,3 +119,184 @@ export function filterCloneProfilesByFields<T extends { name: string; isUser?: b
   // IRON B10: không trả full profiles khi filter rỗng
   return list;
 }
+
+/** Nhãn UI cố định — chỉ render option khi catalog còn ≥1 giọng. */
+export const CLONE_GENDER_OPTIONS = [
+  { value: 'male', label: 'Nam' },
+  { value: 'female', label: 'Nữ' },
+] as const;
+
+export const CLONE_GROUP_OPTIONS = [
+  { value: 'story', label: 'Kể chuyện' },
+  { value: 'news', label: 'Tin tức' },
+  { value: 'audiobook', label: 'Sách nói' },
+  { value: 'ads', label: 'Quảng cáo' },
+  { value: 'dubbing', label: 'Lồng tiếng' },
+  { value: 'review', label: 'Review' },
+] as const;
+
+export const CLONE_EMOTION_OPTIONS = [
+  { value: 'neutral', label: 'Trung tính' },
+  { value: 'happy', label: 'Vui' },
+  { value: 'sad', label: 'Buồn' },
+  { value: 'angry', label: 'Giận' },
+  { value: 'fear', label: 'Sợ' },
+  { value: 'gentle', label: 'Dịu dàng' },
+  { value: 'tired', label: 'Mệt' },
+] as const;
+
+export type CloneFilterAvailability = {
+  genders: Array<(typeof CLONE_GENDER_OPTIONS)[number]>;
+  groups: Array<(typeof CLONE_GROUP_OPTIONS)[number]>;
+  emotions: Array<(typeof CLONE_EMOTION_OPTIONS)[number]>;
+  /** Gợi ý sửa khi tổ hợp hiện tại = 0 */
+  suggested?: CloneFilterInput;
+};
+
+/**
+ * Tùy chọn dropdown còn ít nhất 1 giọng (cascade: gender → group → emotion).
+ * Ẩn option rỗng để user không chọn «Tin tức + Vui» = 0.
+ */
+export function listAvailableCloneFilterOptions<
+  T extends { name: string; isUser?: boolean; source?: string },
+>(
+  profiles: T[],
+  current: CloneFilterInput = {},
+): CloneFilterAvailability {
+  const gender = current.gender || 'male';
+  const group = current.group || 'story';
+  const emotion = current.emotion || 'neutral';
+
+  const genders = CLONE_GENDER_OPTIONS.filter(
+    (o) =>
+      filterCloneProfilesByFields(profiles, {
+        gender: o.value,
+        group: 'story',
+        emotion: 'neutral',
+      }).length > 0 ||
+      // gender may only match under other groups
+      CLONE_GROUP_OPTIONS.some(
+        (g) =>
+          filterCloneProfilesByFields(profiles, {
+            gender: o.value,
+            group: g.value,
+            emotion: 'neutral',
+          }).length > 0,
+      ),
+  );
+
+  const groups = CLONE_GROUP_OPTIONS.filter(
+    (o) =>
+      filterCloneProfilesByFields(profiles, {
+        gender,
+        group: o.value,
+        emotion: 'neutral',
+      }).length > 0 ||
+      CLONE_EMOTION_OPTIONS.some(
+        (e) =>
+          filterCloneProfilesByFields(profiles, {
+            gender,
+            group: o.value,
+            emotion: e.value,
+          }).length > 0,
+      ),
+  );
+
+  const emotions = CLONE_EMOTION_OPTIONS.filter(
+    (o) =>
+      filterCloneProfilesByFields(profiles, {
+        gender,
+        group,
+        emotion: o.value,
+      }).length > 0,
+  );
+
+  let suggested: CloneFilterInput | undefined;
+  const currentHits = filterCloneProfilesByFields(profiles, {
+    gender,
+    group,
+    emotion,
+  });
+  if (currentHits.length === 0 && profiles.length > 0) {
+    // Prefer keep gender+group, reset emotion; then keep gender; then first non-empty combo
+    const tryEmotion =
+      emotions[0]?.value ||
+      (filterCloneProfilesByFields(profiles, {
+        gender,
+        group,
+        emotion: 'neutral',
+      }).length > 0
+        ? 'neutral'
+        : undefined);
+    if (
+      tryEmotion &&
+      filterCloneProfilesByFields(profiles, {
+        gender,
+        group,
+        emotion: tryEmotion,
+      }).length > 0
+    ) {
+      suggested = { gender, group, emotion: tryEmotion };
+    } else {
+      const g2 = groups[0]?.value || 'story';
+      const e2 =
+        CLONE_EMOTION_OPTIONS.find(
+          (e) =>
+            filterCloneProfilesByFields(profiles, {
+              gender,
+              group: g2,
+              emotion: e.value,
+            }).length > 0,
+        )?.value || 'neutral';
+      if (
+        filterCloneProfilesByFields(profiles, {
+          gender,
+          group: g2,
+          emotion: e2,
+        }).length > 0
+      ) {
+        suggested = { gender, group: g2, emotion: e2 };
+      } else {
+        const gen = genders[0]?.value || 'male';
+        const gr =
+          CLONE_GROUP_OPTIONS.find(
+            (g) =>
+              filterCloneProfilesByFields(profiles, {
+                gender: gen,
+                group: g.value,
+                emotion: 'neutral',
+              }).length > 0,
+          )?.value || 'story';
+        suggested = { gender: gen, group: gr, emotion: 'neutral' };
+      }
+    }
+  }
+
+  return { genders, groups, emotions, suggested };
+}
+
+/**
+ * Chuẩn hóa filter về tổ hợp còn giọng (khi option bị ẩn / catalog đổi).
+ */
+export function coerceCloneFilterToAvailable<
+  T extends { name: string; isUser?: boolean; source?: string },
+>(profiles: T[], current: CloneFilterInput): CloneFilterInput {
+  const gender = current.gender || 'male';
+  const group = current.group || 'story';
+  const emotion = current.emotion || 'neutral';
+  if (
+    filterCloneProfilesByFields(profiles, { gender, group, emotion }).length > 0
+  ) {
+    return { gender, group, emotion };
+  }
+  const avail = listAvailableCloneFilterOptions(profiles, {
+    gender,
+    group,
+    emotion,
+  });
+  return {
+    gender: avail.suggested?.gender || gender,
+    group: avail.suggested?.group || group,
+    emotion: avail.suggested?.emotion || 'neutral',
+  };
+}

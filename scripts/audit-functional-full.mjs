@@ -52,7 +52,7 @@ const seed = await import('../src/lib/integrations/seedance.ts');
 const { parseOrThrow, generateBodySchema, generateTtsBodySchema, generateImageBodySchema, GENERATE_REQUEST_OWNERS, CORE_PAYLOAD_SCHEMAS, API } = await import('../src/contracts/index.ts');
 const { evaluateCredentialHealth } = await import('../src/lib/credentialHealth.ts');
 const { probeRuntimeHealth } = await import('../src/lib/runtimeHealth.ts');
-const { buildDemoProjectPatch } = await import('../src/lib/onboarding.ts');
+const { CORE_LOOP_STEPS, loadOnboarding } = await import('../src/lib/onboarding.ts');
 const { buildPortableProject } = await import('../src/lib/projectPortable.ts');
 
 const SCRIPT = `[CẢNH 1: NỘI CẢNH. HẦM BÊ TÔNG - RẠNG SÁNG]
@@ -76,15 +76,24 @@ H('word gate evaluates', typeof gate.wordCount === 'number' && gate.wordCount > 
 S('scenesOk for sample', gate.scenesOk === true, `scenesOk=${gate.scenesOk}`);
 
 // A3 hook + meta
-const hookPack = y.extractHookFromScript(SCRIPT, { targetSec: 30, wpm: 140 });
+const AUDIT_VISUAL_DNA =
+  'cinematic moody lighting, desaturated film grain, tight frame';
+const hookPack = y.extractHookFromScript(SCRIPT, {
+  targetSec: 30,
+  wpm: 140,
+  visualDna: AUDIT_VISUAL_DNA,
+});
 H('hook non-empty ≥40', !!hookPack.hook && hookPack.hook.length >= 40, (hookPack.hook || '').slice(0, 60));
 H('thumbnailLine ≤30', (hookPack.thumbnailLine || '').length <= 30, `"${hookPack.thumbnailLine}"`);
+H('thumbnailPrompt non-empty when visualDna set', !!hookPack.thumbnailPrompt);
 
 const meta = y.generateYoutubeMetaWithQA({
   script: SCRIPT,
   novelTitle: 'Tiếng Vọng Tường Cổ',
   chapter: 1,
   maxRounds: 5,
+  // B10: thumbnail style must come from Visual DNA / Media Style (no invent)
+  visualDna: AUDIT_VISUAL_DNA,
 });
 H('meta seoTitle', !!meta.seoTitle);
 H('meta no double-why', !/tại\s+sao[\s\S]{0,40}vì\s+sao/i.test(meta.seoTitle), meta.seoTitle);
@@ -125,11 +134,17 @@ I(`narrativePsych keys: ${Object.keys(psych || {}).join(',')}`);
 const joked = y.injectHumanJokeAsides(SCRIPT, { minCount: 1, enabled: true });
 H('human joke inject ≥1', y.countHumanJokeAsides(joked) >= 1);
 
-// A7 demo project content
-const demo = buildDemoProjectPatch();
-H('demo has chapter content', !!demo.danh_sach_chuong?.[0]?.noi_dung);
-H('demo TTS edge_tts', demo.ttsConfig?.platform === 'edge_tts');
-H('demo giai_doan=2', demo.giai_doan === 2);
+// A7 onboarding commercial-clean (no demo story seed)
+H(
+  'onboarding core-loop steps ≥5',
+  Array.isArray(CORE_LOOP_STEPS) && CORE_LOOP_STEPS.length >= 5,
+  `n=${CORE_LOOP_STEPS?.length ?? 0}`,
+);
+const onboarding = loadOnboarding();
+H(
+  'onboarding state loadable',
+  !!onboarding && typeof onboarding === 'object' && Array.isArray(onboarding.completedSteps),
+);
 
 // A8 contracts hot APIs
 H('WRITE_CHAPTER schema', !!CORE_PAYLOAD_SCHEMAS.WRITE_CHAPTER);
@@ -158,7 +173,17 @@ try {
 
 // A9 portable strip secrets
 const pack = buildPortableProject(
-  { ten_tac_pham: 'X', apiKey: 'sk-secret-should-go', danh_sach_chuong: demo.danh_sach_chuong },
+  {
+    ten_tac_pham: 'X',
+    apiKey: 'sk-secret-should-go',
+    danh_sach_chuong: [
+      {
+        so_chuong: 1,
+        tieu_de: 'Ch.1',
+        noi_dung: SCRIPT,
+      },
+    ],
+  },
   { stripSecrets: true },
 );
 H('portable strips apiKey', pack.state.apiKey === undefined);
@@ -187,12 +212,15 @@ const coreActions = [
   ['CapCut export', 'src/app/workspace/features/project/CapCutExportButton.tsx', 'export-capcut|exportCapcut|API'],
   ['Ship pack', 'src/app/workspace/features/project/ShipPackModal.tsx', 'ship-pack|shipPack|API'],
   ['Import modal', 'src/app/workspace/features/project/ImportModal.tsx', 'onClose|import'],
-  ['Settings portable', 'src/app/workspace/features/settings/SettingsPanel.tsx', 'buildPortableProject|handleExportPortable'],
+  // Portable lib is Free-tier; UI may live outside Settings (export TXT / import foundation)
+  ['Project export TXT', 'src/app/workspace/modules/projectModule.ts', 'exportTxtAction'],
+  ['Project portable lib', 'src/lib/projectPortable.ts', 'buildPortableProject|downloadPortableProject'],
   ['Credential health', 'src/app/workspace/features/settings/CredentialHealthPanel.tsx', 'evaluateCredentialHealth|healthRuntime'],
-  ['Onboarding demo', 'src/app/workspace/features/onboarding/OnboardingBanner.tsx', 'buildDemoProjectPatch'],
+  ['Onboarding core-loop', 'src/app/workspace/features/onboarding/OnboardingBanner.tsx', 'CORE_LOOP_STEPS|loadOnboarding|dismissOnboarding'],
   ['Youtube checklist', 'src/app/workspace/features/youtube/YoutubeSafeChecklist.tsx', 'generateYoutubeMeta|buildYoutubeChecklist|downloadPack'],
   ['Job report', 'src/app/workspace/features/channels/JobQueuePanel.tsx', 'buildJobErrorReport'],
-  ['Labs filter', 'src/app/workspace/features/toolbox/toolboxRegistry.ts', 'filterToolboxItems|showLabsTools'],
+  ['Toolbox registry', 'src/app/workspace/features/toolbox/toolboxRegistry.ts', 'TOOLBOX_ITEMS'],
+  ['Toolbox Pro gate', 'src/app/workspace/features/toolbox/ToolboxHost.tsx', 'toolbox_labs|TOOLBOX_ITEMS'],
 ];
 
 for (const [label, rel, pattern] of coreActions) {
@@ -206,15 +234,27 @@ for (const [label, rel, pattern] of coreActions) {
   H(`wire: ${label}`, re.test(src), rel);
 }
 
-// Dead / intentionally disabled
+// Create voice tab — clone flow is live (no decorative disabled badge required)
 const createVoice = fs.readFileSync(
   path.join(root, 'src/app/workspace/features/tts/tabs/CreateVoiceTab.tsx'),
   'utf8',
 );
 S(
-  'CreateVoiceTab disabled={true} is status badge not action',
-  createVoice.includes('disabled={true}') && createVoice.includes('Không cần khởi động'),
-  'expected decorative disabled badge',
+  'CreateVoiceTab has clone/preview actions',
+  /handleTestGeneration|onPreviewCloneProfile|cloneFileInputRef/.test(createVoice),
+  'clone UI present',
+);
+
+// Residual: portable Free feature is library-complete; Settings one-click UI not required for pack
+const settingsSrc = fs.readFileSync(
+  path.join(root, 'src/app/workspace/features/settings/SettingsPanel.tsx'),
+  'utf8',
+);
+S(
+  'SettingsPanel focuses credentials/GPU (portable export is lib-level Free)',
+  /apiKey|Provider|NVENC|gemini|openai/i.test(settingsSrc) &&
+    !/buildPortableProject/.test(settingsSrc),
+  'portable UI not in Settings — use lib/e2e path or future feature surface',
 );
 
 // Hardcoded /api/ vs API constant (soft debt)

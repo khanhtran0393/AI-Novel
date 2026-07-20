@@ -14,7 +14,10 @@ import {
   resolveVoiceForPlatform,
   STATIC_VOICE_CATALOG,
 } from '@/lib/voiceCatalog';
-import { filterCloneProfilesByFields } from '@/lib/vinaVoice/profileFilter';
+import {
+  coerceCloneFilterToAvailable,
+  filterCloneProfilesByFields,
+} from '@/lib/vinaVoice/profileFilter';
 import RoleCastStudioModal from './RoleCastStudioModal';
 import { isCastActive, normalizeVoiceCast } from '@/lib/voiceCast';
 import { toast } from '@/lib/toastBus';
@@ -26,6 +29,20 @@ import { useTikTokSessions } from './hooks/useTikTokSessions';
 import { useVoiceCatalogPrep } from './hooks/useVoiceCatalogPrep';
 import { getTTSCredentialsForConfig } from '../../modules/tts/credentials';
 import { ttsPreviewTimeoutMs } from '../../modules/tts/previewTimeout';
+import { FREE_TTS_PLATFORMS } from '@/lib/commercial/featureMatrix';
+import { buildClientApiHeaders } from '../../modules/apiClient';
+
+/** Free: chỉ edge_tts / piper (server requireTtsPlatformAccess). */
+function isFreeTtsPlatform(platform: string): boolean {
+  return FREE_TTS_PLATFORMS.has(String(platform || '').trim().toLowerCase());
+}
+
+function freeTtsBlockedMessage(platform: string): string {
+  return (
+    `Gói Free không dùng «${platform || '?'}» (TTS premium). ` +
+    `Chọn tab Engine → Edge TTS hoặc Piper, hoặc nhấp logo → Trial/Pro.`
+  );
+}
 
 interface TTSConfigModalProps {
   isOpen: boolean;
@@ -35,6 +52,7 @@ interface TTSConfigModalProps {
 export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps) {
   const store = useNovelStore();
   const config = store.ttsConfig;
+  const isFreeTier = !store.is_pro && !store.is_trial && !store.is_vip;
   const {
     tiktokSessions,
     isTikTokWithoutSession,
@@ -159,6 +177,28 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     if (!isOpen || !cloneProfiles.length) return;
     if (voiceUiTab !== 'clone') return;
 
+    // Persist cũ có thể là Tin tức+Vui (=0) → ép về tổ hợp còn giọng, ẩn option rỗng.
+    const coerced = coerceCloneFilterToAvailable(cloneProfiles, {
+      gender: config.vinaGender || 'male',
+      group: config.vinaGroup || 'story',
+      emotion: config.vinaEmotion || 'neutral',
+    });
+    const gender = coerced.gender || 'male';
+    const group = coerced.group || 'story';
+    const emotion = coerced.emotion || 'neutral';
+    if (
+      gender !== (config.vinaGender || 'male') ||
+      group !== (config.vinaGroup || 'story') ||
+      emotion !== (config.vinaEmotion || 'neutral')
+    ) {
+      store.updateTTSConfig({
+        vinaGender: gender as 'male' | 'female',
+        vinaGroup: group,
+        vinaEmotion: emotion,
+        platform: 'vina_voice',
+      });
+    }
+
     const voice = nfc(config.voice || '').trim();
     const hit = voice
       ? cloneProfiles.find(
@@ -167,20 +207,27 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       : null;
 
     if (hit) {
-      const needRef =
-        !String(config.vinaReferenceAudio || '').trim() && !!hit.samplePath;
-      const needCloneFlag = config.vinaUseClone === false;
-      const needPlatform = config.platform !== 'vina_voice';
-      if (needRef || needCloneFlag || needPlatform) {
-        applyCloneProfile(hit.name);
+      const stillVisible = filterCloneProfilesByFields(cloneProfiles, {
+        gender,
+        group,
+        emotion,
+      }).some((p) => nfc(p.name) === nfc(hit.name));
+      if (stillVisible) {
+        const needRef =
+          !String(config.vinaReferenceAudio || '').trim() && !!hit.samplePath;
+        const needCloneFlag = config.vinaUseClone === false;
+        const needPlatform = config.platform !== 'vina_voice';
+        if (needRef || needCloneFlag || needPlatform) {
+          applyCloneProfile(hit.name);
+        }
+        return;
       }
-      return;
     }
 
     const filtered = filterCloneProfilesByFields(cloneProfiles, {
-      gender: config.vinaGender || 'male',
-      group: config.vinaGroup || 'story',
-      emotion: config.vinaEmotion || 'neutral',
+      gender,
+      group,
+      emotion,
     });
     const first =
       firstUsableCloneProfile(filtered) || firstUsableCloneProfile(cloneProfiles);
@@ -239,15 +286,23 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     }
   };
 
-  /** Khi đổi bộ lọc mà giọng đang chọn không còn trong list → chọn giọng đầu list lọc */
+  /** Khi đổi bộ lọc: ẩn option rỗng + coerce tổ hợp còn giọng; auto-pick profile đầu. */
   const onCloneFilterChange = (partial: Partial<typeof config>) => {
     const next = { ...config, ...partial, platform: 'vina_voice' as const };
-    store.updateTTSConfig(partial);
-    const filtered = filterCloneProfilesByFields(cloneProfiles, {
+    const coerced = coerceCloneFilterToAvailable(cloneProfiles, {
       gender: next.vinaGender || 'male',
       group: next.vinaGroup || 'story',
       emotion: next.vinaEmotion || 'neutral',
     });
+    const patch: Partial<typeof config> = {
+      ...partial,
+      vinaGender: (coerced.gender as 'male' | 'female') || 'male',
+      vinaGroup: coerced.group || 'story',
+      vinaEmotion: coerced.emotion || 'neutral',
+      platform: 'vina_voice',
+    };
+    store.updateTTSConfig(patch);
+    const filtered = filterCloneProfilesByFields(cloneProfiles, coerced);
     if (filtered.length && !filtered.some((p) => p.name === next.voice)) {
       const first = firstUsableCloneProfile(filtered);
       if (first) applyCloneProfile(first.name);
@@ -361,10 +416,23 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       return localHit;
     }
 
+    // Free + premium platform → hard-fail trước API
+    if (
+      !store.is_pro &&
+      !store.is_trial &&
+      !store.is_vip &&
+      !isFreeTtsPlatform(ttsCfg.platform)
+    ) {
+      throw new Error(freeTtsBlockedMessage(ttsCfg.platform));
+    }
+
     // 2) Server durable/legacy cache → synth only on miss
     const response = await fetch(API.generateTts, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildClientApiHeaders(),
+      },
       signal,
       body: JSON.stringify({
         sceneText,
@@ -432,9 +500,28 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
   };
 
   /** Chặn khi chưa chọn giọng — thiếu key/session/engine → hard-fail (không Edge ngầm). */
-  const assertPreviewReady = (_platform: string, voiceId: string) => {
+  const assertPreviewReady = (platform: string, voiceId: string) => {
     if (!voiceId?.trim()) throw new Error('Chưa chọn giọng để nghe thử.');
+    // Free: chặn premium trước API (tránh 403 tts_premium mơ hồ)
+    if (
+      (!store.is_pro && !store.is_trial && !store.is_vip) &&
+      !isFreeTtsPlatform(platform)
+    ) {
+      throw new Error(freeTtsBlockedMessage(platform));
+    }
   };
+
+  /** Free mở modal đang Vina → gợi ý chuyển Edge (không silent swap platform khi user chọn tay). */
+  useEffect(() => {
+    if (!isOpen || !isFreeTier) return;
+    if (isFreeTtsPlatform(config.platform)) return;
+    toast.warn(
+      'Gói Free — TTS',
+      freeTtsBlockedMessage(config.platform) +
+        ' Bấm «Engine chọn tay» để dùng Edge/Piper.',
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isFreeTier]);
 
   // Hủy preview khi đổi platform/voice/tốc độ/pitch — tránh phát bản cũ hoặc kẹt UI
   useEffect(() => {
@@ -858,6 +945,21 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
             <button
               type="button"
               onClick={() => {
+                if (isFreeTier) {
+                  toast.error(
+                    'Gói Free',
+                    freeTtsBlockedMessage('vina_voice') +
+                      ' Dùng tab «Engine chọn tay».',
+                  );
+                  setVoiceUiTab('engine');
+                  store.updateTTSConfig({
+                    platform: 'edge_tts',
+                    language: 'vi',
+                    voice: 'vi-VN-NamMinhNeural',
+                    vinaUseClone: false,
+                  });
+                  return;
+                }
                 setVoiceUiTab('clone');
                 store.updateTTSConfig({ platform: 'vina_voice', vinaUseClone: true });
                 const first = firstUsableCloneProfile(cloneProfiles);
@@ -869,19 +971,27 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                 voiceUiTab === 'clone'
                   ? 'bg-amber-500 text-black'
                   : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Engine chính: catalog + zero-shot ONNX brain — lỗi thì báo lỗi, không Edge ngầm"
+              } ${isFreeTier ? 'opacity-60' : ''}`}
+              title={
+                isFreeTier
+                  ? 'Free: Vina Zero-Shot cần Trial/Pro — dùng Edge/Piper'
+                  : 'Engine chính: catalog + zero-shot ONNX brain — lỗi thì báo lỗi, không Edge ngầm'
+              }
             >
-              Não Zero-Shot
+              Não Zero-Shot{isFreeTier ? ' · Pro' : ''}
             </button>
             <button
               type="button"
               onClick={() => {
                 setVoiceUiTab('engine');
                 // Không wipe voice="" — state rỗng → preview/gen fail toàn cục.
-                // Rời tab Zero-Shot (vina) → Edge mặc định + giọng static nếu prep chưa xong.
-                const plat =
-                  config.platform === 'vina_voice' ? 'edge_tts' : config.platform;
+                // Free: chỉ Edge/Piper. Pro: rời vina → Edge.
+                let plat = config.platform;
+                if (isFreeTier) {
+                  plat = isFreeTtsPlatform(plat) ? plat : 'edge_tts';
+                } else if (plat === 'vina_voice') {
+                  plat = 'edge_tts';
+                }
                 const catalog =
                   Object.keys(dynamicVoices).length > 0
                     ? dynamicVoices
@@ -913,18 +1023,43 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   ? 'bg-sky-500 text-black'
                   : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
               }`}
-              title="Chọn tay Edge / Gemini / Piper… — không phải giọng dự phòng tự động"
+              title={
+                isFreeTier
+                  ? 'Free: Edge TTS hoặc Piper (3 lượt/ngày)'
+                  : 'Chọn tay Edge / Gemini / Piper… — không phải giọng dự phòng tự động'
+              }
             >
               Engine chọn tay
             </button>
             <button
               type="button"
               onClick={() => {
+                if (isFreeTier) {
+                  toast.error(
+                    'Gói Free',
+                    freeTtsBlockedMessage('vina_voice') +
+                      ' Clone giọng cần Trial/Pro.',
+                  );
+                  setVoiceUiTab('engine');
+                  store.updateTTSConfig({
+                    platform: 'edge_tts',
+                    language: 'vi',
+                    voice: 'vi-VN-NamMinhNeural',
+                    vinaUseClone: false,
+                  });
+                  return;
+                }
                 setVoiceUiTab('create');
                 store.updateTTSConfig({ platform: 'vina_voice', vinaUseClone: true });
               }}
-              title="Tạo giọng đọc: tải MP3/WAV mẫu → nhập text → clone (kiểu Vina)"
+              title={
+                isFreeTier
+                  ? 'Free: clone giọng cần Trial/Pro'
+                  : 'Tạo giọng đọc: tải MP3/WAV mẫu → nhập text → clone (kiểu Vina)'
+              }
               className={`flex items-center justify-center gap-1.5 flex-1 min-w-0 px-2 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-800 ${
+                isFreeTier ? 'opacity-60 ' : ''
+              }${
                 voiceUiTab === 'create'
                   ? 'bg-emerald-500 text-black'
                   : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'

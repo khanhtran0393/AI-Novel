@@ -1,0 +1,19 @@
+{
+  "at": "2026-07-20T16:58:40.819Z",
+  "version": 1,
+  "js": [
+    {
+      "id": "bypass-formulas",
+      "path": "resources/crown/bypass-formulas.seal",
+      "bytes": 17889,
+      "plainBytes": 17854
+    },
+    {
+      "id": "translate-crown",
+      "path": "resources/crown/translate-crown.seal",
+      "bytes": 5630,
+      "plainBytes": 5595
+    }
+  ],
+  "note": "Crown IP seals — AES-256-GCM; key = app pepper (not license token)"
+}

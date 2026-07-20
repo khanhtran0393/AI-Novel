@@ -9,6 +9,8 @@
 const fs = require('fs');
 const path = require('path');
 const { restoreShellFromBackup } = require('./lib/desktop-re-harden.cjs');
+const { restoreStubs: restoreCrownStubs } = require('./lib/crown-ip-stub.cjs');
+const { sealPythonCrowns } = require('./lib/crown-ip-seal.cjs');
 const flipFuses = require('./electron-fuses.cjs');
 
 /**
@@ -47,6 +49,42 @@ exports.default = async function electronAfterPack(context) {
     }
   } catch (err) {
     console.error('[re-harden] restore failed:', err?.message || err);
+  }
+
+  // Restore crown formula sources if a sealed build left stubs in the workspace
+  try {
+    const crown = restoreCrownStubs();
+    if (crown.restored?.length) {
+      console.log('[crown-ip] afterPack restored formula sources:', crown.restored.join(', '));
+    }
+  } catch (err) {
+    console.error('[crown-ip] restore stubs failed:', err?.message || err);
+  }
+
+  // Seal Python analyzers inside packaged resources (leave workspace .py plain)
+  try {
+    const skipPy =
+      process.env.AINOVEL_CROWN_PYTHON === '0' ||
+      process.env.AINOVEL_CROWN_PYTHON === 'false';
+    if (!skipPy) {
+      const pyDir = path.join(context.appOutDir, 'resources', 'python_core');
+      if (fs.existsSync(pyDir)) {
+        const sealed = sealPythonCrowns(pyDir, { writeStubs: true });
+        console.log(
+          JSON.stringify({
+            ok: true,
+            step: 'afterPack-crown-python',
+            count: sealed.length,
+            dir: pyDir,
+          }),
+        );
+      } else {
+        console.log('[crown-ip] afterPack: no resources/python_core (skip py seal)');
+      }
+    }
+  } catch (err) {
+    console.error('[crown-ip] python seal FAILED:', err?.message || err);
+    throw err;
   }
 
   optionalAsarFrictionNote(context);

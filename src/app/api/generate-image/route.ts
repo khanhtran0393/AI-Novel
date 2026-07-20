@@ -48,6 +48,12 @@ export async function POST(req: Request) {
       provider: imageProvider,
     });
 
+    // Free: gen_image 3 lượt/ngày (server vault by HWID)
+    const { assertAndConsumeFreeQuota } = await import(
+      '@/lib/commercial/freeQuota'
+    );
+    await assertAndConsumeFreeQuota(req, 'gen_image', body);
+
     const imageApiKey = body.imageApiKey || '';
     const imageAspectRatio = body.imageAspectRatio || '16:9';
     const imageCount = Math.max(1, Math.min(4, Number(body.imageCount) || 1));

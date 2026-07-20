@@ -7,8 +7,12 @@ import {
   mergeYoutubeSafe,
   buildThumbnailPrompt,
   scoreNarrativePsychScript,
+  YOUTUBE_META_PASS_SCORE,
 } from '@/lib/youtubeSafe';
-import { buildClientApiHeaders } from '../modules/apiClient';
+import {
+  fetchYoutubeMetaWithQA,
+  formatMetaScoreLine,
+} from '../modules/youtubeMetaModule';
 import {
   resolveNgonNgu,
   evaluateChapter,
@@ -264,7 +268,7 @@ export async function finishChapterWrite(
 
     if (!isCurrentGen(params.genId)) return;
 
-    // Hook + YouTube meta (55 psych laws) after write — same quality bar as YouTube Studio
+    // Hook + YouTube meta — score ≥8.5 + rewrite (same as Studio Meta button)
     const finalCh = useNovelStore.getState().danh_sach_chuong.find(
       (c) => c.so_chuong === params.chapterNumber,
     );
@@ -275,71 +279,63 @@ export async function finishChapterWrite(
         throw new Error('Thieu Visual DNA / Media Style de tao thumbnailPrompt.');
       }
       const chProfile = live.channels?.[live.activeChannelId || ''];
-      // Prefer /api/youtube-meta (packaged+token → cloud psych IP; free → local server)
-      const metaRes = await fetch('/api/youtube-meta', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...buildClientApiHeaders(),
-        },
-        body: JSON.stringify({
-          script: finalCh.noi_dung,
-          novelTitle: live.ten_tac_pham,
-          chapter: params.chapterNumber,
-          maxRounds: 4,
-          usedTitles: chProfile?.usedHooks || [],
-          usedThumbLines: chProfile?.usedThumbnailNotes || [],
-          visualDna,
-          characterHint:
-            (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
-        }),
+      setPromptError('📺 Meta YouTube: đang tự chấm + rewrite psych SEO...');
+      const meta = await fetchYoutubeMetaWithQA({
+        script: finalCh.noi_dung,
+        novelTitle: live.ten_tac_pham,
+        chapter: params.chapterNumber,
+        maxRounds: 5,
+        outerRetries: 2,
+        usedTitles: chProfile?.usedHooks || [],
+        usedThumbLines: chProfile?.usedThumbnailNotes || [],
+        visualDna,
+        characterHint:
+          (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
         signal: params.signal,
       });
-      const metaJson = (await metaRes.json().catch(() => ({}))) as {
-        success?: boolean;
-        error?: string;
-        hook?: string;
-        seoTitle?: string;
-        thumbnailLine?: string;
-        seoDescription?: string;
-        seoTags?: string;
-        thumbnailPrompt?: string;
-      };
-      if (!metaRes.ok || metaJson.success === false || !metaJson.hook) {
-        throw new Error(
-          metaJson.error ||
-            `YouTube meta API fail (HTTP ${metaRes.status}).`,
-        );
-      }
-      const pack = {
-        hook: String(metaJson.hook),
-        seoTitle: String(metaJson.seoTitle || ''),
-        thumbnailLine: String(metaJson.thumbnailLine || ''),
-        seoDescription: String(metaJson.seoDescription || ''),
-        seoTags: String(metaJson.seoTags || ''),
-        thumbnailPrompt: String(metaJson.thumbnailPrompt || ''),
-      };
       live.setChapterHook(params.chapterNumber, {
-        hook: pack.hook,
-        thumbnailLine: pack.thumbnailLine.slice(0, 30),
-        seoTitle: pack.seoTitle.slice(0, 100),
-        seoDescription: pack.seoDescription,
-        seoTags: pack.seoTags,
+        hook: meta.hook,
+        thumbnailLine: meta.thumbnailLine.slice(0, 30),
+        seoTitle: meta.seoTitle.slice(0, 100),
+        seoDescription: meta.seoDescription,
+        seoTags: meta.seoTags,
         thumbnailPrompt:
-          pack.thumbnailPrompt ||
+          meta.thumbnailPrompt ||
           buildThumbnailPrompt({
-            hook: pack.hook,
-            thumbnailLine: pack.thumbnailLine,
+            hook: meta.hook,
+            thumbnailLine: meta.thumbnailLine,
             visualDna,
             characterHint:
               (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
           }),
       });
       try {
-        live.rememberChannelMotif?.('hook', pack.seoTitle.slice(0, 120));
-        live.rememberChannelMotif?.('thumb', pack.thumbnailLine.slice(0, 80));
+        live.rememberChannelMotif?.('hook', meta.seoTitle.slice(0, 120));
+        live.rememberChannelMotif?.('thumb', meta.thumbnailLine.slice(0, 80));
       } catch (motifErr) {
-        throw new Error(`Khong luu duoc channel motif: ${motifErr instanceof Error ? motifErr.message : String(motifErr)}`);
+        throw new Error(
+          `Khong luu duoc channel motif: ${motifErr instanceof Error ? motifErr.message : String(motifErr)}`,
+        );
+      }
+      const scoreLine = formatMetaScoreLine(meta.scores);
+      if (!meta.passed) {
+        pushToast(
+          'warn',
+          `Meta ch${params.chapterNumber} — điểm thấp`,
+          `${scoreLine} · rewrite ${meta.rounds} vòng chưa ≥${YOUTUBE_META_PASS_SCORE}. Mở YouTube Studio → Meta để rewrite tiếp.`,
+          12_000,
+        );
+        setPromptError(
+          `⚠️ Meta SEO dưới chuẩn: ${scoreLine}. Bấm Meta trong YouTube Studio để rewrite.`,
+        );
+      } else {
+        pushToast(
+          'success',
+          `Meta ch${params.chapterNumber}`,
+          `Pass · ${scoreLine}`,
+          6_000,
+        );
+        setPromptError('');
       }
       // New AI draft → require human pass again
       useNovelStore.getState().setHumanEditFlag(params.chapterNumber, {

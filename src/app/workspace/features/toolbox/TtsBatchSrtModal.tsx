@@ -37,12 +37,12 @@ import {
 } from '@/lib/ttsBatchSrt/parseSrt';
 import type { SrtCue } from '@/lib/ttsBatchSrt/types';
 import {
-  TRANSLATE_RULE_OPTIONS,
+  TRANSLATE_RULE_PUBLIC_OPTIONS as TRANSLATE_RULE_OPTIONS,
   DEFAULT_TRANSLATE_CHUNK,
   MIN_TRANSLATE_CHUNK,
   MAX_TRANSLATE_CHUNK,
   clampTranslateChunk,
-} from '@/lib/ttsBatchSrt/translateRules';
+} from '@/lib/ttsBatchSrt/publicTranslateCatalog';
 
 export interface TtsBatchSrtModalProps {
   isOpen: boolean;

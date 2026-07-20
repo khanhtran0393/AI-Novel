@@ -229,6 +229,13 @@
 - **Env:** `AINOVEL_HOST_TOKEN` (HMAC), mode `AINOVEL_HOST_BINDING=enforce|open`, secret shares entitlement default.
 - **Not done yet:** Nuitka/Cython, Pro grayed UI for Toolbox — later.
 
+## Crown IP seal (toolbox anti-theft) — 2026-07-20
+
+- **Phantom-X** + **Dịch SRT rules/prompt** → `resources/crown/*.seal` (AES-256-GCM); pack via `with-crown-sealed-build.cjs` stubs formula sources so plain logic not in app.asar.
+- **Python analyzers** → afterPack seals `.py` → `.py.seal` (v2 stdlib keystream+HMAC) + thin stub; `ip_seal_loader.py`.
+- Client UI uses `publicCatalog.ts` / `publicTranslateCatalog.ts` only (no seal/fs).
+- Commands: `npm run crown:seal` · `smoke:crown-ip` · `AINOVEL_CROWN_PYTHON=0` skips py seal.
+
 ## Tool Dịch SRT (toolbox) — Cap Gemini method (no DeepSeek)
 
 - **Method Cap:** parse SRT → chỉ text → batch **50** cue → neo ` || ` → Gemini REST → unbatch → gắn lại timestamp. Lệch count → tách đôi lô retry.

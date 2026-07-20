@@ -572,6 +572,22 @@ export default function LicenseModal({ open, onClose }: Props) {
         </div>
 
         <div className="p-4 space-y-4">
+          {/* Free product caps */}
+          {!isPro && !isVip && !isTrial ? (
+            <div className="rounded-xl border border-amber-800/40 bg-amber-950/25 px-3 py-2.5 text-[11px] text-amber-100/90 space-y-1">
+              <p className="font-bold uppercase tracking-wide text-amber-300 text-[10px]">
+                Giới hạn gói Free
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 text-amber-100/80">
+                <li>Viết kịch bản: tối đa 600 từ/chương · tối đa 2 chương</li>
+                <li>
+                  Mỗi mục Free: 3 lượt/ngày (viết · outline · gen prompt · gen
+                  ảnh · TTS Edge/Piper)
+                </li>
+                <li>Trial 3 ngày hoặc Pro để bỏ giới hạn</li>
+              </ul>
+            </div>
+          ) : null}
           {/* Device ID */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-lg border border-sky-700/60 bg-sky-950/50 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-sky-300">

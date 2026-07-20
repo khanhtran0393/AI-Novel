@@ -116,6 +116,19 @@ export async function POST(req: Request) {
     // Free: edge_tts + piper. Premium engines need trial/pro token (server gate).
     const ttsDenied = await requireTtsPlatformAccess(req, platform, body);
     if (ttsDenied) return ttsDenied;
+    // Free TTS platforms: 3 lượt/ngày
+    {
+      const { FREE_TTS_PLATFORMS } = await import(
+        '@/lib/commercial/featureMatrix'
+      );
+      const plat = platform.trim().toLowerCase();
+      if (FREE_TTS_PLATFORMS.has(plat)) {
+        const { assertAndConsumeFreeQuota } = await import(
+          '@/lib/commercial/freeQuota'
+        );
+        await assertAndConsumeFreeQuota(req, 'tts_edge', body);
+      }
+    }
     const voice = resolvedVoiceName || voiceName || ttsConfig?.voice || '';
     if (!voice && !(Array.isArray(voiceSegments) && voiceSegments.length > 0)) {
       throw new AppError(

@@ -9,9 +9,11 @@ Mô hình thương mại duy nhất là **License + BYOK + Free / Trial / Pro**.
 
 | Tier | Quyền | Badge |
 |---|---|---|
-| Free | Viết, outline, prompt, ảnh BYOK, TTS Edge cơ bản | FREE + credits |
+| Free | Viết (≤600 từ/chương, ≤2 chương, 3 lượt/ngày), outline/prompt/ảnh BYOK/TTS Edge-Piper (mỗi mục 3 lượt/ngày) | FREE + credits |
 | Trial | Quyền Trial theo ma trận, giới hạn thời gian và HWID | TRIAL |
 | Pro | Video, CapCut, ship, pipeline, multi-channel, toolbox, Flow multi-account | PRO |
+
+**Free caps (server):** `src/lib/commercial/freeLimitsPolicy.ts` + vault `data/licenses/free-usage.json` (`freeQuota.ts`). Chỉ áp khi `tier === 'free'` (enforce). **Không** đếm lượt Pro (LICENSE_ONE_PATH).
 
 `is_vip` chỉ đọc snapshot/token cũ và được chuẩn hóa thành Pro. Token mới, API và UI không phát hành tier VIP.
 

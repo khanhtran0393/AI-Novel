@@ -97,6 +97,11 @@ export const API = {
   downloadVideo: '/api/download-video',
   /** YouTube title/desc/captions → seed Setup rewrite */
   youtubeSource: '/api/youtube-source',
+  /**
+   * YouTube meta psych SEO — score ≥8.5 + rewrite rounds (server generateYoutubeMetaWithQA).
+   * Prefer over navtools.youtubeSeo for Studio Meta / post-write.
+   */
+  youtubeMeta: '/api/youtube-meta',
   isolateVocals: '/api/isolate-vocals',
   transcribe: '/api/transcribe',
   watermarkAudio: '/api/watermark-audio',

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   selectIsHydrated,
@@ -74,6 +74,8 @@ interface ContentTabProps {
   generatingPrompt: { [sceneIndex: number]: boolean };
   regeneratingSinglePrompt: Record<string, boolean>;
   onImageZoom: (url: string) => void;
+  expandedScene: number | null;
+  setExpandedScene: (val: number | null) => void;
 }
 
 /** Only this leaf re-renders on typewriter ticks. */
@@ -96,7 +98,6 @@ export default function ContentTab(props: ContentTabProps) {
   const chapterNum = useNovelStore(selectChuongDangChon);
   const hookContent = useNovelStore(selectCurrentHook);
   const editorReview = useNovelStore(selectCurrentEditorReview);
-  const setChapterHook = useNovelStore((s) => s.setChapterHook);
 
   const {
     handleSceneChange,
@@ -124,10 +125,11 @@ export default function ContentTab(props: ContentTabProps) {
     generatingPrompt,
     regeneratingSinglePrompt,
     onImageZoom,
+    expandedScene,
+    setExpandedScene,
   } = props;
 
   const HOOK = YOUTUBE_HOOK_SCENE_INDEX;
-
   useEffect(() => {
     if (!isHydrated) return;
     migrateHookAssetKeys(useNovelStore.getState());
@@ -162,7 +164,10 @@ export default function ContentTab(props: ContentTabProps) {
             sceneIndex={HOOK}
             handleSceneChange={(idx, content) => {
               if (idx === HOOK) {
-                setChapterHook(chapterNum, { hook: content });
+                // getState — avoid local setChapterHook binding (HMR dual-declare crash)
+                useNovelStore.getState().setChapterHook(chapterNum, {
+                  hook: content,
+                });
               } else {
                 handleSceneChange(idx, content);
               }
@@ -189,6 +194,8 @@ export default function ContentTab(props: ContentTabProps) {
             generatingPrompt={!!generatingPrompt[HOOK]}
             regeneratingSinglePrompt={regeneratingSinglePrompt}
             onImageZoom={onImageZoom}
+            collapsed={expandedScene !== HOOK}
+            onToggleCollapse={() => setExpandedScene(expandedScene === HOOK ? null : HOOK)}
           />
         </div>
 
@@ -224,6 +231,8 @@ export default function ContentTab(props: ContentTabProps) {
               generatingPrompt={!!generatingPrompt[idx]}
               regeneratingSinglePrompt={regeneratingSinglePrompt}
               onImageZoom={onImageZoom}
+              collapsed={expandedScene !== idx}
+              onToggleCollapse={() => setExpandedScene(expandedScene === idx ? null : idx)}
             />
           </div>
         ))}

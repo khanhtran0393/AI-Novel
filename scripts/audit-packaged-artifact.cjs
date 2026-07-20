@@ -39,10 +39,17 @@ const required = [
   'python_core/services/gemini_with_fallback.py',
   'python_core/services/local_media_tools.py',
   'python_core/services/nav_scheduler_store.py',
+  'python_core/ip_seal_loader.py',
   'python_core/services/script_analyzer.py',
+  'python_core/services/script_analyzer.py.seal',
   'python_core/services/storyboard_analyzer.py',
+  'python_core/services/storyboard_analyzer.py.seal',
   'python_core/services/veo3_utils.py',
+  'python_core/services/veo3_utils.py.seal',
   'python_core/services/youtube_analyzer_v1.py',
+  'python_core/services/youtube_analyzer_v1.py.seal',
+  'crown/bypass-formulas.seal',
+  'crown/translate-crown.seal',
   'capcut_api/LICENSE',
   'capcut_api/NOTICE.md',
   'capcut_api/capcut_provenance.json',
@@ -241,6 +248,7 @@ for (const relative of forbiddenResourcePaths) {
 }
 const approvedPythonCoreFiles = new Set([
   'ainovel_host_guard.py',
+  'ip_seal_loader.py',
   'api_nav_subtitle.py',
   'cli_bg_remove.py',
   'cli_upscale.py',
@@ -252,6 +260,9 @@ const approvedPythonCoreFiles = new Set([
   'diarize_audio.py',
   'cat_nho.py',
   'yt_goi_y.py',
+  'yt_goi_y.py.seal',
+  'bili_goi_y.py',
+  'bili_goi_y.py.seal',
   'watermark_audio.py',
   'extract_hardsub.py',
   'xu_ly_video.py',
@@ -263,15 +274,33 @@ const approvedPythonCoreFiles = new Set([
   'services/local_media_tools.py',
   'services/nav_scheduler_store.py',
   'services/script_analyzer.py',
+  'services/script_analyzer.py.seal',
+  'services/storyboard_analyzer.py',
+  'services/storyboard_analyzer.py.seal',
+  'services/veo3_utils.py',
+  'services/veo3_utils.py.seal',
+  'services/youtube_analyzer_v1.py',
+  'services/youtube_analyzer_v1.py.seal',
+  'services/youtube_analyzer.py',
+  'services/youtube_analyzer.py.seal',
+]);
+/** Crown IP modules must ship as stub + .seal (not readable plain algorithms). */
+const crownPythonModules = [
+  'services/script_analyzer.py',
   'services/storyboard_analyzer.py',
   'services/veo3_utils.py',
   'services/youtube_analyzer_v1.py',
-]);
+  'services/youtube_analyzer.py',
+  'yt_goi_y.py',
+  'bili_goi_y.py',
+];
 const pythonCoreRoot = path.join(resources, 'python_core');
 const packagedPythonCoreFiles = [];
 if (fs.existsSync(pythonCoreRoot)) {
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      // Ignore bytecode caches from accidental host Python import
+      if (entry.name === '__pycache__' || entry.name.endsWith('.pyc')) continue;
       const absolute = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(absolute);
       else packagedPythonCoreFiles.push(path.relative(pythonCoreRoot, absolute).replace(/\\/g, '/'));
@@ -284,6 +313,19 @@ assert.deepEqual(
   [],
   'Unapproved Python runtime source leaked into package',
 );
+for (const rel of crownPythonModules) {
+  const pyPath = path.join(pythonCoreRoot, rel);
+  if (!fs.existsSync(pyPath)) continue;
+  const text = fs.readFileSync(pyPath, 'utf8');
+  assert.ok(
+    text.includes('AINOVEL CROWN STUB') || text.includes('hydrate_sealed_module'),
+    `Crown Python module not sealed as stub: ${rel}`,
+  );
+  assert.ok(
+    fs.existsSync(pyPath + '.seal'),
+    `Missing crown seal for ${rel}`,
+  );
+}
 const vinaModelDir = path.join(resources, 'src', 'python_core', 'models', 'vina_voice');
 const leakedVinaWeights = fs.existsSync(vinaModelDir)
   ? fs.readdirSync(vinaModelDir).filter((name) => name.toLowerCase().endsWith('.onnx'))

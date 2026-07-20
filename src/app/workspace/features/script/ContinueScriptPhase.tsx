@@ -107,7 +107,10 @@ export default function ContinueScriptPhase({
   const busy = isWorking || isSummarizing;
 
   const handleAdjustChapters = (amount: number) => {
-    const nextVal = Math.max(1, Math.min(1000, store.setup.so_chuong + amount));
+    const free =
+      !store.is_pro && !store.is_trial && !store.is_vip;
+    const maxCh = free ? 2 : 1000;
+    const nextVal = Math.max(1, Math.min(maxCh, store.setup.so_chuong + amount));
     store.setSetup({ so_chuong: nextVal });
   };
 
@@ -678,7 +681,12 @@ export default function ContinueScriptPhase({
                       min={500}
                       max={10000}
                       step={500}
-                      value={store.setup.so_tu_chuong || 4250}
+                      value={
+                        store.setup.so_tu_chuong ||
+                        (!store.is_pro && !store.is_trial && !store.is_vip
+                          ? 600
+                          : 4250)
+                      }
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
                         if (!isNaN(val) && val > 0) store.setSetup({ so_tu_chuong: val });

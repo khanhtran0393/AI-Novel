@@ -40,6 +40,8 @@ import { getPackagedAttestationPublicStatus } from '@/lib/commercial/packagedAtt
 import { getSeatPresencePublicStatus } from '@/lib/commercial/seatPresence';
 import { getHeartbeatPublicStatus } from '@/lib/commercial/licenseHeartbeat';
 import { getLicenseOnePathPublicStatus } from '@/lib/commercial/licenseOnePath';
+import { FREE_LIMITS } from '@/lib/commercial/freeLimitsPolicy';
+import { readFreeUsageForHwid } from '@/lib/commercial/freeQuota';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -297,6 +299,17 @@ export async function GET(req: Request) {
     supabase: sb,
     features: FEATURE_MATRIX,
     pricing: PRICING_PLANS,
+    /** Free product caps + daily remaining (server vault; Pro metering still off) */
+    freeLimits: (() => {
+      const snap = readFreeUsageForHwid(hwid);
+      return {
+        ...FREE_LIMITS,
+        applies: tier === 'free',
+        day: snap.day,
+        used: snap.used,
+        remaining: snap.remaining,
+      };
+    })(),
     update: getUpdatePublicStatus(),
     ops: {
       telegramConfigured: telegramConfigured(),

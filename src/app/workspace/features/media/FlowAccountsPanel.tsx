@@ -602,10 +602,11 @@ export default function FlowAccountsPanel() {
 
     // 5s poll (was 2.5s) — getBridgeSnapshot + Chrome alive check is heavy on Windows.
     // Skip when tab hidden to avoid freezing background Electron UI.
+    // Modal open only: 12s idle poll (was 5s) — login/session still refreshed on actions
     const t = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       void refresh();
-    }, 5000);
+    }, 12_000);
     return () => clearInterval(t);
   }, [refresh]);
 

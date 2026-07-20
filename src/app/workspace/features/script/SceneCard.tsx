@@ -63,6 +63,8 @@ interface SceneCardProps {
   generatingPrompt: boolean;
   regeneratingSinglePrompt: Record<string, boolean>;
   onImageZoom: (url: string) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 type ScenePromptItem = {
@@ -98,7 +100,9 @@ function SceneCard({
   ttsStatus = '',
   generatingPrompt,
   regeneratingSinglePrompt,
-  onImageZoom
+  onImageZoom,
+  collapsed = true,
+  onToggleCollapse
 }: SceneCardProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { handleOpenFolder } = useFolderActions();
@@ -121,7 +125,6 @@ function SceneCard({
 
   const [upscalingImage, setUpscalingImage] = useState<Record<string, boolean>>({});
   const [removingBg, setRemovingBg] = useState<Record<string, boolean>>({});
-  const [collapsed, setCollapsed] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportBtnRef = React.useRef<HTMLButtonElement>(null);
 
@@ -244,7 +247,7 @@ function SceneCard({
       <div className="flex items-center justify-between gap-2 min-w-0">
         <button
           type="button"
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={() => onToggleCollapse?.()}
           className="flex flex-1 items-center gap-2 min-w-0 text-left rounded-lg px-3 py-2 bg-zinc-900/40 hover:bg-zinc-900/70 transition-colors cursor-pointer"
           style={{ borderWidth: 1, borderStyle: 'solid', borderColor: `${borderColor}66` }}
           title={collapsed ? 'Mở rộng cảnh' : 'Thu gọn chỉ còn tiêu đề'}
@@ -287,7 +290,7 @@ function SceneCard({
           )}
           <button
             type="button"
-            onClick={() => setCollapsed((v) => !v)}
+            onClick={() => onToggleCollapse?.()}
             className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer font-sans hover:opacity-90"
             style={{
               color: titleColor,

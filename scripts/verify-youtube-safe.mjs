@@ -166,6 +166,37 @@ const sum = summarizeChecklist(items);
 assert.equal(sum.fail, 0);
 assert.equal(sum.ready, true);
 
+// Meta score filter: low psych SEO must fail checklist (no soft-pass by presence only)
+const lowMetaItems = buildYoutubeChecklist({
+  hasScript: true,
+  wordOk: true,
+  sceneCount: 3,
+  minScenes: 3,
+  editorVerdict: 'accept',
+  ttsPlatform: 'gemini_tts',
+  ttsPitch: 1,
+  ttsSpeed: 0.97,
+  hasVisualDna: true,
+  hasAudio: true,
+  imageCount: 5,
+  videoCount: 2,
+  enforceEditorGate: true,
+  hasHook: true,
+  hasSeoTitle: true,
+  hasSeoDescription: true,
+  hasThumbnailPrompt: true,
+  metaScores: {
+    title: 2,
+    thumbnail: 2,
+    description: 2,
+    average: 2,
+    pass: false,
+  },
+});
+const lowSum = summarizeChecklist(lowMetaItems);
+assert.ok(lowSum.fail >= 3, 'low meta scores must fail checklist filter');
+assert.equal(lowSum.ready, false);
+
 console.log('PASS verify-youtube-safe.mjs (advanced studio)');
 console.log(
   JSON.stringify(

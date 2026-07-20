@@ -16,6 +16,8 @@ import { buildClientApiHeaders } from '../modules/apiClient';
 import { applyClientBypassProbes } from '@/lib/commercial/labyrinth/clientBypassProbe';
 
 const ENTITLEMENT_LS_KEY = 'ainovel.entitlementToken';
+/** Skip re-fetch on window focus if last sync was recent (GUI jank fix). */
+const FOCUS_SYNC_MIN_INTERVAL_MS = 45_000;
 
 type CommercialStatus = {
   ok?: boolean;
@@ -56,8 +58,17 @@ export function useEntitlementSync() {
   const setVipStatus = useNovelStore((s) => s.setVipStatus);
   const setCredits = useNovelStore((s) => s.setCredits);
   const ran = useRef(false);
+  const lastSyncAt = useRef(0);
+  const syncInFlight = useRef(false);
 
-  const sync = useCallback(async () => {
+  const sync = useCallback(async (opts?: { force?: boolean }) => {
+    const force = Boolean(opts?.force);
+    const now = Date.now();
+    if (!force && now - lastSyncAt.current < FOCUS_SYNC_MIN_INTERVAL_MS) {
+      return;
+    }
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
     try {
       const res = await fetch(API.commercialStatus, {
         method: 'GET',
@@ -66,6 +77,7 @@ export function useEntitlementSync() {
       });
       const data = (await res.json().catch(() => ({}))) as CommercialStatus;
       if (!res.ok || !data.ok) return;
+      lastSyncAt.current = Date.now();
 
       // Expanded bypass check → client shadow (UI still visible; wrong-path may run)
       const storeSnap = useNovelStore.getState();
@@ -166,17 +178,21 @@ export function useEntitlementSync() {
       if (cur > 100_000) setCredits(100);
     } catch {
       /* offline */
+    } finally {
+      syncInFlight.current = false;
     }
   }, [setVipStatus, setCredits]);
 
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;
-    void sync();
-    const onFocus = () => void sync();
+    void sync({ force: true });
+    // Focus: throttle — commercial/status is 1–3s and freezes GUI when spam
+    const onFocus = () => void sync({ force: false });
     window.addEventListener('focus', onFocus);
+    // Token changed in another tab/window → always re-sync
     const onStorage = (e: StorageEvent) => {
-      if (e.key === ENTITLEMENT_LS_KEY) void sync();
+      if (e.key === ENTITLEMENT_LS_KEY) void sync({ force: true });
     };
     window.addEventListener('storage', onStorage);
     return () => {
@@ -185,5 +201,5 @@ export function useEntitlementSync() {
     };
   }, [sync]);
 
-  return { sync };
+  return { sync: () => sync({ force: true }) };
 }

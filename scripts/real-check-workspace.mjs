@@ -46,6 +46,7 @@ const pack = y.generateYoutubeMetaWithQA({
   novelTitle: 'Tiếng Vọng Tường Cổ',
   chapter: 12,
   maxRounds: 5,
+  visualDna: 'cinematic moody lighting, desaturated film grain, tight frame',
 });
 const metaPath = path.join(outDir, 'chapter_12_youtube_meta.json');
 fs.writeFileSync(metaPath, JSON.stringify(pack, null, 2), 'utf8');

@@ -189,7 +189,16 @@ let intentionalResetUntil = 0;
 /** Debounce localStorage + durable writes — big JSON.stringify payloads freeze UI if every set() flushes. */
 let localPersistTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingLocalPersist: { name: string; value: string } | null = null;
-const LOCAL_PERSIST_DEBOUNCE_MS = 450;
+/** 1.2s coalesces typing/media bursts; was 450ms → disk thrash + GUI stutter. */
+const LOCAL_PERSIST_DEBOUNCE_MS = 1_200;
+/** Last value written to localStorage (skip identical setItem). */
+let lastLocalPersistedValue = '';
+/** Last value sent to IPC/HTTP durable (skip identical durableWrite). */
+let lastDurableSentValue = '';
+/** Periodic safety flush interval (was 20s). */
+const DURABLE_HEARTBEAT_MS = 45_000;
+/** HTTP disk backup debounce after IPC (was 500ms). */
+const HTTP_DURABLE_DEBOUNCE_MS = 1_500;
 
 function flushPendingLocalPersist(): void {
   if (localPersistTimer) {
@@ -199,8 +208,13 @@ function flushPendingLocalPersist(): void {
   const pending = pendingLocalPersist;
   pendingLocalPersist = null;
   if (!pending) return;
+  // Skip localStorage + IPC when payload unchanged (Zustand re-persist noise)
+  if (pending.value === lastLocalPersistedValue) {
+    return;
+  }
   try {
     window.localStorage.setItem(pending.name, pending.value);
+    lastLocalPersistedValue = pending.value;
   } catch (err) {
     console.warn('[NovelStore] localStorage.setItem failed:', err);
   }
@@ -214,6 +228,8 @@ function flushPendingLocalPersist(): void {
 export function allowIntentionalStoreReset(ms = 60_000): void {
   intentionalResetUntil = Date.now() + Math.max(500, ms);
   lastDiskPayload = '';
+  lastLocalPersistedValue = '';
+  lastDurableSentValue = '';
   hydrationLockedUntil = 0;
 }
 
@@ -275,6 +291,8 @@ function pickRichest(...candidates: Array<string | null | undefined>): string | 
 export function forceOverwriteAllDurables(value: string): void {
   if (typeof window === 'undefined' || !value) return;
   lastDiskPayload = value;
+  lastLocalPersistedValue = value;
+  lastDurableSentValue = value;
   hydrationLockedUntil = 0;
 
   try {
@@ -333,6 +351,11 @@ export function durableWrite(value: string, { sync = false } = {}) {
   if (!value || (!intentional && scoreStoreRaw(value) <= 0)) return;
   lastDiskPayload = value;
 
+  // Skip IPC/HTTP when identical payload already sent (unless forced sync leave/reset)
+  if (!sync && !intentional && value === lastDurableSentValue) {
+    return;
+  }
+
   const api = getPersistApi();
   if (api) {
     try {
@@ -341,6 +364,7 @@ export function durableWrite(value: string, { sync = false } = {}) {
       } else {
         void api.setStore(value);
       }
+      lastDurableSentValue = value;
     } catch {
       // fall through to HTTP
     }
@@ -358,7 +382,7 @@ export function durableWrite(value: string, { sync = false } = {}) {
       body: JSON.stringify({ name: STORE_KEY, value: payload }),
       keepalive: true,
     }).catch(() => undefined);
-  }, sync || intentional ? 0 : 500);
+  }, sync || intentional ? 0 : HTTP_DURABLE_DEBOUNCE_MS);
 }
 
 export function flushDurableNow() {
@@ -553,10 +577,17 @@ export const dualStorage: StateStorage = {
       }
       try {
         window.localStorage.setItem(name, value);
+        lastLocalPersistedValue = value;
       } catch (err) {
         console.warn('[NovelStore] localStorage.setItem failed:', err);
       }
       durableWrite(value, { sync: true });
+      return;
+    }
+
+    // Same serialized snapshot already pending/flushed → no timer churn
+    if (value === lastLocalPersistedValue && !pendingLocalPersist) {
+      lastDiskPayload = value;
       return;
     }
 
@@ -601,9 +632,10 @@ export function installDurableStoreFlushGuards() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushDurableNow();
   });
+  // Safety heartbeat only — durableWrite skips when payload unchanged
   setInterval(() => {
     if (lastDiskPayload && scoreStoreRaw(lastDiskPayload) > 0) {
       durableWrite(lastDiskPayload);
     }
-  }, 20_000);
+  }, DURABLE_HEARTBEAT_MS);
 }

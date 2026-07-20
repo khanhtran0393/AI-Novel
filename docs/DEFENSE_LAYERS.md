@@ -57,6 +57,8 @@ Skip harden: `AINOVEL_RE_HARDEN=0`.
 | Full asarmor encryption | **Deferred** — conflicts with embedded ASAR integrity hash; env `AINOVEL_ASARMOR=1` reserved |
 | Selective obfuscate of Next commercial chunks | **Not** whole `src/` — local Next still honest-barrier |
 | Python: only approved gateway set | Already enforced by `extraResources` + audit allowlist |
+| **Crown IP seal (toolbox)** | **On** — Phantom-X + Dịch SRT formulas → `resources/crown/*.seal` (AES-GCM); production build stubs so plain source not in asar; Python analyzers → `.py.seal` v2 (stdlib) at afterPack |
+| Crown commands | `npm run crown:seal` · `smoke:crown-ip` · pack via `with-crown-sealed-build.cjs` |
 
 ### Phase C — Cloud authority & IP catalog (shipped)
 

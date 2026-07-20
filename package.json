@@ -23,10 +23,14 @@
     "release:artifact:verify": "node scripts/publish-desktop-update.mjs --verify-release --dir dist",
     "release:verify": "npm run test:desktop-release && npm run release:feed:verify && npm run commercial:notices && npm run audit:release-source && npm run ship:check -- --strict && npm run prepare:publish",
     "build:capcut-runtime": "node scripts/build-capcut-runtime.cjs",
-    "build:desktop": "npm run release:verify && npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
+    "crown:seal": "node scripts/lib/crown-ip-stub.cjs seal-only",
+    "crown:stub": "node scripts/lib/crown-ip-stub.cjs apply",
+    "crown:restore": "node scripts/lib/crown-ip-stub.cjs restore",
+    "smoke:crown-ip": "node scripts/smoke-crown-ip.cjs",
+    "build:desktop": "npm run release:verify && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
     "release:publish": "node scripts/publish-desktop-update.mjs --publish --dir dist",
-    "pack:unsigned:qa": "next build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.signAndEditExecutable=false",
-    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:re-harden && npm run smoke:cloud-ip-live",
+    "pack:unsigned:qa": "node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.signAndEditExecutable=false",
+    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:cloud-ip-live",
     "test:channel-ship": "npx tsx src/scripts/verify-channel-ship.mjs",
     "test:channel-dna": "npx tsx src/scripts/verify-channel-output-dna.mjs",
     "test:integrations": "npx tsx scripts/smoke-pipeline-p0p2.mts",
@@ -64,7 +68,7 @@
     "setup:supabase": "node scripts/setup-supabase-cloud.mjs",
     "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
     "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
-    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run smoke:re-harden && npm run smoke:ip-catalog && npm run smoke:seedance-cloud && npm run verify:core",
+    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:ip-catalog && npm run smoke:seedance-cloud && npm run verify:core",
     "smoke:cloud-ip-live": "npm run smoke:seedance-cloud-live && npm run smoke:psych-cloud-live",
     "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs",
     "smoke:license-trust": "npx tsx scripts/smoke-license-trust.mts",
@@ -189,6 +193,7 @@
         "to": "python_core",
         "filter": [
           "ainovel_host_guard.py",
+          "ip_seal_loader.py",
           "api_nav_subtitle.py",
           "cli_bg_remove.py",
           "cli_upscale.py",
@@ -200,6 +205,7 @@
           "diarize_audio.py",
           "cat_nho.py",
           "yt_goi_y.py",
+          "bili_goi_y.py",
           "watermark_audio.py",
           "extract_hardsub.py",
           "xu_ly_video.py",
@@ -214,10 +220,19 @@
           "services/storyboard_analyzer.py",
           "services/veo3_utils.py",
           "services/youtube_analyzer_v1.py",
+          "services/youtube_analyzer.py",
           "!ffmpeg/**",
           "!MediaCrawler/**",
           "!assets/**",
           "!models/vina_voice/*.onnx"
+        ]
+      },
+      {
+        "from": "resources/crown",
+        "to": "crown",
+        "filter": [
+          "**/*.seal",
+          "manifest.json"
         ]
       },
       {
