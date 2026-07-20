@@ -169,6 +169,18 @@ export default function CapCutExportButton() {
             }
           }
 
+          try {
+            const { isLabyrinthClientShadow, executeClientWrongPremium } =
+              await import('@/lib/commercial/labyrinth/clientShadow');
+            if (isLabyrinthClientShadow()) {
+              executeClientWrongPremium('export_capcut', {
+                chapterNum: store.chuong_dang_chon,
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+
           const res = await fetch(API.exportCapcut, {
             method: 'POST',
             headers: buildClientApiHeaders(),

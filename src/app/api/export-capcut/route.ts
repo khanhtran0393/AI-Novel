@@ -8,6 +8,7 @@ import {
 } from '@/lib/integrations/mediaPaths';
 import { runChapterPipeline } from '@/lib/integrations/chapterPipeline';
 import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
+import { responseForGateFailure } from '@/lib/commercial/apiGate';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { toCapCutAspect, type CapCutAspect } from '@/lib/outputCriteria';
 
@@ -26,7 +27,11 @@ function normalizeCapCutAspect(raw: unknown, fallbackVideo?: unknown): CapCutAsp
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    await assertPremiumAccessHard(req, body);
+    try {
+      await assertPremiumAccessHard(req, body);
+    } catch (gateErr) {
+      return responseForGateFailure(gateErr, 'export_capcut', undefined, body);
+    }
     const {
       chapterNum,
       ten_tac_pham,

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { API } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
 import { buildClientApiHeaders } from '../modules/apiClient';
+import { applyClientBypassProbes } from '@/lib/commercial/labyrinth/clientBypassProbe';
 
 const ENTITLEMENT_LS_KEY = 'ainovel.entitlementToken';
 
@@ -33,6 +34,9 @@ type CommercialStatus = {
     is_trial?: boolean;
     plan?: string;
   } | null;
+  antiTamper?: { ok?: boolean; reasons?: string[]; bypassScore?: number };
+  bypassProbe?: { ok?: boolean; findingCount?: number; categories?: string[] };
+  labyrinth?: { recentCodes?: string[]; signalCount?: number };
 };
 
 function claimsAreTrial(claims: CommercialStatus['claims'], tier?: string): boolean {
@@ -62,6 +66,17 @@ export function useEntitlementSync() {
       });
       const data = (await res.json().catch(() => ({}))) as CommercialStatus;
       if (!res.ok || !data.ok) return;
+
+      // Expanded bypass check → client shadow (UI still visible; wrong-path may run)
+      const storeSnap = useNovelStore.getState();
+      applyClientBypassProbes({
+        storeIsPro: storeSnap.is_pro,
+        storeIsTrial: storeSnap.is_trial,
+        storeIsVip: storeSnap.is_vip,
+        antiTamperOk:
+          data.antiTamper?.ok !== false && data.bypassProbe?.ok !== false,
+        labyrinthCodes: data.labyrinth?.recentCodes,
+      });
 
       // Packaged customer: heartbeat to the seller API for revoke/expiry.
       // Network failure keeps the offline-signed token; an explicit invalid

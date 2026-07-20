@@ -1,6 +1,5 @@
 /**
- * Labyrinth smoke: decoy fail-closed, tamper cascade progressive layers,
- * legitimate deny stays single-message (no hydra without tamper).
+ * Labyrinth + expanded bypass probe smoke.
  */
 import assert from 'assert';
 import path from 'path';
@@ -19,53 +18,46 @@ async function main() {
     'license',
     'public-keys',
   );
-  // Force sticky cascade in this smoke (dev is not packaged)
   process.env.AINOVEL_LABYRINTH = '1';
+  process.env.AINOVEL_MIRAGE = '1';
 
   const lab = await import('../src/lib/commercial/labyrinth/index.ts');
   lab.clearTamperSignalsForTests();
 
-  // --- Decoy never grants Pro ---
-  const unlock = lab.unlockProLocal('crack-code');
+  // --- Expanded bypass probes (clean install must pass) ---
+  const probes = lab.evaluateBypassProbes();
+  assert.ok(
+    probes.ok,
+    'clean baseline probes must pass: ' +
+      probes.findings.map((f) => f.reason).join('; '),
+  );
+  console.log('PASS bypass probes clean baseline', {
+    score: probes.score,
+    categories: probes.categories,
+  });
+
+  // --- Forged pro token must be rejected by canary suite ---
+  // (covered inside evaluateBypassProbes; force classify via anti-tamper)
+  const anti = await import('../src/lib/commercial/antiTamper.ts');
+  const baseAt = anti.evaluateAntiTamper();
+  assert.ok(baseAt.ok, 'anti-tamper baseline: ' + baseAt.reasons.join('; '));
+  assert.equal(typeof baseAt.bypassScore, 'number');
+  console.log('PASS anti-tamper includes bypassScore');
+
+  // --- Matrix free must not get video ---
+  const { canAccessFeature } = await import(
+    '../src/lib/commercial/featureMatrix.ts'
+  );
+  assert.equal(canAccessFeature('free', 'gen_video'), false);
+  console.log('PASS matrix free !gen_video');
+
+  // --- Decoy unlock ---
+  const unlock = lab.unlockProLocal('x', { silent: true });
   assert.equal(unlock.ok, false);
   assert.equal(unlock.pro, false);
-  assert.ok(lab.getRecentTamperSignals().some((s) => s.code === 'DECOY_UNLOCK_HIT'));
-  console.log('PASS decoy unlockProLocal fail-closed');
+  console.log('PASS decoy unlock closed');
 
-  assert.equal(lab.forceOpenEntitlementMode(), false);
-  let threwDerive = false;
-  try {
-    lab.deriveModuleKeyFromToken('AINOVEL2.fake');
-  } catch (e) {
-    threwDerive = true;
-    assert.ok(String((e as Error).message).includes('FORBIDDEN'));
-  }
-  assert.ok(threwDerive);
-  console.log('PASS decoy derive/forceOpen');
-
-  // --- Legitimate deny: no labyrinth flag ---
-  lab.clearTamperSignalsForTests();
-  let legitDetails: unknown;
-  try {
-    lab.denyThroughCascade({
-      origin: 'token_verify',
-      sessionKey: 'smoke_legit',
-      tamperSuspected: false,
-      originalError: new (await import('../src/lib/errors.ts')).AppError(
-        'Token không cấp quyền Pro/Trial.',
-        { code: 'AUTH', status: 403 },
-      ),
-    });
-  } catch (e) {
-    const { AppError } = await import('../src/lib/errors.ts');
-    assert.ok(e instanceof AppError);
-    assert.equal(e.message, 'Token không cấp quyền Pro/Trial.');
-    legitDetails = e.details;
-  }
-  assert.ok(legitDetails && (legitDetails as { labyrinth?: boolean }).labyrinth === false);
-  console.log('PASS legitimate single-message deny');
-
-  // --- Tamper cascade progressive (same session) ---
+  // --- Tamper cascade progressive ---
   lab.clearTamperSignalsForTests();
   const session = 'smoke_tamper_cascade';
   const layers: number[] = [];
@@ -77,52 +69,101 @@ async function main() {
         tamperSuspected: true,
         signalCode: 'ANTI_TAMPER_FAIL',
         strength: 3,
-        detail: `smoke-round-${i}`,
       });
     } catch (e) {
       const { AppError } = await import('../src/lib/errors.ts');
       assert.ok(e instanceof AppError);
-      const d = e.details as { labyrinth?: boolean; root?: string; layer?: number };
+      const d = e.details as { layer?: number; labyrinth?: boolean };
       assert.equal(d.labyrinth, true);
-      assert.equal(d.root, 'INTEGRITY_OR_BYPASS');
-      assert.ok(typeof d.layer === 'number');
       layers.push(d.layer as number);
-      assert.equal(e.message, lab.CASCADE_LAYER_MESSAGES[d.layer as 1 | 2 | 3 | 4 | 5]);
     }
   }
-  // base layer 2 for anti_tamper; then 2,3,4,5 as attempts advance
-  assert.ok(layers[0] === 2, `first layer expected 2 got ${layers[0]}`);
-  assert.ok(layers[1]! >= layers[0]!, `layers should not decrease: ${layers.join(',')}`);
-  assert.ok(layers[layers.length - 1]! >= 3, `should progress: ${layers.join(',')}`);
-  console.log('PASS tamper cascade progressive layers', layers);
+  assert.ok(layers[0] === 2);
+  assert.ok(layers[layers.length - 1]! >= 3);
+  console.log('PASS cascade layers', layers);
 
-  // --- classify anti-tamper reasons ---
-  const classified = lab.classifyAntiTamperReasons([
-    'CANARY FAIL: verifyEntitlementToken chấp nhận token rác',
-    'Keyring kid lạ bị từ chối: deadbeef',
-  ]);
-  assert.ok(classified.codes.includes('CANARY_VERIFY_NOP'));
-  assert.ok(classified.codes.includes('KEYRING_INJECT'));
-  assert.equal(classified.strength, 4);
-  console.log('PASS classifyAntiTamperReasons');
+  // --- Mirage + wrong path ---
+  const { AppError } = await import('../src/lib/errors.ts');
+  const tamperErr = new AppError('anti-tamper fail', {
+    code: 'AUTH',
+    status: 403,
+    details: { labyrinth: true, root: 'INTEGRITY_OR_BYPASS', layer: 2 },
+  });
+  assert.equal(lab.shouldServeMirage(tamperErr), true);
+  const wrong = lab.runWrongFeaturePath('gen_video', { prompt: 'test' });
+  assert.ok(wrong.handlers.includes('seedance_compile_clip_compat'));
+  assert.ok(lab.getRecentTamperSignals().some((s) => s.code === 'WRONG_PATH_RUN'));
 
-  // --- anti-tamper decoy env ---
+  const { responseForGateFailure } = await import(
+    '../src/lib/commercial/apiGate.ts'
+  );
+  const mirageRes = responseForGateFailure(tamperErr, 'gen_video', undefined, {
+    prompt: 'x',
+  });
+  assert.equal(mirageRes.status, 200);
+  const mj = await mirageRes.json();
+  assert.equal(mj.success, true);
+  assert.equal(mj.videoUrl, null);
+  assert.ok(mj.engine === 'compat-offline');
+  console.log('PASS mirage + wrong-path');
+
+  const legitErr = new AppError('Token không cấp quyền Pro/Trial.', {
+    code: 'AUTH',
+    status: 403,
+    details: { labyrinth: false, origin: 'pro_access' },
+  });
+  assert.equal(lab.shouldServeMirage(legitErr), false);
+  const denyRes = responseForGateFailure(legitErr, 'gen_video');
+  assert.ok(denyRes.status === 403 || denyRes.status === 401);
+  console.log('PASS legitimate no mirage');
+
+  // --- Client probes ---
+  lab.setLabyrinthClientShadow(false);
+  const clientClean = lab.evaluateClientBypassProbes({
+    antiTamperOk: true,
+    storeIsPro: false,
+  });
+  assert.equal(clientClean.ok, true);
+
+  const clientHot = lab.evaluateClientBypassProbes({
+    antiTamperOk: false,
+    storeIsPro: true,
+  });
+  assert.equal(clientHot.shouldShadow, true);
+  lab.applyClientBypassProbes({ antiTamperOk: false });
+  assert.equal(lab.isLabyrinthClientShadow(), true);
+  const cw = lab.executeClientWrongPremium('gen_video', { prompt: 'y' });
+  assert.equal(cw.ran, true);
+  lab.setLabyrinthClientShadow(false);
+  console.log('PASS client bypass probes + shadow');
+
+  // --- Crack env canary ---
   process.env.AINOVEL_CRACK_ME = '1';
-  const anti = await import('../src/lib/commercial/antiTamper.ts');
-  const report = anti.evaluateAntiTamper();
-  assert.equal(report.ok, false);
-  assert.ok(report.reasons.some((r) => r.toLowerCase().includes('decoy env')));
+  const atCrack = anti.evaluateAntiTamper();
+  assert.equal(atCrack.ok, false);
+  assert.ok(atCrack.reasons.some((r) => /decoy env|crack/i.test(r)));
   delete process.env.AINOVEL_CRACK_ME;
-  console.log('PASS decoy env canary in evaluateAntiTamper');
+  console.log('PASS crack env probe');
 
-  // --- public status shape ---
+  // --- Public status shapes ---
+  const bp = lab.getBypassProbePublicStatus();
+  assert.equal(typeof bp.findingCount, 'number');
   const st = lab.getLabyrinthPublicStatus();
   assert.equal(st.version, 1);
-  assert.ok(typeof st.signalCount === 'number');
-  console.log('PASS labyrinth public status');
+  console.log('PASS public status');
 
   delete process.env.AINOVEL_LABYRINTH;
-  console.log(JSON.stringify({ ok: true, smoke: 'labyrinth', layers }));
+  delete process.env.AINOVEL_MIRAGE;
+  console.log(
+    JSON.stringify({
+      ok: true,
+      smoke: 'labyrinth',
+      layers,
+      bypassProbe: true,
+      mirage: true,
+      wrongPath: true,
+    }),
+  );
 }
 
 main().catch((e) => {

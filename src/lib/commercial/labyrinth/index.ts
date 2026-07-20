@@ -1,5 +1,5 @@
 /**
- * Labyrinth public surface — multi-layer tamper cascade + decoys.
+ * Labyrinth public surface — multi-layer tamper cascade + decoys + bypass probes.
  * Not a license issue path. See docs/LABYRINTH.md.
  */
 
@@ -34,3 +34,34 @@ export {
   detectDecoyCrackEnv,
   DECOY_CRACK_ENV_NAMES,
 } from './decoyUnlock';
+export {
+  isMirageModeEnabled,
+  shouldServeMirage,
+  buildMirageSuccessBody,
+  recordMirageServed,
+  type MirageFeatureHint,
+} from './mirage';
+export {
+  runWrongFeaturePath,
+  listWrongPathHandlers,
+  toMirageExtras,
+  type WrongPathRunResult,
+} from './wrongPath';
+export {
+  setLabyrinthClientShadow,
+  isLabyrinthClientShadow,
+  getLabyrinthClientShadowReason,
+  executeClientWrongPremium,
+} from './clientShadow';
+export {
+  evaluateBypassProbes,
+  getBypassProbePublicStatus,
+  bypassFindingsAsReasons,
+  type BypassProbeReport,
+  type BypassProbeFinding,
+} from './bypassProbe';
+export {
+  evaluateClientBypassProbes,
+  applyClientBypassProbes,
+  type ClientBypassFinding,
+} from './clientBypassProbe';

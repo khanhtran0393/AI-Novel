@@ -1,7 +1,9 @@
 /**
  * Server-side commercial gate for Next route handlers.
  * Paid features use hard dual-path stack (integrity + anti-tamper + re-verify).
- * Returns a NextResponse when access is denied; null when allowed.
+ *
+ * Tamper → wrong-path handlers + mirage HTTP 200 (no real premium work).
+ * Legitimate Free users → clear 403.
  */
 import { NextResponse } from 'next/server';
 import {
@@ -15,18 +17,41 @@ import { assertRuntimeIntegrity } from '@/lib/commercial/runtimeIntegrity';
 import { assertAntiTamper } from '@/lib/commercial/antiTamper';
 import { assertVerificationKeyringReady } from '@/lib/entitlement';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
+import {
+  buildMirageSuccessBody,
+  recordMirageServed,
+  runWrongFeaturePath,
+  shouldServeMirage,
+  type MirageFeatureHint,
+} from '@/lib/commercial/labyrinth';
 
-function denyResponse(err: unknown): NextResponse {
+/**
+ * Tamper → run wrong-path decoy handlers + cosmetic 200.
+ * Legitimate deny → 403 JSON.
+ */
+export function responseForGateFailure(
+  err: unknown,
+  featureHint: MirageFeatureHint = 'premium',
+  extraHeaders?: HeadersInit,
+  body?: unknown,
+): NextResponse {
+  if (shouldServeMirage(err)) {
+    const wrong = runWrongFeaturePath(featureHint, body);
+    recordMirageServed(String(featureHint), wrong.decoyDigest);
+    return NextResponse.json(
+      {
+        ...buildMirageSuccessBody(featureHint),
+        ...wrong.extras,
+      },
+      { status: 200, headers: extraHeaders },
+    );
+  }
   return NextResponse.json(
     { success: false, ok: false, ...toErrorJson(err) },
-    { status: httpStatusFromError(err) },
+    { status: httpStatusFromError(err), headers: extraHeaders },
   );
 }
 
-/**
- * Assert feature matrix access via hard stack.
- * null = ok; NextResponse = deny.
- */
 export async function requireFeature(
   req: Request,
   featureId: CommercialFeatureId,
@@ -36,29 +61,21 @@ export async function requireFeature(
     await assertFeatureAccessHard(req, featureId, body);
     return null;
   } catch (err) {
-    return denyResponse(err);
+    return responseForGateFailure(err, featureId, undefined, body);
   }
 }
 
-/**
- * Assert minimum plan tier.
- * Free: no hard stack. trial/pro: integrity + anti-tamper + dual-path premium when trial+.
- */
 export async function requireTier(
   req: Request,
   minTier: PlanTier,
   body?: unknown,
 ): Promise<NextResponse | null> {
   try {
-    if (minTier === 'free') {
-      return null;
-    }
+    if (minTier === 'free') return null;
     if (minTier === 'trial') {
-      // Trial+ == premium hard path (video-grade)
       await assertPremiumAccessHard(req, body);
       return null;
     }
-    // minTier pro: hard premium + explicit tier check after
     assertRuntimeIntegrity('requireTier:pro');
     assertVerificationKeyringReady();
     assertAntiTamper('requireTier:pro');
@@ -66,13 +83,10 @@ export async function requireTier(
     await assertTierAtLeast(req, 'pro', body);
     return null;
   } catch (err) {
-    return denyResponse(err);
+    return responseForGateFailure(err, 'premium', undefined, body);
   }
 }
 
-/**
- * TTS: edge_tts + piper are free; all other platforms need tts_premium (trial+).
- */
 export async function requireTtsPlatformAccess(
   req: Request,
   platform: string,
@@ -85,10 +99,6 @@ export async function requireTtsPlatformAccess(
   return requireFeature(req, 'tts_premium', body);
 }
 
-/**
- * Toolbox / Labs / CapAssistant / video tools — Pro mesh.
- * Convenience for routes that were previously ungated.
- */
 export async function requireToolboxAccess(
   req: Request,
   body?: unknown,

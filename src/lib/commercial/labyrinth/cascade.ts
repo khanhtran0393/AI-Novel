@@ -107,8 +107,27 @@ export function classifyAntiTamperReasons(reasons: string[]): {
     } else if (low.includes('crack env') || low.includes('decoy env')) {
       codes.push('DECOY_ENV_HIT');
       strength = Math.max(strength, 2) as TamperStrength;
+    } else if (low.includes('split_brain') || low.includes('split-brain') || low.includes('split_brain') || low.includes('getentitlementmode')) {
+      codes.push('SPLIT_BRAIN');
+      strength = 4;
+    } else if (low.includes('node_options') || low.includes('electron_run_as_node') || low.includes('execargv')) {
+      codes.push('NODE_INJECT');
+      strength = Math.max(strength, 3) as TamperStrength;
+    } else if (low.includes('license api host') || low.includes('license_api')) {
+      codes.push('LICENSE_HOST');
+      strength = Math.max(strength, 3) as TamperStrength;
+    } else if (low.includes('free tier') || low.includes('matrix')) {
+      codes.push('MATRIX_PATCH');
+      strength = 4;
+    } else if (low.includes('đồng hồ') || low.includes('time-tamper') || low.includes('clock')) {
+      codes.push('CLOCK_TAMPER');
+      strength = Math.max(strength, 2) as TamperStrength;
+    } else if (low.includes('unlockprolocal') || low.includes('decoy bị patch')) {
+      codes.push('DECOY_UNLOCK_HIT');
+      strength = 4;
     } else {
-      codes.push('ANTI_TAMPER_FAIL');
+      codes.push('BYPASS_PROBE');
+      strength = Math.max(strength, 2) as TamperStrength;
     }
   }
   if (codes.length === 0) codes.push('ANTI_TAMPER_FAIL');

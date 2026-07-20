@@ -102,12 +102,18 @@ export function getLabyrinthPublicStatus(): {
   sessionCount: number;
   recentCodes: TamperSignalCode[];
   stickyCascade: boolean;
+  miragePolicy: 'on' | 'off';
 } {
+  const mirageOff =
+    process.env.AINOVEL_MIRAGE === '0' ||
+    process.env.AINOVEL_MIRAGE === 'false' ||
+    process.env.AINOVEL_MIRAGE === 'off';
   return {
     version: 1,
     signalCount: signals.length,
     sessionCount: sessions.size,
     recentCodes: signals.slice(-5).map((s) => s.code),
     stickyCascade: true,
+    miragePolicy: mirageOff ? 'off' : 'on',
   };
 }

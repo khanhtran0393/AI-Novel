@@ -5,6 +5,7 @@ import { buildShipPack, type ShipPackInput } from '@/lib/shipPack';
 import type { ChannelProfile, ShipMode } from '@/lib/channelModel';
 import { normalizeChannelProfile } from '@/lib/channelModel';
 import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
+import { responseForGateFailure } from '@/lib/commercial/apiGate';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 
 type ChapterPipelinePrompts = Record<
@@ -42,7 +43,11 @@ function stripQuery(p: string): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    await assertPremiumAccessHard(req, body);
+    try {
+      await assertPremiumAccessHard(req, body);
+    } catch (gateErr) {
+      return responseForGateFailure(gateErr, 'ship_pack', undefined, body);
+    }
     const mode = (body.mode || body.defaultShipMode || 'longform') as ShipMode;
     const channelRaw = body.channel as Partial<ChannelProfile> | undefined;
     const channel = normalizeChannelProfile(channelRaw);

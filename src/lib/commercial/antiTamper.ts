@@ -11,21 +11,22 @@
  * Server/API gates + Ed25519 remain the real product boundary.
  */
 import crypto from 'crypto';
-import {
-  resolveEntitlementVerificationKeys,
-  verifyEntitlementToken,
-} from '@/lib/entitlement';
+import { resolveEntitlementVerificationKeys } from '@/lib/entitlement';
 import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
 import { AppError } from '@/lib/errors';
 import {
+  bypassFindingsAsReasons,
   classifyAntiTamperReasons,
-  detectDecoyCrackEnv,
+  evaluateBypassProbes,
+  getBypassProbePublicStatus,
   recordTamperSignal,
   touchDecoySurface,
 } from '@/lib/commercial/labyrinth';
 
 // Keep honeypot symbols in the commercial module graph (RE surface).
 touchDecoySurface();
+
+export { getBypassProbePublicStatus, evaluateBypassProbes };
 
 /**
  * Embedded keyring pins (kid = sha256(SPKI DER).slice(0,16)).
@@ -80,10 +81,14 @@ export type AntiTamperReport = {
   reasons: string[];
   keyringKids: string[];
   expectedKids: string[];
+  /** Expanded multi-signal bypass probe score (0 = clean) */
+  bypassScore: number;
+  bypassCategories: string[];
 };
 
 /**
  * Full stack check used before granting trial/pro features.
+ * Keyring pins + expanded bypassProbe suite (canary multi-token, matrix, host, inject…).
  */
 export function evaluateAntiTamper(): AntiTamperReport {
   const reasons: string[] = [];
@@ -128,58 +133,10 @@ export function evaluateAntiTamper(): AntiTamperReport {
     }
   }
 
-  if (packaged) {
-    // MODE open / owner escape must never work on customer builds
-    const mode = (process.env.AINOVEL_ENTITLEMENT_MODE || '').toLowerCase();
-    if (mode === 'open') {
-      reasons.push('Packaged không được MODE=open (anti-tamper)');
-    }
-    const owner = (process.env.AINOVEL_OWNER_UNLIMITED || '')
-      .trim()
-      .toLowerCase();
-    if (owner === '1' || owner === 'true' || owner === 'yes') {
-      reasons.push('Packaged không được OWNER_UNLIMITED');
-    }
-    // Host-binding open on packaged = toolbox standalone escape
-    const hostMode = (process.env.AINOVEL_HOST_BINDING || '').toLowerCase();
-    if (
-      hostMode === 'open' ||
-      hostMode === 'off' ||
-      hostMode === '0' ||
-      hostMode === 'false'
-    ) {
-      reasons.push('Packaged không được AINOVEL_HOST_BINDING=open');
-    }
-    // Seller private material must not exist on customer machine process
-    if (
-      (process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY || '').trim() ||
-      (process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE || '').trim() ||
-      (process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY || '').trim() ||
-      (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
-    ) {
-      reasons.push(
-        'Phát hiện secret seller trên process packaged — từ chối (leak/tamper)',
-      );
-    }
-  }
-
-  // Canary: verify must reject garbage (detect nop-patched verify returning always-ok)
-  try {
-    const bogus = verifyEntitlementToken(
-      'AINOVEL2.deadbeefdeadbeef.e30.AAAA',
-      { requireHwidMatch: false },
-    );
-    if (bogus && (bogus.is_pro || bogus.is_trial || bogus.is_vip)) {
-      reasons.push('CANARY FAIL: verifyEntitlementToken chấp nhận token rác');
-    }
-  } catch {
-    // throw is ok for garbage
-  }
-
-  // Decoy crack env canaries (honeypot switches — never used by real product paths)
-  const decoyEnv = detectDecoyCrackEnv();
-  if (decoyEnv) {
-    reasons.push(`Decoy env hit: ${decoyEnv} (crack env canary)`);
+  // Expanded multi-signal bypass detection (canaries, matrix, inject, host, clock…)
+  const probes = evaluateBypassProbes();
+  for (const r of bypassFindingsAsReasons(probes)) {
+    if (!reasons.includes(r)) reasons.push(r);
   }
 
   return {
@@ -188,6 +145,8 @@ export function evaluateAntiTamper(): AntiTamperReport {
     reasons,
     keyringKids,
     expectedKids,
+    bypassScore: probes.score,
+    bypassCategories: probes.categories,
   };
 }
 
@@ -230,14 +189,21 @@ export function getAntiTamperPublicStatus(): {
   keyringKids: string[];
   pinCount: number;
   reasons: string[];
+  bypassScore: number;
+  bypassCategories: string[];
+  bypass: ReturnType<typeof getBypassProbePublicStatus>;
 } {
   const r = evaluateAntiTamper();
+  const bypass = getBypassProbePublicStatus();
   return {
     ok: r.ok,
     packaged: r.packaged,
     keyringKids: r.keyringKids,
     pinCount: kidPins().size,
     // Don't leak full internal paths; short reasons ok for seller diagnostics
-    reasons: r.reasons.slice(0, 5),
+    reasons: r.reasons.slice(0, 8),
+    bypassScore: r.bypassScore,
+    bypassCategories: r.bypassCategories.slice(0, 12),
+    bypass,
   };
 }

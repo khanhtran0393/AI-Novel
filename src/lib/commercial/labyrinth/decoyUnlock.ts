@@ -25,16 +25,21 @@ export function isDecoySurfaceTouched(): boolean {
  * Honeypot: "local Pro unlock". Always fails closed + records DECOY_UNLOCK_HIT.
  * If patched to return true, real mesh (proGateHard / cloud crown) still denies.
  */
-export function unlockProLocal(_code?: string): {
+export function unlockProLocal(
+  _code?: string,
+  opts?: { /** Probe path: do not record DECOY_UNLOCK_HIT */ silent?: boolean },
+): {
   ok: false;
   pro: false;
   error: string;
 } {
-  recordTamperSignal({
-    code: 'DECOY_UNLOCK_HIT',
-    strength: 2,
-    detail: 'unlockProLocal',
-  });
+  if (!opts?.silent) {
+    recordTamperSignal({
+      code: 'DECOY_UNLOCK_HIT',
+      strength: 2,
+      detail: 'unlockProLocal',
+    });
+  }
   return {
     ok: false,
     pro: false,

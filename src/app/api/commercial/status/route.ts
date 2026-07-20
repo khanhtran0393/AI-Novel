@@ -32,7 +32,10 @@ import {
 } from '@/lib/cloud/licenseBridge';
 import { getLicenseTrustStatus } from '@/lib/commercial/licenseTrust';
 import { getAntiTamperPublicStatus } from '@/lib/commercial/antiTamper';
-import { getLabyrinthPublicStatus } from '@/lib/commercial/labyrinth';
+import {
+  getBypassProbePublicStatus,
+  getLabyrinthPublicStatus,
+} from '@/lib/commercial/labyrinth';
 import { getPackagedAttestationPublicStatus } from '@/lib/commercial/packagedAttestation';
 import { getSeatPresencePublicStatus } from '@/lib/commercial/seatPresence';
 import { getHeartbeatPublicStatus } from '@/lib/commercial/licenseHeartbeat';
@@ -226,6 +229,7 @@ export async function GET(req: Request) {
   const licenseTrust = getLicenseTrustStatus();
   const antiTamper = getAntiTamperPublicStatus();
   const labyrinth = getLabyrinthPublicStatus();
+  const bypassProbe = getBypassProbePublicStatus();
   const heartbeat = getHeartbeatPublicStatus();
   const packagedAttestation = getPackagedAttestationPublicStatus();
   const seatPresence = getSeatPresencePublicStatus();
@@ -237,6 +241,8 @@ export async function GET(req: Request) {
     entitlement: pub,
     licenseTrust,
     antiTamper,
+    /** Expanded multi-signal bypass detection — docs/LABYRINTH.md */
+    bypassProbe,
     /** Multi-layer tamper cascade status (no secrets) — docs/LABYRINTH.md */
     labyrinth,
     packagedAttestation,

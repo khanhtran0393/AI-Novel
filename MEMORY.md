@@ -1,13 +1,14 @@
 # Project memory (AI Novel)
 
-## Labyrinth multi-layer cascade (2026-07-20)
+## Labyrinth + expanded bypass probe (2026-07-20)
 
-- **Code:** `src/lib/commercial/labyrinth/*` (signals, cascade, decoy)
-- **Wire:** `antiTamper` (decoy env + signal), `proGateHard` (denyThroughCascade), status `labyrinth`
-- **Policy:** one root `INTEGRITY_OR_BYPASS`; progressive T1–T5 only when tamper; legitimate = single message
-- **Kill-switch:** `AINOVEL_LABYRINTH=0`; force sticky: `=1`
-- **Docs:** `docs/LABYRINTH.md` · smoke `npm run smoke:labyrinth`
-- **Cấm:** UI dùng decoy unlock; soft-success media; hydra cho user Pro sạch
+- **Bypass probe:** `labyrinth/bypassProbe.ts` — multi canary, matrix free≠video, NODE inject, license host, clock, decoy, packaged policy
+- **Client probe:** `clientBypassProbe.ts` + `useEntitlementSync` → shadow (UI không khóa)
+- **Mirage + wrong-path:** `apiGate` / video / CapCut / ship; signals `MIRAGE_SERVED` / `WRONG_PATH_RUN`
+- **Status:** `bypassProbe` + `antiTamper.bypassScore` · docs `LABYRINTH.md`
+- **Smoke:** `npm run smoke:labyrinth` in `smoke:commercial` PASS (clean probes + mirage + wrong-path + client shadow)
+- **UI:** video/CapCut/ship use `executeClientWrongPremium` when client shadow; UI not locked
+- **Cấm:** mirage user sạch; media file thật khi mirage (B10)
 
 ## License One-Path complete (2026-07-20)
 

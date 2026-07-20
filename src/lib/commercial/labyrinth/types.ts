@@ -30,7 +30,15 @@ export type TamperSignalCode =
   | 'DECOY_UNLOCK_HIT'
   | 'DECOY_ENV_HIT'
   | 'CASCADE_DENY'
-  | 'ANTI_TAMPER_FAIL';
+  | 'ANTI_TAMPER_FAIL'
+  | 'MIRAGE_SERVED'
+  | 'WRONG_PATH_RUN'
+  | 'BYPASS_PROBE'
+  | 'NODE_INJECT'
+  | 'LICENSE_HOST'
+  | 'MATRIX_PATCH'
+  | 'CLOCK_TAMPER'
+  | 'CLIENT_BYPASS';
 
 export type FailOrigin =
   | 'integrity'

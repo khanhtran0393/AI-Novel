@@ -232,6 +232,16 @@ export default function ShipPackModal({ isOpen, onClose }: ShipPackModalProps) {
         }
       }
 
+      try {
+        const { isLabyrinthClientShadow, executeClientWrongPremium } =
+          await import('@/lib/commercial/labyrinth/clientShadow');
+        if (isLabyrinthClientShadow()) {
+          executeClientWrongPremium('ship_pack', { mode, channel: live });
+        }
+      } catch {
+        /* ignore */
+      }
+
       const res = await fetch(API.shipPack, {
         method: 'POST',
         headers: buildClientApiHeaders(),

@@ -287,6 +287,18 @@ export async function generateVideoAction(
     videoApiKey: routeKey,
   };
 
+  // Bypass shadow: UI path still runs; wrong local helpers first (no real compile).
+  try {
+    const { isLabyrinthClientShadow, executeClientWrongPremium } = await import(
+      '@/lib/commercial/labyrinth/clientShadow'
+    );
+    if (isLabyrinthClientShadow()) {
+      executeClientWrongPremium('gen_video', baseParams);
+    }
+  } catch {
+    /* ignore */
+  }
+
   // Provider/model are explicit; multi-key rotation stays inside API.
   return await postVideoGeneration(baseParams);
 }

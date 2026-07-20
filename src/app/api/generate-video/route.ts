@@ -8,6 +8,7 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { localVideoFilename } from '@/contracts';
 import { BrowserAgent } from '@/lib/agents/BrowserAgent';
 import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
+import { responseForGateFailure } from '@/lib/commercial/apiGate';
 import { probeVisualArtifact } from '@/lib/mediaArtifactValidation';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
@@ -204,10 +205,12 @@ export async function POST(req: Request) {
     try {
       await assertPremiumAccessHard(req, body);
     } catch (err) {
-      return NextResponse.json(toErrorJson(err, correlationId), {
-        status: httpStatusFromError(err),
-        headers: { 'x-correlation-id': correlationId },
-      });
+      return responseForGateFailure(
+        err,
+        'gen_video',
+        { 'x-correlation-id': correlationId },
+        body,
+      );
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { chapterNum, sceneIndex, promptIndex, prompt, drivePath, duration, model, startImage, endImage } = body;
