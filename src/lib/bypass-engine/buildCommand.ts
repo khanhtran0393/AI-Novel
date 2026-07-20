@@ -28,6 +28,7 @@ import {
   OVERLAY_FILTER,
   resolveActiveFilters,
   type BypassFilterId,
+  type BypassGraphBuild,
   type BypassParams,
   type BypassProbeMeta,
   type BypassVarianceOpts,
@@ -64,6 +65,19 @@ export type BypassEngineRequest = {
    *   scale mid (~1280) → same Ultimate/Grid → scale back + ultrafast / NVENC p6.
    */
   turbo?: boolean;
+  /**
+   * Precompiled crown graph (cloud or local bridge).
+   * When set, skips local formula compile — client only probes + encodes.
+   */
+  precompiled?: {
+    graph: BypassGraphBuild;
+    fcParts: string[];
+    vMap: string | null;
+    aMap: string | null;
+    activeLabels: string[];
+    needsReencode: boolean;
+    source?: string;
+  };
 };
 
 export type BypassEngineBuilt = {
@@ -253,7 +267,20 @@ export function buildBypassEngineCommand(req: BypassEngineRequest): BypassEngine
   }
 
   const meta = probeBypassInput(inputPath);
-  const graph = buildBypassGraph(expanded, meta, variance);
+
+  // Crown formula: precompiled (cloud/local bridge) or local filters
+  let graph: BypassGraphBuild;
+  let fcParts: string[] = [];
+  let vMap: string | null = null;
+  let aMap: string | null = null;
+  if (req.precompiled) {
+    graph = req.precompiled.graph;
+    fcParts = [...(req.precompiled.fcParts || [])];
+    vMap = req.precompiled.vMap;
+    aMap = req.precompiled.aMap;
+  } else {
+    graph = buildBypassGraph(expanded, meta, variance);
+  }
 
   // Grid alone still re-layouts the master frame → needs encode
   if (!graph.needsReencode && !useOverlay && !useGrid) {
@@ -303,33 +330,41 @@ export function buildBypassEngineCommand(req: BypassEngineRequest): BypassEngine
 
   // ── Stage 2–3: filter_complex ──────────────────────────────────────────
   // Turbo: scale mid → Ultimate/Grid graph → scale back (inside buildGridVideoFilterParts)
-  const fcParts: string[] = [];
-  let vMap: string | null = null;
-  let aMap: string | null = null;
-
   const hasVideoPixelFx = graph.hasVideoFx;
   const needsVideoGraph = hasVideoPixelFx || useOverlay || useGrid;
   const hasAudioFx = graph.hasAudioFx;
 
-  if (needsVideoGraph) {
-    // Unified path via buildGridVideoFilterParts (none | 1x2 | 2x1 | 2x2) + turbo
-    if (useGrid || hasVideoPixelFx) {
-      const grid = buildGridVideoFilterParts(expanded, meta, useGrid ? gridLayout : 'none', graph.params, {
-        turbo,
-      });
-      if (grid.usesFilterComplex && grid.parts.length > 0) {
-        fcParts.push(...grid.parts);
-        if (useOverlay) {
-          const last = fcParts[fcParts.length - 1];
-          if (last.endsWith('[v_out]')) {
-            fcParts[fcParts.length - 1] = last.replace(/\[v_out\]$/, '[v_pre_overlay]');
-            fcParts.push(`[v_pre_overlay][1:v]${OVERLAY_FILTER}[v_out]`);
+  if (!req.precompiled) {
+    if (needsVideoGraph) {
+      // Unified path via buildGridVideoFilterParts (none | 1x2 | 2x1 | 2x2) + turbo
+      if (useGrid || hasVideoPixelFx) {
+        const grid = buildGridVideoFilterParts(
+          expanded,
+          meta,
+          useGrid ? gridLayout : 'none',
+          graph.params,
+          { turbo },
+        );
+        if (grid.usesFilterComplex && grid.parts.length > 0) {
+          fcParts.push(...grid.parts);
+          if (useOverlay) {
+            const last = fcParts[fcParts.length - 1];
+            if (last.endsWith('[v_out]')) {
+              fcParts[fcParts.length - 1] = last.replace(/\[v_out\]$/, '[v_pre_overlay]');
+              fcParts.push(`[v_pre_overlay][1:v]${OVERLAY_FILTER}[v_out]`);
+            } else {
+              fcParts.push(`[${grid.outLabel}][1:v]${OVERLAY_FILTER}[v_out]`);
+            }
+            vMap = '[v_out]';
           } else {
-            fcParts.push(`[${grid.outLabel}][1:v]${OVERLAY_FILTER}[v_out]`);
+            vMap = `[${grid.outLabel}]`;
           }
+        } else if (useOverlay) {
+          fcParts.push(
+            `[0:v]scale=${graph.outW}:${graph.outH}:flags=bicubic[v_filtered]`,
+          );
+          fcParts.push(`[v_filtered][1:v]${OVERLAY_FILTER}[v_out]`);
           vMap = '[v_out]';
-        } else {
-          vMap = `[${grid.outLabel}]`;
         }
       } else if (useOverlay) {
         fcParts.push(
@@ -338,20 +373,14 @@ export function buildBypassEngineCommand(req: BypassEngineRequest): BypassEngine
         fcParts.push(`[v_filtered][1:v]${OVERLAY_FILTER}[v_out]`);
         vMap = '[v_out]';
       }
-    } else if (useOverlay) {
-      fcParts.push(
-        `[0:v]scale=${graph.outW}:${graph.outH}:flags=bicubic[v_filtered]`,
-      );
-      fcParts.push(`[v_filtered][1:v]${OVERLAY_FILTER}[v_out]`);
-      vMap = '[v_out]';
     }
-  }
 
-  if (hasAudioFx && graph.audioChain) {
-    // Stage 3 — Stealth Audio Bypass (4-layer spectral + heavy stealth weapons)
-    const audio = buildAudioMaskComplexParts(graph.params);
-    fcParts.push(...audio.parts);
-    aMap = `[${audio.outLabel}]`;
+    if (hasAudioFx && graph.audioChain) {
+      // Stage 3 — Stealth Audio Bypass (4-layer spectral + heavy stealth weapons)
+      const audio = buildAudioMaskComplexParts(graph.params);
+      fcParts.push(...audio.parts);
+      aMap = `[${audio.outLabel}]`;
+    }
   }
 
   if (fcParts.length > 0) {

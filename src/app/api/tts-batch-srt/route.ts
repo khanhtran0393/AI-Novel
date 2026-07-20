@@ -23,6 +23,7 @@ import {
   slog,
 } from '@/lib/requestContext';
 import { requireFeature } from '@/lib/commercial/apiGate';
+import { extractEntitlementToken } from '@/lib/entitlement';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,12 +89,14 @@ export async function POST(req: Request) {
             ? Number(body.chunkSize)
             : undefined;
       void warmupGoogleStudio(apiKeys);
+      const entitlementToken = extractEntitlementToken(req, body);
       const srt = await translateSrtViaGoogleStudio({
         srtText: rawText,
         apiKeys,
         targetLang,
         ruleId,
         chunkSize,
+        entitlementToken,
       });
       const cues = parseSrt(srt);
       slog({
@@ -166,6 +169,7 @@ export async function POST(req: Request) {
     const wantStream =
       body.stream === true ||
       (req.headers.get('accept') || '').includes('application/x-ndjson');
+    const entitlementToken = extractEntitlementToken(req, body);
 
     let srtText = '';
     let subKind: string = 'empty';
@@ -238,6 +242,7 @@ export async function POST(req: Request) {
               padToCueEnd,
               fitToCue,
               ruleId,
+              entitlementToken,
               pipelineMode,
               sttProvider,
               injectCapCutDraft: false,
@@ -272,6 +277,7 @@ export async function POST(req: Request) {
               padToCueEnd,
               fitToCue,
               ruleId,
+              entitlementToken,
               pipelineMode,
               sttProvider,
               injectCapCutDraft,

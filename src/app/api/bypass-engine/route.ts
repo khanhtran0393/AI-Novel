@@ -3,12 +3,13 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import {
   buildBypassEngineCommand,
+  probeBypassInput,
   type BypassFilterId,
 } from '@/lib/bypass-engine';
-import {
-  BYPASS_FILTER_CATALOG,
-} from '@/lib/bypass-engine/publicCatalog';
+import { BYPASS_FILTER_CATALOG } from '@/lib/bypass-engine/publicCatalog';
 import { requireToolboxAccess } from '@/lib/commercial/apiGate';
+import { resolveBypassCompile } from '@/lib/commercial/ip/bypassCloudBridge';
+import { extractEntitlementToken } from '@/lib/entitlement';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -151,6 +152,32 @@ export async function POST(req: Request) {
       );
     }
 
+    // Crown graph: packaged → cloud compile; FFmpeg still local
+    const token = extractEntitlementToken(req, body);
+    const meta = probeBypassInput(inputPath);
+    const varianceOpts = {
+      enabled: Boolean(
+        (variance as { enabled?: boolean })?.enabled ??
+          (variance as { randomize?: boolean })?.randomize,
+      ),
+      percent: Number(
+        (variance as { percent?: number })?.percent ??
+          (variance as { randomPercent?: number })?.randomPercent ??
+          0,
+      ),
+    };
+    const precompiled = await resolveBypassCompile(
+      {
+        filters,
+        meta,
+        gridLayout: gridLayout as string | undefined,
+        variance: varianceOpts,
+        turbo,
+        useOverlay: Boolean(overlayPath && fs.existsSync(overlayPath)),
+      },
+      { entitlementToken: token },
+    );
+
     const built = buildBypassEngineCommand({
       inputPath,
       outputPath,
@@ -161,6 +188,7 @@ export async function POST(req: Request) {
       gridLayout,
       variance,
       turbo,
+      precompiled,
     });
 
     const encoder = new TextEncoder();

@@ -123,21 +123,21 @@ export const IP_CATALOG: IpCatalogEntry[] = [
     id: 'phantom_x_bypass',
     title: 'Phantom-X Bypass formulas (FFmpeg graph)',
     localPathHint:
-      'src/lib/bypass-engine/* + resources/crown/bypass-formulas.seal',
-    cloudStatus: 'local_ok',
+      'src/lib/bypass-engine/* + bypassCloudBridge + /api/cloud/ip/bypass',
+    cloudStatus: 'cloud_authority',
     features: ['toolbox_labs'],
     notes:
-      'Crown seal AES-GCM at pack; production Next build uses stubs so plain formula source is not in app.asar. Runtime loads resources/crown/*.seal',
+      'Packaged: compile_graph on cloud (pinned). Client probes + FFmpeg encode local. Dev: local formulas/seal. Kill: AINOVEL_BYPASS_CLOUD=0',
   },
   {
     id: 'tts_batch_srt_translate',
     title: 'Tool Dịch SRT rules + Cap Gemini prompt kernel',
     localPathHint:
-      'src/lib/ttsBatchSrt/translateRules.ts + translatePromptCrown.ts + resources/crown/translate-crown.seal',
-    cloudStatus: 'local_ok',
-    features: ['toolbox_labs'],
+      'translateCloudBridge + /api/cloud/ip/translate + translatePromptCrown',
+    cloudStatus: 'cloud_authority',
+    features: ['toolbox_labs', 'tts_premium'],
     notes:
-      'Crown seal at pack; stubs for sealed production build; orchestration stays local',
+      'Packaged: build_prompt on cloud. Gemini BYOK on desktop. Kill: AINOVEL_TRANSLATE_CLOUD=0',
   },
   {
     id: 'python_analyzers',

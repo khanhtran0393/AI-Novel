@@ -49,7 +49,7 @@
     "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
     "test:e2e:ui": "playwright test --project=ui",
     "test:e2e:api": "playwright test --project=api-and-contracts",
-    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-license-one-path.mts",
+    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-toolbox-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts",
     "smoke:credential-vault": "node scripts/run-electron-smoke.cjs scripts/smoke-credential-vault.cjs",
     "smoke:capcut-live": "npx tsx scripts/smoke-capcut-live.mts",
     "license:issue": "node scripts/issue-license.mjs",
@@ -83,6 +83,7 @@
     "smoke:seedance-cloud-live": "npx tsx scripts/smoke-seedance-cloud-live.mts",
     "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts",
     "smoke:nav-analyzer-cloud": "npx tsx scripts/smoke-nav-analyzer-cloud.mts",
+    "smoke:toolbox-cloud-ip": "npx tsx scripts/smoke-toolbox-cloud-ip.mts",
     "compile:python-gateway": "node scripts/compile-python-gateway.cjs"
   },
   "build": {
@@ -295,6 +296,15 @@
           "public.env"
         ]
       },
+      {
+        "from": "resources/python-runtime",
+        "to": "python-runtime",
+        "filter": [
+          "**/*",
+          "!README.md"
+        ]
+      },
+
       {
         "from": "docs",
         "to": "legal",

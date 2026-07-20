@@ -244,6 +244,14 @@
 - Smoke: `npm run smoke:nav-analyzer-cloud` · `npm run compile:python-gateway`
 - Env: `AINOVEL_NAV_ANALYZER_CLOUD=0|1`
 
+## Full toolbox cloud IP stack — 2026-07-21
+
+- **Bypass:** `bypassCloudBridge` + `/api/cloud/ip/bypass` (`compile_graph`); route wires precompiled → local FFmpeg. `AINOVEL_BYPASS_CLOUD`
+- **Translate SRT:** `translateCloudBridge` + `/api/cloud/ip/translate` (`build_prompt`); tts-batch-srt passes token. `AINOVEL_TRANSLATE_CLOUD`
+- **Strict online:** `toolbox_labs` already in STRICT_ONLINE_FEATURES (~6h)
+- **Portable Python:** `resolvePythonExe` prefers `resources/python-runtime/python.exe`; README in that folder
+- Smoke: `npm run smoke:toolbox-cloud-ip`
+
 ## Tool Dịch SRT (toolbox) — Cap Gemini method (no DeepSeek)
 
 - **Method Cap:** parse SRT → chỉ text → batch **50** cue → neo ` || ` → Gemini REST → unbatch → gắn lại timestamp. Lệch count → tách đôi lô retry.

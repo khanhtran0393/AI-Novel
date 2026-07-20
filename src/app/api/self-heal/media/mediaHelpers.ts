@@ -6,30 +6,62 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 
 /**
- * Tìm kiếm thông minh python.exe trên Windows
+ * Prefer portable/embedded Python (fixed version for Nuitka .pyd),
+ * then venv / Windows installs / PATH.
+ *
+ * Drop embed at: resources/python-runtime/python.exe (Electron extraResources).
  */
 export function resolvePythonExe(): string {
+  const envOverride =
+    process.env.AINOVEL_PYTHON_EXE ||
+    process.env.OMNIVOICE_PYTHON ||
+    process.env.PYTHON_PATH ||
+    process.env.PYTHON;
+  if (envOverride && fs.existsSync(envOverride)) return envOverride;
+
+  const resourcesPath =
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath || '';
+  const cwd = process.cwd();
+
+  const portableCandidates = [
+    resourcesPath
+      ? path.join(resourcesPath, 'python-runtime', 'python.exe')
+      : '',
+    resourcesPath ? path.join(resourcesPath, 'python', 'python.exe') : '',
+    path.join(cwd, 'resources', 'python-runtime', 'python.exe'),
+    path.join(cwd, 'python-runtime', 'python.exe'),
+    path.join(cwd, 'python_core', 'runtime', 'python.exe'),
+    path.join(cwd, 'vendor', 'python', 'python.exe'),
+  ].filter(Boolean);
+
+  for (const c of portableCandidates) {
+    if (fs.existsSync(c)) return c;
+  }
+
   const customPath = 'D:\\SuperAudioTools\\omnivoice-python\\python.exe';
   if (fs.existsSync(customPath)) return customPath;
 
-  // Dò tìm trong venv cục bộ nếu có
-  const venvPath = path.join(process.cwd(), '.venv', 'Scripts', 'python.exe');
+  const venvPath = path.join(cwd, '.venv', 'Scripts', 'python.exe');
   if (fs.existsSync(venvPath)) return venvPath;
 
   const localAppData = process.env.LOCALAPPDATA || '';
   const userProfile = process.env.USERPROFILE || '';
 
   const candidates = [
-    'python', // PATH executable name
-    path.join(localAppData, 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(localAppData, 'Programs', 'Python', 'Python314', 'python.exe'),
+    path.join(localAppData, 'Programs', 'Python', 'Python313', 'python.exe'),
     path.join(localAppData, 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(localAppData, 'Programs', 'Python', 'Python311', 'python.exe'),
     path.join(localAppData, 'Programs', 'Python', 'Python310', 'python.exe'),
-    path.join(userProfile, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(userProfile, 'AppData', 'Local', 'Programs', 'Python', 'Python314', 'python.exe'),
     path.join(userProfile, 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(userProfile, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
+    'C:\\Python314\\python.exe',
+    'C:\\Python312\\python.exe',
+    'C:\\Python311\\python.exe',
   ];
 
   for (const c of candidates) {
-    if (c === 'python') continue; // Sẽ test sau cùng
     if (fs.existsSync(c)) return c;
   }
 

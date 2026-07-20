@@ -59,8 +59,12 @@ Skip harden: `AINOVEL_RE_HARDEN=0`.
 | Python: only approved gateway set | Already enforced by `extraResources` + audit allowlist |
 | **Crown IP seal (toolbox)** | **On** — Phantom-X + Dịch SRT formulas → `resources/crown/*.seal` (AES-GCM); production build stubs so plain source not in asar; Python analyzers → `.py.seal` v2 (stdlib) at afterPack |
 | **NAV analyzer cloud IP** | **On** — script2prompt + storyboard → `/api/cloud/ip/nav-analyzer` when packaged (BYOK Gemini keys); youtube_analyze stays local sealed (media) |
+| **Bypass cloud IP** | **On** — filter graph `compile_graph` → `/api/cloud/ip/bypass`; FFmpeg still local. Kill: `AINOVEL_BYPASS_CLOUD=0` |
+| **Translate cloud IP** | **On** — Dịch SRT `build_prompt` → `/api/cloud/ip/translate`. Kill: `AINOVEL_TRANSLATE_CLOUD=0` |
+| **Strict online toolbox** | **On** — `toolbox_labs` in STRICT_ONLINE (grace ~6h packaged) |
+| **Portable Python** | **Optional** — drop embed at `resources/python-runtime/`; `resolvePythonExe` prefers it for Nuitka .pyd match |
 | **Gateway compile** | **On (best-effort)** — afterPack Cython/Nuitka/pyc for `host_binding` + `ainovel_host_guard` |
-| Crown commands | `npm run crown:seal` · `smoke:crown-ip` · `smoke:nav-analyzer-cloud` · pack via `with-crown-sealed-build.cjs` |
+| Crown commands | `npm run crown:seal` · `smoke:crown-ip` · `smoke:nav-analyzer-cloud` · `smoke:toolbox-cloud-ip` · pack via `with-crown-sealed-build.cjs` |
 
 ### Phase C — Cloud authority & IP catalog (shipped)
 

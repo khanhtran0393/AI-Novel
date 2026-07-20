@@ -19,13 +19,12 @@ import {
 import {
   clampTranslateChunk,
   DEFAULT_TRANSLATE_CHUNK,
-  resolveTranslateRuleDescription,
 } from './translateRules';
 import {
   TRANSLATE_ANCHOR,
-  buildTranslateBatchPrompt,
   translateSoftSplitPatternSource,
 } from './translatePromptCrown';
+import { resolveTranslateBatchPrompt } from '@/lib/commercial/ip/translateCloudBridge';
 
 const ANCHOR = TRANSLATE_ANCHOR;
 /**
@@ -41,6 +40,8 @@ export type StudioTranslateOpts = {
   ruleId?: string;
   /** Cap "chia" — số dòng/cue mỗi batch (default 50) */
   chunkSize?: number;
+  /** License token for packaged cloud crown prompt */
+  entitlementToken?: string | null;
   onProgress?: (label: string, percent?: number) => void;
 };
 
@@ -98,19 +99,20 @@ function splitOnAnchor(raw: string, expected: number): string[] | null {
 
 /**
  * One Cap-style || batch call to Gemini.
+ * Prompt kernel: cloud when packaged (crown), else local.
  */
 async function translateBatchTextsOnce(
   texts: string[],
   apiKeys: string[],
   langName: string,
-  ruleDesc: string,
+  ruleId: string | undefined,
+  entitlementToken?: string | null,
 ): Promise<string[]> {
-  const prompt = buildTranslateBatchPrompt({
-    langName,
-    ruleDesc,
-    texts,
-    anchor: ANCHOR,
-  });
+  const built = await resolveTranslateBatchPrompt(
+    { langName, ruleId, texts, anchor: ANCHOR },
+    { entitlementToken },
+  );
+  const prompt = built.prompt;
 
   // ~50 câu: 8k–16k đủ; scale nhẹ theo batch
   const maxOut = Math.min(32768, Math.max(8192, Math.ceil(texts.length * 100)));
@@ -138,10 +140,17 @@ async function translateBatchTexts(
   texts: string[],
   apiKeys: string[],
   langName: string,
-  ruleDesc: string,
+  ruleId: string | undefined,
+  entitlementToken?: string | null,
 ): Promise<string[]> {
   try {
-    return await translateBatchTextsOnce(texts, apiKeys, langName, ruleDesc);
+    return await translateBatchTextsOnce(
+      texts,
+      apiKeys,
+      langName,
+      ruleId,
+      entitlementToken,
+    );
   } catch (e) {
     if (texts.length <= 8) throw e;
     const mid = Math.ceil(texts.length / 2);
@@ -149,13 +158,15 @@ async function translateBatchTexts(
       texts.slice(0, mid),
       apiKeys,
       langName,
-      ruleDesc,
+      ruleId,
+      entitlementToken,
     );
     const right = await translateBatchTexts(
       texts.slice(mid),
       apiKeys,
       langName,
-      ruleDesc,
+      ruleId,
+      entitlementToken,
     );
     return [...left, ...right];
   }
@@ -177,7 +188,6 @@ export async function translateSrtViaGoogleStudio(
 
   const cues = parseSrt(opts.srtText);
   const langName = studioLangLabel(opts.targetLang);
-  const ruleDesc = resolveTranslateRuleDescription(opts.ruleId);
   const batchSize = clampTranslateChunk(
     opts.chunkSize ?? DEFAULT_TRANSLATE_CHUNK,
   );
@@ -193,7 +203,13 @@ export async function translateSrtViaGoogleStudio(
     PARALLEL_BATCHES,
     async (batch, bi) => {
       const texts = batch.map((c) => c.text.replace(/\n+/g, ' ').trim() || '…');
-      const out = await translateBatchTexts(texts, apiKeys, langName, ruleDesc);
+      const out = await translateBatchTexts(
+        texts,
+        apiKeys,
+        langName,
+        opts.ruleId,
+        opts.entitlementToken,
+      );
       opts.onProgress?.(
         `  · lô ${bi + 1}/${batches.length} OK (${batch.length} cue)`,
       );

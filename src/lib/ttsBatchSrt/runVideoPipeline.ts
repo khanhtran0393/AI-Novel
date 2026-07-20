@@ -59,6 +59,8 @@ export type TtsBatchVideoRequest = {
   ruleId?: string;
   /** CapAssist "chia" — dòng mỗi batch dịch */
   chunkSize?: number;
+  /** Packaged cloud crown prompt for translate */
+  entitlementToken?: string | null;
   /**
    * draft (default): CapCut draft inject, no full re-encode
    * full_mux: optional FFmpeg 04_final_dub
@@ -402,6 +404,7 @@ export async function runTtsBatchFromVideo(
       targetLang: tgtLang,
       ruleId: req.ruleId || 'modern',
       chunkSize: req.chunkSize,
+      entitlementToken: req.entitlementToken,
       onProgress: (label, pct) =>
         emit({
           type: 'phase',

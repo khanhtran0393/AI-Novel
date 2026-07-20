@@ -153,6 +153,10 @@ export const API = {
   cloudIpPsych: '/api/cloud/ip/psych',
   /** Packaged NAV script2prompt / storyboard analyzer crown IP */
   cloudIpNavAnalyzer: '/api/cloud/ip/nav-analyzer',
+  /** Packaged Phantom-X filter-graph compile */
+  cloudIpBypass: '/api/cloud/ip/bypass',
+  /** Packaged Dịch SRT prompt/rules crown */
+  cloudIpTranslate: '/api/cloud/ip/translate',
   /** Serve generated stills (path prefix — may append filename) */
   serveImage: '/api/serve-image',
   serveImageQuery: '/api/serve-image',
