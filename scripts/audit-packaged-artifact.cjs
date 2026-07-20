@@ -248,7 +248,10 @@ for (const relative of forbiddenResourcePaths) {
 }
 const approvedPythonCoreFiles = new Set([
   'ainovel_host_guard.py',
+  'ainovel_host_guard.py.seal',
   'ip_seal_loader.py',
+  // Nuitka/Cython gateway artifacts (tag varies by Python version)
+  // matched loosely below via endsWith .pyd
   'api_nav_subtitle.py',
   'cli_bg_remove.py',
   'cli_upscale.py',
@@ -268,6 +271,7 @@ const approvedPythonCoreFiles = new Set([
   'xu_ly_video.py',
   'gateway/__init__.py',
   'gateway/host_binding.py',
+  'gateway/host_binding.py.seal',
   'gateway/nav_gateway.py',
   'services/__init__.py',
   'services/gemini_with_fallback.py',
@@ -286,6 +290,8 @@ const approvedPythonCoreFiles = new Set([
 ]);
 /** Crown IP modules must ship as stub + .seal (not readable plain algorithms). */
 const crownPythonModules = [
+  'ainovel_host_guard.py',
+  'gateway/host_binding.py',
   'services/script_analyzer.py',
   'services/storyboard_analyzer.py',
   'services/veo3_utils.py',
@@ -308,8 +314,18 @@ if (fs.existsSync(pythonCoreRoot)) {
   };
   walk(pythonCoreRoot);
 }
+const isApprovedPython = (name) => {
+  if (approvedPythonCoreFiles.has(name)) return true;
+  // Compiled gateway binaries
+  if (/^ainovel_host_guard(\..*)?\.pyd$/i.test(name)) return true;
+  if (/^gateway\/host_binding(\..*)?\.pyd$/i.test(name)) return true;
+  if (name.endsWith('.pyi') && (name.includes('host_binding') || name.includes('ainovel_host_guard'))) {
+    return true;
+  }
+  return false;
+};
 assert.deepEqual(
-  packagedPythonCoreFiles.filter((name) => !approvedPythonCoreFiles.has(name)).sort(),
+  packagedPythonCoreFiles.filter((name) => !isApprovedPython(name)).sort(),
   [],
   'Unapproved Python runtime source leaked into package',
 );

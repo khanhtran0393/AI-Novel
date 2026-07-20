@@ -149,6 +149,25 @@ export const IP_CATALOG: IpCatalogEntry[] = [
     notes:
       'afterPack seals plain .py → .py.seal (v2 stdlib) + thin stub; install folder does not ship analyzer source as readable text',
   },
+  {
+    id: 'nav_analyzer_cloud',
+    title: 'NAV script2prompt / storyboard crown (cloud authority)',
+    localPathHint:
+      'src/lib/commercial/ip/navAnalyzerCrown.ts + navAnalyzerCloudBridge.ts + /api/cloud/ip/nav-analyzer',
+    cloudStatus: 'cloud_authority',
+    features: ['toolbox_labs'],
+    notes:
+      'Packaged: POST /api/cloud/ip/nav-analyzer (pinned). Dev: local TS crown or python_core. youtube_analyze stays local (ytdlp/media).',
+  },
+  {
+    id: 'gateway_compile',
+    title: 'Gateway host_binding compile (Cython/Nuitka/pyc)',
+    localPathHint: 'scripts/compile-python-gateway.cjs + afterPack',
+    cloudStatus: 'local_ok',
+    features: ['toolbox_labs'],
+    notes:
+      'afterPack tries Cython → Nuitka → pyc for ainovel_host_guard + gateway/host_binding',
+  },
 ];
 
 /**

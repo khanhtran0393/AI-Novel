@@ -20,6 +20,8 @@ const MANIFEST = path.join(CROWN_OUT, 'manifest.json');
 
 /** Python modules whose plain source must not ship in install folder. */
 const PYTHON_CROWN_REL = [
+  'ainovel_host_guard.py',
+  'gateway/host_binding.py',
   'services/script_analyzer.py',
   'services/storyboard_analyzer.py',
   'services/youtube_analyzer_v1.py',

@@ -11,6 +11,7 @@ const path = require('path');
 const { restoreShellFromBackup } = require('./lib/desktop-re-harden.cjs');
 const { restoreStubs: restoreCrownStubs } = require('./lib/crown-ip-stub.cjs');
 const { sealPythonCrowns } = require('./lib/crown-ip-seal.cjs');
+const { compileGateway } = require('./compile-python-gateway.cjs');
 const flipFuses = require('./electron-fuses.cjs');
 
 /**
@@ -61,7 +62,7 @@ exports.default = async function electronAfterPack(context) {
     console.error('[crown-ip] restore stubs failed:', err?.message || err);
   }
 
-  // Seal Python analyzers inside packaged resources (leave workspace .py plain)
+  // Seal Python analyzers + compile gateway allowlist inside packaged resources
   try {
     const skipPy =
       process.env.AINOVEL_CROWN_PYTHON === '0' ||
@@ -69,6 +70,24 @@ exports.default = async function electronAfterPack(context) {
     if (!skipPy) {
       const pyDir = path.join(context.appOutDir, 'resources', 'python_core');
       if (fs.existsSync(pyDir)) {
+        // 1) Cython/Nuitka/pyc gateway friction (host_binding, ainovel_host_guard)
+        try {
+          const gw = compileGateway(pyDir, { inplace: false });
+          console.log(
+            JSON.stringify({
+              ok: true,
+              step: 'afterPack-gateway-compile',
+              engine: gw.engine,
+              count: gw.compiled?.length || 0,
+            }),
+          );
+        } catch (e) {
+          console.warn(
+            '[gateway-compile] soft-fail (seal continues):',
+            e?.message || e,
+          );
+        }
+        // 2) Crown seal analyzers
         const sealed = sealPythonCrowns(pyDir, { writeStubs: true });
         console.log(
           JSON.stringify({

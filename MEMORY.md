@@ -236,6 +236,14 @@
 - Client UI uses `publicCatalog.ts` / `publicTranslateCatalog.ts` only (no seal/fs).
 - Commands: `npm run crown:seal` · `smoke:crown-ip` · `AINOVEL_CROWN_PYTHON=0` skips py seal.
 
+## NAV analyzer cloud + gateway compile — 2026-07-21
+
+- **Cloud IP:** `navAnalyzerCrown.ts` + `navAnalyzerCloudBridge.ts` + `/api/cloud/ip/nav-analyzer` (script2prompt, storyboard). Packaged → cloud (BYOK Gemini). youtube_analyze stays local sealed.
+- **Routes:** `navtools/script2prompt`, `navtools/storyboard` use bridge; fail-closed packaged.
+- **Gateway compile:** `scripts/compile-python-gateway.cjs` — Nuitka/Cython/pyc for `ainovel_host_guard` + `gateway/host_binding`; afterPack runs on pack dir.
+- Smoke: `npm run smoke:nav-analyzer-cloud` · `npm run compile:python-gateway`
+- Env: `AINOVEL_NAV_ANALYZER_CLOUD=0|1`
+
 ## Tool Dịch SRT (toolbox) — Cap Gemini method (no DeepSeek)
 
 - **Method Cap:** parse SRT → chỉ text → batch **50** cue → neo ` || ` → Gemini REST → unbatch → gắn lại timestamp. Lệch count → tách đôi lô retry.

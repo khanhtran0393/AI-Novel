@@ -58,7 +58,9 @@ Skip harden: `AINOVEL_RE_HARDEN=0`.
 | Selective obfuscate of Next commercial chunks | **Not** whole `src/` — local Next still honest-barrier |
 | Python: only approved gateway set | Already enforced by `extraResources` + audit allowlist |
 | **Crown IP seal (toolbox)** | **On** — Phantom-X + Dịch SRT formulas → `resources/crown/*.seal` (AES-GCM); production build stubs so plain source not in asar; Python analyzers → `.py.seal` v2 (stdlib) at afterPack |
-| Crown commands | `npm run crown:seal` · `smoke:crown-ip` · pack via `with-crown-sealed-build.cjs` |
+| **NAV analyzer cloud IP** | **On** — script2prompt + storyboard → `/api/cloud/ip/nav-analyzer` when packaged (BYOK Gemini keys); youtube_analyze stays local sealed (media) |
+| **Gateway compile** | **On (best-effort)** — afterPack Cython/Nuitka/pyc for `host_binding` + `ainovel_host_guard` |
+| Crown commands | `npm run crown:seal` · `smoke:crown-ip` · `smoke:nav-analyzer-cloud` · pack via `with-crown-sealed-build.cjs` |
 
 ### Phase C — Cloud authority & IP catalog (shipped)
 

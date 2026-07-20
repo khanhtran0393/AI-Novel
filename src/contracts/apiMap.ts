@@ -151,6 +151,8 @@ export const API = {
   cloudIpSeedance: '/api/cloud/ip/seedance',
   /** Packaged YouTube psych / SEO IP authority */
   cloudIpPsych: '/api/cloud/ip/psych',
+  /** Packaged NAV script2prompt / storyboard analyzer crown IP */
+  cloudIpNavAnalyzer: '/api/cloud/ip/nav-analyzer',
   /** Serve generated stills (path prefix — may append filename) */
   serveImage: '/api/serve-image',
   serveImageQuery: '/api/serve-image',

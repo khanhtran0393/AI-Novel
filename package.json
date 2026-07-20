@@ -49,7 +49,7 @@
     "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
     "test:e2e:ui": "playwright test --project=ui",
     "test:e2e:api": "playwright test --project=api-and-contracts",
-    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts",
+    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-license-one-path.mts",
     "smoke:credential-vault": "node scripts/run-electron-smoke.cjs scripts/smoke-credential-vault.cjs",
     "smoke:capcut-live": "npx tsx scripts/smoke-capcut-live.mts",
     "license:issue": "node scripts/issue-license.mjs",
@@ -68,7 +68,7 @@
     "setup:supabase": "node scripts/setup-supabase-cloud.mjs",
     "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
     "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
-    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:ip-catalog && npm run smoke:seedance-cloud && npm run verify:core",
+    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:nav-analyzer-cloud && npm run smoke:ip-catalog && npm run smoke:seedance-cloud && npm run verify:core",
     "smoke:cloud-ip-live": "npm run smoke:seedance-cloud-live && npm run smoke:psych-cloud-live",
     "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs",
     "smoke:license-trust": "npx tsx scripts/smoke-license-trust.mts",
@@ -81,7 +81,9 @@
     "smoke:license-one-path": "npx tsx scripts/smoke-license-one-path.mts",
     "smoke:seedance-cloud": "npx tsx scripts/smoke-seedance-cloud-ip.mts",
     "smoke:seedance-cloud-live": "npx tsx scripts/smoke-seedance-cloud-live.mts",
-    "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts"
+    "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts",
+    "smoke:nav-analyzer-cloud": "npx tsx scripts/smoke-nav-analyzer-cloud.mts",
+    "compile:python-gateway": "node scripts/compile-python-gateway.cjs"
   },
   "build": {
     "appId": "com.ainovel.desktop",
@@ -193,6 +195,7 @@
         "to": "python_core",
         "filter": [
           "ainovel_host_guard.py",
+          "ainovel_host_guard*.pyd",
           "ip_seal_loader.py",
           "api_nav_subtitle.py",
           "cli_bg_remove.py",
@@ -211,6 +214,7 @@
           "xu_ly_video.py",
           "gateway/__init__.py",
           "gateway/host_binding.py",
+          "gateway/host_binding*.pyd",
           "gateway/nav_gateway.py",
           "services/__init__.py",
           "services/gemini_with_fallback.py",
