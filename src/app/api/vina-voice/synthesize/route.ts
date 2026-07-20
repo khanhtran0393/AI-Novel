@@ -2,13 +2,17 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { synthesizeVinaVoice } from '@/lib/vinaVoice';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
+    // Premium TTS — must not bypass /api/generate-tts gate
+    const denied = await requireFeature(req, 'tts_premium', body);
+    if (denied) return denied;
     const text = String(body.text || body.script || '').trim();
     if (!text) {
       return NextResponse.json({ error: 'Thiếu text' }, { status: 400 });

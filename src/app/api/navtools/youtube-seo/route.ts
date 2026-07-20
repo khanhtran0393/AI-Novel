@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateYoutubeMetaWithQA } from '@/lib/youtube-safe/seoMeta';
+import { resolveYoutubeMetaIp } from '@/lib/commercial/ip/psychCloudBridge';
+import { extractEntitlementToken } from '@/lib/entitlement';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -420,24 +421,38 @@ async function callGeminiJson(
   throw lastErr || new Error('Tất cả Gemini key/model đều thất bại');
 }
 
-function packFromLocalQa(params: {
+/** Psych IP path (cloud when packaged+token) — optional offline helper for future use. */
+async function packFromPsychIp(params: {
+  req: Request;
+  body: unknown;
   text: string;
   novelTitle: string;
   usedTitles: string[];
   usedThumbLines: string[];
   chapter?: number;
   randomSeed: string;
-}): ReturnType<typeof normalizePack> & { scores?: unknown; rounds?: number } {
-  const qa = generateYoutubeMetaWithQA({
-    script: params.text,
-    novelTitle: params.novelTitle,
-    usedTitles: params.usedTitles,
-    usedThumbLines: params.usedThumbLines,
-    chapter: params.chapter,
-    maxRounds: 5,
-  });
+  visualDna: string;
+}): Promise<
+  ReturnType<typeof normalizePack> & {
+    scores?: unknown;
+    rounds?: number;
+    source?: string;
+  }
+> {
+  const token = extractEntitlementToken(params.req, params.body);
+  const { pack: qa, source } = await resolveYoutubeMetaIp(
+    {
+      script: params.text,
+      novelTitle: params.novelTitle,
+      usedTitles: params.usedTitles,
+      usedThumbLines: params.usedThumbLines,
+      chapter: params.chapter,
+      maxRounds: 5,
+      visualDna: params.visualDna,
+    },
+    { entitlementToken: token, allowLocalFreeFallback: !token },
+  );
 
-  // Slight seed noise on title slice so re-clicks differ when same script
   const seedN = Math.abs(
     Array.from(params.randomSeed).reduce((a, c) => a + c.charCodeAt(0), 0),
   );
@@ -461,6 +476,7 @@ function packFromLocalQa(params: {
     ),
     scores: qa.scores,
     rounds: qa.rounds,
+    source,
   };
 }
 
@@ -492,18 +508,6 @@ export async function POST(req: NextRequest) {
     }
 
     const keys = collectKeys(body);
-    // IRON B10: SEO meta bắt buộc Gemini khi có/không key — không nhồi local che lỗi AI
-    if (keys.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'YouTube SEO: thiếu Gemini API Key. Thêm key rồi gen lại — app không fallback engine local che lỗi.',
-        },
-        { status: 400 },
-      );
-    }
-
     const novelTitle = String(body.novelTitle ?? body.novel_title ?? '').trim();
     const randomSeed = String(
       body.randomSeed ??
@@ -526,6 +530,77 @@ export async function POST(req: NextRequest) {
         : typeof body.chapter === 'string'
           ? Number(body.chapter) || undefined
           : undefined;
+
+    const visualDna = String(
+      body.visualDna || body.visualDnaPrompt || body.mediaStylePreset || '',
+    ).trim();
+    const preferPsych =
+      body.engine === 'psych' ||
+      body.preferPsychIp === true ||
+      body.source === 'psych';
+
+    // Psych IP path (cloud when packaged+token; free local server formulas)
+    if (preferPsych || keys.length === 0) {
+      if (!visualDna) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              keys.length === 0
+                ? 'YouTube SEO: thiếu Gemini API Key (hoặc Visual DNA để dùng psych IP).'
+                : 'Psych SEO cần visualDna (Visual DNA / Media Style).',
+          },
+          { status: 400 },
+        );
+      }
+      try {
+        const pack = await packFromPsychIp({
+          req,
+          body,
+          text,
+          novelTitle,
+          usedTitles,
+          usedThumbLines,
+          chapter,
+          randomSeed,
+          visualDna,
+        });
+        return NextResponse.json({
+          success: true,
+          provider: `psych-ip:${pack.source || 'local'}`,
+          source: pack.source || 'psych',
+          randomSeed,
+          data: pack,
+          result: pack,
+          formatted: buildFormatted(pack),
+          scores: pack.scores,
+          rounds: pack.rounds,
+        });
+      } catch (e) {
+        if (preferPsych || keys.length === 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: e instanceof Error ? e.message : String(e),
+            },
+            { status: 502 },
+          );
+        }
+        // Fall through to Gemini if psych optional failed
+      }
+    }
+
+    // IRON B10: SEO meta Gemini — không nhồi soft-success khi key có nhưng AI fail
+    if (keys.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'YouTube SEO: thiếu Gemini API Key. Thêm key hoặc Visual DNA (psych IP).',
+        },
+        { status: 400 },
+      );
+    }
 
     // High temperature + seed → mỗi lần gen khác nhau
     const temperatureRaw = Number(body.temperature);

@@ -17,6 +17,8 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Phase A RE: never ship browser source maps in production customer builds
+  productionBrowserSourceMaps: false,
   // music-metadata v11 exposes the Node entry through the `module-sync`
   // condition. CutSDK's compiled CJS uses require(), while Turbopack does not
   // currently select that condition, so pin the equivalent Node entry.

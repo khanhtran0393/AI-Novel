@@ -37,11 +37,24 @@ export type EntitlementClaims = {
 
 export type EntitlementMode = 'open' | 'enforce';
 
-/** Customer packaged / publish builds always enforce — env cannot open Pro. */
+/** Customer packaged / publish builds always enforce — multi-signal (not one env). */
 export function isCustomerPackagedRuntime(): boolean {
-  return (
-    process.env.AI_NOVEL_PACKAGED === '1' || process.env.AINOVEL_PUBLISH === '1'
-  );
+  // Lazy import avoided: keep sync and light — re-export from packagedAttestation
+  // via inline multi-signal (same rules as packagedAttestation.ts).
+  const e = (n: string) => {
+    const v = String(process.env[n] || '')
+      .trim()
+      .toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes';
+  };
+  if (e('AI_NOVEL_PACKAGED') || e('AINOVEL_PUBLISH') || e('AINOVEL_ELECTRON_PACKAGED')) {
+    return true;
+  }
+  const attest = String(process.env.AINOVEL_PACKAGED_ATTEST || '').trim();
+  if (attest.startsWith('ainovel-pkg-') || /^[0-9a-f]{16,64}$/i.test(attest)) {
+    return true;
+  }
+  return false;
 }
 
 export function getEntitlementMode(): EntitlementMode {
@@ -53,9 +66,7 @@ export function getEntitlementMode(): EntitlementMode {
 
 export function isPackagedPublishHint(): boolean {
   return (
-    process.env.AINOVEL_PUBLISH === '1' ||
-    process.env.AI_NOVEL_PACKAGED === '1' ||
-    process.env.NODE_ENV === 'production'
+    isCustomerPackagedRuntime() || process.env.NODE_ENV === 'production'
   );
 }
 
@@ -293,6 +304,40 @@ function windowsMachineGuid(): string {
   }
 }
 
+/** System volume serial (C: or first fixed disk) — extra anti-spoof signal. */
+function windowsVolumeSerial(): string {
+  if (process.platform !== 'win32') return '';
+  try {
+    const out = execSync(
+      'wmic logicaldisk where "DeviceID=\'C:\'" get VolumeSerialNumber /value',
+      { encoding: 'utf8', windowsHide: true, timeout: 5_000 },
+    );
+    const m = out.match(/VolumeSerialNumber=(\S+)/i);
+    return (m?.[1] || '').trim();
+  } catch {
+    try {
+      const out = execSync('vol C:', {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5_000,
+      });
+      const m = out.match(/([0-9A-F]{4}-[0-9A-F]{4})/i);
+      return (m?.[1] || '').replace(/-/g, '').trim();
+    } catch {
+      return '';
+    }
+  }
+}
+
+function cpuModelShort(): string {
+  try {
+    const c = os.cpus()?.[0]?.model || '';
+    return c.replace(/\s+/g, ' ').trim().slice(0, 64);
+  } catch {
+    return '';
+  }
+}
+
 function hashHwid(parts: string): string {
   return crypto.createHash('sha256').update(parts, 'utf8').digest('hex').slice(0, 16);
 }
@@ -306,7 +351,7 @@ export function getHwidV1(): string {
   return hashHwid(`${node}|${processor}|${system}|${release}|ainovel-v1`);
 }
 
-/** Preferred v2 fingerprint (MachineGuid when available). */
+/** v2 fingerprint (MachineGuid when available). */
 export function getHwidV2(): string {
   const guid = windowsMachineGuid();
   const node = os.hostname();
@@ -319,18 +364,31 @@ export function getHwidV2(): string {
 }
 
 /**
- * All HWID strings this machine may present (v2 preferred first, then v1).
+ * v3 multi-signal fingerprint (preferred for new licenses).
+ * MachineGuid + volume serial + arch + CPU model — spoofing one registry value is harder.
+ */
+export function getHwidV3(): string {
+  const guid = windowsMachineGuid() || `noguid:${os.hostname()}`;
+  const vol = windowsVolumeSerial() || `novol:${os.homedir().slice(-12)}`;
+  const processor = os.arch();
+  const cpu = cpuModelShort() || 'nocpu';
+  return hashHwid(`${guid}|${vol}|${processor}|${cpu}|ainovel-v3`);
+}
+
+/**
+ * All HWID strings this machine may present (v3 → v2 → v1).
  * Token verify accepts any candidate so old licenses keep working after HWID upgrade.
  */
 export function getHwidCandidates(): string[] {
-  const v2 = getHwidV2().toLowerCase();
-  const v1 = getHwidV1().toLowerCase();
-  return v2 === v1 ? [v2] : [v2, v1];
+  const list = [getHwidV3(), getHwidV2(), getHwidV1()].map((h) =>
+    h.toLowerCase(),
+  );
+  return [...new Set(list)];
 }
 
-/** Stable device fingerprint for license binding (preferred = v2). */
+/** Stable device fingerprint for license binding (preferred = v3 multi-signal). */
 export function getHwid(): string {
-  return getHwidV2();
+  return getHwidV3();
 }
 
 export function hwidMatchesClaim(claim: string | undefined | null): boolean {
@@ -481,7 +539,11 @@ export function verifyEntitlementToken(
   }
   const key = verifier.keys.get(kid);
   if (!key) {
-    if (process.env.NODE_ENV !== 'production') {
+    // Skip log for intentional anti-tamper canary (deadbeef…)
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      !/^deadbeef/i.test(kid)
+    ) {
       console.warn(
         `[entitlement] verify fail: kid=${kid} not in keyring (have: ${[...verifier.keys.keys()].join(',') || 'none'}). Token signed by different key pair.`,
       );
@@ -719,9 +781,19 @@ export async function assertTierAtLeast(
   // Fail-closed: no public keyring → never grant paid tiers
   if (minTier !== 'free') {
     assertVerificationKeyringReady();
+    // Adversarial: pin keyring + packaged enforce + canary (anti-tamper)
+    const { assertAntiTamper } = await import('@/lib/commercial/antiTamper');
+    assertAntiTamper('assertTier');
   }
   const { tier, claims } = await resolveRequestAccessAsync(req, body);
   if (tierAtLeast(tier, minTier)) {
+    if (minTier !== 'free') {
+      // Packaged: online revoke heartbeat + offline grace
+      const { enforcePackagedHeartbeat } = await import(
+        '@/lib/commercial/licenseHeartbeat'
+      );
+      await enforcePackagedHeartbeat(req, body, claims);
+    }
     return claims;
   }
   const need =
@@ -742,12 +814,33 @@ export async function assertFeatureAccess(
   featureId: CommercialFeatureId,
   body?: unknown,
 ): Promise<EntitlementClaims> {
+  const row = (
+    await import('@/lib/commercial/featureMatrix')
+  ).FEATURE_MATRIX.find((f) => f.id === featureId);
+  if (row && row.minTier !== 'free') {
+    assertVerificationKeyringReady();
+    const { assertAntiTamper } = await import('@/lib/commercial/antiTamper');
+    assertAntiTamper(`feature:${featureId}`);
+  }
   const { tier, claims } = await resolveRequestAccessAsync(req, body);
-  if (canAccessFeature(tier, featureId)) return claims;
-  throw new AppError(
-    `Tính năng «${featureId}» cần gói cao hơn (hiện: ${tier}, nguồn Supabase/local). Nhấp logo app → Bản quyền.`,
-    { code: 'AUTH', status: 403 },
-  );
+  if (!canAccessFeature(tier, featureId)) {
+    throw new AppError(
+      `Tính năng «${featureId}» cần gói cao hơn (hiện: ${tier}, nguồn Supabase/local). Nhấp logo app → Bản quyền.`,
+      { code: 'AUTH', status: 403 },
+    );
+  }
+  // Paid / trial features: packaged heartbeat + Phase C strict online for Pro IP
+  if (row && row.minTier !== 'free') {
+    const { enforcePackagedHeartbeat } = await import(
+      '@/lib/commercial/licenseHeartbeat'
+    );
+    await enforcePackagedHeartbeat(req, body, claims);
+    const { enforceStrictOnlineForFeature } = await import(
+      '@/lib/commercial/onlineRevalidate'
+    );
+    await enforceStrictOnlineForFeature(req, featureId, body, claims);
+  }
+  return claims;
 }
 
 /**

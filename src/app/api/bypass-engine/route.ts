@@ -6,6 +6,7 @@ import {
   BYPASS_FILTER_CATALOG,
   type BypassFilterId,
 } from '@/lib/bypass-engine';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -109,6 +110,8 @@ function parseProgressChunk(
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     // Single or first of batch — client may also send inputPaths[]
     const inputPathsRaw: unknown[] = Array.isArray(body.inputPaths) ? body.inputPaths : [];
     const inputPath =

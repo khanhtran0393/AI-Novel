@@ -170,6 +170,25 @@ export async function POST(req: Request) {
   try {
     // Fail-closed before any activate path: no public keyring → no Pro
     assertVerificationKeyringReady();
+    const { assertAntiTamper } = await import('@/lib/commercial/antiTamper');
+    assertAntiTamper('activate');
+    // Fresh activate stamps heartbeat when online later; clear revoked cache + rebind lock
+    try {
+      const { clearHeartbeatStamp } = await import(
+        '@/lib/commercial/licenseHeartbeat'
+      );
+      clearHeartbeatStamp();
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { clearHwidRebindLock } = await import(
+        '@/lib/commercial/hwidRebind'
+      );
+      clearHwidRebindLock();
+    } catch {
+      /* ignore */
+    }
     const body = (await req.json().catch(() => ({}))) as {
       token?: string;
       code?: string;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { callNavGateway } from '@/lib/nav/navPythonBridge';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -24,6 +25,8 @@ function resolveWatermarkOutputPath(audioPath: string, outputPath?: unknown): st
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const { audioPath, mode, outputPath, engine } = body;
 
     if (!audioPath || typeof audioPath !== 'string') {

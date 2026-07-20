@@ -129,6 +129,49 @@ assert.deepEqual(
   `Unapproved optional component leaked into ASAR: ${JSON.stringify(forbiddenOptionalAsarEntries.slice(0, 20))}`,
 );
 
+// Phase A RE audit: source maps, agent docs, pack scripts, TypeScript sources
+// Allowlist: Electron shell needs next.config.ts at runtime for `next start`.
+const reTsAllow = new Set(['next.config.ts']);
+const reLeakPatterns = [
+  { id: 'source-map', re: /\.map$/i },
+  { id: 'typescript-src', re: /\.tsx?$/i },
+  { id: 'agent-docs', re: /(?:^|\\)(?:AGENTS|CLAUDE|MEMORY)\.md$/i },
+  { id: 'dev-scripts', re: /(?:^|\\)scripts\\/i },
+  { id: 'specs', re: /(?:^|\\)specs\\/i },
+  { id: 'e2e', re: /(?:^|\\)e2e\\/i },
+  { id: 'git-meta', re: /(?:^|\\)\.git(?:\\|$)/i },
+];
+const reLeakHits = [];
+for (const name of normalized) {
+  // node_modules may contain .ts type packages in some installs — flag only app-owned paths
+  if (name.startsWith('node_modules\\') || name.startsWith('node_modules/')) {
+    if (/\.map$/i.test(name)) {
+      // Still forbid maps inside node_modules (we exclude them in files)
+      reLeakHits.push({ name, id: 'source-map-nm' });
+    }
+    continue;
+  }
+  const base = name.replace(/^\\/, '').replace(/\//g, '\\');
+  if (reTsAllow.has(base) || reTsAllow.has(name.replace(/\\/g, '/'))) continue;
+  for (const { id, re } of reLeakPatterns) {
+    if (re.test(name)) reLeakHits.push({ name, id });
+  }
+}
+assert.deepEqual(
+  reLeakHits,
+  [],
+  `RE surface leaked into ASAR: ${JSON.stringify(reLeakHits.slice(0, 30))}`,
+);
+
+// Shell should be present; if re-harden ran, banner may exist (optional soft signal)
+const mainBuf = asar.extractFile(archive, 'main.js');
+assert.ok(mainBuf && mainBuf.length > 100, 'main.js empty in ASAR');
+const mainText = mainBuf.toString('utf8');
+const shellHardened = mainText.includes('ainovel-re-harden');
+if (process.env.AINOVEL_REQUIRE_SHELL_HARDEN === '1') {
+  assert.ok(shellHardened, 'Expected re-harden banner in packaged main.js');
+}
+
 const secretMarkers = [
   '-----BEGIN PRIVATE KEY-----',
   '-----BEGIN RSA PRIVATE KEY-----',
@@ -270,6 +313,8 @@ console.log(
       privateMarkersAbsent: true,
       runtimeUserMediaAbsent: true,
       unapprovedOptionalResourcesAbsent: true,
+      reSurfaceLeaksAbsent: true,
+      shellHardened,
       ignoredDocumentationMarkers: markerHits.length - dangerousMarkerHits.length,
       topFiles: topFiles.slice(0, 12),
     },

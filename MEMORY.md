@@ -1,12 +1,67 @@
 # Project memory (AI Novel)
 
+## License One-Path complete (2026-07-20)
+
+- **Policy:** `docs/LICENSE_ONE_PATH.md` + `src/lib/commercial/licenseOnePath.ts`
+- **Model:** ticket · ledger · crown IP — **cấm** f(token) / private client
+- **Quota request/ngày:** **REJECTED** (`dailyQuota: false`, `LICENSE_OUT_OF_SCOPE.daily_request_quota_supabase`)
+- **Wired:** status `onePath`, cloudIpAuth + seedance + psych policy pin, `API.cloudIpPsych`, LicenseModal one-path note
+- **Backdoors closed:** vina-voice synthesize/clone/runtime/engine/warm → `tts_premium`; generate-video gate after body parse
+- **Noise:** entitlement canary `kid=deadbeef*` no longer console.warn spam
+- **Smoke:** `npm run smoke:license-one-path` in `smoke:commercial` PASS; typecheck PASS
+- **Agent:** không re-introduce quota ngày / f(token)
+
+## Defense remaining gaps closed (2026-07-20)
+
+- CapAssistant full + isolate/split/watermark/download/transcribe/self-heal/translate-srt gated
+- `/api/youtube-meta` + writeChapterFinish → psych IP; youtube-seo psych path when no Gemini / preferPsych
+- `seatPresence.ts` concurrent seats window 15m; `hwidRebind.ts` fingerprint drift; activate clears rebind
+- Wired into proGateHard dual path
+
+## Defense mesh upgrade (2026-07-20) — full hardening pass
+
+- **Hard mesh:** `requireFeature` → `assertFeatureAccessHard` (integrity + anti-tamper + dual re-verify + feature + heartbeat)
+- **Multi-signal packaged:** `packagedAttestation.ts` + main sets ELECTRON_PACKAGED + PACKAGED_ATTEST + HOST_BINDING=enforce
+- **Grace tightened:** offline 48h / first-run 12h / strict 6h; STRICT includes tts/video/capcut/ship + Pro IP
+- **Gated leftover APIs:** video-editor, bypass-engine, video-dub-tools, tts-batch-srt, audio-studio, process/render-video, capassistant, rpa-*
+- **Host-binding:** per-spawn secret + scrubbed child env; anti-tamper rejects HOST_BINDING=open packaged
+- **Psych cloud IP:** `/api/cloud/ip/psych` + `psychCloudBridge.ts`; ipCatalog youtube_psych → cloud_authority
+- Docs: DEFENSE_LAYERS + ATTACK_SURFACE updated; smokes hardening + ip-catalog extended
+
+## RE protection 3-phase (2026-07-20)
+
+- **Phase A:** `productionBrowserSourceMaps: false`; pack excludes `**/*.map`, docs, scripts, agent md, `.next/types`, `.next/**/*.ts`; `beforePack` shell harden + `afterPack` restore + fuses
+- **Phase B:** **esbuild** minify+mangle Electron shell (devDep); asarmor deferred; audit RE leaks
+- **Phase C:** `ipCatalog` + `onlineRevalidate` + **Seedance cloud IP** `POST /api/cloud/ip/seedance` via `seedanceCloudBridge` (packaged → Vercel pin; free no-token director local; sequence Pro fail-closed)
+- Wire: `imagePrompt` director+sequence, `integrations/seedance` compile_clip + default compile
+- Smokes: `smoke:re-harden` (engine esbuild), `smoke:ip-catalog`, `smoke:seedance-cloud`, `scripts/smoke-seedance-cloud-live.mts`
+- Kill-switch: `AINOVEL_RE_HARDEN=0`, `AINOVEL_STRICT_ONLINE=0`, `AINOVEL_SEEDANCE_CLOUD=0|1`
+- **Ops 2026-07-20:** Vercel prod Ready → alias `ai-novel-flax.vercel.app` has `/api/cloud/ip/seedance`; QA pack `dist-qa-unsigned` audit PASS `shellHardened:true` (esbuild)
+- **Cloud IP auth:** shared `cloudIpAuth.ts` — `requireHwidMatch:false` + optional body.hwid vs claim (seedance + psych)
+- **Wire complete:** generate-video resolve/mark clip, chapterPipeline, ship/export, imagePrompt, integrations/seedance
+- Live: `npm run smoke:cloud-ip-live` (seedance + psych) against `ai-novel-flax.vercel.app`
+- Artifact: `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe` + `win-unpacked` (repack optional after this wire)
+
 ## Defense-in-depth layers (2026-07-20)
 
 - **L3 force enforce:** packaged always `AINOVEL_ENTITLEMENT_MODE=enforce`; customer env cannot set MODE/local trial; `getEntitlementMode()` locks on `AI_NOVEL_PACKAGED`/`AINOVEL_PUBLISH`.
 - **L2 API mesh:** `src/lib/commercial/apiGate.ts` — TTS premium (not edge/piper), navtools (not youtube-seo free), integrations/*, Flow multi create, suggest-channels.
-- **L4:** packaged `devTools: false` + F12 block; `afterPack` `scripts/electron-fuses.cjs`; shell open path system-dir block.
+- **L4:** packaged `devTools: false` + F12 block; pack chain `beforePack` re-harden → `afterPack` restore + fuses; shell open path system-dir block.
 - **L5 HWID v2:** MachineGuid + dual-accept v1 tokens.
 - **Docs:** `docs/DEFENSE_LAYERS.md` · smokes extended commercial + electron-security.
+
+## Hardening remaining vectors (2026-07-20)
+
+- **HWID v3** multi-signal (MachineGuid+vol+CPU); dual-accept v2/v1
+- **Heartbeat** packaged: online revoke kill; offline grace 72h; first-run 24h; no kill on missing DB row
+- **proGateHard** dual-path on video/capcut/ship + runtimeIntegrity
+- Smoke: `smoke:hardening` PASS
+
+## Adversarial anti-tamper (2026-07-20)
+
+- Hacker view → harden: `antiTamper.ts` kid+SPKI pin, packaged no open/owner/secrets, verify canary
+- Wired into assertTier / assertFeature / activate; status `antiTamper`; docs `ATTACK_SURFACE.md`
+- Smoke: `npm run smoke:anti-tamper` PASS (reject swapped public key)
 
 ## License trust pin (2026-07-20)
 

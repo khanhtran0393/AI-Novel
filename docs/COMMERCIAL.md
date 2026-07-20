@@ -2,6 +2,9 @@
 
 Mô hình thương mại duy nhất là **License + BYOK + Free / Trial / Pro**. Tháng, năm và trọn đời chỉ là thời hạn của cùng gói Pro, không phải tier riêng.
 
+> **One-path (bắt buộc trước khi sửa license):** [`LICENSE_ONE_PATH.md`](./LICENSE_ONE_PATH.md) · `src/lib/commercial/licenseOnePath.ts`  
+> Private = **chỉ ký** · Token = **vé** (không phải chìa AES) · IP đắt = **cloud** · Status field `onePath`.
+
 ## Quyền và hiển thị
 
 | Tier | Quyền | Badge |

@@ -9,6 +9,7 @@ import {
   resolveMediaToDisk,
 } from '@/lib/integrations/mediaPaths';
 import { requireFeature } from '@/lib/commercial/apiGate';
+import { extractEntitlementToken } from '@/lib/entitlement';
 
 export const runtime = 'nodejs';
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = runChapterPipeline({
+    const result = await runChapterPipeline({
       chapterNum,
       title: body.title || body.tieu_de,
       ten_tac_pham: body.ten_tac_pham,
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
       liveEditor: body.liveEditor !== false,
       autoStartFableCut: Boolean(body.autoStartFableCut ?? body.autoStart),
       aspect: body.aspect || '9:16',
+      entitlementToken: extractEntitlementToken(req, body),
       secondsPerImage: body.secondsPerImage,
     });
 

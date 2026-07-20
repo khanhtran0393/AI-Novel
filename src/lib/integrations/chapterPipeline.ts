@@ -4,7 +4,8 @@
 import fs from 'fs';
 import path from 'path';
 import { chapterAssetPrefix, imageAssetKey } from '@/contracts';
-import { compileSeedancePrompt, persistSeedanceCompile, type SeedanceCompileResult } from './seedance';
+import { persistSeedanceCompile, type SeedanceCompileResult } from './seedance';
+import { resolveCompileSeedancePrompt } from '@/lib/commercial/ip/seedanceCloudBridge';
 import {
   buildFromChapterAssets,
   buildFableCutProject,
@@ -32,6 +33,8 @@ export interface ChapterPipelineInput {
   generatedPrompts?: Record<string, Array<{ prompt?: string; image_prompt?: string; video_prompt?: string; sentence?: string }>>;
   /** Enhance all prompts with Seedance */
   runSeedance?: boolean;
+  /** Packaged cloud IP token for Seedance compile */
+  entitlementToken?: string | null;
   /** Build FableCut project from chapter images */
   runFableCut?: boolean;
   liveEditor?: boolean;
@@ -58,7 +61,9 @@ export interface ChapterPipelineResult {
   logs: string[];
 }
 
-export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipelineResult {
+export async function runChapterPipeline(
+  input: ChapterPipelineInput,
+): Promise<ChapterPipelineResult> {
   const logs: string[] = [];
   const chapterNum = input.chapterNum;
   const cwd = process.cwd();
@@ -103,25 +108,29 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
 
       const sceneTexts = input.sceneTexts || [];
       if (sceneTexts.length > 0) {
-        sceneTexts.forEach((text, i) => {
-          const compiled = compileSeedancePrompt({
-            sceneText: text,
-            characterHints: input.characterNames,
-            genre: input.genre,
-            styleHint: input.styleHint,
-            hasStartImage: images.length > 0,
-            durationSec: (() => {
-              const d = Number(input.secondsPerImage);
-              if (!Number.isFinite(d) || d <= 0) {
-                throw new Error(
-                  'Thieu secondsPerImage hop le cho Seedance chapter pipeline. App khong tu gan 5s.',
-                );
-              }
-              return d;
-            })(),
-          });
+        for (let i = 0; i < sceneTexts.length; i++) {
+          const text = sceneTexts[i];
+          const compiled = await resolveCompileSeedancePrompt(
+            {
+              sceneText: text,
+              characterHints: input.characterNames,
+              genre: input.genre,
+              styleHint: input.styleHint,
+              hasStartImage: images.length > 0,
+              durationSec: (() => {
+                const d = Number(input.secondsPerImage);
+                if (!Number.isFinite(d) || d <= 0) {
+                  throw new Error(
+                    'Thieu secondsPerImage hop le cho Seedance chapter pipeline. App khong tu gan 5s.',
+                  );
+                }
+                return d;
+              })(),
+            },
+            { entitlementToken: input.entitlementToken },
+          );
           samples.push({ id: `scene_${i}`, ...compiled });
-        });
+        }
       }
 
       // Also enhance existing generated prompts' video_prompt fields
@@ -129,7 +138,9 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
         const chPrefix = chapterAssetPrefix(chapterNum);
         for (const [assetKey, list] of Object.entries(input.generatedPrompts)) {
           if (!assetKey.startsWith(chPrefix)) continue;
-          enhancedPrompts[assetKey] = (list || []).map((p, pi) => {
+          const nextList: Array<{ video_prompt: string; intention?: string }> = [];
+          for (let pi = 0; pi < (list || []).length; pi++) {
+            const p = list[pi];
             const base =
               p.video_prompt ||
               p.image_prompt ||
@@ -137,7 +148,8 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
               p.sentence ||
               '';
             if (!base.trim()) {
-              return { video_prompt: '', intention: undefined };
+              nextList.push({ video_prompt: '', intention: undefined });
+              continue;
             }
             const sec = Number(input.secondsPerImage);
             if (!Number.isFinite(sec) || sec <= 0) {
@@ -145,23 +157,29 @@ export function runChapterPipeline(input: ChapterPipelineInput): ChapterPipeline
                 'Thieu secondsPerImage hop le cho Seedance enhance prompts. App khong tu gan 5s.',
               );
             }
-            const compiled = compileSeedancePrompt({
-              sceneText: base,
-              characterHints: input.characterNames,
-              genre: input.genre,
-              styleHint: input.styleHint,
-              hasStartImage: true,
-              durationSec: sec,
-            });
-            // assetKey is scene key "ch_sc" — sample id = image key for that prompt
+            const compiled = await resolveCompileSeedancePrompt(
+              {
+                sceneText: base,
+                characterHints: input.characterNames,
+                genre: input.genre,
+                styleHint: input.styleHint,
+                hasStartImage: true,
+                durationSec: sec,
+              },
+              { entitlementToken: input.entitlementToken },
+            );
             const [chStr, scStr] = assetKey.split('_');
             const sampleId =
               Number.isFinite(Number(chStr)) && Number.isFinite(Number(scStr))
                 ? imageAssetKey(Number(chStr), Number(scStr), pi)
                 : `${assetKey}_${pi}`;
             samples.push({ id: sampleId, ...compiled });
-            return { video_prompt: compiled.prompt, intention: compiled.intention };
-          });
+            nextList.push({
+              video_prompt: compiled.prompt,
+              intention: compiled.intention,
+            });
+          }
+          enhancedPrompts[assetKey] = nextList;
         }
       }
 

@@ -145,6 +145,7 @@ export default function LicenseModal({ open, onClose }: Props) {
         openMode?: boolean;
         ownerUnlimited?: boolean;
         tokenValid?: boolean;
+        authority?: string;
         trial?: { active?: boolean; days?: number };
         claims?: {
           is_pro?: boolean;
@@ -156,6 +157,11 @@ export default function LicenseModal({ open, onClose }: Props) {
         supabase?: { adminConfigured?: boolean; configured?: boolean };
         model?: { cloud?: boolean };
         cloudRevoked?: boolean;
+        onePath?: {
+          model?: string;
+          dailyQuota?: boolean;
+          privateKeyRole?: string;
+        };
       };
       const id = (data.entitlement?.hwid || '').toUpperCase();
       if (id) setHwid(id);
@@ -163,15 +169,36 @@ export default function LicenseModal({ open, onClose }: Props) {
       if (typeof data.trial?.days === 'number' && data.trial.days > 0) {
         setTrialDaysLabel(data.trial.days);
       }
+      // One-path trust line (no daily quota; ticket + ledger + cloud IP)
+      const onePathBits: string[] = [];
+      if (data.onePath?.model) {
+        onePathBits.push('One-path: vé Ed25519 · sổ cái · IP cloud');
+      }
+      if (data.onePath && data.onePath.dailyQuota === false) {
+        onePathBits.push('không quota/ngày');
+      }
+      if (data.authority) {
+        onePathBits.push(`authority=${data.authority}`);
+      }
+      const onePathSuffix =
+        onePathBits.length > 0 ? ` (${onePathBits.join(' · ')})` : '';
       if (data.cloudRevoked) {
-        setCloudNote('License cloud đã revoke/hết hạn — về Free.');
+        setCloudNote(
+          `License cloud đã revoke/hết hạn — về Free.${onePathSuffix}`,
+        );
         writeStoredToken('');
       } else if (data.supabase?.adminConfigured) {
-        setCloudNote('Cloud Supabase: bật (order + revoke online).');
+        setCloudNote(
+          `Cloud Supabase: bật (order + revoke online).${onePathSuffix}`,
+        );
       } else if (data.supabase?.configured) {
-        setCloudNote('Supabase URL/anon có — thiếu SERVICE_ROLE (admin).');
+        setCloudNote(
+          `Supabase URL/anon có — thiếu SERVICE_ROLE (admin).${onePathSuffix}`,
+        );
       } else {
-        setCloudNote('Chế độ local (Zalo + key) — chưa cấu hình Supabase.');
+        setCloudNote(
+          `Chế độ local (Zalo + key) — chưa cấu hình Supabase.${onePathSuffix}`,
+        );
       }
       if (data.ownerUnlimited) {
         setVipStatus(false, true, false);

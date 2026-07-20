@@ -22,8 +22,19 @@ export const BUILTIN_UPDATE_FEED_HOSTS = [
 ] as const;
 
 export function isCustomerPackagedRuntime(): boolean {
+  // Multi-signal (same policy as packagedAttestation / entitlement)
+  const e = (n: string) => {
+    const v = String(process.env[n] || '')
+      .trim()
+      .toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes';
+  };
+  if (e('AI_NOVEL_PACKAGED') || e('AINOVEL_PUBLISH') || e('AINOVEL_ELECTRON_PACKAGED')) {
+    return true;
+  }
+  const attest = String(process.env.AINOVEL_PACKAGED_ATTEST || '').trim();
   return (
-    process.env.AI_NOVEL_PACKAGED === '1' || process.env.AINOVEL_PUBLISH === '1'
+    attest.startsWith('ainovel-pkg-') || /^[0-9a-f]{16,64}$/i.test(attest)
   );
 }
 
@@ -125,13 +136,10 @@ export function assertHostPinned(
 
 /** Validate and return license API base URL (HTTPS + host pin). */
 export function resolvePinnedLicenseApiUrl(): URL {
-  const raw = String(process.env.AINOVEL_LICENSE_API_URL || '').trim();
-  if (!raw) {
-    throw new AppError(
-      'Thiếu AINOVEL_LICENSE_API_URL (pin license API).',
-      { code: 'INFRA', status: 503 },
-    );
-  }
+  // Default to first builtin host when env missing (bundled pin target)
+  const raw =
+    String(process.env.AINOVEL_LICENSE_API_URL || '').trim() ||
+    `https://${BUILTIN_LICENSE_API_HOSTS[0]}`;
   let base: URL;
   try {
     base = new URL(raw);

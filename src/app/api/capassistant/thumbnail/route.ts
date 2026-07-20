@@ -3,6 +3,7 @@ import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { resolveFfmpegPath, resolveFfprobePath } from '@/lib/capassistant/core';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -23,6 +24,8 @@ function probeDuration(videoPath: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const videoPath = String(body.videoPath || '');
     const outputDir = String(body.outputPath || path.join(PROJECT_ROOT, 'output', 'thumbnails'));
     const count = Math.max(1, Math.min(12, Number(body.count) || 4));

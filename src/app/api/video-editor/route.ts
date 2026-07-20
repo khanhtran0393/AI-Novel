@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import { buildCapAssistantCommand, getCapAssistantRuntimeInfo } from '@/lib/capassistant/core';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +19,8 @@ function cleanupTempFiles(files: string[]) {
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
+    const denied = await requireToolboxAccess(req, payload);
+    if (denied) return denied;
     const built = buildCapAssistantCommand(payload);
     const runtime = getCapAssistantRuntimeInfo();
     const encoder = new TextEncoder();

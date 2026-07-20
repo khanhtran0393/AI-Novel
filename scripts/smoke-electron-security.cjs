@@ -35,6 +35,11 @@ const fuses = fs.readFileSync(fusesPath, 'utf8');
 assert.ok(fuses.includes('EnableNodeCliInspectArguments') || fuses.includes('flipFuses'));
 
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-assert.equal(pkg.build.afterPack, 'scripts/electron-fuses.cjs');
+// Phase A/B: beforePack shell harden → afterPack restore + fuses
+assert.equal(pkg.build.beforePack, 'scripts/electron-before-pack.cjs');
+assert.equal(pkg.build.afterPack, 'scripts/electron-after-pack.cjs');
+const afterPack = fs.readFileSync(path.join(root, 'scripts', 'electron-after-pack.cjs'), 'utf8');
+assert.ok(afterPack.includes('electron-fuses') || afterPack.includes('flipFuses'));
+assert.ok(afterPack.includes('restoreShellFromBackup'));
 
 console.log('PASS smoke-electron-security');

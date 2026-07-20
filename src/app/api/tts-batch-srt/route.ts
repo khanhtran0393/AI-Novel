@@ -22,6 +22,7 @@ import {
   correlationIdFromRequest,
   slog,
 } from '@/lib/requestContext';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,9 @@ export async function POST(req: Request) {
   const started = Date.now();
   try {
     const body = await req.json();
+    // Trial+ TTS premium pipeline (batch / dub / translate-at-scale)
+    const denied = await requireFeature(req, 'tts_premium', body);
+    if (denied) return denied;
 
     // ── Tool Dịch SRT: chỉ dịch (Google Studio || anchor) ──
     if (body.action === 'translateOnly') {

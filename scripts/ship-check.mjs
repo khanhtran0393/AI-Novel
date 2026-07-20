@@ -60,6 +60,21 @@ const required = [
   'scripts/issue-license.mjs',
   'scripts/gen-commercial-secrets.mjs',
   'scripts/smoke-electron-security.cjs',
+  'scripts/electron-before-pack.cjs',
+  'scripts/electron-after-pack.cjs',
+  'scripts/electron-fuses.cjs',
+  'scripts/lib/desktop-re-harden.cjs',
+  'scripts/smoke-re-harden.cjs',
+  'src/lib/commercial/ipCatalog.ts',
+  'src/lib/commercial/onlineRevalidate.ts',
+  'src/lib/commercial/ip/seedanceCloudBridge.ts',
+  'src/lib/commercial/ip/psychCloudBridge.ts',
+  'src/lib/commercial/ip/cloudIpAuth.ts',
+  'src/app/api/cloud/ip/seedance/route.ts',
+  'src/app/api/cloud/ip/psych/route.ts',
+  'scripts/smoke-seedance-cloud-ip.mts',
+  'scripts/smoke-seedance-cloud-live.mts',
+  'scripts/smoke-psych-cloud-live.mts',
   'scripts/publish-desktop-update.mjs',
   'scripts/test-desktop-update-release.mjs',
   'scripts/smoke-installed-desktop.ps1',
@@ -90,8 +105,18 @@ for (const name of publicKeys) {
 
 console.log('[ship-check] package hardening');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+check(pkg.build?.beforePack === 'scripts/electron-before-pack.cjs', 'beforePack re-harden hook');
+check(pkg.build?.afterPack === 'scripts/electron-after-pack.cjs', 'afterPack restore+fuses hook');
 const files = pkg.build?.files || [];
 const resources = JSON.stringify(pkg.build?.extraResources || []);
+check(
+  files.some((f) => String(f).includes('!**/*.map') || String(f) === '!**/*.map'),
+  'build.files excludes source maps',
+);
+check(
+  files.some((f) => String(f).includes('!docs/')),
+  'build.files excludes docs from ASAR',
+);
 check(pkg.build?.asar === true, 'asar enabled');
 check(pkg.build?.forceCodeSigning === true, 'forceCodeSigning enabled');
 check(pkg.build?.win?.signAndEditExecutable === true, 'Windows signing enabled');

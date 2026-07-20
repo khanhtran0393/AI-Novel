@@ -1,5 +1,6 @@
 import path from 'path';
 import { runAutoMaster, type AutoMasterRequest } from '@/lib/capassistant/autoMaster';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -7,6 +8,8 @@ export const maxDuration = 300;
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as AutoMasterRequest;
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     if (!body?.videoPath && !(Array.isArray(body?.videoPaths) && body.videoPaths.length)) {
       return Response.json({ success: false, error: 'Missing videoPath / videoPaths' }, { status: 400 });
     }

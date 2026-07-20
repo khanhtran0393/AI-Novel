@@ -2,7 +2,7 @@
  * afterPack: flip Electron fuses for packaged customer builds.
  * Makes RunAsNode / CLI inspect harder; enables asar integrity when supported.
  *
- * electron-builder: "afterPack": "scripts/electron-fuses.cjs"
+ * Invoked from scripts/electron-after-pack.cjs (after shell restore).
  */
 'use strict';
 

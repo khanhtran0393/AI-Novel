@@ -142,6 +142,10 @@ export const API = {
     status: '/api/integrations/status',
     watch: '/api/integrations/watch',
   },
+  /** Packaged Seedance IP authority (Vercel license host) — one-path crown C */
+  cloudIpSeedance: '/api/cloud/ip/seedance',
+  /** Packaged YouTube psych / SEO IP authority */
+  cloudIpPsych: '/api/cloud/ip/psych',
   /** Serve generated stills (path prefix — may append filename) */
   serveImage: '/api/serve-image',
   serveImageQuery: '/api/serve-image',

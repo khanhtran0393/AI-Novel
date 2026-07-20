@@ -70,9 +70,17 @@ assert.ok(apiGate.includes('requireTtsPlatformAccess'));
 const fuses = fs.readFileSync(path.join(root, 'scripts/electron-fuses.cjs'), 'utf8');
 assert.ok(fuses.includes('flipFuses') || fuses.includes('@electron/fuses'));
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-assert.equal(pkg.build?.afterPack, 'scripts/electron-fuses.cjs');
+// Phase A/B: beforePack shell harden → afterPack restore + fuses
+assert.equal(pkg.build?.beforePack, 'scripts/electron-before-pack.cjs');
+assert.equal(pkg.build?.afterPack, 'scripts/electron-after-pack.cjs');
+const afterPack = fs.readFileSync(path.join(root, 'scripts/electron-after-pack.cjs'), 'utf8');
+assert.ok(afterPack.includes('electron-fuses') || afterPack.includes('flipFuses'));
+assert.ok(fs.existsSync(path.join(root, 'src/lib/commercial/ipCatalog.ts')));
+assert.ok(fs.existsSync(path.join(root, 'src/lib/commercial/onlineRevalidate.ts')));
 
 assert.ok(fs.existsSync(path.join(root, 'docs/DEFENSE_LAYERS.md')));
+const defense = fs.readFileSync(path.join(root, 'docs/DEFENSE_LAYERS.md'), 'utf8');
+assert.ok(defense.includes('Phase A') && defense.includes('Phase C'));
 
 // Gate wire presence on critical routes
 const gatedSnippets = [

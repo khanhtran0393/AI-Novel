@@ -1,9 +1,12 @@
 import { resolveEntitlementSigningKey } from '@/lib/entitlement';
 import { AppError } from '@/lib/errors';
+import {
+  isPackagedCustomerRuntime as multiSignalPackaged,
+} from '@/lib/commercial/packagedAttestation';
 
-/** True only inside the shipped Electron customer application. */
+/** True only inside the shipped Electron customer application (multi-signal). */
 export function isPackagedCustomerRuntime(): boolean {
-  return process.env.AI_NOVEL_PACKAGED === '1';
+  return multiSignalPackaged();
 }
 
 /** Seller/admin endpoints must never be usable from an installed customer app. */

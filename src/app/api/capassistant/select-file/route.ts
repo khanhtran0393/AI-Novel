@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import fs from 'fs';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -41,6 +42,8 @@ function runPowerShell(script: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const kind = String(body.kind || 'video');
     const title = String(body.title || 'Chọn file');
     const multi = Boolean(body.multi);

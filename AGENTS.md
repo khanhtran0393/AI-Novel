@@ -15,6 +15,7 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 > | [`docs/IRON_LAWS.md`](docs/IRON_LAWS.md) | **Quy luật thép + sự thật hiển nhiên (LOCKED)** |
 > | [`docs/DOMAIN_MAP.md`](docs/DOMAIN_MAP.md) | Ownership domain logic |
 > | [`docs/COMMERCIAL.md`](docs/COMMERCIAL.md) | Free / Trial / Pro + entitlement |
+> | [`docs/LICENSE_ONE_PATH.md`](docs/LICENSE_ONE_PATH.md) | **One-path license** (ticket · ledger · crown IP) — cấm f(token) |
 > | [`docs/RESET_POINT.md`](docs/RESET_POINT.md) | Làm Mới Dự Án (blank canvas + giữ settings) |
 > | [`docs/integrations-hub.md`](docs/integrations-hub.md) | Tích hợp ngầm (không nút 1-click) |
 > | [`docs/flow-bridge.md`](docs/flow-bridge.md) | Google Flow gen ảnh/video |
@@ -637,6 +638,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 - [ ] Duration/beat thiếu có hard-fail (không `|| 5`)?
 - [ ] NFC cho chuỗi VN user-facing?
 - [ ] Trial UI có hiện **TRIAL** (không PRO) khi `is_trial`?
+- [ ] License: có `f(token)` / private client / quota ngày? → rollback (xem `LICENSE_ONE_PATH.md`)
 - [ ] Worker/temp: `finally` cleanup?
 - [ ] Đã chạy smoke/typecheck/verify liên quan domain vừa sửa?
 
@@ -649,7 +651,8 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run smoke:core` | Smoke lõi |
 | `npm run smoke:pipeline` | Pipeline P0–P2 |
-| `npm run smoke:commercial` | Entitlement / trial / codes |
+| `npm run smoke:commercial` | Entitlement / trial / codes / one-path |
+| `npm run smoke:license-one-path` | Policy ticket·ledger·crown (cấm f(token), cấm quota ngày) |
 | `npm run verify:core` | Channel DNA + ship + publish + youtube-safe + output criteria |
 | `npm run prepare:publish` | typecheck + smokes + verify:core |
 
@@ -661,7 +664,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 |---------|------|
 | Quy luật thép | `docs/IRON_LAWS.md` |
 | Domain map | `docs/DOMAIN_MAP.md` |
-| Commercial | `docs/COMMERCIAL.md`, `src/lib/commercial/*`, `src/lib/entitlement.ts` |
+| Commercial | `docs/COMMERCIAL.md`, `docs/LICENSE_ONE_PATH.md`, `src/lib/commercial/licenseOnePath.ts`, `src/lib/entitlement.ts` |
 | Reset dự án | `docs/RESET_POINT.md` |
 | Integrations | `docs/integrations-hub.md` |
 | Flow | `docs/flow-bridge.md` |

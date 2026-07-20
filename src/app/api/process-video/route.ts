@@ -3,6 +3,7 @@ import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import util from 'util';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 const execPromise = util.promisify(exec);
 
@@ -11,6 +12,8 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const { videoFiles, audioFile, outputName } = body;
 
     if (!videoFiles || !Array.isArray(videoFiles) || videoFiles.length === 0) {

@@ -8,3 +8,4 @@ export * from './pricingPlans';
 export * from './telegramNotify';
 export * from './multiSeat';
 export * from './sellerLog';
+export * from './licenseOnePath';

@@ -23,10 +23,14 @@ import {
   countHumanJokeAsides,
 } from '@/lib/youtubeSafe';
 import {
-  applyDirectorFormulasToPromptPair,
   compileStillImagePrompt,
   requireGenreFromSetup,
 } from '@/lib/integrations/seedance';
+import {
+  resolveApplyDirectorFormulasToPromptPair,
+  resolveApplySequenceToVideoPrompts,
+} from '@/lib/commercial/ip/seedanceCloudBridge';
+import { extractEntitlementToken } from '@/lib/entitlement';
 import {
   CHAR_ANGLE_CAMERA,
   CHAR_EMOTION_FACE,
@@ -167,7 +171,10 @@ export async function handleImagePrompt(
   ctx: GenerateHandlerContext,
   requestType: string,
 ): Promise<NextResponse | null> {
-  const { payload, keysToUse, model } = ctx;
+  const { payload, keysToUse, model, req, rawBody } = ctx;
+  const entitlementToken = req
+    ? extractEntitlementToken(req, rawBody ?? { payload })
+    : null;
 
   if (requestType === 'GENERATE_IMAGE_PROMPT') {
     const { sceneText, style, voiceDuration, characterReferences, wpm, secondsPerBeat } =
@@ -660,15 +667,18 @@ ${repairList}
         );
       }
       try {
-        const directed = applyDirectorFormulasToPromptPair({
-          imagePrompt: imgBase,
-          videoPrompt: vidBase,
-          characterHints: charHints,
-          styleHint,
-          genre: genreLabel,
-          durationSec: Math.max(perShotSec, beatSec),
-          secondsPerBeat: beatSec,
-        });
+        const directed = await resolveApplyDirectorFormulasToPromptPair(
+          {
+            imagePrompt: imgBase,
+            videoPrompt: vidBase,
+            characterHints: charHints,
+            styleHint,
+            genre: genreLabel,
+            durationSec: Math.max(perShotSec, beatSec),
+            secondsPerBeat: beatSec,
+          },
+          { entitlementToken },
+        );
         if (!directed.image_prompt?.trim() || !directed.video_prompt?.trim()) {
           return NextResponse.json(
             {
@@ -692,20 +702,20 @@ ${repairList}
     }
 
     // Seedance sequence — hard-fail if continuity bake fails (B10 no silent skip)
+    // Packaged Pro: cloud IP authority (Vercel); free offline sequence denied.
     let sequenceMeta: {
       projectId?: string;
       sequenceApplied?: boolean;
       clipIds?: string[];
+      source?: string;
     } = {};
     try {
-      const { applySequenceToVideoPrompts } = await import(
-        '@/lib/integrations/seedanceAuto'
-      );
       const chapterNum = Number(
         payload.chapterNum ?? payload.chuong_dang_chon ?? 0,
       );
       const sceneIndex = Number(payload.sceneIndex ?? payload.scene_index ?? 0);
-      const applied = applySequenceToVideoPrompts({
+      const applied = await resolveApplySequenceToVideoPrompts(
+        {
         chapterNum: Number.isFinite(chapterNum) && chapterNum > 0 ? chapterNum : 1,
         sceneIndex: Number.isFinite(sceneIndex) ? sceneIndex : 0,
         prompts: formattedPrompts,
@@ -727,7 +737,9 @@ ${repairList}
           typeof payload.ten_tac_pham === 'string'
             ? payload.ten_tac_pham
             : undefined,
-      });
+        },
+        { entitlementToken },
+      );
       for (let i = 0; i < formattedPrompts.length; i++) {
         const next = applied.prompts[i];
         if (!next) continue;
@@ -741,9 +753,10 @@ ${repairList}
         projectId: applied.projectId,
         sequenceApplied: applied.sequenceApplied,
         clipIds: applied.clipIds,
+        source: applied.source,
       };
       console.log(
-        `[Prompt Generator] Seedance sequence applied · project=${applied.projectId} · clips=${applied.clipIds.length}`,
+        `[Prompt Generator] Seedance sequence applied · project=${applied.projectId} · clips=${applied.clipIds.length} · source=${applied.source || 'local'}`,
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

@@ -12,6 +12,7 @@ import {
   stableSeedFromString,
 } from '@/lib/vinaVoice/sampleOptimize';
 import { inspectTtsAudioFile } from '@/lib/tts/audioQuality';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,9 @@ function ensureDir(d: string) {
 export async function POST(req: Request) {
   const optimizeLog: string[] = [];
   try {
+    // Token from header; form body is multipart (not JSON claims)
+    const denied = await requireFeature(req, 'tts_premium');
+    if (denied) return denied;
     const form = await req.formData();
     const text = String(form.get('text') || '').trim();
     const refText = String(form.get('ref_text') || form.get('reference_text') || '').trim();

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -129,6 +130,8 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'tts_premium', body);
+    if (denied) return denied;
     const { apiKey: clientApiKey, apiKeys: clientApiKeys, srtText, ruleId = 'modern' } = body;
 
     let keysToUse: string[] = [];

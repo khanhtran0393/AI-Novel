@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { applyAudioStudioMix } from '@/lib/audioStudio';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'tts_premium', body);
+    if (denied) return denied;
     const { audioPath, roomTone, bgmMix, bgmPath } = body || {};
     if (!audioPath || typeof audioPath !== 'string') {
       return NextResponse.json({ error: 'Missing audioPath' }, { status: 400 });

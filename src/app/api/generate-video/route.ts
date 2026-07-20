@@ -7,7 +7,7 @@ import puppeteerCore from 'puppeteer';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { localVideoFilename } from '@/contracts';
 import { BrowserAgent } from '@/lib/agents/BrowserAgent';
-import { assertProAccess } from '@/lib/entitlement';
+import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
 import { probeVisualArtifact } from '@/lib/mediaArtifactValidation';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
@@ -192,15 +192,6 @@ async function runFfmpegProcess(executable: string, args: string[], timeoutMs: n
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
-  // Pro gate (open mode = desktop allow-all)
-  try {
-    await assertProAccess(req);
-  } catch (err) {
-    return NextResponse.json(toErrorJson(err, correlationId), {
-      status: httpStatusFromError(err),
-      headers: { 'x-correlation-id': correlationId },
-    });
-  }
   slog({
     level: 'info',
     msg: 'video_start',
@@ -209,6 +200,15 @@ export async function POST(req: Request) {
   });
   try {
     const body = await req.json();
+    // Pro/Trial gate after body parse so body.token also works (header preferred)
+    try {
+      await assertPremiumAccessHard(req, body);
+    } catch (err) {
+      return NextResponse.json(toErrorJson(err, correlationId), {
+        status: httpStatusFromError(err),
+        headers: { 'x-correlation-id': correlationId },
+      });
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { chapterNum, sceneIndex, promptIndex, prompt, drivePath, duration, model, startImage, endImage } = body;
 
@@ -243,6 +243,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `[Video API] Flow chi nhan thoi luong 4/6/8 giay, khong nhan ${videoDuration}s.` }, { status: 400 });
     }
 
+    const { extractEntitlementToken: extractEntForCtx } = await import(
+      '@/lib/entitlement'
+    );
     const seedanceGenCtx: SeedanceGenerationContext = {
       chapterNum: Number(chapterNum),
       sceneIndex: Number(sceneIndex),
@@ -264,6 +267,7 @@ export async function POST(req: Request) {
         typeof body.genre === 'string' && body.genre.trim()
           ? body.genre.trim()
           : undefined,
+      entitlementToken: extractEntForCtx(req, body),
     };
 
     // Seedance 2.0 — sequence-aware video_prompt (continuation / directed clip) baked in
@@ -280,7 +284,8 @@ export async function POST(req: Request) {
       const later = Array.isArray(body.laterSentences)
         ? body.laterSentences.map(String)
         : [];
-      const resolved = resolveVideoPromptWithSequence({
+      const entitlementToken = seedanceGenCtx.entitlementToken;
+      const resolved = await resolveVideoPromptWithSequence({
         chapterNum: Number.isFinite(chNum) ? chNum : 1,
         sceneIndex: Number.isFinite(scIdx) ? scIdx : 0,
         promptIndex: pIdx,
@@ -312,6 +317,7 @@ export async function POST(req: Request) {
             : typeof body.ten_tac_pham === 'string'
               ? body.ten_tac_pham
               : undefined,
+        entitlementToken,
         priorSentences: prior,
         laterSentences: later,
       });
@@ -1294,9 +1300,10 @@ type SeedanceGenerationContext = {
   promptText?: string;
   styleHint?: string;
   genre?: string;
+  entitlementToken?: string | null;
 };
 
-function tryMarkSeedanceGenerated(opts: {
+async function tryMarkSeedanceGenerated(opts: {
   chapterNum: number;
   sceneIndex: number;
   promptIndex: number;
@@ -1308,7 +1315,8 @@ function tryMarkSeedanceGenerated(opts: {
   secondsPerBeat: number;
   styleHint?: string;
   genre?: string;
-}): { clipId?: string; accepted?: boolean } {
+  entitlementToken?: string | null;
+}): Promise<{ clipId?: string; accepted?: boolean }> {
   try {
     const {
       loadSeedanceProject,
@@ -1319,7 +1327,9 @@ function tryMarkSeedanceGenerated(opts: {
       markClipGenerated,
       autoAcceptGeneratedTake,
     } = require('@/lib/integrations/seedanceTakeReview') as typeof import('@/lib/integrations/seedanceTakeReview');
-    const { compileDirectedClip } = require('@/lib/integrations/seedance') as typeof import('@/lib/integrations/seedance');
+    const { resolveCompileDirectedClip } = await import(
+      '@/lib/commercial/ip/seedanceCloudBridge'
+    );
 
     let state = loadSeedanceProject(opts.chapterNum, opts.projectSlug);
     if (!state?.clips?.length) {
@@ -1350,21 +1360,25 @@ function tryMarkSeedanceGenerated(opts: {
       ) || undefined;
 
     // Multi-shot within scene: ensure a clip row exists for this promptIndex
+    // Packaged: compileDirectedClip goes through cloud IP authority
     if (!clip && opts.promptText) {
       try {
-        const pack = compileDirectedClip({
-          projectId: state.project_id,
-          chapterNum: opts.chapterNum,
-          sceneIndex: opts.sceneIndex,
-          promptIndex: opts.promptIndex,
-          sceneText: opts.promptText,
-          videoPrompt: opts.promptText,
-          styleHint: opts.styleHint || String(state.story?.tone || ''),
-          genre: opts.genre,
-          durationSec: opts.durationSec,
-          secondsPerBeat: opts.secondsPerBeat,
-          hasStartImage: true,
-        });
+        const pack = await resolveCompileDirectedClip(
+          {
+            projectId: state.project_id,
+            chapterNum: opts.chapterNum,
+            sceneIndex: opts.sceneIndex,
+            promptIndex: opts.promptIndex,
+            sceneText: opts.promptText,
+            videoPrompt: opts.promptText,
+            styleHint: opts.styleHint || String(state.story?.tone || ''),
+            genre: opts.genre,
+            durationSec: opts.durationSec,
+            secondsPerBeat: opts.secondsPerBeat,
+            hasStartImage: true,
+          },
+          { entitlementToken: opts.entitlementToken },
+        );
         const exists = state.clips.some((c) => c.clip_id === pack.contract.clip_id);
         state = {
           ...state,
@@ -1510,7 +1524,7 @@ async function createSuccessResponse(
   const videoPath = `/video/${filename}`;
   let seedanceMeta: { clipId?: string; accepted?: boolean } = {};
   if (seedanceCtx) {
-    seedanceMeta = tryMarkSeedanceGenerated({
+    seedanceMeta = await tryMarkSeedanceGenerated({
       chapterNum: seedanceCtx.chapterNum,
       sceneIndex: seedanceCtx.sceneIndex,
       promptIndex: seedanceCtx.promptIndex,
@@ -1522,6 +1536,7 @@ async function createSuccessResponse(
       secondsPerBeat: seedanceCtx.secondsPerBeat,
       styleHint: seedanceCtx.styleHint,
       genre: seedanceCtx.genre,
+      entitlementToken: seedanceCtx.entitlementToken,
     });
   }
 

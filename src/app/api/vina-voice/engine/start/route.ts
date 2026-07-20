@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { probeVinaEngine } from '@/lib/vinaVoice';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
     } catch {
       body = {};
     }
+    const denied = await requireFeature(req, 'tts_premium', body);
+    if (denied) return denied;
     const engineUrl =
       body.engineUrl || process.env.VINA_ENGINE_URL || 'http://127.0.0.1:8765';
 

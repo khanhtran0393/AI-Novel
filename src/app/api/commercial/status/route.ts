@@ -8,6 +8,7 @@ import {
   extractEntitlementToken,
   getEntitlementPublicStatus,
   getHwid,
+  getHwidCandidates,
   verifyEntitlementToken,
 } from '@/lib/entitlement';
 import {
@@ -30,6 +31,11 @@ import {
   resolveLicenseByHwid,
 } from '@/lib/cloud/licenseBridge';
 import { getLicenseTrustStatus } from '@/lib/commercial/licenseTrust';
+import { getAntiTamperPublicStatus } from '@/lib/commercial/antiTamper';
+import { getPackagedAttestationPublicStatus } from '@/lib/commercial/packagedAttestation';
+import { getSeatPresencePublicStatus } from '@/lib/commercial/seatPresence';
+import { getHeartbeatPublicStatus } from '@/lib/commercial/licenseHeartbeat';
+import { getLicenseOnePathPublicStatus } from '@/lib/commercial/licenseOnePath';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -217,11 +223,26 @@ export async function GET(req: Request) {
       : Boolean(claims);
 
   const licenseTrust = getLicenseTrustStatus();
+  const antiTamper = getAntiTamperPublicStatus();
+  const heartbeat = getHeartbeatPublicStatus();
+  const packagedAttestation = getPackagedAttestationPublicStatus();
+  const seatPresence = getSeatPresencePublicStatus();
 
   return NextResponse.json({
     ok: true,
+    /** Canonical license architecture — docs/LICENSE_ONE_PATH.md */
+    onePath: getLicenseOnePathPublicStatus(),
     entitlement: pub,
     licenseTrust,
+    antiTamper,
+    packagedAttestation,
+    seatPresence,
+    heartbeat,
+    hwidVersions: {
+      preferred: 'v3',
+      /** Number of dual-accept fingerprints (v3/v2/v1) — not raw values */
+      candidateCount: getHwidCandidates().length,
+    },
     hwid: hwid.toUpperCase(),
     authority,
     cloudLicenseId,
