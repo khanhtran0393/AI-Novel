@@ -66,8 +66,23 @@ export async function POST(req: Request) {
     const ops = loadFlowOps();
     const queue = getQueue();
     const created = [];
-    for (const s of shots) {
+    for (const [shotIndex, s] of shots.entries()) {
       const kind = s.kind === 'video' ? 'video' : 'image';
+      const durationSec =
+        kind === 'video' ? Number(s.durationSec) : undefined;
+      if (
+        kind === 'video' &&
+        (typeof durationSec !== 'number' ||
+          !Number.isFinite(durationSec) ||
+          ![4, 6, 8].includes(durationSec))
+      ) {
+        return NextResponse.json(
+          {
+            error: `FLOW_DURATION_INVALID: shots[${shotIndex}].durationSec must be 4, 6, or 8`,
+          },
+          { status: 400 },
+        );
+      }
       const tasks = queue.enqueueMany({
         kind,
         prompt: String(s.prompt || ''),
@@ -78,7 +93,7 @@ export async function POST(req: Request) {
         quality: body.quality || ops.defaultQuality,
         videoModel: body.videoModel,
         imageModel: body.imageModel,
-        durationSec: s.durationSec != null ? Number(s.durationSec) : 6,
+        durationSec,
         ingredientPaths: s.ingredientPaths,
         camera: s.camera,
         videoMode: s.videoMode,

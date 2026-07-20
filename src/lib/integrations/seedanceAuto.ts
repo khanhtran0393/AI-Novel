@@ -283,8 +283,9 @@ export function applySequenceToVideoPrompts(input: {
 /**
  * Resolve a single video generation prompt with full sequence awareness.
  * Used by /api/generate-video before provider call.
+ * Packaged: directed clip compile via cloud IP when entitlementToken provided / cloud mode.
  */
-export function resolveVideoPromptWithSequence(input: {
+export async function resolveVideoPromptWithSequence(input: {
   chapterNum: number;
   sceneIndex: number;
   promptIndex: number;
@@ -302,13 +303,14 @@ export function resolveVideoPromptWithSequence(input: {
   /** Prior sentences in same scene (optional continuity) */
   priorSentences?: string[];
   laterSentences?: string[];
-}): {
+  entitlementToken?: string | null;
+}): Promise<{
   promptText: string;
   clipId: string;
   projectId: string;
   sequenceRelation: string;
   usedContinuation: boolean;
-} {
+}> {
   const slug = input.projectSlug || input.title;
   let state = loadSeedanceProject(input.chapterNum, slug);
   if (!state) {
@@ -393,24 +395,30 @@ export function resolveVideoPromptWithSequence(input: {
     }
   }
 
-  const pack = compileDirectedClip({
-    projectId: state?.project_id,
-    chapterNum: input.chapterNum,
-    sceneIndex: input.sceneIndex,
-    promptIndex: input.promptIndex,
-    sceneText: input.promptText,
-    videoPrompt: input.promptText,
-    characterHints: input.characterHints,
-    environmentHint: input.environmentHint,
-    styleHint: input.styleHint,
-    genre: input.genre,
-    durationSec: input.durationSec,
-    secondsPerBeat: input.secondsPerBeat,
-    hasStartImage: input.hasStartImage,
-    hasEndImage: input.hasEndImage,
-    alreadyHappened: already,
-    reservedLater: reserved,
-  });
+  const { resolveCompileDirectedClip } = await import(
+    '@/lib/commercial/ip/seedanceCloudBridge'
+  );
+  const pack = await resolveCompileDirectedClip(
+    {
+      projectId: state?.project_id,
+      chapterNum: input.chapterNum,
+      sceneIndex: input.sceneIndex,
+      promptIndex: input.promptIndex,
+      sceneText: input.promptText,
+      videoPrompt: input.promptText,
+      characterHints: input.characterHints,
+      environmentHint: input.environmentHint,
+      styleHint: input.styleHint,
+      genre: input.genre,
+      durationSec: input.durationSec,
+      secondsPerBeat: input.secondsPerBeat,
+      hasStartImage: input.hasStartImage,
+      hasEndImage: input.hasEndImage,
+      alreadyHappened: already,
+      reservedLater: reserved,
+    },
+    { entitlementToken: input.entitlementToken },
+  );
 
   if (state) {
     try {

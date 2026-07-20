@@ -197,12 +197,12 @@ export function defaultOutputDna(
     mediaStylePreset:
       partial?.mediaStylePreset ||
       'cinematic natural realism, grounded production design, expressive lighting',
-    imageProvider: partial?.imageProvider || 'gemini',
-    imageModel: partial?.imageModel || 'banana',
+    imageProvider: partial?.imageProvider || 'flow',
+    imageModel: partial?.imageModel || 'GEM_PIX_2',
     imageAspectRatio: partial?.imageAspectRatio || '16:9',
     imageCount: Math.max(1, Math.min(4, Number(partial?.imageCount) || 1)),
     videoProvider: partial?.videoProvider || 'flow',
-    videoModel: partial?.videoModel || 'veo_3_1_t2v_fast',
+    videoModel: partial?.videoModel || 'OMNI_FLASH',
     videoAspectRatio: partial?.videoAspectRatio || '16:9',
     /** Flow: 4|6|8; other providers may allow up to 15 */
     videoDuration: Math.max(1, Math.min(15, Number(partial?.videoDuration) || 8)),

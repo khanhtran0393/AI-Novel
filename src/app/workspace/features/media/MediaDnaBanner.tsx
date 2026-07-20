@@ -4,13 +4,14 @@
  * Live banner: generated media DNA vs current Ảnh/Video · TTS toolbar settings.
  * Soft warn only — user can re-gen or ignore until Ship/CapCut confirm.
  */
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
   chapterAssetKeys,
   evaluateMediaDnaMatch,
   liveDnaFromStoreLike,
+  summarizeMediaDnaMismatches,
 } from '@/lib/mediaDnaMatch';
 
 export default function MediaDnaBanner() {
@@ -29,7 +30,7 @@ export default function MediaDnaBanner() {
   const videoModel = useNovelStore((s) => s.videoModel);
   const videoAspectRatio = useNovelStore((s) => s.videoAspectRatio);
   const videoDuration = useNovelStore((s) => s.videoDuration);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissedIssueKey, setDismissedIssueKey] = useState('');
 
   const report = useMemo(() => {
     if (!isHydrated) return null;
@@ -78,20 +79,21 @@ export default function MediaDnaBanner() {
     videoDuration,
   ]);
 
+  const issueRows = useMemo(
+    () => summarizeMediaDnaMismatches(report?.mismatches || []),
+    [report],
+  );
+
   // Reset dismiss when chapter or report changes materially
   const issueKey = report?.hasIssues
-    ? `${ch}:${report.mismatches.map((m) => m.field + m.actual).join('|')}`
+    ? `${ch}:${issueRows.map((row) => `${row.key}:${row.count}`).join('|')}`
     : '';
-  React.useEffect(() => {
-    setDismissed(false);
-  }, [issueKey]);
+  if (!report?.hasIssues || dismissedIssueKey === issueKey) return null;
 
-  if (!report?.hasIssues || dismissed) return null;
-
-  const lines = report.mismatches.slice(0, 3).map((m) => m.message);
+  const lines = issueRows.slice(0, 3);
   const more =
-    report.mismatches.length > 3
-      ? ` (+${report.mismatches.length - 3} nữa)`
+    issueRows.length > 3
+      ? ` (+${issueRows.length - 3} mục nữa)`
       : '';
 
   return (
@@ -106,9 +108,10 @@ export default function MediaDnaBanner() {
             Media lệch cài Ảnh/Video · TTS (chương {ch})
           </div>
           <ul className="mt-0.5 list-inside list-disc text-amber-100/90">
-            {lines.map((l) => (
-              <li key={l} className="truncate">
-                {l}
+            {lines.map((row) => (
+              <li key={row.key} className="truncate">
+                {row.message}
+                {row.count > 1 ? ` · ${row.count} asset` : ''}
               </li>
             ))}
           </ul>
@@ -128,7 +131,7 @@ export default function MediaDnaBanner() {
         </div>
         <button
           type="button"
-          onClick={() => setDismissed(true)}
+          onClick={() => setDismissedIssueKey(issueKey)}
           className="shrink-0 rounded-lg p-1 text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-200 cursor-pointer"
           title="Ẩn cảnh báo"
         >

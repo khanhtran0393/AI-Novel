@@ -9,6 +9,7 @@
 
 import crypto from 'crypto';
 import { createActivationCodes } from './activationVault';
+import { appendSellerLog } from './sellerLog';
 import { getHwid, issueEntitlementToken } from '@/lib/entitlement';
 
 export type PaymentProvider = 'generic' | 'stripe' | 'lemon' | 'manual';
@@ -19,7 +20,7 @@ export type PaymentWebhookBody = {
   /** Order / session id for idempotency note */
   orderId?: string;
   email?: string;
-  plan?: 'pro' | 'vip';
+  plan?: 'pro';
   expSeconds?: number;
   /** If buyer already sent HWID at checkout */
   hwid?: string;
@@ -77,7 +78,7 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
   mode: 'code' | 'token';
   codes?: string[];
   token?: string;
-  plan: 'pro' | 'vip';
+  plan: 'pro';
   orderId?: string;
   message: string;
 } {
@@ -98,6 +99,15 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
       hwid,
       expSeconds,
     });
+    appendSellerLog({
+      at: new Date().toISOString(),
+      kind: 'webhook',
+      plan,
+      hwid,
+      orderId,
+      note: `token via ${provider}`,
+      meta: { email: body.email, mode: 'token' },
+    });
     return {
       ok: true,
       provider,
@@ -115,6 +125,15 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
     expSeconds,
     note: body.email ? `email:${body.email}` : undefined,
     orderId,
+  });
+  appendSellerLog({
+    at: new Date().toISOString(),
+    kind: 'webhook',
+    plan,
+    code: records[0]?.code,
+    orderId,
+    note: `code via ${provider}`,
+    meta: { email: body.email, mode: 'code' },
   });
   return {
     ok: true,

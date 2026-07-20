@@ -106,22 +106,22 @@ Logic ngầm (FableCut, Seedance, psych SEO, pipeline quality…) chạy **sau**
 
 Chi tiết: [`integrations-hub.md`](./integrations-hub.md) · code pipeline: `src/lib/pipeline/*`.
 
-### A6. Commercial / entitlement (Free · Trial · Pro · VIP)
+### A6. Commercial / entitlement (Free · Trial · Pro)
 
 | Mode | Ý nghĩa |
 |------|---------|
 | `AINOVEL_ENTITLEMENT_MODE=open` | **Dev/web mặc định** — Pro routes cho phép |
-| `=enforce` | Token HMAC + HWID **hoặc** trial active; fail-closed secret yếu |
+| `=enforce` | Token Ed25519 + HWID **hoặc** trial token active; fail-closed khi thiếu public key |
 | Electron **packaged** | Nếu env chưa set → **`enforce`** (`main.js`) |
 
 | Store | Ý nghĩa |
 |-------|---------|
-| `is_vip` | VIP / unlimited |
+| `is_vip` | Chỉ tương thích snapshot/token cũ; chuẩn hóa thành Pro |
 | `is_pro` | Mở quyền Pro-equivalent (kể cả trial set true) |
 | `is_trial` | Đang trial — **badge UI = TRIAL**, không gộp PRO trả phí |
 | `credits` | Free hữu hạn; trial ~50k; paid unlimited |
 
-**Badge Header** (ưu tiên): **VIP → TRIAL → PRO → FREE**.
+**Badge Header** (ưu tiên): **TRIAL → PRO → FREE**.
 
 Server `assertProAccess` trên: `generate-video`, `export-capcut`, `ship-pack`, `integrations/pipeline`.
 
@@ -174,7 +174,7 @@ Mọi chuỗi hiển thị / so khớp tên NV: **`.normalize('NFC')`**.
 1. **CẤM** phụ thuộc `NAVTools.exe` ngoài project.
 2. Gateway thiếu → fail rõ, không silent fallback.
 3. Host-binding enforce: không bẻ guard để chạy CLI toolbox standalone trên máy khách.
-4. Puppeteer (+ `music-metadata`) **phải** trong `serverExternalPackages` (`next.config.ts`).
+4. Puppeteer **phải** trong `serverExternalPackages`; `music-metadata` v11 do CutSDK dùng để Turbopack tự bundle/trace.
 
 ### B3. Domain & module
 
@@ -186,7 +186,7 @@ Mọi chuỗi hiển thị / so khớp tên NV: **`.normalize('NFC')`**.
 
 1. Không chặn workspace bằng `isHydrated === false` giả.
 2. Persist partialization: credentials tách; Làm Mới dùng `projectResetEpoch`.
-3. Plan: `setVipStatus(vip, pro, trial?)` — trial path `(false, true, true)`.
+3. Plan: `setVipStatus(legacyVip, pro, trial?)` — code mới luôn truyền `legacyVip=false`; trial path `(false, true, true)`.
 
 ### B5. TTS multi-voice cast
 
@@ -213,7 +213,7 @@ Nguồn: `src/lib/voiceCast.ts` + `docs/design-multi-character-voice-cast.md`
 2. Premium gen: emerald/amber nổi.
 3. Lightbox: `z-[100]`, blur, click đóng.
 4. Không modal che nav cốt lõi.
-5. Badge gói: VIP → TRIAL → PRO → FREE (đúng `is_trial`).
+5. Badge gói: TRIAL → PRO → FREE (đúng `is_trial`).
 
 ### B8. Tích hợp / ship
 

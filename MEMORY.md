@@ -1,5 +1,155 @@
 # Project memory (AI Novel)
 
+## Labyrinth multi-layer cascade (2026-07-20)
+
+- **Code:** `src/lib/commercial/labyrinth/*` (signals, cascade, decoy)
+- **Wire:** `antiTamper` (decoy env + signal), `proGateHard` (denyThroughCascade), status `labyrinth`
+- **Policy:** one root `INTEGRITY_OR_BYPASS`; progressive T1–T5 only when tamper; legitimate = single message
+- **Kill-switch:** `AINOVEL_LABYRINTH=0`; force sticky: `=1`
+- **Docs:** `docs/LABYRINTH.md` · smoke `npm run smoke:labyrinth`
+- **Cấm:** UI dùng decoy unlock; soft-success media; hydra cho user Pro sạch
+
+## License One-Path complete (2026-07-20)
+
+- **Policy:** `docs/LICENSE_ONE_PATH.md` + `src/lib/commercial/licenseOnePath.ts`
+- **Model:** ticket · ledger · crown IP — **cấm** f(token) / private client
+- **Quota request/ngày:** **REJECTED** (`dailyQuota: false`, `LICENSE_OUT_OF_SCOPE.daily_request_quota_supabase`)
+- **Wired:** status `onePath`, cloudIpAuth + seedance + psych policy pin, `API.cloudIpPsych`, LicenseModal one-path note
+- **Backdoors closed:** vina-voice synthesize/clone/runtime/engine/warm → `tts_premium`; generate-video gate after body parse
+- **Noise:** entitlement canary `kid=deadbeef*` no longer console.warn spam
+- **Smoke:** `npm run smoke:license-one-path` in `smoke:commercial` PASS; typecheck PASS
+- **Agent:** không re-introduce quota ngày / f(token)
+
+## Defense remaining gaps closed (2026-07-20)
+
+- CapAssistant full + isolate/split/watermark/download/transcribe/self-heal/translate-srt gated
+- `/api/youtube-meta` + writeChapterFinish → psych IP; youtube-seo psych path when no Gemini / preferPsych
+- `seatPresence.ts` concurrent seats window 15m; `hwidRebind.ts` fingerprint drift; activate clears rebind
+- Wired into proGateHard dual path
+
+## Defense mesh upgrade (2026-07-20) — full hardening pass
+
+- **Hard mesh:** `requireFeature` → `assertFeatureAccessHard` (integrity + anti-tamper + dual re-verify + feature + heartbeat)
+- **Multi-signal packaged:** `packagedAttestation.ts` + main sets ELECTRON_PACKAGED + PACKAGED_ATTEST + HOST_BINDING=enforce
+- **Grace tightened:** offline 48h / first-run 12h / strict 6h; STRICT includes tts/video/capcut/ship + Pro IP
+- **Gated leftover APIs:** video-editor, bypass-engine, video-dub-tools, tts-batch-srt, audio-studio, process/render-video, capassistant, rpa-*
+- **Host-binding:** per-spawn secret + scrubbed child env; anti-tamper rejects HOST_BINDING=open packaged
+- **Psych cloud IP:** `/api/cloud/ip/psych` + `psychCloudBridge.ts`; ipCatalog youtube_psych → cloud_authority
+- Docs: DEFENSE_LAYERS + ATTACK_SURFACE updated; smokes hardening + ip-catalog extended
+
+## RE protection 3-phase (2026-07-20)
+
+- **Phase A:** `productionBrowserSourceMaps: false`; pack excludes `**/*.map`, docs, scripts, agent md, `.next/types`, `.next/**/*.ts`; `beforePack` shell harden + `afterPack` restore + fuses
+- **Phase B:** **esbuild** minify+mangle Electron shell (devDep); asarmor deferred; audit RE leaks
+- **Phase C:** `ipCatalog` + `onlineRevalidate` + **Seedance cloud IP** `POST /api/cloud/ip/seedance` via `seedanceCloudBridge` (packaged → Vercel pin; free no-token director local; sequence Pro fail-closed)
+- Wire: `imagePrompt` director+sequence, `integrations/seedance` compile_clip + default compile
+- Smokes: `smoke:re-harden` (engine esbuild), `smoke:ip-catalog`, `smoke:seedance-cloud`, `scripts/smoke-seedance-cloud-live.mts`
+- Kill-switch: `AINOVEL_RE_HARDEN=0`, `AINOVEL_STRICT_ONLINE=0`, `AINOVEL_SEEDANCE_CLOUD=0|1`
+- **Ops 2026-07-20:** Vercel prod Ready → alias `ai-novel-flax.vercel.app` has `/api/cloud/ip/seedance`; QA pack `dist-qa-unsigned` audit PASS `shellHardened:true` (esbuild)
+- **Cloud IP auth:** shared `cloudIpAuth.ts` — `requireHwidMatch:false` + optional body.hwid vs claim (seedance + psych)
+- **Wire complete:** generate-video resolve/mark clip, chapterPipeline, ship/export, imagePrompt, integrations/seedance
+- Live: `npm run smoke:cloud-ip-live` (seedance + psych) against `ai-novel-flax.vercel.app`
+- **Code-close 2026-07-20:** fresh `next build` + repack QA; `audit:package` PASS `shellHardened:true` esbuild; live cloud-ip PASS
+- Artifact: `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe` (~140MB) + `win-unpacked`
+- One-shot verify: `npm run pack:unsigned:qa:verify`
+- **Not code:** Authenticode cert / signed NSIS production only
+
+## Defense-in-depth layers (2026-07-20)
+
+- **L3 force enforce:** packaged always `AINOVEL_ENTITLEMENT_MODE=enforce`; customer env cannot set MODE/local trial; `getEntitlementMode()` locks on `AI_NOVEL_PACKAGED`/`AINOVEL_PUBLISH`.
+- **L2 API mesh:** `src/lib/commercial/apiGate.ts` — TTS premium (not edge/piper), navtools (not youtube-seo free), integrations/*, Flow multi create, suggest-channels.
+- **L4:** packaged `devTools: false` + F12 block; pack chain `beforePack` re-harden → `afterPack` restore + fuses; shell open path system-dir block.
+- **L5 HWID v2:** MachineGuid + dual-accept v1 tokens.
+- **Docs:** `docs/DEFENSE_LAYERS.md` · smokes extended commercial + electron-security.
+
+## Hardening remaining vectors (2026-07-20)
+
+- **HWID v3** multi-signal (MachineGuid+vol+CPU); dual-accept v2/v1
+- **Heartbeat** packaged: online revoke kill; offline grace 72h; first-run 24h; no kill on missing DB row
+- **proGateHard** dual-path on video/capcut/ship + runtimeIntegrity
+- Smoke: `smoke:hardening` PASS
+
+## Adversarial anti-tamper (2026-07-20)
+
+- Hacker view → harden: `antiTamper.ts` kid+SPKI pin, packaged no open/owner/secrets, verify canary
+- Wired into assertTier / assertFeature / activate; status `antiTamper`; docs `ATTACK_SURFACE.md`
+- Smoke: `npm run smoke:anti-tamper` PASS (reject swapped public key)
+
+## License trust pin (2026-07-20)
+
+- `src/lib/commercial/licenseTrust.ts`: host pin license API + optional TLS SPKI pin + update feed host pin
+- Proxy dùng `fetchPinnedLicenseApi`; packaged fail-closed empty keyring (`assertVerificationKeyringReady`)
+- main.js: customer cannot expand `LICENSE_API_HOSTS` / `TLS_PINS`; smoke `npm run smoke:license-trust`
+- Ed25519 remains source of truth vs fake keys
+
+## Commercial admin complete (2026-07-20)
+
+- **API** `GET /api/cloud/license/list` (admin key) · **UI** `/admin` list/filter/revoke/issue HWID
+- **Docs** `docs/COMMERCIAL_ADMIN.md` · backup `npm run commercial:backup-seller`
+- Paid activate promote trial→pro + status Pro (prior fix)
+- Authenticode still human: buy cert — only ship blocker for signed installer
+
+## Activate OK but badge TRIAL (2026-07-20)
+
+- **Cause:** Supabase còn row `plan=trial` cho HWID; activate/`verifyLicenseCloud` lấy claims cloud trial đè token Pro → badge TRIAL.
+- **Fix:** `promoteHwidLicenseToPaidPro` (trial→pro); activate paid token luôn promote + trả `plan:pro`; status ưu tiên paid offline token; LicenseModal/sync Pro trước trial.
+- Empirical: activate → `plan=pro`; status → `tier=pro tokenValid=true trial.active=false`.
+
+## Activate fail kid mismatch (2026-07-19)
+
+- **Cause:** Telegram đã cấp key **HMAC cũ** (`eyJ….sig` 43 chars) — app chỉ verify **Ed25519 `AINOVEL2.<kid>.…`**. Lỗi UI hiện `kid=ROhq…` (thực ra là signature HMAC bị parse nhầm) vs keyring `3ac9c18a6691a09e`.
+- **Fix:** diagnose legacy HMAC trong activate + LicenseModal; bridge approveText bắt buộc AINOVEL2; `issueProLicenseForPlan` (alias `issueHmacForPlan`); redeploy bridge `ainovel-telegram-bridge.vercel.app` với `PRIVATE_KEY_B64` seller kid `3ac9c18a6691a09e`.
+- **Seller pair OK:** `%LOCALAPPDATA%\AI Novel Seller\entitlement-private.pem` ↔ `resources/license/public-keys/3ac9c18a6691a09e.pem`.
+- Khách dán lại key **bắt đầu `AINOVEL2.`** (key HMAC/eyJ… vứt).
+
+## Go-live status (2026-07-19 late)
+
+- **softwareReady: true** · **authenticodeReady: false** (no CSC_LINK / WIN_CSC_* on machine)
+- Docs: `docs/COMMERCIAL_GO_LIVE.md` · scripts: `commercial:go-live-status`, `commercial:complete`
+- prepare:publish PASS · smoke-unpacked Free 403 PASS · license:issue Ed25519 PASS
+- Residual only: buy Windows code-signing cert → build:desktop or tag v1.0.0 CI
+
+## Commercial complete local (2026-07-19)
+
+- **prepare:publish PASS** (fixed ELECTRON_RUN_AS_NODE breaking credential vault smoke via `scripts/run-electron-smoke.cjs`)
+- **release:source staged** required packaging files for `audit:release-source`
+- **release:verify** still needs Authenticode env (CSC_LINK / WIN_CSC_*) — no code-sign cert on machine
+- **pack:unsigned:qa** produced `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe` + win-unpacked
+- **audit-packaged-artifact PASS** (public keys, no private markers)
+- **smoke-unpacked-desktop PASS**: enforce, free, video 403
+- **Pro activate E2E PASS**: issue AINOVEL2 → activate → tier pro → video not 403 (400 validation)
+- Customer `.env.commercial` public-only (license API + update feed)
+- Feed verify PASS; Telegram bridge + ai-novel-flax ready
+- Residual for production publish: buy/configure Windows Authenticode → `npm run build:desktop` / tag `v1.0.0` CI
+
+## Commercial readiness audit (2026-07-19)
+
+- **ship:check PASS** (fixed python_core filters: `!ffmpeg/**`, `!MediaCrawler/**`, `!assets/**`)
+- **smoke:commercial PASS** (Ed25519 + multiseat)
+- **License:** issue `AINOVEL2.<kid>.…` + verify same HWID + tamper reject; feature matrix Free/Trial/Pro OK
+- **Prod API** `https://ai-novel-flax.vercel.app` enforce, publicKey+signer, readyForCommercial
+- **Telegram bridge** webhook live; desktop activates offline Ed25519 (server HWID ≠ client — by design)
+- **Security:** credentialVault DPAPI, public.env no secrets, asar+signing gates, electron security smoke PASS
+- **Ops remaining for full sell:** code-sign cert on build machine, white-machine install once, optional update artifact on feed
+
+## Telegram Vercel bridge LIVE (2026-07-19)
+
+- **URL:** `https://ainovel-telegram-bridge.vercel.app`
+- **Webhook:** `/api/entitlement/telegram-webhook` (getWebhookInfo confirmed)
+- **Code:** `deploy/telegram-bridge/` slim Next; deploy `npm run telegram:deploy-bridge`
+- **Secrets:** Ed25519 `AINOVEL_ENTITLEMENT_PRIVATE_KEY_B64` (seller PEM base64, kid `3ac9c18a6691a09e`) + bot token/chat/webhook secret — **không** dùng HMAC secret để cấp license
+- Full monorepo Vercel blocked (1.4GB / CVE next) — bridge only is intentional
+- Redeploy 2026-07-19: webhook live; Cấp Key → AINOVEL2 only
+
+## Commercial full ship pack (2026-07-19)
+
+- **Updater:** `electron/updater.js` + main/preload `ainovelUpdater`; dep `electron-updater`; env `AINOVEL_UPDATE_*`; builder `publish.generic` placeholder URL.
+- **Multi-seat:** `activationVault` maxSeats/seats + `releaseSeat` / `setMaxSeats`; API `/api/entitlement/seats`; CLI `license:transfer`; issue `--seats N`.
+- **Seller log:** `sellerLog` + webhook/issue/transfer append `data/licenses/seller-orders.jsonl`.
+- **Ops scripts:** `commercial:secrets`, `commercial:setup-env`, `ship:check`, `commercial:white-machine`.
+- **Docs:** `docs/COMMERCIAL_OPS.md`, `.env.commercial.example`; SHIP/INSTALL/COMMERCIAL updated.
+- **Ops still human:** buy Authenticode cert, host CDN feed, fill Telegram/Vercel secrets, white-machine tick.
+
 ## Docs truth rewrite (2026-07-19) — full set
 
 - **Rewrote for runtime truth:** `AGENTS.md`, `docs/IRON_LAWS.md`, `docs/DOMAIN_MAP.md`, `docs/RESET_POINT.md`, `docs/COMMERCIAL.md`, `docs/integrations-hub.md`, `src/app/workspace/ARCHITECTURE.md`, `src/contracts/domainOwnership.ts` (credentials + license/cloud).
@@ -11,6 +161,11 @@
 - **Cause:** `shouldGrantOwnerUnlimited()` returned true when `MODE=open` → status `ownerUnlimited` → sync `setVipStatus(true,true)` → badge VIP.
 - **Fix:** owner unlimited **only** `AINOVEL_OWNER_UNLIMITED=1`. MODE=open no longer elevates UI.
 - `.env.local` set to `enforce` for commercial test; restart Next after env change.
+
+## Cleanup safe junk (2026-07-19)
+
+- Deleted non-runtime: `OpenMontage/` (~696MB, excluded from Electron package), `scratch/`, root `test_webhook*.ts`, `tsconfig.tsbuildinfo`.
+- Kept: `src`, `public`, `bin`, `data`, `accounts_data`, `python_core`, `node_modules`, `.next`, `vendor`.
 
 ## Product tiers = Free | Trial | Pro only (2026-07-19)
 

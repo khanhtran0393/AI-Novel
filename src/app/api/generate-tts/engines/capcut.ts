@@ -5,15 +5,27 @@ import { findCapCutSscronet, capCutDllMissingMessage } from './capcutDll';
 import { resolveCapCutVoice, listCapCutVoicesSummary } from '@/lib/capcutVoices';
 
 function capcutWindowsDir(): string {
-  return path.join(
-    process.cwd(),
-    'src',
-    'app',
-    'api',
-    'generate-tts',
-    'capcut_api',
-    'capcut_windows',
+  const roots = [
+    path.join(process.cwd(), 'capcut_api', 'capcut_windows'),
+    path.join(
+      process.cwd(),
+      'src',
+      'app',
+      'api',
+      'generate-tts',
+      'capcut_api',
+      'capcut_windows',
+    ),
+  ];
+  const hit = roots.find((candidate) =>
+    fs.existsSync(path.join(candidate, 'capcut_tts_ctypes.py')),
   );
+  if (!hit) {
+    throw new Error(
+      `Không tìm thấy CapCut TTS runtime. Đã quét: ${roots.join(', ')}`,
+    );
+  }
+  return hit;
 }
 
 function writeConfig(opts: {
@@ -59,7 +71,6 @@ function writeConfig(opts: {
 }
 
 function resolvePython(): string {
-  // Prefer venv / py launcher on Windows
   const candidates = [
     process.env.PYTHON || '',
     process.env.AINOVEL_PYTHON || '',
@@ -68,16 +79,19 @@ function resolvePython(): string {
   ].filter(Boolean);
   for (const c of candidates) {
     try {
-      execFileSync(c === 'py' ? 'py' : c, c === 'py' ? ['-3', '--version'] : ['--version'], {
-        stdio: 'pipe',
-        timeout: 5000,
-      });
+      const args =
+        c === 'py'
+          ? ['-3', '-c', 'import cryptography; print(cryptography.__version__)']
+          : ['-c', 'import cryptography; print(cryptography.__version__)'];
+      execFileSync(c === 'py' ? 'py' : c, args, { stdio: 'pipe', timeout: 5000 });
       return c;
     } catch {
       /* try next */
     }
   }
-  return 'python';
+  throw new Error(
+    'CapCut TTS cần CPython x64 và gói cryptography. Cài Python, rồi chạy: python -m pip install cryptography==48.0.0. App không tự đổi engine TTS.',
+  );
 }
 
 export async function generateCapCutTTS(
@@ -149,8 +163,19 @@ export function diagnoseCapCutInstall(): {
   voiceCount: number;
   message: string;
 } {
-  const hit = findCapCutSscronet();
   const summary = listCapCutVoicesSummary();
+  try {
+    resolvePython();
+  } catch (error) {
+    return {
+      ok: false,
+      dllPath: null,
+      version: null,
+      voiceCount: summary.total,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+  const hit = findCapCutSscronet();
   if (!hit) {
     return {
       ok: false,

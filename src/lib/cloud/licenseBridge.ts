@@ -1,10 +1,11 @@
 /**
- * Cloud license bridge — HMAC issue/verify + optional Supabase persistence.
+ * Cloud license bridge — Ed25519 issue/verify + optional Supabase persistence.
  * Improves pure local vault: orders, revoke, audit, trial 1/HWID in DB.
  */
 
 import crypto from 'crypto';
 import {
+  claimsIsTrial,
   issueEntitlementToken,
   verifyEntitlementToken,
   type EntitlementClaims,
@@ -23,6 +24,83 @@ import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
 
 export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/** Redeem a persistent Supabase activation code and issue a fresh HWID token. */
+export async function redeemCloudActivationCode(input: {
+  service: SupabaseClient;
+  code: string;
+  hwid: string;
+}): Promise<{ token: string; claims: EntitlementClaims; licenseId: string }> {
+  const code = input.code.trim().toUpperCase();
+  const hwid = input.hwid.trim().toLowerCase();
+  const { data: row, error } = await input.service
+    .from('licenses')
+    .select('id,plan,hwid,status,exp_at,activation_code')
+    .eq('activation_code', code)
+    .maybeSingle();
+  if (error) {
+    throw new AppError(`License lookup fail: ${error.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+  if (!row) {
+    throw new AppError('Mã kích hoạt không tồn tại.', {
+      code: 'AUTH',
+      status: 404,
+    });
+  }
+  if (row.status !== 'active') {
+    throw new AppError(`License status=${row.status}.`, {
+      code: 'AUTH',
+      status: 403,
+    });
+  }
+  if (String(row.hwid || '').trim().toLowerCase() !== hwid) {
+    throw new AppError('Mã kích hoạt không khớp HWID máy này.', {
+      code: 'AUTH',
+      status: 403,
+    });
+  }
+  const secondsLeft = Math.floor(
+    (new Date(row.exp_at).getTime() - Date.now()) / 1000,
+  );
+  if (!Number.isFinite(secondsLeft) || secondsLeft <= 0) {
+    await input.service
+      .from('licenses')
+      .update({ status: 'expired' })
+      .eq('id', row.id);
+    throw new AppError('License đã hết hạn.', { code: 'AUTH', status: 403 });
+  }
+  const isTrial = row.plan === 'trial';
+  const token = issueEntitlementToken({
+    is_pro: true,
+    is_vip: false,
+    is_trial: isTrial,
+    plan: isTrial ? 'trial' : 'pro',
+    hwid,
+    license_id: String(row.id),
+    expSeconds: secondsLeft,
+  });
+  const { error: updateError } = await input.service
+    .from('licenses')
+    .update({ token_hash: hashToken(token) })
+    .eq('id', row.id);
+  if (updateError) {
+    throw new AppError(`License update fail: ${updateError.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+  const claims = verifyEntitlementToken(token, { requireHwidMatch: false });
+  if (!claims || claims.hwid?.toLowerCase() !== hwid) {
+    throw new AppError('Token vừa cấp không verify được.', {
+      code: 'INFRA',
+      status: 500,
+    });
+  }
+  return { token, claims, licenseId: String(row.id) };
 }
 
 export function paidPlanToLicense(planId: PaidPlanId): {
@@ -45,7 +123,11 @@ export function paidPlanToLicense(planId: PaidPlanId): {
   };
 }
 
-export function issueHmacForPlan(
+/**
+ * Issue a paid Pro license (Ed25519 AINOVEL2 wire format).
+ * Name kept as issueHmacForPlan for call-site compatibility — does NOT use HMAC.
+ */
+export function issueProLicenseForPlan(
   planId: PaidPlanId,
   hwid: string,
 ): { token: string; claims: EntitlementClaims; meta: ReturnType<typeof paidPlanToLicense> } {
@@ -62,15 +144,24 @@ export function issueHmacForPlan(
     hwid: id,
     expSeconds: meta.expSeconds,
   });
+  if (!token.startsWith('AINOVEL2.')) {
+    throw new AppError('Issue token không phải AINOVEL2 (kiểm tra signing key Ed25519).', {
+      code: 'INFRA',
+      status: 503,
+    });
+  }
   const claims = verifyEntitlementToken(token, { requireHwidMatch: false });
   if (!claims) {
-    throw new AppError('Issue token thất bại (secret?).', {
+    throw new AppError('Issue token thất bại (signing key / public keyring lệch cặp).', {
       code: 'INFRA',
       status: 503,
     });
   }
   return { token, claims, meta };
 }
+
+/** @deprecated Use issueProLicenseForPlan — alias for smoke/scripts. */
+export const issueHmacForPlan = issueProLicenseForPlan;
 
 export function issueTrialToken(hwid: string, days = 3): {
   token: string;
@@ -308,7 +399,213 @@ export async function confirmOrderAndIssue(input: {
   };
 }
 
-/** Online verify: HMAC ok + optional cloud not revoked. */
+/**
+ * Supabase = source of truth for plan when admin configured.
+ * Rank: pro > trial. Legacy VIP rows are normalized to Pro.
+ */
+export function claimsFromLicensePlan(
+  plan: LicensePlan | 'vip',
+  expAtIso: string,
+  hwid?: string,
+): EntitlementClaims {
+  const exp = Math.floor(new Date(expAtIso).getTime() / 1000);
+  const is_trial = plan === 'trial';
+  const is_pro = plan === 'pro' || plan === 'vip' || is_trial;
+  return {
+    is_pro,
+    is_vip: false,
+    is_trial: is_trial || undefined,
+    plan: is_trial ? 'trial' : 'pro',
+    exp,
+    ...(hwid ? { hwid: hwid.trim().toLowerCase() } : {}),
+  };
+}
+
+function planRank(plan: string): number {
+  if (plan === 'vip') return 2;
+  if (plan === 'pro') return 2;
+  if (plan === 'trial') return 1;
+  return 0;
+}
+
+/** True when claims are paid Pro (not time-boxed trial). */
+export function claimsArePaidPro(claims: EntitlementClaims | null | undefined): boolean {
+  if (!claims) return false;
+  if (claimsIsTrial(claims)) return false;
+  const plan = String(claims.plan || '');
+  return !!(claims.is_pro || claims.is_vip || plan === 'pro' || plan === 'vip');
+}
+
+/**
+ * Upsert HWID row to paid Pro (upgrade trial → pro).
+ * Used when customer activates a paid AINOVEL2 key while a trial row still exists.
+ */
+export async function promoteHwidLicenseToPaidPro(input: {
+  service: SupabaseClient;
+  token: string;
+  hwid: string;
+  exp: number;
+}): Promise<{ ok: boolean; licenseId?: string; error?: string }> {
+  const hwidNorm = input.hwid.trim().toLowerCase();
+  if (!hwidNorm || hwidNorm.length < 6) {
+    return { ok: false, error: 'HWID không hợp lệ' };
+  }
+  const expAt = new Date(Math.max(input.exp, 0) * 1000).toISOString();
+  const tokenHash = hashToken(input.token);
+
+  try {
+    // Prefer any active row for this HWID (case-insensitive)
+    const { data: rows, error: selErr } = await input.service
+      .from('licenses')
+      .select('id,status,plan')
+      .ilike('hwid', hwidNorm)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (selErr) return { ok: false, error: selErr.message };
+
+    const active = rows || [];
+    const primary = active[0];
+    if (primary?.id) {
+      const { error: upErr } = await input.service
+        .from('licenses')
+        .update({
+          token_hash: tokenHash,
+          exp_at: expAt,
+          plan: 'pro',
+          hwid: hwidNorm,
+          status: 'active',
+        })
+        .eq('id', primary.id);
+      if (upErr) return { ok: false, error: upErr.message };
+
+      // Expire other active trial rows so resolveLicenseByHwid cannot stick on trial
+      const others = active
+        .filter((r) => r.id !== primary.id && (r.plan === 'trial' || !r.plan))
+        .map((r) => r.id);
+      if (others.length) {
+        await input.service
+          .from('licenses')
+          .update({ status: 'expired' })
+          .in('id', others);
+      }
+      return { ok: true, licenseId: String(primary.id) };
+    }
+
+    const { data, error } = await input.service
+      .from('licenses')
+      .insert({
+        user_id: null,
+        order_id: null,
+        plan: 'pro',
+        hwid: hwidNorm,
+        status: 'active',
+        exp_at: expAt,
+        token_hash: tokenHash,
+        activation_code: null,
+      })
+      .select('id')
+      .single();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, licenseId: data?.id ? String(data.id) : undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export type CloudLicenseLookup = {
+  found: boolean;
+  claims: EntitlementClaims | null;
+  licenseId?: string;
+  status?: string;
+  plan?: LicensePlan;
+  expAt?: string;
+  hwid?: string;
+  source: 'supabase' | 'none';
+};
+
+/** Primary authority: active license row for this HWID (case-insensitive). */
+export async function resolveLicenseByHwid(
+  service: SupabaseClient,
+  hwid: string,
+): Promise<CloudLicenseLookup> {
+  const id = (hwid || '').trim().toLowerCase();
+  if (!id || id.length < 6) {
+    return { found: false, claims: null, source: 'supabase' };
+  }
+
+  const { data: rows, error } = await service
+    .from('licenses')
+    .select('id,status,exp_at,hwid,plan,token_hash')
+    .ilike('hwid', id)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    throw new AppError(`Supabase licenses: ${error.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+
+  const now = Date.now();
+
+  // Mark past-exp actives as expired
+  for (const r of rows || []) {
+    if (r.status === 'active' && new Date(r.exp_at).getTime() < now) {
+      void service
+        .from('licenses')
+        .update({ status: 'expired' })
+        .eq('id', r.id);
+    }
+  }
+
+  const active = (rows || [])
+    .filter(
+      (r) =>
+        r.status === 'active' &&
+        Number.isFinite(new Date(r.exp_at).getTime()) &&
+        new Date(r.exp_at).getTime() >= now,
+    )
+    .sort((a, b) => {
+      const pr = planRank(b.plan) - planRank(a.plan);
+      if (pr !== 0) return pr;
+      return new Date(b.exp_at).getTime() - new Date(a.exp_at).getTime();
+    });
+
+  const best = active[0];
+  if (!best) {
+    const revoked = (rows || []).find((r) => r.status === 'revoked');
+    return {
+      found: false,
+      claims: null,
+      source: 'supabase',
+      status: revoked ? 'revoked' : 'none',
+      hwid: id,
+    };
+  }
+
+  return {
+    found: true,
+    claims: claimsFromLicensePlan(
+      best.plan as LicensePlan,
+      best.exp_at,
+      id,
+    ),
+    licenseId: best.id as string,
+    status: best.status as string,
+    plan: best.plan as LicensePlan,
+    expAt: best.exp_at as string,
+    hwid: id,
+    source: 'supabase',
+  };
+}
+
+/**
+ * Online verify: when Supabase admin configured → DB is authority.
+ * - No matching active row (by token_hash or HWID) → invalid (delete row = Free)
+ * - Without Supabase → local Ed25519 verification only
+ */
 export async function verifyLicenseCloud(input: {
   service: SupabaseClient | null;
   token: string;
@@ -321,20 +618,17 @@ export async function verifyLicenseCloud(input: {
     revoked: boolean;
     licenseId?: string;
     status?: string;
+    authority: 'supabase' | 'local';
   };
 }> {
-  const claims = verifyEntitlementToken(input.token, {
-    requireHwidMatch: Boolean(input.hwid),
-  });
-  // verifyEntitlementToken uses local getHwid when requireHwidMatch — for API we parse claims
   const localClaims = verifyEntitlementToken(input.token, {
     requireHwidMatch: false,
   });
-  if (!localClaims || (!localClaims.is_pro && !localClaims.is_vip)) {
+  if (!localClaims || (!localClaims.is_pro && !localClaims.is_vip && !localClaims.is_trial)) {
     return {
       valid: false,
       claims: null,
-      cloud: { checked: false, revoked: false },
+      cloud: { checked: false, revoked: false, authority: 'local' },
     };
   }
 
@@ -343,7 +637,7 @@ export async function verifyLicenseCloud(input: {
       return {
         valid: false,
         claims: null,
-        cloud: { checked: false, revoked: false },
+        cloud: { checked: false, revoked: false, authority: 'local' },
       };
     }
   }
@@ -352,64 +646,202 @@ export async function verifyLicenseCloud(input: {
     return {
       valid: true,
       claims: localClaims,
-      cloud: { checked: false, revoked: false },
+      cloud: { checked: false, revoked: false, authority: 'local' },
     };
   }
 
   const th = hashToken(input.token);
-  const { data: row } = await input.service
+  const { data: rowByHash } = await input.service
     .from('licenses')
-    .select('id,status,exp_at,hwid')
+    .select('id,status,exp_at,hwid,plan')
     .eq('token_hash', th)
     .maybeSingle();
 
-  if (!row) {
-    // Token valid HMAC but not in cloud (issued offline) — still ok
-    return {
-      valid: true,
-      claims: localClaims,
-      cloud: { checked: true, revoked: false },
-    };
-  }
+  // Prefer HWID row authority (covers re-issue / hash mismatch after secret rotate)
+  const hwid =
+    (input.hwid || localClaims.hwid || '').trim().toLowerCase() || undefined;
+  if (hwid) {
+    const byHwid = await resolveLicenseByHwid(input.service, hwid);
+    if (byHwid.found && byHwid.claims) {
+      // Token optional: if present and hash row revoked, deny
+      if (rowByHash && (rowByHash.status === 'revoked' || rowByHash.status === 'expired')) {
+        return {
+          valid: false,
+          claims: null,
+          cloud: {
+            checked: true,
+            revoked: rowByHash.status === 'revoked',
+            licenseId: rowByHash.id,
+            status: rowByHash.status,
+            authority: 'supabase',
+          },
+        };
+      }
 
-  if (row.status === 'revoked' || row.status === 'expired') {
+      // Paid Pro offline token upgrades lingering trial row (customer paid after trial)
+      if (
+        claimsArePaidPro(localClaims) &&
+        (claimsIsTrial(byHwid.claims) || planRank(String(byHwid.plan || '')) < planRank('pro'))
+      ) {
+        const promoted = await promoteHwidLicenseToPaidPro({
+          service: input.service,
+          token: input.token,
+          hwid,
+          exp: localClaims.exp,
+        });
+        if (promoted.ok) {
+          return {
+            valid: true,
+            claims: {
+              ...localClaims,
+              is_pro: true,
+              is_vip: false,
+              is_trial: false,
+              plan: 'pro',
+            },
+            cloud: {
+              checked: true,
+              revoked: false,
+              licenseId: promoted.licenseId || byHwid.licenseId,
+              status: 'active',
+              authority: 'supabase',
+            },
+          };
+        }
+        // Promote failed: still honor paid offline token for access
+        return {
+          valid: true,
+          claims: {
+            ...localClaims,
+            is_pro: true,
+            is_vip: false,
+            is_trial: false,
+            plan: 'pro',
+          },
+          cloud: {
+            checked: true,
+            revoked: false,
+            licenseId: byHwid.licenseId,
+            status: byHwid.status,
+            authority: 'local',
+          },
+        };
+      }
+
+      return {
+        valid: true,
+        claims: byHwid.claims,
+        cloud: {
+          checked: true,
+          revoked: false,
+          licenseId: byHwid.licenseId,
+          status: byHwid.status,
+          authority: 'supabase',
+        },
+      };
+    }
+
+    // No active row: paid Pro token self-heals; trial still requires existing grant path
+    if (claimsArePaidPro(localClaims)) {
+      const promoted = await promoteHwidLicenseToPaidPro({
+        service: input.service,
+        token: input.token,
+        hwid,
+        exp: localClaims.exp,
+      });
+      if (promoted.ok) {
+        return {
+          valid: true,
+          claims: {
+            ...localClaims,
+            is_pro: true,
+            is_vip: false,
+            is_trial: false,
+            plan: 'pro',
+          },
+          cloud: {
+            checked: true,
+            revoked: false,
+            licenseId: promoted.licenseId,
+            status: 'active',
+            authority: 'supabase',
+          },
+        };
+      }
+    }
+
+    // No active license for HWID → Free even if the offline token is still signed.
     return {
       valid: false,
       claims: null,
       cloud: {
         checked: true,
-        revoked: true,
-        licenseId: row.id,
-        status: row.status,
+        revoked: byHwid.status === 'revoked',
+        status: byHwid.status || 'none',
+        authority: 'supabase',
       },
     };
   }
 
-  if (new Date(row.exp_at).getTime() < Date.now()) {
-    await input.service
-      .from('licenses')
-      .update({ status: 'expired' })
-      .eq('id', row.id);
+  if (!rowByHash) {
+    // Supabase authority: missing row = not licensed
     return {
       valid: false,
       claims: null,
       cloud: {
         checked: true,
         revoked: false,
-        licenseId: row.id,
+        status: 'none',
+        authority: 'supabase',
+      },
+    };
+  }
+
+  if (rowByHash.status === 'revoked' || rowByHash.status === 'expired') {
+    return {
+      valid: false,
+      claims: null,
+      cloud: {
+        checked: true,
+        revoked: true,
+        licenseId: rowByHash.id,
+        status: rowByHash.status,
+        authority: 'supabase',
+      },
+    };
+  }
+
+  if (new Date(rowByHash.exp_at).getTime() < Date.now()) {
+    await input.service
+      .from('licenses')
+      .update({ status: 'expired' })
+      .eq('id', rowByHash.id);
+    return {
+      valid: false,
+      claims: null,
+      cloud: {
+        checked: true,
+        revoked: false,
+        licenseId: rowByHash.id,
         status: 'expired',
+        authority: 'supabase',
       },
     };
   }
 
   return {
     valid: true,
-    claims: localClaims,
+    claims: claimsFromLicensePlan(
+      (rowByHash.plan as LicensePlan) || 'pro',
+      rowByHash.exp_at,
+      rowByHash.hwid,
+    ),
     cloud: {
       checked: true,
       revoked: false,
-      licenseId: row.id,
-      status: row.status,
+      licenseId: rowByHash.id,
+      status: rowByHash.status,
+      authority: 'supabase',
     },
   };
 }
@@ -540,4 +972,60 @@ export async function revokeLicense(input: {
     { licenseId: input.licenseId },
     input.actorId,
   );
+}
+
+export type LicenseListRow = {
+  id: string;
+  plan: string;
+  status: string;
+  hwid: string;
+  exp_at: string;
+  created_at?: string;
+  revoked_at?: string | null;
+  activation_code?: string | null;
+  order_id?: string | null;
+};
+
+/** Admin list licenses (service_role). Filters: plan, status, hwid substring. */
+export async function listLicenses(input: {
+  service: SupabaseClient;
+  plan?: string;
+  status?: string;
+  q?: string;
+  limit?: number;
+}): Promise<{ rows: LicenseListRow[]; total: number }> {
+  const limit = Math.min(200, Math.max(1, Number(input.limit) || 50));
+  let query = input.service
+    .from('licenses')
+    .select(
+      'id,plan,status,hwid,exp_at,created_at,revoked_at,activation_code,order_id',
+      { count: 'exact' },
+    )
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  const plan = (input.plan || '').trim().toLowerCase();
+  if (plan && plan !== 'all') {
+    query = query.eq('plan', plan);
+  }
+  const status = (input.status || '').trim().toLowerCase();
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+  const q = (input.q || '').trim();
+  if (q.length >= 3) {
+    query = query.ilike('hwid', `%${q}%`);
+  }
+
+  const { data, error, count } = await query;
+  if (error) {
+    throw new AppError(`List licenses: ${error.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+  return {
+    rows: (data || []) as LicenseListRow[],
+    total: typeof count === 'number' ? count : (data || []).length,
+  };
 }

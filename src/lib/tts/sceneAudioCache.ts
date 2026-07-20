@@ -6,6 +6,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { inspectTtsAudioFile } from './audioQuality';
+
+/** Invalidate scenes rendered before the conditioning + signal-quality fixes. */
+const SCENE_CACHE_VERSION = 'v2-conditioning-quality';
 
 export type SceneCacheKeyInput = {
   platform: string;
@@ -33,8 +37,10 @@ function sampleFingerprint(samplePath?: string): string {
 }
 
 export function buildSceneCacheId(input: SceneCacheKeyInput): string {
+  const platform = String(input.platform || '').toLowerCase();
   const payload = [
-    String(input.platform || '').toLowerCase(),
+    ...(platform === 'vina_voice' ? [SCENE_CACHE_VERSION] : []),
+    platform,
     String(input.voice || '').trim(),
     String(Number(input.speed) || 1),
     String(Number(input.pitch) || 0),
@@ -74,6 +80,13 @@ export function tryReadSceneCache(
     try {
       const st = fs.statSync(p);
       if (st.size < 800) continue;
+      const quality = inspectTtsAudioFile(p, cwd);
+      if (!quality.ok) {
+        console.warn(
+          `[TTS Scene] reject corrupt cache ${filename}: ${quality.reasons.join('; ')}`,
+        );
+        continue;
+      }
       if (p === durablePath) {
         if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
         if (!fs.existsSync(publicPath) || fs.statSync(publicPath).size < 800) {

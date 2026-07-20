@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { hostBindingChildEnv } from '@/lib/nav/hostBinding';
 import { resolvePythonExe } from '@/app/api/self-heal/media/mediaHelpers';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,6 +23,8 @@ const ALLOWED_TOOLS = [
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const { tool, args = [], timeoutMs = 600000 } = body;
 
     if (!ALLOWED_TOOLS.includes(tool)) {

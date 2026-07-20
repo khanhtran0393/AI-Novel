@@ -17,12 +17,18 @@
 /.next/
 /out/
 
-# production
-/build
+# production build resources (track only branded installer assets)
+/build/*
+!/build/icon.png
+!/build/icon.ico
 
 # misc
 .DS_Store
 *.pem
+/commercial-keys/
+/resources/license/private-keys/
+!/resources/license/public-keys/
+!/resources/license/public-keys/*.pem
 
 # debug
 npm-debug.log*
@@ -42,8 +48,43 @@ next-env.d.ts
 
 # Large binaries and assets
 /bin/
-/python_core/
+# Track only the Python sources that the packaged runtime invokes. Keep the
+# recovered/optional trees and large local runtimes out of Git and installers.
+/python_core/*
+!/python_core/ainovel_host_guard.py
+!/python_core/api_nav_subtitle.py
+!/python_core/cli_bg_remove.py
+!/python_core/cli_upscale.py
+!/python_core/gpu_check.py
+!/python_core/install_gpu_worker.js
+!/python_core/install_pytorch_cuda.py
+!/python_core/tai_ytdlp.py
+!/python_core/isolate_vocals.py
+!/python_core/diarize_audio.py
+!/python_core/cat_nho.py
+!/python_core/yt_goi_y.py
+!/python_core/watermark_audio.py
+!/python_core/extract_hardsub.py
+!/python_core/xu_ly_video.py
+!/python_core/gateway/
+/python_core/gateway/*
+!/python_core/gateway/__init__.py
+!/python_core/gateway/host_binding.py
+!/python_core/gateway/nav_gateway.py
+!/python_core/services/
+/python_core/services/*
+!/python_core/services/__init__.py
+!/python_core/services/gemini_with_fallback.py
+!/python_core/services/local_media_tools.py
+!/python_core/services/nav_scheduler_store.py
+!/python_core/services/script_analyzer.py
+!/python_core/services/storyboard_analyzer.py
+!/python_core/services/veo3_utils.py
+!/python_core/services/youtube_analyzer_v1.py
 *.exe
+*.obj
+*.lib
+*.exp
 *.onnx
 *.mp3
 *.mp4
@@ -79,10 +120,24 @@ test_*.wav
 /accounts_data/
 /data/
 /exports/
+/image_output/
 /test-results/
+/dist/
+/dist-qa*/
+/quarantine/
 /tools/browsers/
 /Voice Studio/
 /FlowAgent.exe_extracted/
+/public/audio/
+/public/downloads/
+/public/images/
+/public/isolated/
+/public/navtools/
+/public/omnivoice-refs/
+/public/phantom-x-bypass/
+/public/renders/
+/public/video/
+/public/watermarked/
 
 # Agent / probe temp at repo root
 tmp-*
@@ -91,3 +146,4 @@ tmp-*.log
 tmp-*.txt
 dev.log
 test_video*
+.vercel

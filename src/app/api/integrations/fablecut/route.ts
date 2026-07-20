@@ -8,10 +8,13 @@ import {
   stopFableCutServer,
   type FableClipInput,
 } from '@/lib/integrations/fablecut';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireFeature(req, 'integrations_pipeline');
+  if (denied) return denied;
   const status = fableCutStatus();
   const serverUp = status.ready ? await isFableCutServerUp(status.port) : false;
   return NextResponse.json({ success: true, ...status, serverUp });
@@ -20,6 +23,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     const action = String(body.action || 'build');
 
     if (action === 'start') {

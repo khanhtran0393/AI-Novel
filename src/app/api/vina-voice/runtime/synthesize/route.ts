@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { runtimeSynthesize } from '@/lib/vinaVoice/runtime';
 import { ensureVinaEnvironment, vinaPaths } from '@/lib/vinaVoice/paths';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     ensureVinaEnvironment();
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const denied = await requireFeature(req, 'tts_premium', body);
+    if (denied) return denied;
     const text = String(body.text || '').trim();
     if (!text) {
       return NextResponse.json({ error: 'Thiếu text' }, { status: 400 });

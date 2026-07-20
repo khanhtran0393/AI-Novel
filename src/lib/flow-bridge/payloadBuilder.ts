@@ -1,6 +1,7 @@
 import { FLOW_BASE, FLOW_DEFAULTS, FLOW_PUBLIC_API_KEY } from './config';
+import { randomUUID } from 'crypto';
 import {
-  clampFlowVideoDuration,
+  requireFlowVideoDuration,
   resolveFirstLastModel,
   resolveFlowImageModelName,
   resolvePortraitModel,
@@ -34,7 +35,25 @@ function sessionId(): string {
 }
 
 function randomSeed(): number {
-  return Math.floor(Math.random() * 2_147_483_647);
+  // FlowAgent and the live Flow client keep image seeds in a six-digit range.
+  // Larger signed-int seeds are accepted by the schema but can leave the
+  // generation request pending upstream instead of returning a useful error.
+  return Date.now() % 1_000_000;
+}
+
+function randomVideoSeed(): number {
+  // Working FlowAgent T2V/I2V uses random.randint(1, 9999). Video and image
+  // seed ranges are intentionally separate because the upstream risk checks
+  // evaluate their request shapes independently.
+  return 1 + (Date.now() % 9_999);
+}
+
+function structuredVideoText(prompt: string): Record<string, unknown> {
+  return {
+    structuredPrompt: {
+      parts: [{ text: prompt }],
+    },
+  };
 }
 
 /**
@@ -47,6 +66,9 @@ export type FlowVideoModelFamily = 't2v' | 'i2v' | 'reference' | 'extend';
 export function detectVideoModelFamily(model?: string): FlowVideoModelFamily | 'unknown' {
   const m = String(model || '').toLowerCase();
   if (!m) return 'unknown';
+  // Working FlowAgent uses abra_t2v_{duration}s for both T2V and I2V endpoints.
+  // Treat it as shared instead of rejecting it as a cross-family mismatch.
+  if (/^abra_t2v_(4|6|8|10)s$/.test(m)) return 'unknown';
   // Upsample is post-process; treat as extend family for endpoint gate only when building upsample body
   if (m.includes('upsampler')) return 'extend';
   if (m.includes('extend')) return 'extend';
@@ -104,6 +126,7 @@ export function resolveFlowVideoModelKey(
   opts: {
     videoModel?: string;
     aspectRatio?: string;
+    durationSec?: number;
     /** When true and model has firstLastVariant, prefer *_fl key */
     hasEndFrame?: boolean;
   },
@@ -114,6 +137,18 @@ export function resolveFlowVideoModelKey(
 
   if (!raw) {
     return expected;
+  }
+
+  const upper = raw.toUpperCase();
+  const isOmniFlash = upper === 'OMNI_FLASH' || /^ABRA_T2V_(4|6|8)S$/.test(upper);
+  if (isOmniFlash) {
+    if (family !== 't2v' && family !== 'i2v') {
+      throw new Error(
+        `MODEL_MISMATCH: Model UI "${raw}" chỉ dùng cho T2V/I2V, không dùng cho ${family.toUpperCase()}.`,
+      );
+    }
+    const durationSec = requireFlowVideoDuration(opts.durationSec, 'OMNI_FLASH');
+    return `abra_t2v_${durationSec}s`;
   }
 
   if (detected !== 'unknown' && detected !== family) {
@@ -142,12 +177,22 @@ export function buildClientContext(
     projectId,
     sessionId: sessionId(),
     tool: 'PINHOLE',
-    userPaygateTier: 'PAYGATE_TIER_TWO',
+    userPaygateTier: 'PAYGATE_TIER_ONE',
     recaptchaContext: {
       applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
       token: captchaToken,
     },
   };
+}
+
+export function buildMediaGenerationContext(
+  audioFailurePreference?: string,
+): Record<string, unknown> {
+  const context: Record<string, unknown> = { batchId: randomUUID() };
+  if (audioFailurePreference) {
+    context.audioFailurePreference = audioFailurePreference;
+  }
+  return context;
 }
 
 export function buildImageGenerateBody(opts: {
@@ -172,18 +217,19 @@ export function buildImageGenerateBody(opts: {
     mediaId: opts.imageMediaIds?.[0],
   });
 
-  const requests = Array.from({ length: count }, () => {
+  const baseSeed = randomSeed();
+  const requests = Array.from({ length: count }, (_, index) => {
     const req: Record<string, unknown> = {
-      seed: randomSeed(),
-      prompt: finalPrompt,
+      clientContext: { ...clientContext },
+      seed: (baseSeed + index * 1000) % 1_000_000,
+      structuredPrompt: { parts: [{ text: finalPrompt }] },
       imageAspectRatio: aspect,
       imageModelName: model,
-      clientContext: { ...clientContext },
     };
     if (opts.imageMediaIds?.length) {
       req.imageInputs = opts.imageMediaIds.map((name) => ({
         name,
-        imageInputType: 'IMAGE_INPUT_TYPE_BASE_IMAGE',
+        imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE',
       }));
     }
     return req;
@@ -198,6 +244,12 @@ export function buildImageGenerateBody(opts: {
     body: {
       clientContext,
       requests,
+      ...(opts.imageMediaIds?.length
+        ? {
+            mediaGenerationContext: buildMediaGenerationContext(),
+            useNewMedia: true,
+          }
+        : {}),
     },
     captchaAction: 'IMAGE_GENERATION',
   };
@@ -274,9 +326,9 @@ export function buildVideoT2VBody(opts: {
   const model = resolveFlowVideoModelKey('t2v', {
     videoModel: opts.videoModel,
     aspectRatio: opts.aspectRatio,
+    durationSec: opts.durationSec,
   });
-  // Flow Veo: only 4 / 6 / 8 seconds
-  const durationSec = clampFlowVideoDuration(opts.durationSec, model);
+  const durationSec = requireFlowVideoDuration(opts.durationSec, model);
 
   const clientContext = buildClientContext(opts.projectId, '');
   // Duration is model-native (typically 8s). Do NOT send videoLengthSeconds —
@@ -284,19 +336,78 @@ export function buildVideoT2VBody(opts: {
   void durationSec;
   const req: Record<string, unknown> = {
     aspectRatio: mapVideoAspectRatio(opts.aspectRatio),
-    seed: randomSeed(),
-    textInput: { prompt: opts.prompt },
+    seed: randomVideoSeed(),
+    textInput: structuredVideoText(opts.prompt),
     videoModelKey: model,
-    metadata: { sceneId: `scene_${Date.now()}` },
+    metadata: {},
   };
 
   return {
     url: `${FLOW_BASE}/v1/video:batchAsyncGenerateVideoText?key=${FLOW_PUBLIC_API_KEY}`,
     body: {
+      mediaGenerationContext: buildMediaGenerationContext(),
       clientContext,
       requests: [req],
+      useV2ModelConfig: true,
     },
     captchaAction: 'VIDEO_GENERATION',
+  };
+}
+
+function telemetryString(value: string): Record<string, string> {
+  return {
+    '@type': 'type.googleapis.com/google.protobuf.StringValue',
+    value,
+  };
+}
+
+/** Exact pre-generation event emitted by the working FlowAgent T2V path. */
+export function buildVideoFrontendTelemetryBody(opts: {
+  projectId: string;
+  prompt: string;
+  aspectRatio?: string;
+  videoModelKey: string;
+  outputCount?: number;
+  referenceMediaIds?: string[];
+}): { url: string; body: Record<string, unknown> } {
+  const ctx = buildClientContext(opts.projectId, '');
+  const rawAspect = String(opts.aspectRatio || '');
+  const aspect = rawAspect.includes('_')
+    ? rawAspect.split('_').at(-1) || ''
+    : rawAspect.toUpperCase();
+  const settings = JSON.stringify({
+    modelKey: opts.videoModelKey,
+    aspectRatio: aspect,
+    outputsPerPrompt: opts.outputCount ?? 1,
+    structuredPrompt: { parts: [{ text: opts.prompt }] },
+    referenceImages: (opts.referenceMediaIds || []).map((mediaId) => ({
+      imageId: `fe_id_${mediaId}`,
+    })),
+  });
+
+  return {
+    url: `${FLOW_BASE}/v1/flow:batchLogFrontendEvents?key=${FLOW_PUBLIC_API_KEY}`,
+    body: {
+      events: [
+        {
+          eventType: 'MEDIA_GENERATION',
+          metadata: {
+            sessionId: String(ctx.sessionId || ''),
+            createTime: new Date().toISOString(),
+            additionalParams: {
+              MEDIA_GENERATION_TYPE: telemetryString('video'),
+              MEDIA_GENERATION_SETTINGS: telemetryString(settings),
+              MEDIA_GENERATION_PAYGATE_TIER: telemetryString(
+                String(ctx.userPaygateTier || ''),
+              ),
+              PROJECT_ID: telemetryString(opts.projectId),
+              TOOL_NAME: telemetryString(String(ctx.tool || '')),
+              IS_DESKTOP: telemetryString('true'),
+            },
+          },
+        },
+      ],
+    },
   };
 }
 
@@ -313,22 +424,23 @@ export function buildVideoI2VBody(opts: {
   const model = resolveFlowVideoModelKey('i2v', {
     videoModel: opts.videoModel,
     aspectRatio: opts.aspectRatio,
+    durationSec: opts.durationSec,
     hasEndFrame: hasEnd,
   });
-  const durationSec = clampFlowVideoDuration(opts.durationSec, model);
+  const durationSec = requireFlowVideoDuration(opts.durationSec, model);
   void durationSec; // model-native length; field rejected by API
 
   const clientContext = buildClientContext(opts.projectId, '');
   const req: Record<string, unknown> = {
     aspectRatio: mapVideoAspectRatio(opts.aspectRatio),
-    seed: randomSeed(),
-    textInput: { prompt: opts.prompt },
+    seed: randomVideoSeed(),
+    textInput: structuredVideoText(opts.prompt),
     videoModelKey: model,
-    startImage: { mediaId: opts.startMediaId },
-    metadata: { sceneId: `scene_${Date.now()}` },
+    startImage: { name: opts.startMediaId },
+    metadata: {},
   };
   if (hasEnd) {
-    req.endImage = { mediaId: opts.endMediaId };
+    req.endImage = { name: opts.endMediaId };
   }
 
   const endpoint = hasEnd
@@ -338,8 +450,10 @@ export function buildVideoI2VBody(opts: {
   return {
     url: `${FLOW_BASE}${endpoint}?key=${FLOW_PUBLIC_API_KEY}`,
     body: {
+      mediaGenerationContext: buildMediaGenerationContext(),
       clientContext,
       requests: [req],
+      ...(hasEnd ? { useV2ModelConfig: true } : {}),
     },
     captchaAction: 'VIDEO_GENERATION',
   };
@@ -362,26 +476,32 @@ export function buildVideoIngredientsBody(opts: {
   const model = resolveFlowVideoModelKey('reference', {
     videoModel: opts.videoModel,
     aspectRatio: opts.aspectRatio,
+    durationSec: opts.durationSec,
   });
-  const durationSec = clampFlowVideoDuration(opts.durationSec, model);
+  const durationSec = requireFlowVideoDuration(opts.durationSec, model);
   void durationSec;
 
   const clientContext = buildClientContext(opts.projectId, '');
   const req: Record<string, unknown> = {
     aspectRatio: mapVideoAspectRatio(opts.aspectRatio),
-    seed: randomSeed(),
-    textInput: { prompt: opts.prompt },
+    seed: randomVideoSeed(),
+    textInput: structuredVideoText(opts.prompt),
     videoModelKey: model,
     // Flow ingredients: mediaId refs only (do not send imageInputs — upload schema changed 2026)
-    referenceImages: ids.map((mediaId) => ({ mediaId })),
-    metadata: { sceneId: `ing_${Date.now()}` },
+    imageInputs: ids.map((name) => ({
+      name,
+      imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE',
+    })),
+    metadata: {},
   };
 
   return {
     url: `${FLOW_BASE}/v1/video:batchAsyncGenerateVideoReferenceImages?key=${FLOW_PUBLIC_API_KEY}`,
     body: {
+      mediaGenerationContext: buildMediaGenerationContext(),
       clientContext,
       requests: [req],
+      useV2ModelConfig: true,
     },
     captchaAction: 'VIDEO_GENERATION',
   };
@@ -403,8 +523,9 @@ export function buildVideoExtendBody(opts: {
   const model = resolveFlowVideoModelKey('extend', {
     videoModel: opts.videoModel,
     aspectRatio: opts.aspectRatio,
+    durationSec: opts.durationSec,
   });
-  const durationSec = clampFlowVideoDuration(opts.durationSec, model);
+  const durationSec = requireFlowVideoDuration(opts.durationSec, model);
   void durationSec;
   const req: Record<string, unknown> = {
     aspectRatio: mapVideoAspectRatio(opts.aspectRatio),
@@ -417,8 +538,10 @@ export function buildVideoExtendBody(opts: {
   return {
     url: `${FLOW_BASE}/v1/video:batchAsyncGenerateVideoExtendVideo?key=${FLOW_PUBLIC_API_KEY}`,
     body: {
+      mediaGenerationContext: buildMediaGenerationContext(),
       clientContext,
       requests: [req],
+      useV2ModelConfig: true,
     },
     captchaAction: 'VIDEO_GENERATION',
   };
@@ -627,11 +750,19 @@ export function buildCreditsUrl(): string {
 
 export function buildBrowserHeaders(): Record<string, string> {
   return {
-    'Content-Type': 'application/json',
+    Accept: '*/*',
+    // Exact FlowAgent wire shape. The body remains JSON text, but Google Flow
+    // sends it as text/plain to avoid a different CORS/preflight path.
+    'Content-Type': 'text/plain;charset=UTF-8',
     Origin: 'https://labs.google',
     Referer: 'https://labs.google/',
+    'Sec-CH-UA-Mobile': '?0',
+    'Sec-CH-UA-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'cross-site',
     'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
   };
 }
 

@@ -1,9 +1,9 @@
 /**
- * Free / Pro / VIP product matrix — single source of truth for commercial gates.
+ * Free / Trial / Pro product matrix — single source of truth for commercial gates.
  * Server routes still call assertProAccess; UI uses this for gray/disable + copy.
  */
 
-export type PlanTier = 'free' | 'trial' | 'pro' | 'vip';
+export type PlanTier = 'free' | 'trial' | 'pro';
 
 export type CommercialFeatureId =
   | 'write_chapter'
@@ -35,7 +35,6 @@ const TIER_RANK: Record<PlanTier, number> = {
   free: 0,
   trial: 1,
   pro: 2,
-  vip: 3,
 };
 
 /** Product catalog for pricing + UI */
@@ -75,7 +74,7 @@ export const FEATURE_MATRIX: FeatureAccess[] = [
     id: 'tts_premium',
     label: 'TTS Vina / multi-voice cast',
     minTier: 'trial',
-    serverGated: false,
+    serverGated: true,
   },
   {
     id: 'gen_video',
@@ -105,19 +104,19 @@ export const FEATURE_MATRIX: FeatureAccess[] = [
     id: 'multi_channel',
     label: 'Multi-channel DNA',
     minTier: 'pro',
-    serverGated: false,
+    serverGated: true,
   },
   {
     id: 'toolbox_labs',
     label: 'Toolbox / Labs (NAV)',
     minTier: 'pro',
-    serverGated: false,
+    serverGated: true,
   },
   {
     id: 'flow_multi_account',
     label: 'Flow multi-account',
     minTier: 'pro',
-    serverGated: false,
+    serverGated: true,
   },
   {
     id: 'portable_export',
@@ -126,6 +125,14 @@ export const FEATURE_MATRIX: FeatureAccess[] = [
     serverGated: false,
   },
 ];
+
+/** Free TTS platforms — no trial/pro token required on /api/generate-tts */
+export const FREE_TTS_PLATFORMS = new Set(['edge_tts', 'piper']);
+
+/** Features that must have a server assert when a matching API exists */
+export const SERVER_GATED_FEATURES: CommercialFeatureId[] = FEATURE_MATRIX.filter(
+  (f) => f.serverGated,
+).map((f) => f.id);
 
 export function tierAtLeast(have: PlanTier, need: PlanTier): boolean {
   return TIER_RANK[have] >= TIER_RANK[need];
@@ -172,7 +179,7 @@ export function canAccessFeature(
   return tierAtLeast(tier, row.minTier);
 }
 
-/** Features that require Pro-equivalent (trial|pro|vip) for UI gray */
+/** Features that require Pro-equivalent (trial|pro) for UI gray */
 export const PRO_EQUIVALENT_FEATURES: CommercialFeatureId[] = FEATURE_MATRIX.filter(
   (f) => f.minTier !== 'free',
 ).map((f) => f.id);

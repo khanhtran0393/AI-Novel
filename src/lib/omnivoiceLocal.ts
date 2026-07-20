@@ -70,7 +70,6 @@ export function resolveOmniPython(): string {
   const candidates = [
     process.env.OMNIVOICE_PYTHON,
     process.env.PYTHON_PATH,
-    'D:\\SuperAudioTools\\omnivoice-python\\python.exe',
     path.join(process.cwd(), 'omnivoice-python', 'python.exe'),
   ].filter(Boolean) as string[];
   for (const p of candidates) {
@@ -92,12 +91,10 @@ export function resolveOmniServerLauncher(): {
   const exeCandidates = [
     process.env.OMNIVOICE_SERVER_EXE,
     path.join(pyDir, 'Scripts', 'omnivoice-server.exe'),
-    path.join('D:', 'SuperAudioTools', 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
     path.join(process.cwd(), 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
   ].filter(Boolean) as string[];
 
-  const superTools = path.join('D:', 'SuperAudioTools');
-  const runCwd = fs.existsSync(superTools) ? superTools : process.cwd();
+  const runCwd = process.env.OMNIVOICE_HOME?.trim() || process.cwd();
 
   for (const exe of exeCandidates) {
     if (fs.existsSync(exe)) {
@@ -136,7 +133,6 @@ export function resolveOmniProfileDir(cwd = process.cwd()): string {
     return process.env.OMNIVOICE_PROFILE_DIR;
   }
   const candidates = [
-    path.join('D:', 'SuperAudioTools', 'omnivoice-profiles'),
     path.join(cwd, 'omnivoice-profiles'),
     path.join(cwd, 'data', 'omnivoice-profiles'),
   ];
@@ -150,18 +146,20 @@ export function resolveOmniProfileDir(cwd = process.cwd()): string {
 
 export function resolveOmniRefsDirs(cwd = process.cwd()): string[] {
   return [
+    process.env.OMNIVOICE_REFS_DIR?.trim(),
     path.join(cwd, 'public', 'omnivoice-refs'),
-    path.join('D:', 'SuperAudioTools', 'omnivoice-refs'),
     path.join(cwd, 'omnivoice-refs'),
-  ].filter((p) => fs.existsSync(p));
+    path.join(cwd, 'data', 'omnivoice-refs'),
+  ].filter((p): p is string => Boolean(p && fs.existsSync(p)));
 }
 
 export function loadOmniLibrary(cwd = process.cwd()): OmniLibraryEntry[] {
   const files = [
+    process.env.OMNIVOICE_LIBRARY_FILE?.trim(),
     path.join(cwd, 'public', 'omnivoice-library.json'),
     path.join(cwd, 'omnivoice-library.json'),
-    path.join('D:', 'SuperAudioTools', 'omnivoice-library.json'),
-  ];
+    path.join(cwd, 'data', 'omnivoice-library.json'),
+  ].filter((file): file is string => Boolean(file));
   for (const f of files) {
     if (!fs.existsSync(f)) continue;
     try {
@@ -233,7 +231,7 @@ export function resolveOmniRefAudioPath(
     const stem = id.replace(/^omnivoice_preset_/, '');
     for (const dir of resolveOmniRefsDirs(cwd)) {
       for (const ext of ['.wav', '.mp3', '.flac', '.ogg']) {
-        candidates.push(path.join(dir, `${stem}${ext}`));
+        candidates.push(path.join(/* turbopackIgnore: true */ dir, `${stem}${ext}`));
       }
     }
   }
@@ -496,8 +494,9 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
     const base = `http://${host}:${port}`;
     const logPath = getOmniLogPath(cwd);
 
-    const superTools = path.join('D:', 'SuperAudioTools');
-    const cacheRoot = path.join(superTools, '.cache');
+    const cacheRoot =
+      process.env.OMNIVOICE_CACHE_DIR?.trim() ||
+      path.join(cwd, 'data', 'omnivoice-cache');
     /**
      * omnivoice_server Settings crash nếu process env / .env
      * chứa GEMINI_KEY_*, API keys lạ… → chỉ truyền env tối thiểu + PATH.

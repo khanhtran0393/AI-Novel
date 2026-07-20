@@ -4,6 +4,7 @@ import puppeteerCore from 'puppeteer';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'fs';
 import path from 'path';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,8 @@ export async function POST(req: Request) {
   let browser;
   try {
     const body = await req.json().catch(() => ({}));
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const srtText = body.srtText || '';
     const profileId = body.profileId || 'chrome-profile-secure';
     const ruleId = body.ruleId || 'modern';

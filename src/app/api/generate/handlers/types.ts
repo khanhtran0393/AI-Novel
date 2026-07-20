@@ -9,6 +9,10 @@ export type GenerateHandlerContext = {
   payload: any;
   keysToUse: string[];
   model?: string;
+  /** Original request — entitlement header for cloud IP (Seedance Phase C) */
+  req?: Request;
+  /** Raw parsed body (includes fields outside payload if any) */
+  rawBody?: unknown;
 };
 
 export type GenerateHandler = (

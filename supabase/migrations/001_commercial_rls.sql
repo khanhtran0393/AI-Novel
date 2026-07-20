@@ -44,7 +44,7 @@ create table if not exists public.licenses (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete set null,
   order_id uuid references public.orders(id) on delete set null,
-  plan text not null check (plan in ('trial', 'pro', 'vip')),
+  plan text not null check (plan in ('trial', 'pro')),
   hwid text not null,
   status text not null default 'active'
     check (status in ('active', 'revoked', 'expired')),

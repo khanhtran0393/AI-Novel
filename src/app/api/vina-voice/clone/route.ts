@@ -11,10 +11,12 @@ import {
   optimizeCloneSample,
   stableSeedFromString,
 } from '@/lib/vinaVoice/sampleOptimize';
+import { inspectTtsAudioFile } from '@/lib/tts/audioQuality';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 function ensureDir(d: string) {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
@@ -23,9 +25,12 @@ function ensureDir(d: string) {
 export async function POST(req: Request) {
   const optimizeLog: string[] = [];
   try {
+    // Token from header; form body is multipart (not JSON claims)
+    const denied = await requireFeature(req, 'tts_premium');
+    if (denied) return denied;
     const form = await req.formData();
     const text = String(form.get('text') || '').trim();
-    let refText = String(form.get('ref_text') || form.get('reference_text') || '').trim();
+    const refText = String(form.get('ref_text') || form.get('reference_text') || '').trim();
     let gender = String(form.get('gender') || 'auto').toLowerCase();
     let speed = parseFloat(String(form.get('speed') || '1'));
     let pitch = parseFloat(String(form.get('pitch') || '0'));
@@ -41,6 +46,15 @@ export async function POST(req: Request) {
 
     if (!text) {
       return NextResponse.json({ error: 'Thiếu nội dung cần đọc (text).' }, { status: 400 });
+    }
+    if (!refText) {
+      return NextResponse.json(
+        {
+          error:
+            'Thiếu transcript mẫu (ref_text). Hãy nhập chính xác câu đang được nói trong file MP3/WAV để clone bám đúng người.',
+        },
+        { status: 400 },
+      );
     }
 
     const file = form.get('audio') || form.get('file') || form.get('reference');
@@ -152,11 +166,19 @@ export async function POST(req: Request) {
     if (!Number.isFinite(pitch)) pitch = 0;
     speed = Math.max(0.5, Math.min(2, speed));
     pitch = Math.max(-12, Math.min(12, pitch));
-    if (!refText) {
-      refText = text.slice(0, 120);
-      optimizeLog.push('ref_text=from_output_text');
-    }
 
+    const referenceQuality = inspectTtsAudioFile(refWav);
+    if (!referenceQuality.ok) {
+      return NextResponse.json(
+        {
+          error:
+            `File mẫu không đạt kiểm định giọng người: ${referenceQuality.reasons.join('; ')}. ` +
+            'Hãy dùng đoạn nói rõ, không nhạc nền và không nhiễu.',
+          quality: referenceQuality,
+        },
+        { status: 400 },
+      );
+    }
     // Probe engine (không block nếu offline)
     const engine = await probeVinaEngine(engineUrl, 2000);
     optimizeLog.push(
@@ -198,6 +220,19 @@ export async function POST(req: Request) {
     };
     fs.writeFileSync(profilesUserPath, JSON.stringify(userProfiles, null, 2), 'utf8');
 
+    const rollbackProfile = () => {
+      try {
+        delete userProfiles[profileName];
+        fs.writeFileSync(
+          profilesUserPath,
+          JSON.stringify(userProfiles, null, 2),
+          'utf8',
+        );
+      } catch (rollbackError) {
+        console.error('[vina-voice/clone] rollback profile failed', rollbackError);
+      }
+    };
+
     try {
       const samplesDir = path.join(process.cwd(), 'data', 'vina-voices', 'samples');
       ensureDir(samplesDir);
@@ -233,6 +268,7 @@ export async function POST(req: Request) {
     );
 
     if (!result.ok || !result.audioPath || !fs.existsSync(result.audioPath)) {
+      rollbackProfile();
       return NextResponse.json(
         {
           error: result.error || 'Clone synthesize thất bại',
@@ -243,6 +279,21 @@ export async function POST(req: Request) {
           engine,
         },
         { status: 500 },
+      );
+    }
+
+    const outputQuality = inspectTtsAudioFile(result.audioPath);
+    if (!outputQuality.ok) {
+      rollbackProfile();
+      return NextResponse.json(
+        {
+          error:
+            `Giọng clone sinh ra bị từ chối vì nhiễu/hỏng: ${outputQuality.reasons.join('; ')}. ` +
+            'Không lưu profile lỗi này.',
+          quality: outputQuality,
+          method: result.method,
+        },
+        { status: 502 },
       );
     }
 
@@ -274,6 +325,7 @@ export async function POST(req: Request) {
         styleSeed,
         assignTarget,
       },
+      quality: outputQuality,
       engine,
     });
   } catch (e) {

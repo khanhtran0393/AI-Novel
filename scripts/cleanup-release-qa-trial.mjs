@@ -1,0 +1,94 @@
+/** Delete only the disposable cloud Trial created by release QA for one HWID. */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function arg(name) {
+  const index = process.argv.indexOf(`--${name}`);
+  return index >= 0 ? String(process.argv[index + 1] || '').trim() : '';
+}
+
+function loadEnvFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return {};
+  const out = {};
+  for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    const value = line.trim();
+    if (!value || value.startsWith('#')) continue;
+    const equals = value.indexOf('=');
+    if (equals <= 0) continue;
+    const key = value.slice(0, equals).trim();
+    let content = value.slice(equals + 1).trim();
+    if (
+      (content.startsWith('"') && content.endsWith('"')) ||
+      (content.startsWith("'") && content.endsWith("'"))
+    ) {
+      content = content.slice(1, -1);
+    }
+    if (key) out[key] = content;
+  }
+  return out;
+}
+
+const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const sellerEnv =
+  process.env.AINOVEL_SELLER_ENV_FILE ||
+  path.join(localAppData, 'AI Novel Seller', '.env.seller');
+const env = {
+  ...loadEnvFile(path.join(root, '.env')),
+  ...loadEnvFile(path.join(root, '.env.local')),
+  ...loadEnvFile(sellerEnv),
+  ...process.env,
+};
+const hwid = arg('hwid').toLowerCase();
+if (!/^[a-f0-9]{16}$/.test(hwid)) {
+  throw new Error('--hwid must be the exact 16-hex release-runner HWID');
+}
+if (!process.argv.includes('--confirm-release-qa')) {
+  throw new Error('--confirm-release-qa is required');
+}
+const supabaseUrl = String(env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL || '').trim();
+const serviceKey = String(env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+if (!supabaseUrl || !serviceKey) {
+  throw new Error('Supabase URL and service-role key are required');
+}
+
+const client = createClient(supabaseUrl, serviceKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+const { data: rows, error: selectError } = await client
+  .from('licenses')
+  .select('id,hwid,plan,status')
+  .eq('hwid', hwid)
+  .eq('plan', 'trial');
+if (selectError) throw selectError;
+
+const ids = (rows || []).map((row) => row.id).filter(Boolean);
+if (process.argv.includes('--dry-run')) {
+  console.log(JSON.stringify({ ok: true, dryRun: true, hwid, matchingTrialRows: rows || [] }));
+} else {
+  if (ids.length > 0) {
+    const { error: deleteError } = await client
+      .from('licenses')
+      .delete()
+      .in('id', ids)
+      .eq('hwid', hwid)
+      .eq('plan', 'trial');
+    if (deleteError) throw deleteError;
+  }
+
+  const { data: remaining, error: verifyError } = await client
+    .from('licenses')
+    .select('id')
+    .eq('hwid', hwid)
+    .eq('plan', 'trial');
+  if (verifyError) throw verifyError;
+  if ((remaining || []).length !== 0) {
+    throw new Error('Release QA Trial cleanup did not remove every matching row');
+  }
+
+  console.log(JSON.stringify({ ok: true, hwid, deletedTrialIds: ids }));
+}

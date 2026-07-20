@@ -4,6 +4,7 @@ import puppeteerCore from 'puppeteer';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'fs';
 import path from 'path';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +22,9 @@ function findChromePath(): string | undefined {
   return undefined;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireToolboxAccess(req);
+  if (denied) return denied;
   const scratchDir = './scratch';
   if (!fs.existsSync(scratchDir)) {
     fs.mkdirSync(scratchDir, { recursive: true });
@@ -47,6 +50,8 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const { action, profileId } = body;
 
     if (!profileId || !profileId.startsWith('chrome-profile-')) {

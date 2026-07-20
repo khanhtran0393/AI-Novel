@@ -68,7 +68,11 @@ export const API = {
   entitlementTrial: '/api/entitlement/trial',
   entitlementWebhook: '/api/entitlement/webhook',
   entitlementCodes: '/api/entitlement/codes',
+  /** Multi-seat: transfer / expand / summary (admin) */
+  entitlementSeats: '/api/entitlement/seats',
   entitlementPaymentNotify: '/api/entitlement/payment-notify',
+  /** Telegram bot webhook (Vercel public) — inline Cấp Key / Từ chối */
+  entitlementTelegramWebhook: '/api/entitlement/telegram-webhook',
   commercialStatus: '/api/commercial/status',
   /** Supabase + Vercel cloud hybrid */
   cloudStatus: '/api/cloud/status',
@@ -78,6 +82,8 @@ export const API = {
   cloudLicenseVerify: '/api/cloud/license/verify',
   cloudLicenseTrial: '/api/cloud/license/trial',
   cloudLicenseRevoke: '/api/cloud/license/revoke',
+  /** Admin: list licenses (plan/status/hwid filter) */
+  cloudLicenseList: '/api/cloud/license/list',
   selfHealMedia: '/api/self-heal/media',
   castAutoTag: '/api/cast/auto-tag',
   getTiktokSession: '/api/get-tiktok-session',
@@ -136,6 +142,10 @@ export const API = {
     status: '/api/integrations/status',
     watch: '/api/integrations/watch',
   },
+  /** Packaged Seedance IP authority (Vercel license host) — one-path crown C */
+  cloudIpSeedance: '/api/cloud/ip/seedance',
+  /** Packaged YouTube psych / SEO IP authority */
+  cloudIpPsych: '/api/cloud/ip/psych',
   /** Serve generated stills (path prefix — may append filename) */
   serveImage: '/api/serve-image',
   serveImageQuery: '/api/serve-image',

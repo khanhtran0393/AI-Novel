@@ -29,7 +29,7 @@ export type OrderRow = {
   paid_at: string | null;
 };
 
-export type LicensePlan = 'trial' | 'pro' | 'vip';
+export type LicensePlan = 'trial' | 'pro';
 export type LicenseStatus = 'active' | 'revoked' | 'expired';
 
 export type LicenseRow = {

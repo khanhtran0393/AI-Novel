@@ -115,7 +115,7 @@ async function main() {
   pass(`shot0 auto-accepted clip=${clip0.clip_id}`);
 
   // shot 1 resolve → must use continuation
-  const resolved = resolveVideoPromptWithSequence({
+  const resolved = await resolveVideoPromptWithSequence({
     chapterNum,
     sceneIndex,
     promptIndex: 1,

@@ -233,6 +233,20 @@ async function postVideoGeneration(params: GenerateVideoParams) {
     throw new Error(data.error || 'Video generation failed.');
   }
 
+  if (
+    data.success !== true ||
+    typeof data.videoPath !== 'string' ||
+    !data.videoPath.trim()
+  ) {
+    const jobId = typeof data.jobId === 'string' ? data.jobId.trim() : '';
+    throw new Error(
+      data.error ||
+        (jobId
+          ? `Provider chi tao job ${jobId} nhung chua tra artifact video. App khong danh dau hoan tat.`
+          : 'Video API did not return a verified video artifact.'),
+    );
+  }
+
   return data;
 }
 

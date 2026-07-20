@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import { buildSimpleJoinCommand, buildSmartJoinCommand } from '@/lib/capassistant/core';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -19,6 +20,8 @@ function cleanupTempFiles(files?: string[]) {
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
+    const denied = await requireToolboxAccess(req, payload);
+    if (denied) return denied;
     const videoPaths = Array.isArray(payload.videoPaths) ? payload.videoPaths.map(String).filter(Boolean) : [];
     const outputPath = String(payload.outputPath || '');
     const targetRatio = String(payload.targetRatio || payload.exportRatio || 'Giữ nguyên');

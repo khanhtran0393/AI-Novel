@@ -4,7 +4,7 @@ import path from 'path';
 import { buildShipPack, type ShipPackInput } from '@/lib/shipPack';
 import type { ChannelProfile, ShipMode } from '@/lib/channelModel';
 import { normalizeChannelProfile } from '@/lib/channelModel';
-import { assertProAccess } from '@/lib/entitlement';
+import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 
 type ChapterPipelinePrompts = Record<
@@ -21,7 +21,7 @@ function resolveOutDir(
   const root =
     (savePathRoot && savePathRoot.trim()) ||
     path.join(process.cwd(), 'exports', 'ship-packs');
-  return path.join(root, folderName);
+  return path.join(/* turbopackIgnore: true */ root, folderName);
 }
 
 function stripQuery(p: string): string {
@@ -42,7 +42,7 @@ function stripQuery(p: string): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    assertProAccess(req, body);
+    await assertPremiumAccessHard(req, body);
     const mode = (body.mode || body.defaultShipMode || 'longform') as ShipMode;
     const channelRaw = body.channel as Partial<ChannelProfile> | undefined;
     const channel = normalizeChannelProfile(channelRaw);
@@ -147,7 +147,8 @@ export async function POST(req: Request) {
     let fablecutPath: string | undefined;
     try {
       const { runChapterPipeline } = await import('@/lib/integrations/chapterPipeline');
-      const pipe = runChapterPipeline({
+      const { extractEntitlementToken } = await import('@/lib/entitlement');
+      const pipe = await runChapterPipeline({
         chapterNum: pack.chapterNum,
         title: input.chapter.tieu_de,
         ten_tac_pham: input.ten_tac_pham,
@@ -162,6 +163,7 @@ export async function POST(req: Request) {
         liveEditor: false,
         autoStartFableCut: false,
         aspect: pack.recipe?.aspectRatio === '16:9' ? '16:9' : '9:16',
+        entitlementToken: extractEntitlementToken(req, body),
       });
       if (pipe.fablecut?.success && pipe.fablecut.projectPath && fs.existsSync(pipe.fablecut.projectPath)) {
         const dest = path.join(outDir, 'fablecut', 'project.json');

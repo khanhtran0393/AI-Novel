@@ -145,6 +145,7 @@ export default function LicenseModal({ open, onClose }: Props) {
         openMode?: boolean;
         ownerUnlimited?: boolean;
         tokenValid?: boolean;
+        authority?: string;
         trial?: { active?: boolean; days?: number };
         claims?: {
           is_pro?: boolean;
@@ -156,6 +157,11 @@ export default function LicenseModal({ open, onClose }: Props) {
         supabase?: { adminConfigured?: boolean; configured?: boolean };
         model?: { cloud?: boolean };
         cloudRevoked?: boolean;
+        onePath?: {
+          model?: string;
+          dailyQuota?: boolean;
+          privateKeyRole?: string;
+        };
       };
       const id = (data.entitlement?.hwid || '').toUpperCase();
       if (id) setHwid(id);
@@ -163,19 +169,49 @@ export default function LicenseModal({ open, onClose }: Props) {
       if (typeof data.trial?.days === 'number' && data.trial.days > 0) {
         setTrialDaysLabel(data.trial.days);
       }
+      // One-path trust line (no daily quota; ticket + ledger + cloud IP)
+      const onePathBits: string[] = [];
+      if (data.onePath?.model) {
+        onePathBits.push('One-path: vé Ed25519 · sổ cái · IP cloud');
+      }
+      if (data.onePath && data.onePath.dailyQuota === false) {
+        onePathBits.push('không quota/ngày');
+      }
+      if (data.authority) {
+        onePathBits.push(`authority=${data.authority}`);
+      }
+      const onePathSuffix =
+        onePathBits.length > 0 ? ` (${onePathBits.join(' · ')})` : '';
       if (data.cloudRevoked) {
-        setCloudNote('License cloud đã revoke/hết hạn — về Free.');
+        setCloudNote(
+          `License cloud đã revoke/hết hạn — về Free.${onePathSuffix}`,
+        );
         writeStoredToken('');
       } else if (data.supabase?.adminConfigured) {
-        setCloudNote('Cloud Supabase: bật (order + revoke online).');
+        setCloudNote(
+          `Cloud Supabase: bật (order + revoke online).${onePathSuffix}`,
+        );
       } else if (data.supabase?.configured) {
-        setCloudNote('Supabase URL/anon có — thiếu SERVICE_ROLE (admin).');
+        setCloudNote(
+          `Supabase URL/anon có — thiếu SERVICE_ROLE (admin).${onePathSuffix}`,
+        );
       } else {
-        setCloudNote('Chế độ local (Zalo + key) — chưa cấu hình Supabase.');
+        setCloudNote(
+          `Chế độ local (Zalo + key) — chưa cấu hình Supabase.${onePathSuffix}`,
+        );
       }
       if (data.ownerUnlimited) {
         setVipStatus(false, true, false);
         setCredits(999_999_999);
+      } else if (
+        data.tokenValid &&
+        data.claims &&
+        !data.claims.is_trial &&
+        data.claims.plan !== 'trial' &&
+        (data.claims.is_pro || data.claims.is_vip || data.tier === 'pro')
+      ) {
+        // Paid Pro first — never let leftover vault/cloud trial clobber after activate
+        applyClaims(data.claims);
       } else if (data.tier === 'pro' && data.tokenValid && data.claims) {
         applyClaims(data.claims);
       } else if (data.tier === 'trial' || data.trial?.active) {
@@ -256,36 +292,110 @@ export default function LicenseModal({ open, onClose }: Props) {
     }
   };
 
+  /** Rút token/mã từ tin Telegram (tránh dán cả đoạn «ĐÃ CẤP KEY»). */
+  const extractLicensePaste = (
+    raw: string,
+  ): { code?: string; token?: string; error?: string } => {
+    // Telegram wraps long tokens with newlines — strip whitespace inside credential
+    const s = raw.trim();
+    if (!s) return {};
+    const compact = s.replace(/\s+/g, '');
+    const tokenHit = compact.match(
+      /AINOVEL2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
+    );
+    if (tokenHit) return { token: tokenHit[0] };
+    const codeHit = s.toUpperCase().match(/\bAINOVEL-[A-Z0-9]+(?:-[A-Z0-9]+){1,4}\b/);
+    if (codeHit) return { code: codeHit[0] };
+    if (compact.startsWith('AINOVEL2.')) return { token: compact };
+    if (s.toUpperCase().startsWith('AINOVEL-')) {
+      return { code: s.toUpperCase().split(/\s+/)[0] };
+    }
+    // Legacy HMAC paste: eyJ….sig (~43 chars) — never valid on Ed25519 app
+    const hmacParts = compact.split('.');
+    if (
+      hmacParts.length === 2 &&
+      hmacParts[0].startsWith('eyJ') &&
+      hmacParts[1].length >= 40 &&
+      hmacParts[1].length <= 50
+    ) {
+      return {
+        error:
+          'Key HMAC cũ (bắt đầu eyJ…, không có AINOVEL2.). Admin cần redeploy Telegram bridge + Cấp Key lại — key đúng bắt đầu bằng AINOVEL2.',
+      };
+    }
+    if (compact.startsWith('eyJ')) {
+      return {
+        error:
+          'Key thiếu tiền tố AINOVEL2.<kid>. — copy trọn 1 dòng từ Telegram (không chỉ đoạn eyJ…).',
+      };
+    }
+    return {
+      error:
+        'Không tìm thấy key. Copy đúng dòng AINOVEL2.… hoặc mã AINOVEL-XXXX, không dán cả tin nhắn.',
+    };
+  };
+
   const handleActivate = async () => {
     const raw = keyDraft.trim();
     if (!raw) {
-      toast.warn('Bản quyền', 'Dán License Key / mã AINOVEL / token từ Admin.');
+      toast.warn('Bản quyền', 'Dán License Key (AINOVEL2.…) hoặc mã AINOVEL-… từ Telegram/Admin.');
       return;
     }
     setBusy(true);
     try {
-      const isCode = raw.toUpperCase().startsWith('AINOVEL-');
+      const extracted = extractLicensePaste(raw);
+      if (extracted.error) {
+        throw new Error(extracted.error);
+      }
+      if (!extracted.code && !extracted.token) {
+        throw new Error(
+          'Không tìm thấy key. Copy đúng dòng AINOVEL2.… (token) hoặc AINOVEL-XXXX (mã), không dán cả tin nhắn.',
+        );
+      }
       const res = await fetch(API.entitlementActivate, {
         method: 'POST',
         headers: buildClientApiHeaders(),
         body: JSON.stringify(
-          isCode ? { code: raw, hwid } : { token: raw, hwid },
+          extracted.code
+            ? { code: extracted.code, hwid }
+            : { token: extracted.token, hwid },
         ),
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
+        message?: string;
         token?: string;
-        claims?: { is_pro?: boolean; is_vip?: boolean };
+        claims?: {
+          is_pro?: boolean;
+          is_vip?: boolean;
+          is_trial?: boolean;
+          plan?: string;
+        };
       };
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || 'Key không hợp lệ trên máy này.');
+        throw new Error(
+          data.error || data.message || 'Key không hợp lệ trên máy này.',
+        );
       }
-      const token = data.token || raw;
+      const token = data.token || extracted.token || raw;
+      if (!data.claims || (!data.claims.is_pro && !data.claims.is_vip && !data.claims.is_trial)) {
+        throw new Error(
+          'Server chấp nhận key nhưng không trả quyền Pro. Thử lại hoặc báo admin kiểm tra Supabase / cặp key ký.',
+        );
+      }
       writeStoredToken(token);
-      if (data.token) setKeyDraft(data.token);
+      setKeyDraft(token);
       applyClaims(data.claims);
-      toast.success('Kích hoạt thành công', 'Pro/VIP đã bật trên máy này');
+      const activatedTrial =
+        !!data.claims.is_trial || data.claims.plan === 'trial';
+      toast.success(
+        'Kích hoạt thành công',
+        activatedTrial
+          ? 'Trial đã bật trên máy này'
+          : 'Pro đã bật trên máy này',
+      );
+      // Refresh after token is in localStorage so status can promote trial→pro
       await refresh();
     } catch (e) {
       toast.error('Kích hoạt thất bại', e instanceof Error ? e.message : String(e));
@@ -644,9 +754,12 @@ export default function LicenseModal({ open, onClose }: Props) {
                 ✓ Đã thanh toán — báo Admin
               </button>
               <p className="text-[9px] text-zinc-500 leading-relaxed">
-                Nút báo gửi gói + HWID + nội dung CK lên Telegram admin, đồng thời mở Zalo{' '}
+                Báo Admin: gói + HWID + nội dung CK lên Telegram (nút{' '}
+                <span className="text-emerald-400 font-bold">Cấp Key</span> /{' '}
+                <span className="text-rose-400 font-bold">Từ chối</span>
+                ). Đồng thời mở Zalo{' '}
                 <span className="text-sky-400 font-bold">{SELLER_BANK.zaloDisplay}</span>{' '}
-                để bạn gửi ảnh bill.
+                để gửi ảnh bill.
               </p>
             </div>
           </div>
@@ -659,7 +772,7 @@ export default function LicenseModal({ open, onClose }: Props) {
             <input
               value={keyDraft}
               onChange={(e) => setKeyDraft(e.target.value)}
-              placeholder="AINOVEL-XXXX-… hoặc token HMAC"
+              placeholder="AINOVEL-XXXX-… hoặc token Ed25519"
               className="w-full rounded-xl border border-sky-800/60 bg-black/50 px-3 py-2.5 text-sm font-mono text-sky-100 outline-none focus:border-amber-500 placeholder:text-zinc-600"
             />
             <div className="flex flex-wrap gap-2">

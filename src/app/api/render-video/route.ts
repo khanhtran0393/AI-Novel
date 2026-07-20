@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { chapterAssetPrefix } from '@/contracts';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,8 @@ function parseScenes(text: string): { title: string; content: string }[] {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'gen_video', body);
+    if (denied) return denied;
     const { chapterNum, chapterData, images, ten_tac_pham, setup, renderSettings } = body;
     
     // Khởi tạo các giá trị render settings mặc định

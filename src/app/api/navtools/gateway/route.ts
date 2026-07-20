@@ -4,12 +4,15 @@ import {
   callNavGateway,
   type NavGatewayAction,
 } from '@/lib/nav/navPythonBridge';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
 const ALLOWED_ACTIONS = new Set<NavGatewayAction>(ALL_NAV_GATEWAY_ACTIONS);
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireFeature(req, 'toolbox_labs');
+  if (denied) return denied;
   const result = await callNavGateway({ action: 'capabilities', timeoutMs: 30_000 });
   const status = result.success ? 200 : 500;
   return NextResponse.json(result, { status });
@@ -18,6 +21,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'toolbox_labs', body);
+    if (denied) return denied;
     const action = String(body.action || body.op || '').trim() as NavGatewayAction;
 
     if (!action || !ALLOWED_ACTIONS.has(action)) {

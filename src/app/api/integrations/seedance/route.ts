@@ -24,15 +24,26 @@ import {
   markClipGenerated,
   type TakeVerdict,
 } from '@/lib/integrations/seedanceTakeReview';
+import { requireFeature } from '@/lib/commercial/apiGate';
+import {
+  resolveCompileDirectedClip,
+  resolveCompileSeedancePrompt,
+  shouldUseCloudSeedanceIp,
+} from '@/lib/commercial/ip/seedanceCloudBridge';
+import { extractEntitlementToken } from '@/lib/entitlement';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireFeature(req, 'integrations_pipeline');
+  if (denied) return denied;
   const paths = getIntegrationPaths();
   return NextResponse.json({
     success: true,
     ready: seedanceRepoReady(),
     bridge: 'seedance-bridge-v2',
+    cloudIpPreferred: shouldUseCloudSeedanceIp(),
+    cloudIpPath: '/api/cloud/ip/seedance',
     repoPath: paths.seedance,
     workPath: paths.seedanceWork,
     projects: listSeedanceProjects(),
@@ -57,6 +68,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     const persist = Boolean(body.persist);
     const action = String(body.action || 'compile').trim();
     const projectSlug =
@@ -301,25 +314,29 @@ export async function POST(req: NextRequest) {
       if (!sceneText) {
         return NextResponse.json({ success: false, error: 'Missing sceneText' }, { status: 400 });
       }
-      const pack = compileDirectedClip({
-        projectId: body.projectId,
-        chapterNum: Number(body.chapterNum) || 1,
-        sceneIndex: Number(body.sceneIndex) || 0,
-        promptIndex: Number(body.promptIndex) || 0,
-        sceneText,
-        videoPrompt: body.videoPrompt,
-        characterHints: body.characterHints || body.characters,
-        environmentHint: body.environmentHint,
-        styleHint: body.styleHint,
-        genre: body.genre,
-        durationSec: body.durationSec ?? body.duration,
-        secondsPerBeat: body.secondsPerBeat,
-        hasStartImage: Boolean(body.hasStartImage || body.startImage),
-        hasEndImage: Boolean(body.hasEndImage || body.endImage),
-        parentClipId: body.parentClipId,
-        alreadyHappened: body.alreadyHappened,
-        reservedLater: body.reservedLater,
-      });
+      const token = extractEntitlementToken(req, body);
+      const pack = await resolveCompileDirectedClip(
+        {
+          projectId: body.projectId,
+          chapterNum: Number(body.chapterNum) || 1,
+          sceneIndex: Number(body.sceneIndex) || 0,
+          promptIndex: Number(body.promptIndex) || 0,
+          sceneText,
+          videoPrompt: body.videoPrompt,
+          characterHints: body.characterHints || body.characters,
+          environmentHint: body.environmentHint,
+          styleHint: body.styleHint,
+          genre: body.genre,
+          durationSec: body.durationSec ?? body.duration,
+          secondsPerBeat: body.secondsPerBeat,
+          hasStartImage: Boolean(body.hasStartImage || body.startImage),
+          hasEndImage: Boolean(body.hasEndImage || body.endImage),
+          parentClipId: body.parentClipId,
+          alreadyHappened: body.alreadyHappened,
+          reservedLater: body.reservedLater,
+        },
+        { entitlementToken: token },
+      );
       const savedPath = persist
         ? persistSeedanceCompile(pack, `clip_${pack.contract.clip_id}`)
         : undefined;
@@ -327,6 +344,7 @@ export async function POST(req: NextRequest) {
         success: true,
         ...pack,
         savedPath,
+        cloudIp: shouldUseCloudSeedanceIp(),
         repoReady: seedanceRepoReady(),
       });
     }
@@ -369,20 +387,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing sceneText' }, { status: 400 });
     }
 
-    const result = compileSeedancePrompt({
-      sceneText,
-      characterHints: body.characterHints || body.characters,
-      environmentHint: body.environmentHint || body.environment,
-      styleHint: body.styleHint,
-      mode: body.mode,
-      hasStartImage: Boolean(body.hasStartImage || body.startImage),
-      hasEndImage: Boolean(body.hasEndImage || body.endImage),
-      durationSec: body.durationSec ?? body.duration,
-      genre: body.genre,
-      language: body.language,
-      secondsPerBeat: body.secondsPerBeat,
-      forceMultishot: Boolean(body.forceMultishot),
-    });
+    const token = extractEntitlementToken(req, body);
+    const result = await resolveCompileSeedancePrompt(
+      {
+        sceneText,
+        characterHints: body.characterHints || body.characters,
+        environmentHint: body.environmentHint || body.environment,
+        styleHint: body.styleHint,
+        mode: body.mode,
+        hasStartImage: Boolean(body.hasStartImage || body.startImage),
+        hasEndImage: Boolean(body.hasEndImage || body.endImage),
+        durationSec: body.durationSec ?? body.duration,
+        genre: body.genre,
+        language: body.language,
+        secondsPerBeat: body.secondsPerBeat,
+        forceMultishot: Boolean(body.forceMultishot),
+      },
+      { entitlementToken: token },
+    );
 
     let promptSpec = null;
     if (body.withSpec) {
@@ -408,6 +430,7 @@ export async function POST(req: NextRequest) {
       result,
       promptSpec,
       savedPath,
+      cloudIp: shouldUseCloudSeedanceIp(),
       repoReady: seedanceRepoReady(),
     });
   } catch (err) {

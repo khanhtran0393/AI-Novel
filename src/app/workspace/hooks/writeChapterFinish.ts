@@ -4,11 +4,11 @@ import { sendNotification } from '../modules/notifyModule';
 import { recordEngineCheckpoint, recordEngineSnapshot } from '../modules/engineModule';
 import { evaluateWordGate, normalizeSceneTags } from '@/lib/storyWriting';
 import {
-  generateYoutubeMetaWithQA,
   mergeYoutubeSafe,
   buildThumbnailPrompt,
   scoreNarrativePsychScript,
 } from '@/lib/youtubeSafe';
+import { buildClientApiHeaders } from '../modules/apiClient';
 import {
   resolveNgonNgu,
   evaluateChapter,
@@ -275,28 +275,65 @@ export async function finishChapterWrite(
         throw new Error('Thieu Visual DNA / Media Style de tao thumbnailPrompt.');
       }
       const chProfile = live.channels?.[live.activeChannelId || ''];
-      const pack = generateYoutubeMetaWithQA({
-        script: finalCh.noi_dung,
-        novelTitle: live.ten_tac_pham,
-        chapter: params.chapterNumber,
-        maxRounds: 4,
-        usedTitles: chProfile?.usedHooks || [],
-        usedThumbLines: chProfile?.usedThumbnailNotes || [],
-        visualDna,
-        characterHint: (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+      // Prefer /api/youtube-meta (packaged+token → cloud psych IP; free → local server)
+      const metaRes = await fetch('/api/youtube-meta', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildClientApiHeaders(),
+        },
+        body: JSON.stringify({
+          script: finalCh.noi_dung,
+          novelTitle: live.ten_tac_pham,
+          chapter: params.chapterNumber,
+          maxRounds: 4,
+          usedTitles: chProfile?.usedHooks || [],
+          usedThumbLines: chProfile?.usedThumbnailNotes || [],
+          visualDna,
+          characterHint:
+            (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+        }),
+        signal: params.signal,
       });
+      const metaJson = (await metaRes.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        hook?: string;
+        seoTitle?: string;
+        thumbnailLine?: string;
+        seoDescription?: string;
+        seoTags?: string;
+        thumbnailPrompt?: string;
+      };
+      if (!metaRes.ok || metaJson.success === false || !metaJson.hook) {
+        throw new Error(
+          metaJson.error ||
+            `YouTube meta API fail (HTTP ${metaRes.status}).`,
+        );
+      }
+      const pack = {
+        hook: String(metaJson.hook),
+        seoTitle: String(metaJson.seoTitle || ''),
+        thumbnailLine: String(metaJson.thumbnailLine || ''),
+        seoDescription: String(metaJson.seoDescription || ''),
+        seoTags: String(metaJson.seoTags || ''),
+        thumbnailPrompt: String(metaJson.thumbnailPrompt || ''),
+      };
       live.setChapterHook(params.chapterNumber, {
         hook: pack.hook,
         thumbnailLine: pack.thumbnailLine.slice(0, 30),
         seoTitle: pack.seoTitle.slice(0, 100),
         seoDescription: pack.seoDescription,
         seoTags: pack.seoTags,
-        thumbnailPrompt: buildThumbnailPrompt({
-          hook: pack.hook,
-          thumbnailLine: pack.thumbnailLine,
-          visualDna,
-          characterHint: (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
-        }),
+        thumbnailPrompt:
+          pack.thumbnailPrompt ||
+          buildThumbnailPrompt({
+            hook: pack.hook,
+            thumbnailLine: pack.thumbnailLine,
+            visualDna,
+            characterHint:
+              (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+          }),
       });
       try {
         live.rememberChannelMotif?.('hook', pack.seoTitle.slice(0, 120));

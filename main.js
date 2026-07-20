@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
@@ -8,7 +8,13 @@ const { execSync } = require('child_process');
 const http = require('http');
 
 const durable = require('./electron/durableStore');
+const credentialVault = require('./electron/credentialVault');
+const {
+  isExactOriginUrl,
+  isTrustedNavigationUrl,
+} = require('./electron/securityPolicy');
 const { ZUSTAND_STORE_KEY } = durable;
+const appUpdater = require('./electron/updater');
 
 const STABLE_PORT = Number(process.env.AI_NOVEL_PORT || process.env.PORT || 3000);
 const dev = !app.isPackaged;
@@ -36,6 +42,7 @@ let isQuitting = false;
 let exitCode = 0;
 /** true nếu server HTTP do instance này tạo (chỉ kill port khi ta sở hữu) */
 let ownsHttpServer = false;
+const trustedInternalDataUrls = new Set();
 
 function crashLogPath() {
   try {
@@ -123,57 +130,143 @@ function quitAppFully(reason) {
   }, 800);
 }
 
-function ensureEnv() {
+/** Load KEY=VAL env file into process.env (does not override existing). */
+function loadEnvFile(filePath, allowedKeys = null) {
   try {
-    process.chdir(appDir);
+    if (!fs.existsSync(filePath)) return;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const eq = t.indexOf('=');
+      if (eq <= 0) continue;
+      const k = t.slice(0, eq).trim();
+      if (allowedKeys && !allowedKeys.has(k)) continue;
+      let v = t.slice(eq + 1).trim();
+      if (
+        (v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))
+      ) {
+        v = v.slice(1, -1);
+      }
+      if (k && process.env[k] === undefined) process.env[k] = v;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function ensureEnv() {
+  const runtimeRoot = app.isPackaged && process.resourcesPath
+    ? process.resourcesPath
+    : appDir;
+  try {
+    process.chdir(runtimeRoot);
   } catch {
     // ignore
   }
-  process.env.AI_NOVEL_ROOT = appDir;
-  process.env.INIT_CWD = appDir;
+  process.env.AI_NOVEL_ROOT = runtimeRoot;
+  process.env.INIT_CWD = runtimeRoot;
   try {
     process.env.AI_NOVEL_USER_DATA = app.getPath('userData');
   } catch {
     // ignore
   }
-  if (app.isPackaged && process.resourcesPath) {
-    const resourceBin = path.join(process.resourcesPath, 'bin');
-    if (fs.existsSync(resourceBin) && !fs.existsSync(path.join(appDir, 'bin'))) {
-      process.env.AI_NOVEL_ROOT = process.resourcesPath;
-    }
+  // Dev/unpacked: load .env* so Telegram bot + Supabase reach the Next process
+  if (!app.isPackaged) {
+    loadEnvFile(path.join(appDir, '.env'));
+    loadEnvFile(path.join(appDir, '.env.local'));
   }
 
-  // Packaged desktop = publish posture (enforce license unless explicitly open)
+  // Packaged desktop = publish posture. License mode is FORCED enforce:
+  // ignore pre-set process env and customer .env.commercial (G1 close).
   if (app.isPackaged) {
     process.env.AI_NOVEL_PACKAGED = '1';
-    process.env.AINOVEL_PUBLISH = process.env.AINOVEL_PUBLISH || '1';
-    if (!process.env.AINOVEL_ENTITLEMENT_MODE) {
-      process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
-    }
-    // Load secrets from userData/.env.commercial if present (never bake secret into asar)
+    process.env.AINOVEL_PUBLISH = '1';
+    process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
+    // Customer config: public endpoints/switches only — never mode / local-trial escape.
+    // Customer may only override public endpoints — NOT host allowlist / TLS pins
+    // (those come only from bundled public.env so users cannot expand pin set).
+    const customerEnvKeys = new Set([
+      'AINOVEL_LICENSE_API_URL',
+      'AINOVEL_TRIAL_ENABLED',
+      'AINOVEL_TRIAL_DAYS',
+      'AINOVEL_UPDATE_CHANNEL',
+      'AINOVEL_UPDATE_FEED_URL',
+      'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
+      'AINOVEL_UPDATE_ALLOW_PRERELEASE',
+    ]);
+    const bundledPinKeys = new Set([
+      'AINOVEL_LICENSE_API_URL',
+      'AINOVEL_LICENSE_API_HOSTS',
+      'AINOVEL_LICENSE_TLS_PINS',
+      'AINOVEL_TRIAL_ENABLED',
+      'AINOVEL_TRIAL_DAYS',
+      'AINOVEL_UPDATE_CHANNEL',
+      'AINOVEL_UPDATE_FEED_URL',
+      'AINOVEL_UPDATE_FEED_HOSTS',
+      'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
+      'AINOVEL_UPDATE_ALLOW_PRERELEASE',
+    ]);
     try {
       const commercialEnv = path.join(app.getPath('userData'), '.env.commercial');
-      if (fs.existsSync(commercialEnv)) {
-        const raw = fs.readFileSync(commercialEnv, 'utf8');
-        for (const line of raw.split(/\r?\n/)) {
-          const t = line.trim();
-          if (!t || t.startsWith('#')) continue;
-          const eq = t.indexOf('=');
-          if (eq <= 0) continue;
-          const k = t.slice(0, eq).trim();
-          let v = t.slice(eq + 1).trim();
-          if (
-            (v.startsWith('"') && v.endsWith('"')) ||
-            (v.startsWith("'") && v.endsWith("'"))
-          ) {
-            v = v.slice(1, -1);
-          }
-          if (k && process.env[k] === undefined) process.env[k] = v;
-        }
-      }
+      loadEnvFile(commercialEnv, customerEnvKeys);
     } catch {
       // ignore
     }
+    // Bundled public defaults (loadEnvFile never overwrites already-set keys).
+    // Pin hosts / TLS pins: load bundled first for keys customer cannot set,
+    // then re-apply after wipe so customer cannot inject HOSTS/PINS via machine env.
+    loadEnvFile(
+      path.join(runtimeRoot, 'commercial', 'public.env'),
+      bundledPinKeys,
+    );
+    // Re-assert after any env file load (belt against whitelist mistakes).
+    process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
+    process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0';
+
+    // Seller/admin credentials must never be present in the installed client,
+    // including values inherited from a machine-wide environment.
+    for (const key of [
+      'AINOVEL_ENTITLEMENT_SECRET',
+      'AINOVEL_ENTITLEMENT_PUBLIC_KEY',
+      'AINOVEL_ENTITLEMENT_PUBLIC_KEY_FILE',
+      'AINOVEL_ENTITLEMENT_PUBLIC_KEYS',
+      'AINOVEL_ENTITLEMENT_PUBLIC_KEYS_DIR',
+      'AINOVEL_ENTITLEMENT_PRIVATE_KEY',
+      'AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE',
+      'AINOVEL_ENTITLEMENT_ADMIN_KEY',
+      'AINOVEL_PAYMENT_WEBHOOK_SECRET',
+      'AINOVEL_TELEGRAM_BOT_TOKEN',
+      'AINOVEL_TELEGRAM_WEBHOOK_SECRET',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'AINOVEL_OWNER_UNLIMITED',
+    ]) {
+      delete process.env[key];
+    }
+    // Customer must not expand pin allowlist via inherited env
+    delete process.env.AINOVEL_LICENSE_API_HOSTS;
+    delete process.env.AINOVEL_LICENSE_TLS_PINS;
+    delete process.env.AINOVEL_UPDATE_FEED_HOSTS;
+    // Re-load ONLY pin keys from bundle so allowlist is seller-controlled
+    loadEnvFile(
+      path.join(runtimeRoot, 'commercial', 'public.env'),
+      new Set([
+        'AINOVEL_LICENSE_API_HOSTS',
+        'AINOVEL_LICENSE_TLS_PINS',
+        'AINOVEL_UPDATE_FEED_HOSTS',
+      ]),
+    );
+    // If customer set a rogue LICENSE_API_URL, host pin rejects at runtime.
+    // Prefer bundled URL when customer URL missing:
+    if (!String(process.env.AINOVEL_LICENSE_API_URL || '').trim()) {
+      loadEnvFile(
+        path.join(runtimeRoot, 'commercial', 'public.env'),
+        new Set(['AINOVEL_LICENSE_API_URL']),
+      );
+    }
+    const publicKeysDir = path.join(runtimeRoot, 'license', 'public-keys');
+    process.env.AINOVEL_ENTITLEMENT_PUBLIC_KEYS_DIR = publicKeysDir;
   }
 }
 
@@ -357,12 +450,18 @@ function resolveBootStore() {
   ]);
 
   if (best?.raw) {
-    lastGoodRaw = best.raw;
+    const safeRaw = credentialVault.migrateFromRaw(
+      app.getPath('userData'),
+      best.raw,
+      paths.secrets,
+    );
+    const safeSummary = durable.scorePersistedStore(safeRaw);
+    lastGoodRaw = safeRaw;
     // Ensure multi-path mirrors exist even if we recovered from LevelDB only
-    commitWrite(best.raw, { history: false, force: false });
+    commitWrite(safeRaw, { history: false, force: false });
     return {
-      raw: best.raw,
-      summary: best.summary,
+      raw: safeRaw,
+      summary: safeSummary,
       source: best.source,
       paths: {
         primary: paths.primary,
@@ -384,9 +483,61 @@ function resolveBootStore() {
   };
 }
 
+function isTrustedIpcEvent(event) {
+  try {
+    if (!event?.sender || !mainWindow || mainWindow.isDestroyed()) return false;
+    if (event.sender.id !== mainWindow.webContents.id) return false;
+    const url = event.senderFrame?.url || event.sender.getURL() || '';
+    const localOrigin = `http://127.0.0.1:${STABLE_PORT}`;
+    return isExactOriginUrl(url, localOrigin);
+  } catch {
+    return false;
+  }
+}
+
+function assertTrustedIpc(event) {
+  if (!isTrustedIpcEvent(event)) throw new Error('Untrusted IPC sender');
+}
+
 function registerIpc() {
+  ipcMain.on('ainovel-credentials-migrate-raw', (event, raw) => {
+    try {
+      assertTrustedIpc(event);
+      event.returnValue = credentialVault.migrateFromRaw(
+        app.getPath('userData'),
+        typeof raw === 'string' ? raw : '',
+        paths?.secrets,
+      );
+    } catch (err) {
+      console.warn('[CredentialVault] migration failed:', err?.message || err);
+      event.returnValue = durable.stripSecretsFromRaw(typeof raw === 'string' ? raw : '');
+    }
+  });
+
+  ipcMain.on('ainovel-credentials-get-sync', (event) => {
+    try {
+      assertTrustedIpc(event);
+      event.returnValue = credentialVault.read(app.getPath('userData'));
+    } catch {
+      event.returnValue = {};
+    }
+  });
+
+  ipcMain.handle('ainovel-credentials-get', async (event) => {
+    assertTrustedIpc(event);
+    return credentialVault.read(app.getPath('userData'));
+  },
+  );
+
+  ipcMain.handle('ainovel-credentials-set', async (event, credentials) => {
+    assertTrustedIpc(event);
+    return credentialVault.write(app.getPath('userData'), credentials);
+  },
+  );
+
   ipcMain.on('ainovel-persist-boot', (event) => {
     try {
+      assertTrustedIpc(event);
       event.returnValue = resolveBootStore();
     } catch (err) {
       console.warn('[DurableStore] boot failed:', err?.message || err);
@@ -395,11 +546,13 @@ function registerIpc() {
   });
 
   ipcMain.on('renderer-error', (event, errorStack) => {
+    if (!isTrustedIpcEvent(event)) return;
     appendCrashLog(`[Renderer] ${errorStack}`);
   });
 
   ipcMain.on('ainovel-persist-get-sync', (event) => {
     try {
+      assertTrustedIpc(event);
       const boot = resolveBootStore();
       event.returnValue = boot.raw;
     } catch {
@@ -409,30 +562,38 @@ function registerIpc() {
 
   ipcMain.on('ainovel-persist-set-sync', (event, raw) => {
     try {
+      assertTrustedIpc(event);
       event.returnValue = commitWrite(raw, { history: true });
     } catch (err) {
       event.returnValue = { ok: false, error: err?.message || String(err) };
     }
   });
 
-  ipcMain.on('ainovel-persist-set', (_event, raw) => {
+  ipcMain.on('ainovel-persist-set', (event, raw) => {
+    if (!isTrustedIpcEvent(event)) return;
     scheduleWrite(raw);
   });
 
-  ipcMain.handle('ainovel-persist-set', async (_event, raw) => {
+  ipcMain.handle('ainovel-persist-set', async (event, raw) => {
+    assertTrustedIpc(event);
     return commitWrite(raw, { history: true });
   });
 
-  ipcMain.handle('ainovel-persist-flush', async () => flushPending());
+  ipcMain.handle('ainovel-persist-flush', async (event) => {
+    assertTrustedIpc(event);
+    return flushPending();
+  });
 
-  ipcMain.handle('ainovel-persist-paths', async () => {
+  ipcMain.handle('ainovel-persist-paths', async (event) => {
+    assertTrustedIpc(event);
     if (!paths) initPaths();
     return paths;
   });
 
   // --- Text reports + TTS chapter queue snapshot (userData) ---
-  ipcMain.handle('ainovel-write-text-file', async (_event, payload) => {
+  ipcMain.handle('ainovel-write-text-file', async (event, payload) => {
     try {
+      assertTrustedIpc(event);
       const userData = app.getPath('userData');
       const subdir = String(payload?.subdir || 'reports').replace(/[^a-zA-Z0-9_-]/g, '') || 'reports';
       const name = path.basename(String(payload?.relativePath || 'report.txt'));
@@ -447,8 +608,9 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('ainovel-tts-queue-set', async (_event, snapshot) => {
+  ipcMain.handle('ainovel-tts-queue-set', async (event, snapshot) => {
     try {
+      assertTrustedIpc(event);
       const userData = app.getPath('userData');
       const full = path.join(userData, 'tts-chapter-queue.json');
       fs.writeFileSync(full, JSON.stringify(snapshot ?? {}, null, 2), 'utf8');
@@ -458,8 +620,9 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('ainovel-tts-queue-get', async () => {
+  ipcMain.handle('ainovel-tts-queue-get', async (event) => {
     try {
+      assertTrustedIpc(event);
       const userData = app.getPath('userData');
       const full = path.join(userData, 'tts-chapter-queue.json');
       if (!fs.existsSync(full)) return null;
@@ -470,15 +633,22 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('ainovel-open-path', async (_event, targetPath) => {
+  ipcMain.handle('ainovel-open-path', async (event, targetPath) => {
     try {
+      assertTrustedIpc(event);
       const { shell } = require('electron');
       const fs = require('fs');
       if (!targetPath || typeof targetPath !== 'string') {
         return { ok: false, error: 'empty path' };
       }
-      const p = String(targetPath).trim();
-      if (!p) return { ok: false, error: 'empty path' };
+      const p = path.resolve(String(targetPath).trim());
+      if (!p || p.includes('\0')) return { ok: false, error: 'empty path' };
+
+      // Soft path policy: allow project/userData roots + absolute user media;
+      // block sensitive Windows system locations.
+      if (!isAllowedShellOpenPath(p)) {
+        return { ok: false, error: 'path not allowed' };
+      }
 
       // Directories → openPath; files → reveal in folder
       try {
@@ -497,6 +667,52 @@ function registerIpc() {
       return { ok: false, error: err?.message || String(err) };
     }
   });
+}
+
+/** Reject shell-open into system-protected trees; allow user project/media paths. */
+function isAllowedShellOpenPath(absolutePath) {
+  try {
+    const resolved = path.resolve(absolutePath);
+    if (!path.isAbsolute(resolved)) return false;
+    const lower = resolved.toLowerCase();
+    const blocked = [
+      `${path.sep}windows${path.sep}system32`,
+      `${path.sep}windows${path.sep}syswow64`,
+      `${path.sep}program files${path.sep}windowsapps`,
+      `${path.sep}windows${path.sep}winsxs`,
+    ];
+    if (blocked.some((b) => lower.includes(b.toLowerCase()))) return false;
+
+    const roots = [];
+    try {
+      roots.push(app.getPath('userData'));
+    } catch {
+      /* ignore */
+    }
+    try {
+      roots.push(app.getPath('documents'));
+      roots.push(app.getPath('desktop'));
+      roots.push(app.getPath('downloads'));
+      roots.push(app.getPath('videos'));
+      roots.push(app.getPath('music'));
+      roots.push(app.getPath('pictures'));
+    } catch {
+      /* ignore */
+    }
+    if (appDir) roots.push(appDir);
+    if (process.env.AI_NOVEL_ROOT) roots.push(process.env.AI_NOVEL_ROOT);
+    if (process.env.AI_NOVEL_USER_DATA) roots.push(process.env.AI_NOVEL_USER_DATA);
+
+    for (const root of roots) {
+      if (!root) continue;
+      const r = path.resolve(root);
+      if (resolved === r || resolved.startsWith(r + path.sep)) return true;
+    }
+    // User-chosen media/output dirs (D:\, custom drives) — absolute non-system only
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function snapshotFromRenderer() {
@@ -691,6 +907,7 @@ const BOOT_SPLASH_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!D
     // Visual only — main will navigate to /workspace when ready
   </script>
 </body></html>`)}`;
+trustedInternalDataUrls.add(BOOT_SPLASH_HTML);
 
 function createMainWindow(opts = {}) {
   const { loadApp = false } = opts;
@@ -718,11 +935,48 @@ function createMainWindow(opts = {}) {
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       partition: 'persist:ainovel-v1',
       spellcheck: false,
+      // Packaged: no DevTools (L4). Dev/unpacked keeps tools for CISO debug.
+      devTools: !app.isPackaged,
       // Dev Next on localhost
       webSecurity: true,
     },
+  });
+
+  if (app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = String(input.key || '').toUpperCase();
+      if (
+        key === 'F12' ||
+        (input.control && input.shift && (key === 'I' || key === 'J' || key === 'C'))
+      ) {
+        event.preventDefault();
+      }
+    });
+  }
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (/^https:\/\//i.test(url)) {
+        const { shell } = require('electron');
+        void shell.openExternal(url);
+      }
+    } catch {
+      // deny below
+    }
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => callback(false),
+  );
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const localOrigin = `http://127.0.0.1:${STABLE_PORT}`;
+    if (!isTrustedNavigationUrl(url, localOrigin, trustedInternalDataUrls)) {
+      event.preventDefault();
+    }
   });
 
   // Boot only: force onto primary (multi-monitor ghost bounds)
@@ -736,16 +990,36 @@ function createMainWindow(opts = {}) {
 
   if (!createMainWindow._ipcBound) {
     createMainWindow._ipcBound = true;
-    ipcMain.on('window-minimize', () => {
+    ipcMain.on('window-minimize', (event) => {
+      if (!isTrustedIpcEvent(event)) return;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
     });
-    ipcMain.on('window-maximize', () => {
+    ipcMain.on('window-maximize', (event) => {
+      if (!isTrustedIpcEvent(event)) return;
       if (!mainWindow || mainWindow.isDestroyed()) return;
       if (mainWindow.isMaximized()) mainWindow.unmaximize();
       else mainWindow.maximize();
     });
-    ipcMain.on('window-close', () => {
+    ipcMain.on('window-close', (event) => {
+      if (!isTrustedIpcEvent(event)) return;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    });
+    // Auto-update IPC (packaged + feed URL)
+    ipcMain.handle('ainovel-update-status', async (event) => {
+      assertTrustedIpc(event);
+      return appUpdater.getStatus();
+    });
+    ipcMain.handle('ainovel-update-check', async (event) => {
+      assertTrustedIpc(event);
+      return appUpdater.checkForUpdates();
+    });
+    ipcMain.handle('ainovel-update-download', async (event) => {
+      assertTrustedIpc(event);
+      return appUpdater.downloadUpdate();
+    });
+    ipcMain.handle('ainovel-update-install', async (event) => {
+      assertTrustedIpc(event);
+      return appUpdater.quitAndInstall();
     });
   }
 
@@ -854,6 +1128,18 @@ app.whenReady().then(async () => {
   ensureEnv();
   initPaths();
   registerIpc();
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false);
+  });
+
+  // Auto-update: only when packaged + AINOVEL_UPDATE_FEED_URL set
+  try {
+    appUpdater.initAutoUpdater({
+      log: (s) => console.log(`[Updater] ${s}`),
+    });
+  } catch (e) {
+    console.warn('[Updater] init skipped', e?.message || e);
+  }
 
   const boot = resolveBootStore();
   console.log(
@@ -924,6 +1210,21 @@ app.whenReady().then(async () => {
         });
     }, 2500);
 
+    // Seller Telegram poller is a dev/backend facility, never a customer feature.
+    if (!app.isPackaged) setTimeout(() => {
+      const url = `http://127.0.0.1:${STABLE_PORT}/api/entitlement/telegram-webhook?poll=1`;
+      fetch(url, { method: 'GET', cache: 'no-store' })
+        .then(async (r) => {
+          const j = await r.json().catch(() => ({}));
+          console.log(
+            `[Telegram] poller mode=${j.poller?.mode || j.started?.mode || '?'} configured=${j.telegramConfigured ?? j.poller?.configured}`,
+          );
+        })
+        .catch((err) => {
+          console.warn('[Telegram] poller start skip:', err?.message || err);
+        });
+    }, 3500);
+
     // 2) Navigate to workspace (skip `/` client redirect spinner)
     loadWorkspaceUrl();
   } catch (err) {
@@ -935,14 +1236,14 @@ app.whenReady().then(async () => {
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
         const msg = String(err?.message || err).replace(/[<>&]/g, '');
-        mainWindow.loadURL(
-          `data:text/html;charset=utf-8,${encodeURIComponent(
+        const errorPageUrl = `data:text/html;charset=utf-8,${encodeURIComponent(
             `<body style="background:#111;color:#f87171;font-family:sans-serif;padding:40px">
             <h1>Khởi động thất bại</h1><pre>${msg}</pre>
             <p style="color:#a1a1aa">Xem electron-crash.log trong %APPDATA%\\ai-novel-script-generator</p>
             </body>`,
-          )}`,
-        );
+          )}`;
+        trustedInternalDataUrls.add(errorPageUrl);
+        mainWindow.loadURL(errorPageUrl);
         focusMainWindow({ forcePlace: true, flashTop: true });
       }
     } catch {
@@ -983,4 +1284,3 @@ app.on('activate', () => {
     // macOS re-create if needed
   }
 });
-

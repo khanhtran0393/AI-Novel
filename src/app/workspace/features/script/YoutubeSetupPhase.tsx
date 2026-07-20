@@ -556,15 +556,24 @@ export default function YoutubeSetupPhase({
           <button
             type="button"
             disabled={outlineBusy}
-            onClick={() => void handleGenerateOutline()}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (outlineBusy) return;
+              void handleGenerateOutline();
+            }}
+            className="relative z-[30] flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-lg shadow-amber-500/10 transition-all hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none"
             style={setupModalNoDragStyle}
-            title="Nút riêng — không khóa Phân tích / gen NV / viết chương"
+            title="Sinh dàn ý + danh sách chương AI (cần Phân tích trước)"
+            aria-busy={outlineBusy}
           >
             {outlineBusy ? (
               <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Đang thiết lập dàn ý...
+                <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
+                Đang sinh kịch bản AI… (chờ toast)
               </>
             ) : (
               <>🚀 TIẾN HÀNH SINH KỊCH BẢN AI</>

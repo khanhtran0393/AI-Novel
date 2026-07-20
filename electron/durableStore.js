@@ -16,6 +16,8 @@ const SECRET_KEYS = [
   'openaiApiKeys',
   'grokApiKey',
   'grokApiKeys',
+  'claudeApiKey',
+  'claudeApiKeys',
   'lumaApiKey',
   'lumaApiKeys',
   'runwayApiKey',
@@ -27,7 +29,15 @@ const SECRET_KEYS = [
   'aiMasterApiKey',
   'googleStudioCookie',
   'googleStudioCookies',
-  'ttsConfig',
+  'tiktokSessionIds',
+];
+
+const TTS_SECRET_KEYS = [
+  'tiktokSessionId',
+  'googleCloudApiKey',
+  'vbeeApiKey',
+  'vbeeAppId',
+  'vinaReferenceAudioB64',
 ];
 
 function extractJsonObject(text, startIndex) {
@@ -68,25 +78,9 @@ function scorePersistedStore(raw) {
     const readyChapters = chapters.filter(
       (chapter) => String(chapter?.noi_dung || '').trim().length > 0,
     ).length;
-    const keyCount = [
-      state?.apiKey,
-      state?.openaiApiKey,
-      state?.grokApiKey,
-      state?.lumaApiKey,
-      state?.runwayApiKey,
-      state?.falaiApiKey,
-      state?.imageApiKey,
-      state?.videoApiKey,
-      state?.aiMasterApiKey,
-      state?.googleStudioCookie,
-      ...(Array.isArray(state?.apiKeys) ? state.apiKeys : []),
-      ...(Array.isArray(state?.openaiApiKeys) ? state.openaiApiKeys : []),
-      ...(Array.isArray(state?.grokApiKeys) ? state.grokApiKeys : []),
-      ...(Array.isArray(state?.lumaApiKeys) ? state.lumaApiKeys : []),
-      ...(Array.isArray(state?.runwayApiKeys) ? state.runwayApiKeys : []),
-      ...(Array.isArray(state?.falaiApiKeys) ? state.falaiApiKeys : []),
-      ...(Array.isArray(state?.googleStudioCookies) ? state.googleStudioCookies : []),
-    ].filter(Boolean).length;
+    // Credentials are scored separately in the encrypted vault and must not
+    // influence the project snapshot richness comparison.
+    const keyCount = 0;
     const generatedAssets =
       Object.keys(state?.generatedAudioPaths || {}).length +
       Object.keys(state?.generatedPrompts || {}).length +
@@ -184,9 +178,37 @@ function extractSecretsFromRaw(raw) {
         secrets[key] = state[key];
       }
     }
+    if (state.ttsConfig && typeof state.ttsConfig === 'object') {
+      const ttsSecrets = {};
+      for (const key of TTS_SECRET_KEYS) {
+        const value = state.ttsConfig[key];
+        if (value !== undefined && value !== null && value !== '') {
+          ttsSecrets[key] = value;
+        }
+      }
+      if (Object.keys(ttsSecrets).length) secrets.ttsSecrets = ttsSecrets;
+    }
     return Object.keys(secrets).length ? secrets : null;
   } catch {
     return null;
+  }
+}
+
+/** Remove credentials before any localStorage/durable/history write. */
+function stripSecretsFromRaw(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    const hasWrapper = parsed && typeof parsed === 'object' && parsed.state;
+    const state = { ...(hasWrapper ? parsed.state : parsed) };
+    for (const key of SECRET_KEYS) delete state[key];
+    if (state.ttsConfig && typeof state.ttsConfig === 'object') {
+      const ttsConfig = { ...state.ttsConfig };
+      for (const key of TTS_SECRET_KEYS) delete ttsConfig[key];
+      state.ttsConfig = ttsConfig;
+    }
+    return JSON.stringify(hasWrapper ? { ...parsed, state } : state);
+  } catch {
+    return raw;
   }
 }
 
@@ -253,7 +275,8 @@ function rotateHistory(historyDir, raw) {
 }
 
 function writeAll(paths, raw, { history = true } = {}) {
-  const summary = scorePersistedStore(raw);
+  const safeRaw = stripSecretsFromRaw(raw);
+  const summary = scorePersistedStore(safeRaw);
   if (summary.score <= 0) {
     return { ok: false, error: 'score_zero', summary };
   }
@@ -268,23 +291,14 @@ function writeAll(paths, raw, { history = true } = {}) {
   const written = [];
   for (const target of targets) {
     try {
-      atomicWrite(target, raw);
+      atomicWrite(target, safeRaw);
       written.push(target);
     } catch (err) {
       console.warn('[DurableStore] write failed:', target, err?.message || err);
     }
   }
 
-  const secrets = extractSecretsFromRaw(raw);
-  if (secrets) {
-    try {
-      atomicWrite(paths.secrets, JSON.stringify(secrets, null, 2));
-    } catch (err) {
-      console.warn('[DurableStore] secrets write failed:', err?.message || err);
-    }
-  }
-
-  if (history) rotateHistory(paths.historyDir, raw);
+  if (history) rotateHistory(paths.historyDir, safeRaw);
 
   return {
     ok: written.length > 0,
@@ -338,25 +352,8 @@ function readBest(paths) {
   let best = candidates[0] || null;
   if (!best) return null;
 
-  // Merge secrets if full store lost API keys
-  const secretsRaw = readJsonFile(paths.secrets);
-  if (secretsRaw) {
-    try {
-      const secrets = JSON.parse(secretsRaw);
-      const merged = mergeSecretsIntoRaw(best.raw, secrets);
-      if (merged !== best.raw) {
-        best = {
-          ...best,
-          raw: merged,
-          summary: scorePersistedStore(merged),
-          source: `${best.source}+secrets`,
-        };
-      }
-    } catch {
-      // ignore
-    }
-  }
-
+  // Main process migrates any legacy credentials into safeStorage before this
+  // payload is exposed to the renderer.
   return best;
 }
 
@@ -535,6 +532,7 @@ module.exports = {
   recoverFromLevelDb,
   mergeSecretsIntoRaw,
   extractSecretsFromRaw,
+  stripSecretsFromRaw,
   isCatastrophicWipe,
   readJsonFile,
   pickBestAmong,

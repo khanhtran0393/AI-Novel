@@ -59,6 +59,18 @@ export type MediaDnaMatchReport = {
   hasIssues: boolean;
 };
 
+export type MediaDnaMismatchSummary = {
+  key: string;
+  kind: MediaDnaMismatch['kind'];
+  level: MediaDnaMismatch['level'];
+  field: string;
+  expected: string;
+  actual: string;
+  message: string;
+  count: number;
+  assetKeys: string[];
+};
+
 function norm(s?: string | null): string {
   return String(s || '')
     .trim()
@@ -68,6 +80,47 @@ function norm(s?: string | null): string {
 function near(a?: number, b?: number, eps = 0.06): boolean {
   if (typeof a !== 'number' || typeof b !== 'number') return true;
   return Math.abs(a - b) <= eps;
+}
+
+/**
+ * Collapse repeated per-asset mismatches into stable UI rows.
+ * The identity includes both sides of the comparison so React replaces a row
+ * when the live toolbar target changes instead of retaining stale DOM nodes.
+ */
+export function summarizeMediaDnaMismatches(
+  mismatches: MediaDnaMismatch[],
+): MediaDnaMismatchSummary[] {
+  const grouped = new Map<string, MediaDnaMismatchSummary>();
+
+  for (const mismatch of mismatches) {
+    const key = JSON.stringify([
+      mismatch.kind,
+      mismatch.level,
+      mismatch.field,
+      norm(mismatch.expected),
+      norm(mismatch.actual),
+    ]);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.assetKeys.push(mismatch.key);
+      continue;
+    }
+
+    grouped.set(key, {
+      key,
+      kind: mismatch.kind,
+      level: mismatch.level,
+      field: mismatch.field,
+      expected: mismatch.expected,
+      actual: mismatch.actual,
+      message: mismatch.message,
+      count: 1,
+      assetKeys: [mismatch.key],
+    });
+  }
+
+  return Array.from(grouped.values());
 }
 
 export function stampAudioDna(live: LiveMediaDnaTarget): MediaAssetDnaStamp {

@@ -9,8 +9,8 @@ import {
   type TtsCacheVariantConfig,
 } from '@/lib/tts/prosodyVariant';
 
-/** v5: invalidate v3/v4 blobs that stored Vina NFE=4 noise as “success” previews */
-const CACHE_NAME = 'tts-prelisten-cache-v5';
+/** v6: invalidate blobs rendered before conditioning + signal-quality fixes. */
+const CACHE_NAME = 'tts-prelisten-cache-v6';
 const MAX_SESSION_BLOBS = 16;
 
 /** Session memory: key → blob URL (instant replay, no network) */

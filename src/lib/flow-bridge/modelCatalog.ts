@@ -83,6 +83,17 @@ export const FLOW_IMAGE_MODELS: FlowModelEntry[] = [
     note: 'Flow imageModelName default — maps NANO_BANANA_PRO UI path',
   },
   {
+    id: 'HARBOR_SEAL',
+    label: 'HARBOR_SEAL (FlowAgent Nano Banana 2 Lite)',
+    kind: 'image',
+    credits: 0,
+    creditsUltra: 0,
+    tier: 'lite',
+    nativeScale: '1k',
+    note: 'Canonical upstream key used by the working FlowAgent package',
+    uiHidden: true,
+  },
+  {
     id: 'NARWHAL',
     label: 'NARWHAL (Nano Banana 2)',
     kind: 'image',
@@ -215,6 +226,21 @@ export const FLOW_VIDEO_MODELS: FlowModelEntry[] = [
   },
 
   // ─── I2V ───────────────────────────────────────────────
+  {
+    id: 'OMNI_FLASH',
+    label: 'Omni Flash (FlowAgent parity)',
+    kind: 'video',
+    credits: 0,
+    creditsUltra: 0,
+    tier: 'fast',
+    family: 'i2v',
+    durationsSec: V_DUR,
+    defaultDurationSec: V_DEF,
+    nativeScale: '720p',
+    supportsI2v: true,
+    supportsT2v: true,
+    note: 'Resolves explicitly to abra_t2v_{4|6|8}s, matching the working FlowAgent package',
+  },
   {
     id: 'veo_3_1_i2v_s_fast',
     label: 'Veo 3.1 I2V Fast (TIER_ONE)',
@@ -551,6 +577,9 @@ export function resolveFlowImageModelName(id?: string): string {
   const raw = String(id || '').trim();
   if (!raw || raw === 'flow' || raw === 'imagen') return 'GEM_PIX_2';
   const upper = raw.toUpperCase();
+  if (upper === 'NANO_BANANA_2_LITE' || upper === 'NANO_BANANA2_LITE') {
+    return 'HARBOR_SEAL';
+  }
   if (upper === 'NANO_BANANA_PRO' || upper === 'NANO_BANANA') return 'GEM_PIX_2';
   if (upper === 'NANO_BANANA_2' || upper === 'NANO_BANANA2') return 'NARWHAL';
   return raw;
@@ -599,6 +628,33 @@ export function clampFlowVideoDuration(
   return allowed.reduce((best, cur) =>
     Math.abs(cur - n) < Math.abs(best - n) ? cur : best,
   );
+}
+
+/**
+ * Generation paths must not invent or coerce a missing clip length.
+ * Keep clampFlowVideoDuration for UI/credit estimates only.
+ */
+export function requireFlowVideoDuration(
+  durationSec: number | undefined,
+  modelId?: string,
+): number {
+  const model = modelId ? findFlowModel(modelId) : undefined;
+  const allowed = model?.durationsSec?.length
+    ? model.durationsSec
+    : [...FLOW_VIDEO_DURATIONS_SEC];
+  const n = Number(durationSec);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `FLOW_DURATION_REQUIRED: Thiếu thời lượng video Flow. Chọn rõ ${allowed.join('/')} giây trong Cấu hình đầu ra.`,
+    );
+  }
+  if (!allowed.includes(n)) {
+    throw new Error(
+      `FLOW_DURATION_INVALID: Thời lượng ${n}s không hợp lệ cho model "${modelId || 'Flow'}". ` +
+        `Chọn một trong ${allowed.join('/')} giây; app không tự đổi thời lượng.`,
+    );
+  }
+  return n;
 }
 
 export function getModelDurations(modelId?: string): number[] {

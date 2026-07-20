@@ -42,6 +42,8 @@ import {
   resolveOmniRefAudioPath,
 } from '@/lib/omnivoiceLocal';
 import { buildTtsCacheVariantKey } from '@/lib/tts/prosodyVariant';
+import { assertTtsAudioBufferQuality } from '@/lib/tts/audioQuality';
+import { requireTtsPlatformAccess } from '@/lib/commercial/apiGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +51,7 @@ export const runtime = 'nodejs';
 
 /** OmniVoice first-load model + clone can exceed 60s */
 /** Preview Zero-Shot ONNX can take 60–180s/job on low-VRAM GPUs; chapter longer. */
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
@@ -111,6 +113,9 @@ export async function POST(req: Request) {
         { code: 'VALIDATION', status: 400 },
       );
     }
+    // Free: edge_tts + piper. Premium engines need trial/pro token (server gate).
+    const ttsDenied = await requireTtsPlatformAccess(req, platform, body);
+    if (ttsDenied) return ttsDenied;
     const voice = resolvedVoiceName || voiceName || ttsConfig?.voice || '';
     if (!voice && !(Array.isArray(voiceSegments) && voiceSegments.length > 0)) {
       throw new AppError(
@@ -605,6 +610,30 @@ export async function POST(req: Request) {
       } catch (studioErr) {
         console.warn('[TTS AudioStudio] skipped:', studioErr);
       }
+    }
+
+    try {
+      const quality = assertTtsAudioBufferQuality(
+        audioBuffer,
+        `${provider.name} (${voice || 'multi-voice'})`,
+      );
+      console.log(
+        `[TTS Quality] speech-like duration=${quality.durationSec.toFixed(2)}s ` +
+          `rms=${quality.rmsDb.toFixed(1)}dBFS peak=${quality.peak.toFixed(3)} ` +
+          `zcr=${quality.zeroCrossingRate.toFixed(3)}`,
+      );
+    } catch (qualityError) {
+      const message =
+        qualityError instanceof Error ? qualityError.message : String(qualityError);
+      console.error(`[TTS Quality] rejected: ${message}`);
+      return NextResponse.json(
+        {
+          error:
+            `Giọng đọc sinh ra không đạt kiểm định người/nhiễu: ${message} ` +
+            'Hãy kiểm tra mẫu tham chiếu hoặc engine đã chọn.',
+        },
+        { status: 502 },
+      );
     }
 
     const isWav =

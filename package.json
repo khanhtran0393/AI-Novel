@@ -1,7 +1,7 @@
 {
   "name": "ai-novel-script-generator",
   "version": "1.0.0",
-  "description": "AI Novel & Script Generator desktop app with independent CapAssistant engine",
+  "description": "AI Novel & Script Generator — Free, Trial and Pro desktop application",
   "author": "AI Novel",
   "private": true,
   "main": "main.js",
@@ -17,8 +17,16 @@
     "test:e2e": "playwright test",
     "verify:ci": "npm run typecheck && npm run smoke:core && npm run test:e2e",
     "dev:desktop": "electron .",
-    "build:desktop": "next build && electron-builder --win nsis",
-    "pack:portable": "next build && electron-builder --win portable",
+    "test:desktop-release": "node scripts/test-desktop-update-release.mjs",
+    "release:feed:provision": "node scripts/publish-desktop-update.mjs --provision",
+    "release:feed:verify": "node scripts/publish-desktop-update.mjs --verify-feed",
+    "release:artifact:verify": "node scripts/publish-desktop-update.mjs --verify-release --dir dist",
+    "release:verify": "npm run test:desktop-release && npm run release:feed:verify && npm run commercial:notices && npm run audit:release-source && npm run ship:check -- --strict && npm run prepare:publish",
+    "build:capcut-runtime": "node scripts/build-capcut-runtime.cjs",
+    "build:desktop": "npm run release:verify && npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
+    "release:publish": "node scripts/publish-desktop-update.mjs --publish --dir dist",
+    "pack:unsigned:qa": "next build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.signAndEditExecutable=false",
+    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:re-harden && npm run smoke:cloud-ip-live",
     "test:channel-ship": "npx tsx src/scripts/verify-channel-ship.mjs",
     "test:channel-dna": "npx tsx src/scripts/verify-channel-output-dna.mjs",
     "test:integrations": "npx tsx scripts/smoke-pipeline-p0p2.mts",
@@ -37,12 +45,39 @@
     "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
     "test:e2e:ui": "playwright test --project=ui",
     "test:e2e:api": "playwright test --project=api-and-contracts",
-    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts",
+    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts",
+    "smoke:credential-vault": "node scripts/run-electron-smoke.cjs scripts/smoke-credential-vault.cjs",
+    "smoke:capcut-live": "npx tsx scripts/smoke-capcut-live.mts",
     "license:issue": "node scripts/issue-license.mjs",
+    "license:transfer": "node scripts/transfer-license-seat.mjs",
+    "commercial:secrets": "node scripts/gen-commercial-secrets.mjs",
+    "commercial:notices": "node scripts/generate-third-party-notices.mjs",
+    "commercial:setup-env": "node scripts/setup-commercial-env.mjs",
+    "commercial:white-machine": "node scripts/white-machine-checklist.mjs",
+    "commercial:complete": "node scripts/complete-commercial.mjs",
+    "commercial:go-live-status": "node scripts/commercial-go-live-status.mjs",
+    "smoke:unpacked-desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-unpacked-desktop.ps1",
+    "ship:check": "node scripts/ship-check.mjs",
+    "audit:package": "node scripts/audit-packaged-artifact.cjs",
+    "audit:release-source": "node scripts/audit-release-source-tracking.mjs",
+    "telegram:deploy-bridge": "node scripts/deploy-telegram-bridge.mjs",
     "setup:supabase": "node scripts/setup-supabase-cloud.mjs",
     "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
     "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
-    "prepare:publish": "npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run verify:core"
+    "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run smoke:re-harden && npm run smoke:ip-catalog && npm run smoke:seedance-cloud && npm run verify:core",
+    "smoke:cloud-ip-live": "npm run smoke:seedance-cloud-live && npm run smoke:psych-cloud-live",
+    "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs",
+    "smoke:license-trust": "npx tsx scripts/smoke-license-trust.mts",
+    "smoke:anti-tamper": "npx tsx scripts/smoke-anti-tamper.mts",
+    "smoke:labyrinth": "npx tsx scripts/smoke-labyrinth.mts",
+    "smoke:hardening": "npx tsx scripts/smoke-hardening-remaining.mts",
+    "harden:shell:preview": "node scripts/harden-shell-preview.cjs",
+    "smoke:re-harden": "node scripts/smoke-re-harden.cjs",
+    "smoke:ip-catalog": "npx tsx scripts/smoke-ip-catalog.mts",
+    "smoke:license-one-path": "npx tsx scripts/smoke-license-one-path.mts",
+    "smoke:seedance-cloud": "npx tsx scripts/smoke-seedance-cloud-ip.mts",
+    "smoke:seedance-cloud-live": "npx tsx scripts/smoke-seedance-cloud-live.mts",
+    "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts"
   },
   "build": {
     "appId": "com.ainovel.desktop",
@@ -52,6 +87,14 @@
       "output": "dist",
       "buildResources": "build"
     },
+    "forceCodeSigning": true,
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://azlizrbjkqcyqnsmuccv.supabase.co/storage/v1/object/public/desktop-updates/latest",
+        "channel": "latest"
+      }
+    ],
     "win": {
       "target": [
         {
@@ -59,15 +102,17 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ],
-      "artifactName": "AI-Novel-${version}-${arch}.${ext}"
+      "artifactName": "AI-Novel-${version}-${arch}.${ext}",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true,
+      "signtoolOptions": {
+        "publisherName": [
+          "${env.WIN_CSC_PUBLISHER_NAME}"
+        ]
+      },
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
@@ -75,7 +120,13 @@
       "createDesktopShortcut": true,
       "shortcutName": "AI Novel"
     },
-    "asar": false,
+    "asar": true,
+    "beforePack": "scripts/electron-before-pack.cjs",
+    "afterPack": "scripts/electron-after-pack.cjs",
+    "asarUnpack": [
+      "node_modules/**/*.node",
+      "node_modules/**/bin/**/*"
+    ],
     "files": [
       "main.js",
       "preload.js",
@@ -84,35 +135,156 @@
       "next.config.ts",
       "next.config.js",
       "public/**/*",
+      "!public/audio/**/*",
+      "!public/downloads/**/*",
+      "!public/images/**/*",
+      "!public/isolated/**/*",
+      "!public/navtools/**/*",
+      "!public/omnivoice-refs/**/*",
+      "!public/omnivoice-library.json",
+      "!public/phantom-x-bypass/**/*",
+      "!public/renders/**/*",
+      "!public/video/**/*",
+      "!public/watermarked/**/*",
       ".next/**/*",
       "node_modules/**/*",
-      "src/**/*",
-      "bin/**/*",
-      "fonts/**/*",
-      "python_core/**/*",
-      "output/**/*",
-      "!python_core/**/__pycache__/**",
-      "!python_core/**/*.pyc",
+      "!src/app/api/generate-tts/capcut_api/**/*",
+      "!.next/dev/**/*",
+      "!.next/cache/**/*",
+      "!.next/trace",
+      "!.next/types/**/*",
+      "!.next/**/*.map",
+      "!.next/**/*.ts",
+      "!.next/**/*.tsx",
+      "!.next/**/*.tsbuildinfo",
+      "!**/*.map",
+      "!docs/**/*",
+      "!scripts/**/*",
+      "!specs/**/*",
+      "!e2e/**/*",
       "!scratch/**/*",
       "!.git/**/*",
       "!dist/**/*",
+      "!dist-qa*/**/*",
       "!OpenMontage/**/*",
       "!exports/**/*",
-      "!test-results/**/*"
+      "!test-results/**/*",
+      "!MEMORY.md",
+      "!AGENTS.md",
+      "!CLAUDE.md",
+      "!CONTRIBUTING.md",
+      "!FlowAgent.exe_extracted/**/*",
+      "!quarantine/**/*",
+      "!accounts_data/**/*",
+      "!data/**/*",
+      "!node_modules/**/{test,tests,__tests__,docs,example,examples}/**/*",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.tsx"
     ],
     "extraResources": [
       {
-        "from": "bin",
-        "to": "bin",
+        "from": "python_core",
+        "to": "python_core",
+        "filter": [
+          "ainovel_host_guard.py",
+          "api_nav_subtitle.py",
+          "cli_bg_remove.py",
+          "cli_upscale.py",
+          "gpu_check.py",
+          "install_gpu_worker.js",
+          "install_pytorch_cuda.py",
+          "tai_ytdlp.py",
+          "isolate_vocals.py",
+          "diarize_audio.py",
+          "cat_nho.py",
+          "yt_goi_y.py",
+          "watermark_audio.py",
+          "extract_hardsub.py",
+          "xu_ly_video.py",
+          "gateway/__init__.py",
+          "gateway/host_binding.py",
+          "gateway/nav_gateway.py",
+          "services/__init__.py",
+          "services/gemini_with_fallback.py",
+          "services/local_media_tools.py",
+          "services/nav_scheduler_store.py",
+          "services/script_analyzer.py",
+          "services/storyboard_analyzer.py",
+          "services/veo3_utils.py",
+          "services/youtube_analyzer_v1.py",
+          "!ffmpeg/**",
+          "!MediaCrawler/**",
+          "!assets/**",
+          "!models/vina_voice/*.onnx"
+        ]
+      },
+      {
+        "from": "src/python_core",
+        "to": "src/python_core",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!ffmpeg/**",
+          "!MediaCrawler/**",
+          "!assets/**",
+          "!models/vina_voice/*.onnx"
+        ]
+      },
+      {
+        "from": "src/app/api/generate-tts/capcut_api",
+        "to": "capcut_api",
+        "filter": [
+          "LICENSE",
+          "NOTICE.md",
+          "capcut_provenance.json",
+          "capcut_runtime_manifest.json",
+          "capcut_windows/*.py",
+          "capcut_windows/cronet_helper.dll"
+        ]
+      },
+      {
+        "from": "extensions/ainovel-flow",
+        "to": "extensions/ainovel-flow",
         "filter": [
           "**/*"
         ]
       },
       {
-        "from": "fonts",
-        "to": "fonts",
+        "from": "vendor/FableCut",
+        "to": "vendor/FableCut",
         "filter": [
-          "**/*"
+          "**/*",
+          "!exports/**",
+          "!media/**",
+          "!project.json"
+        ]
+      },
+      {
+        "from": "resources/license",
+        "to": "license",
+        "filter": [
+          "public-keys/*.pem"
+        ]
+      },
+      {
+        "from": "resources/commercial",
+        "to": "commercial",
+        "filter": [
+          "public.env"
+        ]
+      },
+      {
+        "from": "docs",
+        "to": "legal",
+        "filter": [
+          "LEGAL_*.md",
+          "THIRD_PARTY_MANIFEST.md",
+          "NPM_DEPENDENCY_NOTICE.json",
+          "PRICING.md",
+          "INSTALL_SUPPORT.md"
         ]
       }
     ]
@@ -123,10 +295,11 @@
     "@supabase/supabase-js": "^2.110.7",
     "@types/fluent-ffmpeg": "^2.1.28",
     "cutsdk": "^1.1.8",
+    "electron-updater": "^6.8.9",
     "express": "^5.2.1",
     "fluent-ffmpeg": "^2.1.3",
     "lucide-react": "^1.16.0",
-    "music-metadata": "^7.13.0",
+    "music-metadata": "^11.14.0",
     "next": "16.2.6",
     "node-edge-tts": "^1.2.10",
     "puppeteer": "^25.0.4",
@@ -139,6 +312,9 @@
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
   },
+  "overrides": {
+    "postcss": "^8.5.10"
+  },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
@@ -149,10 +325,13 @@
     "concurrently": "^10.0.3",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.5",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
+    "tus-js-client": "^4.3.1",
     "typescript": "^5",
-    "wait-on": "^9.0.10"
+    "wait-on": "^9.0.10",
+    "yaml": "^2.9.0"
   }
 }

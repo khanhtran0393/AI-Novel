@@ -28,6 +28,7 @@ import {
   buildUpsampleVideoBody,
   buildVideoI2VBody,
   buildVideoT2VBody,
+  buildVideoFrontendTelemetryBody,
   buildVideoIngredientsBody,
   buildVideoExtendBody,
   detectVideoModelFamily,
@@ -40,7 +41,7 @@ import {
 import { fileToBase64, injectFaceLockPrompt } from './promptInjector';
 import { applyCameraToPrompt, type CameraShot } from './cameraPrompt';
 import { applyAgentInstructions, loadFlowOps } from './opsStore';
-import { estimateTaskCredits } from './modelCatalog';
+import { estimateTaskCredits, requireFlowVideoDuration } from './modelCatalog';
 import type {
   FlowExecutionMode,
   FlowTask,
@@ -115,6 +116,21 @@ function extractVideoModelKeyFromBody(body: Record<string, unknown>): string {
   }
 }
 
+/** Ensure the canonical .png output actually contains PNG bytes. */
+export async function normalizeFlowImageOutput(dest: string): Promise<void> {
+  if (path.extname(dest).toLowerCase() !== '.png' || !fs.existsSync(dest)) return;
+  const input = fs.readFileSync(dest);
+  const isJpeg =
+    input.length >= 3 &&
+    input[0] === 0xff &&
+    input[1] === 0xd8 &&
+    input[2] === 0xff;
+  if (!isJpeg) return;
+  const sharp = (await import('sharp')).default;
+  const png = await sharp(input).png().toBuffer();
+  fs.writeFileSync(dest, png);
+}
+
 /** Download media as the assigned account (Bearer + browser cookies if needed). */
 async function downloadToFile(
   url: string,
@@ -125,6 +141,7 @@ async function downloadToFile(
     const { downloadAsAccount } = await import('./accountProxy');
     const r = await downloadAsAccount(accountId, url, dest);
     if (r.ok) {
+      await normalizeFlowImageOutput(dest);
       console.log(
         `[FlowQueue] download ${r.via} ${r.bytes}B → ${path.basename(dest)}`,
       );
@@ -147,6 +164,7 @@ async function downloadToFile(
   const buf = Buffer.from(await res.arrayBuffer());
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, buf);
+  await normalizeFlowImageOutput(dest);
 }
 
 function resolveLocalImage(ref?: string): string | null {
@@ -155,7 +173,7 @@ function resolveLocalImage(ref?: string): string | null {
   if (!s) return null;
   if (path.isAbsolute(s) && fs.existsSync(s)) return s;
   const candidates = [
-    path.join(process.cwd(), s),
+    path.join(/* turbopackIgnore: true */ process.cwd(), s),
     path.join(process.cwd(), 'public', s.replace(/^\//, '')),
     path.join(process.cwd(), 'public', 'images', path.basename(s)),
   ];
@@ -260,7 +278,12 @@ export class FlowQueueEngine {
             ? 'ingredients'
             : 'auto';
       const durationSecRaw =
-        body.durationSec != null ? Number(body.durationSec) : 8;
+        kind === 'video' || kind === 'extend'
+          ? requireFlowVideoDuration(
+              body.durationSec != null ? Number(body.durationSec) : undefined,
+              body.videoModel ? String(body.videoModel) : undefined,
+            )
+          : undefined;
       const estimatedCredits = estimateTaskCredits({
         kind: kind === 'edit' ? 'image' : kind === 'extend' ? 'video' : kind,
         modelId:
@@ -774,9 +797,8 @@ export class FlowQueueEngine {
   ) {
     let imageMediaIds: string[] | undefined;
     const refPath = resolveLocalImage(task.referenceImagePath);
-    // Optional face/cast ref — FlowAgent: upload then IMAGE_INPUT. If upload times out
-    // (common on gen #2+ when auto-ref from shot #1), fall back to text-only + faceLock
-    // prompt so shot 2/3 still generate instead of 17min retry death.
+    // A supplied face/cast ref is part of the requested identity lock. If its
+    // upload fails, hard-fail instead of silently producing a text-only result.
     if (refPath) {
       task.progress = 15;
       try {
@@ -788,15 +810,11 @@ export class FlowQueueEngine {
         );
         if (mid) imageMediaIds = [mid];
       } catch (upErr) {
-        const msg = upErr instanceof Error ? upErr.message : String(upErr);
-        if (task.kind === 'edit') {
-          // Edit without base media is meaningless — hard fail
-          throw upErr;
-        }
-        console.warn(
-          `[FlowQueue] face-ref upload failed — text-only fallback: ${msg.slice(0, 220)}`,
+        throw new Error(
+          `Flow reference-image upload failed; generation stopped to preserve identity lock: ${
+            upErr instanceof Error ? upErr.message : String(upErr)
+          }`,
         );
-        imageMediaIds = undefined;
       }
     }
 
@@ -1203,6 +1221,45 @@ export class FlowQueueEngine {
       console.log(
         `[FlowQueue] Video pure T2V model=${resolvedT2v} ui=${task.videoModel || '—'}`,
       );
+      // FlowAgent emits this exact browser event immediately before T2V.
+      // Google uses it in the normal reCAPTCHA/risk-evaluation request flow.
+      const telemetry = buildVideoFrontendTelemetryBody({
+        projectId,
+        prompt: task.prompt,
+        aspectRatio: task.aspectRatio,
+        videoModelKey: resolvedT2v,
+        outputCount: 1,
+      });
+      try {
+        const telemetryRes = await bridge.requestViaExtension({
+          url: telemetry.url,
+          method: 'POST',
+          headers: buildBrowserHeaders(),
+          body: telemetry.body,
+          timeoutMs: 30_000,
+          accountId: task.accountId,
+        });
+        if (
+          telemetryRes.error ||
+          (telemetryRes.status && telemetryRes.status >= 400)
+        ) {
+          console.warn(
+            '[FlowQueue] T2V frontend telemetry rejected',
+            telemetryRes.error || telemetryRes.status,
+          );
+        } else {
+          console.log(
+            `[FlowQueue] T2V frontend telemetry accepted status=${telemetryRes.status || 200}`,
+          );
+        }
+      } catch (error) {
+        // FlowAgent treats telemetry as best-effort, then lets the real
+        // generation response remain the authoritative pass/fail signal.
+        console.warn(
+          '[FlowQueue] T2V frontend telemetry failed',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       const t2vRes = await bridge.requestViaExtension({
         url: gen.url,
         method: 'POST',

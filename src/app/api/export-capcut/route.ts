@@ -7,7 +7,7 @@ import {
   collectChapterVideoDiskPaths,
 } from '@/lib/integrations/mediaPaths';
 import { runChapterPipeline } from '@/lib/integrations/chapterPipeline';
-import { assertProAccess } from '@/lib/entitlement';
+import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { toCapCutAspect, type CapCutAspect } from '@/lib/outputCriteria';
 
@@ -26,7 +26,7 @@ function normalizeCapCutAspect(raw: unknown, fallbackVideo?: unknown): CapCutAsp
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    assertProAccess(req, body);
+    await assertPremiumAccessHard(req, body);
     const {
       chapterNum,
       ten_tac_pham,
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     // FableCut rebuild with USER video aspect (not hardcoded 9:16)
     let fablecutPath: string | undefined;
     try {
-      const pipe = runChapterPipeline({
+      const pipe = await runChapterPipeline({
         chapterNum: ch,
         title: `Chương ${ch}`,
         ten_tac_pham: ten_tac_pham || 'AI-Novel',

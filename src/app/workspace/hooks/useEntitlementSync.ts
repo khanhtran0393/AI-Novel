@@ -22,6 +22,10 @@ type CommercialStatus = {
   ownerUnlimited?: boolean;
   tier?: string;
   tokenValid?: boolean;
+  /** When true, drop local token — Supabase has no active license for HWID */
+  clearLocalToken?: boolean;
+  authority?: string;
+  entitlement?: { publishHint?: boolean; hwid?: string };
   trial?: { active?: boolean; endsIso?: string | null; fromToken?: boolean };
   claims?: {
     is_pro?: boolean;
@@ -59,6 +63,51 @@ export function useEntitlementSync() {
       const data = (await res.json().catch(() => ({}))) as CommercialStatus;
       if (!res.ok || !data.ok) return;
 
+      // Packaged customer: heartbeat to the seller API for revoke/expiry.
+      // Network failure keeps the offline-signed token; an explicit invalid
+      // response removes it immediately.
+      let storedToken = '';
+      try {
+        storedToken = window.localStorage.getItem(ENTITLEMENT_LS_KEY) || '';
+      } catch {
+        storedToken = '';
+      }
+      if (data.entitlement?.publishHint && storedToken) {
+        try {
+          const heartbeat = await fetch(API.cloudLicenseVerify, {
+            method: 'POST',
+            headers: buildClientApiHeaders(),
+            body: JSON.stringify({
+              token: storedToken,
+              hwid: data.entitlement.hwid,
+            }),
+            cache: 'no-store',
+          });
+          if (heartbeat.ok) {
+            const online = (await heartbeat.json().catch(() => ({}))) as {
+              valid?: boolean;
+            };
+            if (online.valid === false) {
+              window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
+              setVipStatus(false, false, false);
+              setCredits(100);
+              return;
+            }
+          }
+        } catch {
+          // Offline grace: Ed25519/HWID/expiry remain enforced locally.
+        }
+      }
+
+      // Supabase says no license → drop local token so stale PRO cannot stick
+      if (data.clearLocalToken || (data.authority === 'supabase' && !data.tokenValid)) {
+        try {
+          window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
+
       // CISO only — Pro full, never VIP badge
       if (data.ownerUnlimited) {
         setVipStatus(false, true, false);
@@ -66,9 +115,24 @@ export function useEntitlementSync() {
         return;
       }
 
+      // Paid Pro token claims first (before free/trial branches)
       if (data.tokenValid && data.claims && claimsArePaidPro(data.claims)) {
         setVipStatus(false, true, false);
         setCredits(999_999_999);
+        return;
+      }
+
+      if (data.tier === 'pro' || data.tier === 'vip') {
+        setVipStatus(false, true, false);
+        setCredits(999_999_999);
+        return;
+      }
+
+      // Prefer server tier (Supabase-first when configured)
+      if (data.tier === 'free' || data.tier === 'FREE') {
+        setVipStatus(false, false, false);
+        const cur = useNovelStore.getState().credits;
+        if (cur > 100_000) setCredits(100);
         return;
       }
 

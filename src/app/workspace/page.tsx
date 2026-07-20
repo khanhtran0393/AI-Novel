@@ -99,6 +99,7 @@ export default function Workspace() {
     promptError,
     setPromptError,
     isGeneratingIdea,
+    isGeneratingOutline,
     isAnalyzingPlot,
     handleRandomTemplate,
     handlePhanTichYoutube,
@@ -119,7 +120,9 @@ export default function Workspace() {
     handleSceneChange,
     handleCopyScene,
     handleExpandScene,
-    handleRewriteScene
+    handleRewriteScene,
+    isExpanding,
+    isRewriting,
   } = useSceneActions(streamText);
 
   const {
@@ -485,6 +488,8 @@ export default function Workspace() {
                       handleCopyScene={handleCopyScene}
                       handleExpandScene={handleExpandScene}
                       handleRewriteScene={handleRewriteScene}
+                      isExpanding={isExpanding}
+                      isRewriting={isRewriting}
                       handlePlayTTS={handlePlayTTS}
                       handleStopTTS={handleStopTTS}
                       handleGenerateTTS={handleGenerateTTS}
@@ -517,6 +522,7 @@ export default function Workspace() {
         <YoutubeSetupPhase
           promptError={promptError}
           isGeneratingIdea={isGeneratingIdea}
+          isGeneratingOutline={isGeneratingOutline}
           isAnalyzingPlot={isAnalyzingPlot}
           handlePhanTichYoutube={handlePhanTichYoutube}
           handleGenerateOutline={handleGenerateOutline}
@@ -527,6 +533,7 @@ export default function Workspace() {
         <SetupPhase
           promptError={promptError}
           isGeneratingIdea={isGeneratingIdea}
+          isGeneratingOutline={isGeneratingOutline}
           handleRandomTemplate={handleRandomTemplate}
           handleGenerateOutline={handleGenerateOutline}
           onClose={dismissSetup}

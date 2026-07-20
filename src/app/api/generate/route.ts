@@ -82,6 +82,8 @@ export async function POST(req: Request) {
       payload: payload ?? {},
       keysToUse,
       model,
+      req,
+      rawBody: body,
     };
 
     const res = await handler(ctx, requestType);

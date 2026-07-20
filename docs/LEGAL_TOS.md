@@ -8,8 +8,8 @@ Cài đặt hoặc sử dụng phần mềm đồng nghĩa bạn chấp nhận �
 
 ## 2. Giấy phép
 
-- Cấp **không độc quyền**, không chuyển nhượng (trừ khi seller cho phép) theo gói Free / Trial / Pro / VIP.
-- License Pro/VIP có thể **gắn HWID** một máy; chuyển máy cần seller.
+- Cấp **không độc quyền**, không chuyển nhượng (trừ khi seller cho phép) theo gói Free / Trial / Pro.
+- License Pro có thể **gắn HWID** một hoặc nhiều máy theo số seat đã mua; chuyển máy cần seller.
 
 ## 3. BYOK (Bring Your Own Key)
 

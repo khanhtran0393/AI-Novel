@@ -184,7 +184,7 @@ export function deleteVinaProfile(
       for (const ext of ['.wav', '.mp3', '.m4a', '.flac', '.ogg']) {
         candidates.add(path.join(d, `${stem}_ref${ext}`));
         candidates.add(path.join(d, `${stem}_raw${ext}`));
-        candidates.add(path.join(d, `${stem}${ext}`));
+        candidates.add(path.join(/* turbopackIgnore: true */ d, `${stem}${ext}`));
       }
     }
   }

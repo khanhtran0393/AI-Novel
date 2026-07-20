@@ -8,11 +8,15 @@ import {
   resolveDaemonWorkerCount,
 } from '@/lib/vinaVoice/warmDaemon';
 import { inspectVinaOnnxBrain } from '@/lib/vinaVoice/paths';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const denied = await requireFeature(req, 'tts_premium', body);
+  if (denied) return denied;
   if (!isDaemonEnabled()) {
     return NextResponse.json({
       ok: false,
@@ -42,6 +46,6 @@ export async function POST() {
   });
 }
 
-export async function GET() {
-  return POST();
+export async function GET(req: Request) {
+  return POST(req);
 }

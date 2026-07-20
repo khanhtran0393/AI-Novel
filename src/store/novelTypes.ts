@@ -200,7 +200,8 @@ export interface NovelState {
   wpm?: number;
   secondsPerBeat?: number;
 
-  // --- Hệ thống thương mại (VIP/PRO/TRIAL) ---
+  // --- Hệ thống thương mại (FREE/TRIAL/PRO) ---
+  /** Chỉ để đọc snapshot/token cũ; UI và token mới luôn ghi false. */
   is_vip: boolean;
   is_pro: boolean;
   /** Trial 3 ngày: mở quyền Pro-equivalent; badge UI = TRIAL (không gộp nhầm PRO trả phí) */
@@ -387,8 +388,8 @@ export interface NovelActions {
   setWpm: (wpm: number) => void;
   setSecondsPerBeat: (secs: number) => void;
 
-  // Actions cho thương mại (VIP/PRO/TRIAL)
-  /** is_trial=true chỉ khi trial active; paid Pro/VIP truyền false/omit */
+  // Actions cho thương mại (FREE/TRIAL/PRO)
+  /** is_vip là tham số tương thích dữ liệu cũ; code mới luôn truyền false. */
   setVipStatus: (is_vip: boolean, is_pro: boolean, is_trial?: boolean) => void;
   setCredits: (credits: number) => void;
   deductCredits: (amount: number) => boolean;

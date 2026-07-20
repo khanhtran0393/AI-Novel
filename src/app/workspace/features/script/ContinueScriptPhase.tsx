@@ -114,11 +114,14 @@ export default function ContinueScriptPhase({
   const handleTomGon = async () => {
     const text = pasted.trim();
     if (text.length < 80) {
-      setError('⚠️ Dán kịch bản/truyện (≥80 ký tự) ở mục 1 trước khi tóm gọn.');
+      const msg = '⚠️ Dán kịch bản/truyện (≥80 ký tự) ở mục 1 trước khi tóm gọn.';
+      setError(msg);
+      toast.warn('Tóm gọn', msg.replace(/^⚠️\s*/, ''));
       return;
     }
     setError('');
     setIsSummarizing(true);
+    toast.info('Tóm gọn', 'Đang tóm cốt truyện / dàn ý…');
     try {
       const res = await summarizeScriptOutlineAction({ textContent: text });
       setSummary(res.mo_ta);
@@ -126,9 +129,11 @@ export default function ContinueScriptPhase({
       if (res.tieu_de_goi_y && !(store.ten_tac_pham || '').trim()) {
         store.updateTenTacPham(res.tieu_de_goi_y);
       }
-      toast.info('Notice', 'Đã tóm gọn dàn ý / cốt truyện.');
+      toast.success('Tóm gọn', 'Đã tóm gọn dàn ý / cốt truyện.');
     } catch (err: unknown) {
-      setError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setError(friendly);
+      toast.error('Tóm gọn', friendly.slice(0, 220));
     } finally {
       setIsSummarizing(false);
     }
@@ -200,22 +205,27 @@ export default function ContinueScriptPhase({
   const handleLegacyImport = async () => {
     const text = pasted.trim();
     if (!text) {
-      setError('⚠️ Dán nội dung truyện cũ ở mục 1.');
+      const msg = '⚠️ Dán nội dung truyện cũ ở mục 1.';
+      setError(msg);
+      toast.warn('Kế thừa di sản', msg.replace(/^⚠️\s*/, ''));
       return;
     }
     setError('');
     setIsWorking(true);
+    toast.info('Kế thừa di sản', 'Đang phân tích & nạp foundation…');
     try {
       const foundation = await importFoundationAction({ textContent: text });
       applyFoundation(foundation);
       store.setGiaiDoan(2);
-      toast.info(
-        'Notice',
-        'Kế thừa di sản thành công! Bối cảnh, nhân vật và dàn ý đã được nạp.',
+      toast.success(
+        'Kế thừa di sản',
+        'Bối cảnh, nhân vật và dàn ý đã được nạp.',
       );
       onClose();
     } catch (err: unknown) {
-      setError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setError(friendly);
+      toast.error('Kế thừa di sản', friendly.slice(0, 220));
     } finally {
       setIsWorking(false);
     }
@@ -224,9 +234,10 @@ export default function ContinueScriptPhase({
   const handleRewriteGenerate = async () => {
     const moTa = (summary || store.setup.mo_ta || '').trim();
     if (!moTa || moTa.length < 40) {
-      setError(
-        '⚠️ Bấm «Tóm gọn dàn ý» (mục 2) hoặc dán/chỉnh cốt truyện tóm trước khi sinh kịch bản.',
-      );
+      const msg =
+        '⚠️ Bấm «Tóm gọn dàn ý» (mục 2) hoặc dán/chỉnh cốt truyện tóm trước khi sinh kịch bản.';
+      setError(msg);
+      toast.warn('Sinh viết lại', msg.replace(/^⚠️\s*/, ''));
       return;
     }
 
@@ -254,6 +265,7 @@ export default function ContinueScriptPhase({
 
     setError('');
     setIsWorking(true);
+    toast.info('Sinh viết lại', `Đang tạo dàn ý ~${simTarget}% trùng mẫu…`);
     try {
       const live = useNovelStore.getState();
       // Excerpt kịch bản dán để AI canh % trùng (không dump full)
@@ -338,13 +350,15 @@ export default function ContinueScriptPhase({
       store.setDanhSachChuong(converted);
       store.selectChuong(1);
       store.setGiaiDoan(2);
-      toast.info(
-        'Notice',
-        `Đã sinh dàn ý viết lại (trùng mẫu ~${simTarget}%) từ kịch bản dán.`,
+      toast.success(
+        'Sinh viết lại xong',
+        `«${title}» · ${converted.length} chương · trùng mẫu ~${simTarget}%.`,
       );
       onClose();
     } catch (err: unknown) {
-      setError(getFriendlyErrorMessage(err));
+      const friendly = getFriendlyErrorMessage(err);
+      setError(friendly);
+      toast.error('Sinh viết lại', friendly.slice(0, 220));
     } finally {
       setIsWorking(false);
     }

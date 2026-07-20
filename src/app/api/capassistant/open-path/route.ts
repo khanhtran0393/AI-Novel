@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const targetPath = String(body.path || '').trim();
     if (!targetPath) {
       return NextResponse.json({ success: false, error: 'Missing path.' }, { status: 400 });

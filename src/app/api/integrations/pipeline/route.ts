@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { compileSeedanceBatch, persistSeedanceCompile } from '@/lib/integrations/seedance';
 import { buildFromChapterAssets, startFableCutServer } from '@/lib/integrations/fablecut';
 import { getIntegrationsStatus } from '@/lib/integrations';
-import { assertFeatureAccess } from '@/lib/entitlement';
+import { requireFeature } from '@/lib/commercial/apiGate';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 
@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
   const correlationId = correlationIdFromRequest(req);
   try {
     const body = await req.json();
-    assertFeatureAccess(req, 'integrations_pipeline', body);
+    const denied = await requireFeature(req, 'integrations_pipeline', body);
+    if (denied) return denied;
     slog({
       level: 'info',
       msg: 'pipeline_start',

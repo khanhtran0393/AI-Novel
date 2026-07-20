@@ -4,7 +4,12 @@
 import { NextResponse } from 'next/server';
 import { getHwid, getEntitlementPublicStatus } from '@/lib/entitlement';
 import { getTrialStatus, startTrial } from '@/lib/commercial/trial';
+import { startCloudTrial } from '@/lib/cloud/licenseBridge';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
+import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
+import { proxyLicenseApiPost } from '@/lib/commercial/licenseApiProxy';
+import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
+import { createServiceSupabase } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +31,29 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as { hwid?: string };
     const hwid =
       (typeof body.hwid === 'string' && body.hwid.trim()) || getHwid();
+    if (isPackagedCustomerRuntime()) {
+      const remote = await proxyLicenseApiPost('/api/cloud/license/trial', { hwid });
+      return NextResponse.json(remote.payload, { status: remote.status });
+    }
+    if (isSupabaseAdminConfigured()) {
+      const result = await startCloudTrial({
+        service: createServiceSupabase(),
+        hwid,
+        userId: null,
+      });
+      return NextResponse.json({
+        ok: true,
+        cloud: true,
+        created: result.created,
+        token: result.token,
+        expAt: result.expAt,
+        licenseId: result.licenseId,
+        message: result.created
+          ? 'Trial cloud da bat - luu token vao app.'
+          : 'Trial dang active - token gia han phien.',
+        storeHint: 'localStorage.ainovel.entitlementToken',
+      });
+    }
     const result = startTrial(hwid);
     if (!result.ok) {
       return NextResponse.json(

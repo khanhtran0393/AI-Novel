@@ -54,7 +54,7 @@ function portableChromiumCandidates(): string[] {
   const out: string[] = [];
   for (const root of projectRoots()) {
     for (const n of names) {
-      out.push(path.join(root, n));
+      out.push(path.join(/* turbopackIgnore: true */ root, n));
     }
   }
   return out;

@@ -51,7 +51,7 @@ export default function BrandLogoButton() {
         setShowFreePromo(false);
         return;
       }
-      // Có token Pro/VIP hoặc trial → không pulse Free
+      // Có token Pro hoặc trial → không pulse Free
       if (data.tokenValid || data.trial?.active) {
         setShowFreePromo(false);
         return;

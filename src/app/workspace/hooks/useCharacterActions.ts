@@ -169,7 +169,12 @@ export function useCharacterActions() {
       if (!opts?.silent) toast.warn('NV', 'Chưa có nhân vật nào trong danh sách.');
       return { ok: 0, fail: 0, castUpdated: 0 };
     }
-    if (generatingAllCharPrompts || generatingCharPrompt) return { ok: 0, fail: 0, castUpdated: 0 };
+    if (generatingAllCharPrompts || generatingCharPrompt) {
+      if (!opts?.silent) {
+        toast.info('NV', 'Đang gen prompt NV rồi — chờ xong rồi bấm lại.');
+      }
+      return { ok: 0, fail: 0, castUpdated: 0 };
+    }
 
     if (!opts?.silent) {
       const ok = await appConfirm({

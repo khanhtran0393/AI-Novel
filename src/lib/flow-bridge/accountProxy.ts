@@ -28,6 +28,28 @@ export type ProxyAsAccountResult = {
   accountId: string;
 };
 
+async function writeDownloadedBytes(
+  destPath: string,
+  input: Buffer,
+): Promise<number> {
+  let output = input;
+  const wantsPng = path.extname(destPath).toLowerCase() === '.png';
+  const isJpeg =
+    input.length >= 3 &&
+    input[0] === 0xff &&
+    input[1] === 0xd8 &&
+    input[2] === 0xff;
+  if (wantsPng && isJpeg) {
+    // Flow's signed CDN currently serves GEM_PIX_2 images as image/jpeg even
+    // though the app's canonical scene output is .png. Keep extension and
+    // bytes truthful instead of writing a JPEG with a PNG filename.
+    const sharp = (await import('sharp')).default;
+    output = await sharp(input).png().toBuffer();
+  }
+  fs.writeFileSync(destPath, output);
+  return output.length;
+}
+
 /** Call any Flow/labs API as this account — same session the browser uses. */
 export async function proxyAsAccount(
   opts: ProxyAsAccountOpts,
@@ -107,20 +129,34 @@ export async function downloadAsAccount(
   const bridge = await import('./bridgeServer');
   const key = bridge.getAccountFlowKey(aid);
 
-  // 1) Node fetch with account Bearer (signed fife URLs + auth media)
-  try {
-    const headers: Record<string, string> = {};
-    if (key) headers.Authorization = `Bearer ${key}`;
-    const res = await fetch(u, { headers });
-    if (res.ok) {
+  // 1) Signed flow-content URLs reject an unrelated Authorization header.
+  // Try the CDN's signed-public mode first; authenticated media keeps Bearer
+  // first. The second attempt is explicit within the same provider/session.
+  const signedFlowCdn = /^https:\/\/flow-content\.google\//i.test(u);
+  const nodeAttempts: Array<{
+    headers: Record<string, string>;
+    via: string;
+  }> = [];
+  const bearerHeaders: Record<string, string> = {};
+  if (key) bearerHeaders.Authorization = `Bearer ${key}`;
+  if (signedFlowCdn) {
+    nodeAttempts.push({ headers: {}, via: 'node+signed-url' });
+    if (key) nodeAttempts.push({ headers: bearerHeaders, via: 'node+bearer' });
+  } else {
+    if (key) nodeAttempts.push({ headers: bearerHeaders, via: 'node+bearer' });
+    nodeAttempts.push({ headers: {}, via: 'node+public' });
+  }
+  for (const attempt of nodeAttempts) {
+    try {
+      const res = await fetch(u, { headers: attempt.headers });
+      if (!res.ok) continue;
       const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > 64) {
-        fs.writeFileSync(destPath, buf);
-        return { ok: true, bytes: buf.length, via: 'node+bearer' };
-      }
+      if (buf.length <= 64) continue;
+      const bytes = await writeDownloadedBytes(destPath, buf);
+      return { ok: true, bytes, via: attempt.via };
+    } catch {
+      /* try next transport */
     }
-  } catch {
-    /* fall through */
   }
 
   // 2) Extension: same cookies + Bearer as browser tab
@@ -148,10 +184,10 @@ export async function downloadAsAccount(
     const result = (res.result || res.data || {}) as Record<string, unknown>;
     if (typeof result.base64 === 'string' && result.base64.length > 8) {
       const buf = Buffer.from(result.base64, 'base64');
-      fs.writeFileSync(destPath, buf);
+      const bytes = await writeDownloadedBytes(destPath, buf);
       return {
         ok: true,
-        bytes: buf.length,
+        bytes,
         via: 'extension-base64',
       };
     }

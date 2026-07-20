@@ -152,9 +152,11 @@ async function tryNativeEngine(
 
     const refText = (settings.reference_text || '').trim();
     if (!refText) {
-      console.warn(
-        '[VinaVoice] tryNativeEngine: reference_text empty — pass transcript of sample WAV for clean timbre.',
-      );
+      return {
+        ok: false,
+        error:
+          'VinaVoice: reference_text bắt buộc và phải khớp chính xác lời trong file mẫu. Không sinh clone với transcript rỗng/sai.',
+      };
     }
     const speakerSeed = Number.isFinite(settings.speaker_seed)
       ? Math.trunc(settings.speaker_seed)

@@ -14,7 +14,8 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 > |----------|---------|
 > | [`docs/IRON_LAWS.md`](docs/IRON_LAWS.md) | **Quy luật thép + sự thật hiển nhiên (LOCKED)** |
 > | [`docs/DOMAIN_MAP.md`](docs/DOMAIN_MAP.md) | Ownership domain logic |
-> | [`docs/COMMERCIAL.md`](docs/COMMERCIAL.md) | Free / Trial / Pro / VIP + entitlement |
+> | [`docs/COMMERCIAL.md`](docs/COMMERCIAL.md) | Free / Trial / Pro + entitlement |
+> | [`docs/LICENSE_ONE_PATH.md`](docs/LICENSE_ONE_PATH.md) | **One-path license** (ticket · ledger · crown IP) — cấm f(token) |
 > | [`docs/RESET_POINT.md`](docs/RESET_POINT.md) | Làm Mới Dự Án (blank canvas + giữ settings) |
 > | [`docs/integrations-hub.md`](docs/integrations-hub.md) | Tích hợp ngầm (không nút 1-click) |
 > | [`docs/flow-bridge.md`](docs/flow-bridge.md) | Google Flow gen ảnh/video |
@@ -38,7 +39,7 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 > 8. **Tích hợp**: user bấm từng bước Gen Prompt → Ảnh → Video → TTS → Ship. **Không** nút gộp pipeline 1-click.
 > 9. **TTS multi-voice**: gate chỉ `ttsConfig` — **CẤM** nhét `sceneEmotion` vào multi-gate.
 > 10. **CapCut fail** → báo lỗi CapCut; **CẤM** nhảy Edge TTS / Edge audio ngầm.
-> 11. **Commercial**: Free / Trial / Pro / VIP. Badge header: **VIP → TRIAL → PRO → FREE**. Trial = quyền Pro-equivalent tạm + cờ `is_trial` (không gộp nhầm PRO trả phí).
+> 11. **Commercial**: Free / Trial / Pro. Badge header: **TRIAL → PRO → FREE**. Trial = quyền Pro-equivalent tạm + cờ `is_trial` (không gộp nhầm PRO trả phí); `is_vip` chỉ để đọc dữ liệu legacy.
 > 12. **Entitlement mode**: dev/web mặc định `open`; **Electron packaged** mặc định `enforce` nếu chưa set env.
 
 ---
@@ -129,7 +130,7 @@ Gateway thiếu / fail → hard-fail message rõ — không silent fallback tool
 | `videoDuration` | `8` (Flow: 4 \| 6 \| 8) |
 | `wpm` / `secondsPerBeat` | `140` / `6` |
 | `ttsConfig.platform` | **`vina_voice`** |
-| Commercial | `is_vip/is_pro/is_trial = false`, `credits = 100` |
+| Commercial | `is_pro/is_trial = false`, legacy `is_vip=false`, `credits = 100` |
 
 ### 1.5 Webpack / Next
 
@@ -141,7 +142,6 @@ serverExternalPackages: [
   "puppeteer-core",
   "puppeteer-extra",
   "puppeteer-extra-plugin-stealth",
-  "music-metadata",
 ]
 ```
 
@@ -154,7 +154,7 @@ serverExternalPackages: [
 src/app/workspace/
 ├── page.tsx                 # Shell workspace
 ├── ARCHITECTURE.md
-├── chrome/Header.tsx        # Brand + badge FREE/TRIAL/PRO/VIP + toolbars
+├── chrome/Header.tsx        # Brand + badge FREE/TRIAL/PRO + toolbars
 ├── layouts/                 # AppShell, WindowControls
 ├── features/
 │   ├── script/              # Setup, Sidebar, SceneCard, Editor, roster…
@@ -204,10 +204,10 @@ src/app/workspace/
 ### 2.2 Header (`chrome/Header.tsx`)
 
 - Brand logo → `features/license/BrandLogoButton` (mở **Bản quyền / License**).
-- Badge gói (ưu tiên): **VIP → TRIAL → PRO → FREE** (+ credits khi FREE).
+- Badge gói (ưu tiên): **TRIAL → PRO → FREE** (+ credits khi FREE).
   - **TRIAL** = cyan (trial active, `is_trial`).
   - **PRO** = vàng (license Pro trả phí, không trial).
-  - **VIP** = fuchsia/amber (trọn đời / owner unlimited / open mode owner).
+  - Pro tháng/năm/trọn đời đều dùng badge **PRO**.
 - Channel switcher + job queue.
 - Mở thư mục lưu; Media / TTS toolbar; CapCut export; Toolbox host; Settings.
 
@@ -251,7 +251,6 @@ Nguồn: `src/lib/commercial/featureMatrix.ts` · docs: `docs/COMMERCIAL.md`, `d
 | `free` | Viết / outline / prompt / gen ảnh BYOK / TTS Edge-Piper cơ bản |
 | `trial` | 3 ngày / 1 HWID — video + CapCut + ship + TTS premium (Pro-equivalent tạm) |
 | `pro` | License HWID — thêm integrations pipeline, multi-channel, toolbox, Flow multi-account |
-| `vip` | Lifetime / owner unlimited / open-mode elevates |
 
 Server gate (`assertProAccess`): **gen video**, **export CapCut**, **ship-pack**, **integrations/pipeline**.
 
@@ -259,12 +258,12 @@ Server gate (`assertProAccess`): **gen video**, **export CapCut**, **ship-pack**
 
 | Flag | Ý nghĩa |
 |------|---------|
-| `is_vip` | VIP / unlimited |
+| `is_vip` | Chỉ tương thích snapshot/token cũ; chuẩn hóa thành Pro |
 | `is_pro` | Pro-equivalent unlock (kể cả trial set true để mở quyền) |
 | `is_trial` | **Đang trial** — badge UI = TRIAL, không hiện PRO trả phí |
 | `credits` | Free: hữu hạn; trial ~50k; paid ~unlimited |
 
-`setVipStatus(is_vip, is_pro, is_trial?)` — trial path: `setVipStatus(false, true, true)`.
+`setVipStatus(legacyVip, is_pro, is_trial?)` — code mới luôn truyền `legacyVip=false`; trial path: `setVipStatus(false, true, true)`.
 
 ### 3.3 Mode
 
@@ -274,7 +273,7 @@ Server gate (`assertProAccess`): **gen video**, **export CapCut**, **ship-pack**
 | Electron **packaged** | Mặc định **`enforce`** nếu env chưa set (`main.js`) |
 | Secrets | Packaged: `%APPDATA%/…/.env.commercial` |
 
-`assertProAccess` (enforce): token HMAC + HWID **hoặc** trial active (`trialGrantsPro`). Fail-closed khi secret yếu.
+`assertProAccess` (enforce): token Ed25519 + HWID **hoặc** trial token active. Fail-closed khi thiếu public key hợp lệ.
 
 ### 3.4 API commercial
 
@@ -299,11 +298,11 @@ Smoke: `npm run smoke:commercial`.
 | Hạng mục | Path / hành vi |
 |----------|----------------|
 | Clients | `src/lib/supabase/*` — anon JWT + service_role server-only; graceful nếu thiếu env |
-| Bridge | `src/lib/cloud/licenseBridge.ts` — HMAC issue/verify + order + trial + revoke |
+| Bridge | `src/lib/cloud/licenseBridge.ts` — Ed25519 issue/verify + order + trial + revoke |
 | API | `/api/cloud/status`, `/api/cloud/orders`, `/api/cloud/orders/confirm`, `/api/cloud/license/*` |
 | Admin UI | `/admin` (khi deploy) |
 | SQL/RLS | `supabase/migrations/001_commercial_rls.sql` |
-| Hybrid | **Không** Supabase → local Zalo/HMAC/trial vault vẫn chạy |
+| Hybrid | **Không** Supabase → app verify Ed25519 offline; cấp mới vẫn cần seller/backend |
 
 Docs deploy: `docs/SUPABASE_VERCEL_GUIDE.md`.
 
@@ -417,7 +416,7 @@ Client: `modules/writeModule.ts`, `sceneModule.ts`, `setupModule.ts` + hooks tư
 
 - Ưu tiên `video_prompt` đã Seedance; I2V từ ảnh scene.
 - Client gửi `styleHint` + `genre` Setup + `secondsPerBeat`.
-- Server `/api/generate-video` — **assertProAccess** (trial|pro|vip).
+- Server `/api/generate-video` — **assertProAccess** (trial|pro).
 - Duration per shot: **bắt buộc** số hợp lệ — **CẤM** `|| 5` / `|| 6` im lặng trong Seedance compile.
 
 ### 5.6 TTS
@@ -591,7 +590,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 | Mode | Ý nghĩa |
 |------|---------|
 | `AINOVEL_ENTITLEMENT_MODE=open` | Dev/web — Pro routes cho phép |
-| `=enforce` | Token HMAC / trial; packaged Electron mặc định |
+| `=enforce` | Token Ed25519 / trial token; packaged Electron mặc định |
 
 ---
 
@@ -639,6 +638,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 - [ ] Duration/beat thiếu có hard-fail (không `|| 5`)?
 - [ ] NFC cho chuỗi VN user-facing?
 - [ ] Trial UI có hiện **TRIAL** (không PRO) khi `is_trial`?
+- [ ] License: có `f(token)` / private client / quota ngày? → rollback (xem `LICENSE_ONE_PATH.md`)
 - [ ] Worker/temp: `finally` cleanup?
 - [ ] Đã chạy smoke/typecheck/verify liên quan domain vừa sửa?
 
@@ -651,7 +651,8 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run smoke:core` | Smoke lõi |
 | `npm run smoke:pipeline` | Pipeline P0–P2 |
-| `npm run smoke:commercial` | Entitlement / trial / codes |
+| `npm run smoke:commercial` | Entitlement / trial / codes / one-path |
+| `npm run smoke:license-one-path` | Policy ticket·ledger·crown (cấm f(token), cấm quota ngày) |
 | `npm run verify:core` | Channel DNA + ship + publish + youtube-safe + output criteria |
 | `npm run prepare:publish` | typecheck + smokes + verify:core |
 
@@ -663,7 +664,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 |---------|------|
 | Quy luật thép | `docs/IRON_LAWS.md` |
 | Domain map | `docs/DOMAIN_MAP.md` |
-| Commercial | `docs/COMMERCIAL.md`, `src/lib/commercial/*`, `src/lib/entitlement.ts` |
+| Commercial | `docs/COMMERCIAL.md`, `docs/LICENSE_ONE_PATH.md`, `src/lib/commercial/licenseOnePath.ts`, `src/lib/entitlement.ts` |
 | Reset dự án | `docs/RESET_POINT.md` |
 | Integrations | `docs/integrations-hub.md` |
 | Flow | `docs/flow-bridge.md` |

@@ -144,15 +144,6 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
           </select>
         </div>
       </div>
-      <p className="text-[9px] text-zinc-600 -mt-2">
-        List giọng bên dưới đã lọc theo 4 trường trên
-        {cloneProfiles.length
-          ? ` (${filteredCloneProfiles.length}/${cloneProfiles.length})`
-          : ''}
-        . 🎤 = có file mẫu · ⚠ = thiếu WAV · nút <strong className="text-zinc-400">✕</strong> =
-        xóa USER clone khỏi app. Lần đầu nghe thử sinh + lưu cache
-        (data/tts-preview-cache); lần sau cùng giọng/câu phát ngay.
-      </p>
 
       <div className="space-y-2">
         <label className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-400">

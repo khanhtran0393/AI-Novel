@@ -43,7 +43,7 @@
 - **Settings**: TTS config, media style, DNA, providers/models, aspect, WPM, GPU
 - Save paths (TTS / image / character / video)
 - `youtubeSafe` flags, `userRules` (từ ngữ cấm/mệt)
-- **Entitlement** (`is_pro` / `is_vip` / `is_trial` / credits) + token localStorage
+- **Entitlement** (`is_pro` / `is_trial` / credits; `is_vip` chỉ legacy) + token localStorage
 - Multi-channel registry cấu hình (không canvas truyện)
 
 ---

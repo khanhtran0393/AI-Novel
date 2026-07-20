@@ -16,6 +16,8 @@ export type FlowSessionSnapshot = {
   activeAccountId?: string | null;
   error?: string;
   accounts?: Array<{
+    id?: string;
+    extensionConnected?: boolean;
     flowKeyPresent?: boolean;
     sessionVerified?: boolean;
     email?: string;
@@ -61,26 +63,20 @@ async function fetchFlowStatus(): Promise<FlowSessionSnapshot> {
 
 function hasLoggedInProfile(st: FlowSessionSnapshot): boolean {
   const accounts = Array.isArray(st.accounts) ? st.accounts : [];
-  if (
-    accounts.some(
-      (a) =>
-        a.flowKeyPresent &&
-        a.sessionVerified &&
-        a.email &&
-        String(a.email).includes('@'),
-    )
-  ) {
-    return true;
-  }
-  // Snapshot without accounts[] — only trust both flags if caller already verified
-  return false;
+  const active = accounts.find((a) => a.id === st.activeAccountId);
+  return Boolean(
+    active?.flowKeyPresent &&
+      active.sessionVerified &&
+      active.email &&
+      String(active.email).includes('@'),
+  );
 }
 
 function isSessionReady(st: FlowSessionSnapshot): boolean {
   // Extension + token + real Google login (email). Token stale ≠ ready.
-  return Boolean(
-    st.extensionConnected && st.flowKeyPresent && hasLoggedInProfile(st),
-  );
+  const accounts = Array.isArray(st.accounts) ? st.accounts : [];
+  const active = accounts.find((account) => account.id === st.activeAccountId);
+  return Boolean(active?.extensionConnected && hasLoggedInProfile(st));
 }
 
 /**
@@ -118,10 +114,7 @@ export async function ensureFlowSessionReady(
     };
   }
 
-  const needBrowser =
-    opts.forceBrowser ||
-    !st.extensionConnected ||
-    !st.flowKeyPresent;
+  const needBrowser = opts.forceBrowser || !isSessionReady(st);
 
   if (notify) {
     if (!st.extensionConnected) {
@@ -144,6 +137,7 @@ export async function ensureFlowSessionReady(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       forceChrome: needBrowser,
+      accountId: st.activeAccountId || undefined,
       engine: 'auto',
       waitExtensionMs: 40_000,
       waitLoginMs: 25_000,
@@ -172,10 +166,7 @@ export async function ensureFlowSessionReady(
       data.extensionConnected ??
       data.snapshot?.extensionConnected,
   );
-  const loginRequired =
-    Boolean(data.loginRequired) || (extensionConnected && !flowKeyPresent);
-
-  if (isSessionReady(after) || (flowKeyPresent && extensionConnected)) {
+  if (isSessionReady(after)) {
     if (notify) {
       toast.success(label, 'Flow đã sẵn sàng — bắt đầu gen…');
     }

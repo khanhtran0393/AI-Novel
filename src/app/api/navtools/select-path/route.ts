@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import fs from 'fs';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -35,7 +36,10 @@ function runPowerShell(script: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { mode, type = 'media' } = await req.json();
+    const body = await req.json();
+    const denied = await requireFeature(req, 'toolbox_labs', body);
+    if (denied) return denied;
+    const { mode, type = 'media' } = body;
     const filter = FILTERS[String(type)] || FILTERS.media;
 
     const script = mode === 'folder'

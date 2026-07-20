@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { X, Play, Square, Settings, LayoutGrid, TerminalSquare, RefreshCw, CheckCircle, XCircle, Clock, Activity } from 'lucide-react';
+import { X, Play, Square, LayoutGrid, TerminalSquare, RefreshCw, CheckCircle, XCircle, Clock, Activity } from 'lucide-react';
 import { useNovelStore } from '@/store/useNovelStore';
 import { createBatchJob, runBatchJob, cancelJob, type BatchJob, getJob } from '@/lib/jobQueue';
 import { generateImageAction } from '../../modules/imageModule';
@@ -35,6 +35,14 @@ export default function FlowAgentStudioModal({ isOpen, onClose }: FlowAgentStudi
     [promptList]
   );
 
+  const appendLog = React.useCallback((message: string) => {
+    setLog((prev) => {
+      const lines = prev.split('\n');
+      if (lines.length > 200) lines.splice(0, lines.length - 200);
+      return `${lines.join('\n')}${message.endsWith('\n') ? message : `${message}\n`}`;
+    });
+  }, []);
+
   useEffect(() => {
     if (!activeJobId) return;
     const interval = setInterval(() => {
@@ -49,17 +57,9 @@ export default function FlowAgentStudioModal({ isOpen, onClose }: FlowAgentStudi
       }
     }, 500);
     return () => clearInterval(interval);
-  }, [activeJobId]);
+  }, [activeJobId, appendLog]);
 
   if (!isOpen) return null;
-
-  const appendLog = (message: string) => {
-    setLog((prev) => {
-      const lines = prev.split('\n');
-      if (lines.length > 200) lines.splice(0, lines.length - 200);
-      return `${lines.join('\n')}${message.endsWith('\n') ? message : `${message}\n`}`;
-    });
-  };
 
   const isProcessing = activeJobId !== null;
 
@@ -105,16 +105,49 @@ export default function FlowAgentStudioModal({ isOpen, onClose }: FlowAgentStudi
             });
             appendLog(`[SUCCESS] Lệnh #${idx + 1} hoàn tất: ${res.imagePath || 'OK'}`);
           } else {
+            const configuredDuration = Number(store.videoDuration);
+            if (!Number.isFinite(configuredDuration) || configuredDuration <= 0) {
+              throw new Error(
+                'Thieu videoDuration hop le trong Cau hinh dau ra. App khong tu gan 5 giay.',
+              );
+            }
+            const configuredProvider = String(store.videoProvider ?? '').trim();
+            if (!configuredProvider) {
+              throw new Error(
+                'Thieu videoProvider trong Cau hinh dau ra. App khong tu chay Flow ngam.',
+              );
+            }
+            if (
+              configuredProvider === 'flow' &&
+              ![4, 6, 8].includes(configuredDuration)
+            ) {
+              throw new Error(
+                `Flow chi nhan videoDuration 4/6/8 giay, khong nhan ${configuredDuration}s.`,
+              );
+            }
+            const configuredModel = String(store.videoModel ?? '').trim();
+            if (!configuredModel) {
+              throw new Error(
+                'Thieu videoModel trong Cau hinh dau ra. App khong tu thay model cu.',
+              );
+            }
+            const configuredBeat = Number(store.secondsPerBeat);
+            if (!Number.isFinite(configuredBeat) || configuredBeat <= 0) {
+              throw new Error(
+                'Thieu secondsPerBeat hop le trong Cau hinh dau ra. App khong tu gan 6 giay.',
+              );
+            }
             const res = await generateVideoAction({
               chapterNum: 999,
               sceneIndex: 999,
               promptIndex: idx,
               prompt: p,
-              duration: Number(store.videoDuration) || 5,
+              duration: configuredDuration,
               videoAspectRatio: store.videoAspectRatio || '16:9',
-              videoProvider: store.videoProvider || 'flow',
-              model: store.videoModel || 'veo_3_1_t2v_fast_ultra',
+              videoProvider: configuredProvider,
+              model: configuredModel,
               videoApiKey: store.videoApiKey || '',
+              secondsPerBeat: configuredBeat,
             });
             appendLog(`[SUCCESS] Lệnh #${idx + 1} hoàn tất: ${res.videoPath || 'OK'}`);
           }

@@ -122,7 +122,7 @@ src/app/workspace/
 
 ### Header hosts
 
-`chrome/Header.tsx` import: `BrandLogoButton`, badge FREE/TRIAL/PRO/VIP, `ChannelSwitcher`, `JobQueuePanel`, `ToolboxHost`, `MediaToolbarButton`, `TtsToolbarButton`, `CapCutExportButton`, `SettingsPanel`.
+`chrome/Header.tsx` import: `BrandLogoButton`, badge FREE/TRIAL/PRO, `ChannelSwitcher`, `JobQueuePanel`, `ToolboxHost`, `MediaToolbarButton`, `TtsToolbarButton`, `CapCutExportButton`, `SettingsPanel`.
 
 ---
 
@@ -179,7 +179,7 @@ src/app/workspace/
 | `useImagePromptActions` | Gen prompt studio + batch image/video entry |
 | `useTTSActions` / `chapterTtsActions` | Scene + chapter TTS |
 | `useSceneActions` / `useSetupActions` / `useCharacterActions` | Scene/setup/NV |
-| `useEntitlementSync` | Boot/focus Free/Trial/Pro/VIP |
+| `useEntitlementSync` | Boot/focus Free/Trial/Pro |
 | `useProAccess` | Feature matrix UI gate |
 | `useProjectActions` | Làm Mới, portable, … |
 | `useFolderActions` / `useCookieActions` / `useApiKeyActions` | Paths / cookie / keys |
@@ -196,7 +196,7 @@ src/app/workspace/
 | `novelStorePersistence.ts` | migrate/merge/partialize |
 | `persistStorage.ts` | Dual local/durable |
 | `storyActions.ts` | Setup, chapters, lore, world |
-| `credentialActions.ts` | Keys, cookies, `setVipStatus(vip, pro, trial?)` |
+| `credentialActions.ts` | Keys, cookies, `setVipStatus(legacyVip, pro, trial?)` |
 | `mediaAssetActions.ts` | Generated assets + media config |
 | `ttsCastActions.ts` | TTS + voice cast |
 | `channelActions.ts` | Multi-channel |

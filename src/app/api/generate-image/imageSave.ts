@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { driveMediaFilename, localImageFilename } from '@/contracts';
+import { probeVisualArtifact } from '@/lib/mediaArtifactValidation';
 import type {
   ImageSaveContext,
   SaveImageFn,
@@ -20,7 +21,6 @@ export function createImageSavers(ctx: ImageSaveContext): {
     drivePath,
     ten_tac_pham,
     filename,
-    localSavePath,
     publicImageDir,
     imageCount,
   } = ctx;
@@ -43,13 +43,31 @@ export function createImageSavers(ctx: ImageSaveContext): {
     const driveFilePaths: string[] = [];
     let driveSaved = false;
 
-    buffers.forEach((imageBuffer, variantIndex) => {
+    const localFilePaths: string[] = [];
+    for (const [variantIndex, imageBuffer] of buffers.entries()) {
       const variantFilename = getVariantFilename(variantIndex);
       const variantLocalSavePath = path.join(publicImageDir, variantFilename);
       fs.writeFileSync(variantLocalSavePath, imageBuffer);
+      localFilePaths.push(variantLocalSavePath);
+      const probe = probeVisualArtifact(variantLocalSavePath, 'image');
+      if (!probe.ok) {
+        for (const writtenPath of localFilePaths) {
+          try {
+            fs.unlinkSync(writtenPath);
+          } catch {
+            /* best-effort cleanup of rejected artifacts */
+          }
+        }
+        return NextResponse.json(
+          {
+            error: `[Image API] ${method} returned an invalid image artifact: ${probe.error}`,
+          },
+          { status: 502 },
+        );
+      }
       imagePaths.push(`/api/serve-image?file=${encodeURIComponent(variantFilename)}`);
       console.log(
-        `[Image API] Saved ${method} image ${variantIndex + 1}/${buffers.length}: ${variantLocalSavePath}`,
+        `[Image API] Saved verified ${method} image ${variantIndex + 1}/${buffers.length}: ${variantLocalSavePath} (${probe.codec} ${probe.width}x${probe.height}, ${probe.sizeBytes} bytes)`,
       );
 
       if (drivePath && drivePath.trim().length > 0) {
@@ -83,7 +101,7 @@ export function createImageSavers(ctx: ImageSaveContext): {
           console.error(`[Image API] Save-folder warning: ${(driveErr as Error).message}`);
         }
       }
-    });
+    }
 
     return NextResponse.json({
       success: true,

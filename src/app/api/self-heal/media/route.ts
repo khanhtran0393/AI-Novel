@@ -4,12 +4,15 @@ import {
   normalizeMediaSelfHealRequest,
   resolveMediaSelfHealLog,
 } from '@/lib/self-heal/mediaSelfHealCore';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
+    const denied = await requireToolboxAccess(req, body || {});
+    if (denied) return denied;
 
     if (!body || typeof body !== 'object') {
       return NextResponse.json(

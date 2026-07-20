@@ -63,7 +63,7 @@ export async function POST(req: Request) {
         let abs = referenceImagePathRaw;
         if (!path.isAbsolute(abs)) {
           const candidates = [
-            path.join(process.cwd(), abs),
+            path.join(/* turbopackIgnore: true */ process.cwd(), abs),
             path.join(process.cwd(), 'public', abs),
             path.join(process.cwd(), 'public', 'images', path.basename(abs)),
           ];

@@ -63,14 +63,20 @@ export function useSceneActions(_streamText?: string) {
     const currentChapter = store.danh_sach_chuong.find(
       (c) => c.so_chuong === store.chuong_dang_chon,
     );
-    if (!currentChapter) return;
+    if (!currentChapter) {
+      toast.warn('Expart', 'Chưa chọn chương — chọn chương ở sidebar trước.');
+      return;
+    }
 
     const ch = store.chuong_dang_chon;
     const isHook = isHookSceneIndex(idx);
     const st = streamText();
     const scenes = parseScenes(currentChapter.noi_dung || st);
     const busyKey = sceneBusyKey(ch, idx);
-    if (expanding[busyKey]) return;
+    if (expanding[busyKey]) {
+      toast.info('Expart', 'Cảnh này đang mở rộng — chờ xong.');
+      return;
+    }
 
     if (isHook) {
       let hookContent = (store.chapterHooks?.[ch]?.hook || '').trim();
@@ -158,12 +164,18 @@ export function useSceneActions(_streamText?: string) {
     const currentChapter = store.danh_sach_chuong.find(
       (c) => c.so_chuong === store.chuong_dang_chon,
     );
-    if (!currentChapter) return;
+    if (!currentChapter) {
+      toast.warn('Viết lại', 'Chưa chọn chương — chọn chương ở sidebar trước.');
+      return;
+    }
 
     const ch = store.chuong_dang_chon;
     const isHook = isHookSceneIndex(idx);
     const busyKey = sceneBusyKey(ch, idx);
-    if (rewriting[busyKey]) return;
+    if (rewriting[busyKey]) {
+      toast.info('Viết lại', 'Cảnh này đang viết lại — chờ xong.');
+      return;
+    }
     const st = streamText();
 
     if (isHook) {

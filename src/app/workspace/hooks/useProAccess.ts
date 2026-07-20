@@ -28,7 +28,7 @@ export function useProAccess() {
     [is_pro, is_vip, is_trial],
   );
 
-  /** Trial | Pro | VIP — coarse unlock (video/CapCut/ship…) */
+  /** Trial | Pro — coarse unlock (video/CapCut/ship…); is_vip chỉ là dữ liệu legacy. */
   const isProEquivalent = is_pro || is_vip || is_trial;
 
   const can = (feature: CommercialFeatureId) => canAccessFeature(tier, feature);

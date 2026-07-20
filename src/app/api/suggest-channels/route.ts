@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callNavGateway } from '@/lib/nav/navPythonBridge';
+import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const denied = await requireFeature(req, 'multi_channel', body);
+    if (denied) return denied;
     const { keyword, platform } = body;
 
     if (!keyword || typeof keyword !== 'string') {

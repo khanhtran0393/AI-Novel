@@ -21,17 +21,28 @@ export async function POST(req: Request) {
       (typeof body.token === 'string' && body.token.trim()) ||
       extractEntitlementToken(req, body) ||
       '';
+    const claimsAny = verifyEntitlementToken(token, { requireHwidMatch: false });
     const claims = verifyEntitlementToken(token, { requireHwidMatch: true });
     const status = getEntitlementPublicStatus();
     if (!claims) {
+      let error =
+        'Token không hợp lệ, hết hạn, hoặc không khớp HWID máy này.';
+      if (!status.publicKeyConfigured) {
+        error =
+          'App chưa nạp public key license — cấu hình PUBLIC_KEY / public-keys rồi restart.';
+      } else if (claimsAny?.hwid && claimsAny.hwid !== status.hwid?.toLowerCase()) {
+        error = `Key gắn HWID ${String(claimsAny.hwid).toUpperCase()} — máy này ${String(status.hwid || '').toUpperCase()}.`;
+      } else if (!claimsAny) {
+        error =
+          'Token không verify (sai format AINOVEL2.… / hết hạn / ký bằng key khác).';
+      }
       return NextResponse.json(
         {
           ok: false,
           valid: false,
           mode: status.mode,
           hwid: status.hwid,
-          error:
-            'Token không hợp lệ, hết hạn, hoặc không khớp HWID máy này.',
+          error,
         },
         { status: 401 },
       );

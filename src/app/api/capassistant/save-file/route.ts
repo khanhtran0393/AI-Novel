@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { requireToolboxAccess } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,8 @@ function runPowerShell(script: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
+    const denied = await requireToolboxAccess(req, body);
+    if (denied) return denied;
     const content = String(body.content ?? '');
     const title = String(body.title || 'Lưu file phụ đề');
     const defaultName = String(body.defaultName || 'translated.srt').replace(

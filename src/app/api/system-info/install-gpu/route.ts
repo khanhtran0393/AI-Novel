@@ -35,11 +35,22 @@ export async function POST(req: Request) {
     fs.writeFileSync(statusPath, JSON.stringify(initialStatus, null, 2), 'utf8');
 
     // Spawn the background worker script
-    const workerPath = './python_core/install_gpu_worker.js';
-    const child = spawn('node', [workerPath, vendor], {
+    const workerPath = path.join(
+      /* turbopackIgnore: true */ process.cwd(),
+      'python_core',
+      'install_gpu_worker.js',
+    );
+    if (!fs.existsSync(workerPath)) {
+      throw new Error(`Thiếu GPU worker: ${workerPath}`);
+    }
+    const child = spawn(process.execPath, [workerPath, vendor], {
       detached: true,
       stdio: 'ignore',
-      windowsHide: true
+      windowsHide: true,
+      env: {
+        ...process.env,
+        ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+      },
     });
     
     child.unref();

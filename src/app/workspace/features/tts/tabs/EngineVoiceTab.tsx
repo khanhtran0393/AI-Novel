@@ -340,18 +340,6 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                   </span>
                 </div>
               </div>
-              <p className="md:col-span-2 text-[10px] leading-relaxed text-zinc-500">
-                <strong className="text-zinc-400">Nghe thử + Gen TTS</strong> đều gửi{' '}
-                <code className="text-amber-500/90">speed={Number(config.speed || 1).toFixed(1)}</code>
-                {' · '}
-                <code className="text-indigo-400/90">
-                  pitch={(config.pitch || 0) > 0 ? `+${config.pitch}` : String(config.pitch || 0)}
-                </code>
-                . Cache preview/gen khóa theo tốc độ+cao độ — đổi slider rồi bấm Nghe thử / Gen lại.
-                Edge·CapCut·TikTok·Gemini: FFmpeg. Piper·VieNeu·Hotai·Omni: speed native, pitch FFmpeg.
-                Vina: speed+pitch native.
-              </p>
-
               {config.platform === 'tiktok_tts' && (
                 <TikTokSessionsPanel
                   sessions={tiktokSessions}

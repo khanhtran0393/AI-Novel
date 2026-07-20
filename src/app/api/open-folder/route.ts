@@ -22,21 +22,11 @@ function resolveOpenTarget(folderPath: string): string {
     raw === 'root' ||
     raw.toLowerCase() === 'project-root'
   ) {
-    // Prefer project root; then common media/output dirs
-    const candidates = [
-      path.join(cwd, 'public'),
-      path.join(cwd, 'output'),
-      path.join(cwd, '.ainovel-app'),
-      cwd,
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) return path.resolve(c);
-    }
     return path.resolve(cwd);
   }
 
   // Absolute or relative path
-  return path.resolve(raw);
+  return path.resolve(/* turbopackIgnore: true */ raw);
 }
 
 async function openWithExplorer(resolvedPath: string): Promise<void> {
