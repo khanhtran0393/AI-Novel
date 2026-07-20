@@ -17,6 +17,15 @@ import {
 } from '@/lib/entitlement';
 import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
 import { AppError } from '@/lib/errors';
+import {
+  classifyAntiTamperReasons,
+  detectDecoyCrackEnv,
+  recordTamperSignal,
+  touchDecoySurface,
+} from '@/lib/commercial/labyrinth';
+
+// Keep honeypot symbols in the commercial module graph (RE surface).
+touchDecoySurface();
 
 /**
  * Embedded keyring pins (kid = sha256(SPKI DER).slice(0,16)).
@@ -167,6 +176,12 @@ export function evaluateAntiTamper(): AntiTamperReport {
     // throw is ok for garbage
   }
 
+  // Decoy crack env canaries (honeypot switches — never used by real product paths)
+  const decoyEnv = detectDecoyCrackEnv();
+  if (decoyEnv) {
+    reasons.push(`Decoy env hit: ${decoyEnv} (crack env canary)`);
+  }
+
   return {
     ok: reasons.length === 0,
     packaged,
@@ -179,9 +194,30 @@ export function evaluateAntiTamper(): AntiTamperReport {
 export function assertAntiTamper(context = 'license'): void {
   const report = evaluateAntiTamper();
   if (report.ok) return;
+
+  const { codes, strength } = classifyAntiTamperReasons(report.reasons);
+  for (const code of codes) {
+    recordTamperSignal({
+      code,
+      strength,
+      origin: 'anti_tamper',
+      layer: 2,
+      detail: report.reasons[0]?.slice(0, 160),
+    });
+  }
+
   throw new AppError(
     `[anti-tamper/${context}] ${report.reasons.join('; ')}`,
-    { code: 'AUTH', status: 403 },
+    {
+      code: 'AUTH',
+      status: 403,
+      details: {
+        labyrinth: true,
+        root: 'INTEGRITY_OR_BYPASS',
+        origin: 'anti_tamper',
+        signals: codes,
+      },
+    },
   );
 }
 

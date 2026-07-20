@@ -95,6 +95,13 @@ node scripts/print-keyring-pins.mjs
 
 ```powershell
 npm run smoke:anti-tamper
+npm run smoke:labyrinth
 npm run smoke:license-trust
 npm run smoke:commercial
 ```
+
+## Labyrinth (L9)
+
+Ma trận lỗi đa tầng khi **tamper**: một root `INTEGRITY_OR_BYPASS`, surface T1–T5 progressive (packaged/enforce).  
+User hợp pháp: **một** message rõ. Decoy `unlockProLocal` / crack env **không** cấp Pro.  
+Chi tiết: [`LABYRINTH.md`](./LABYRINTH.md).

@@ -1,5 +1,14 @@
 # Project memory (AI Novel)
 
+## Labyrinth multi-layer cascade (2026-07-20)
+
+- **Code:** `src/lib/commercial/labyrinth/*` (signals, cascade, decoy)
+- **Wire:** `antiTamper` (decoy env + signal), `proGateHard` (denyThroughCascade), status `labyrinth`
+- **Policy:** one root `INTEGRITY_OR_BYPASS`; progressive T1–T5 only when tamper; legitimate = single message
+- **Kill-switch:** `AINOVEL_LABYRINTH=0`; force sticky: `=1`
+- **Docs:** `docs/LABYRINTH.md` · smoke `npm run smoke:labyrinth`
+- **Cấm:** UI dùng decoy unlock; soft-success media; hydra cho user Pro sạch
+
 ## License One-Path complete (2026-07-20)
 
 - **Policy:** `docs/LICENSE_ONE_PATH.md` + `src/lib/commercial/licenseOnePath.ts`
@@ -40,7 +49,10 @@
 - **Cloud IP auth:** shared `cloudIpAuth.ts` — `requireHwidMatch:false` + optional body.hwid vs claim (seedance + psych)
 - **Wire complete:** generate-video resolve/mark clip, chapterPipeline, ship/export, imagePrompt, integrations/seedance
 - Live: `npm run smoke:cloud-ip-live` (seedance + psych) against `ai-novel-flax.vercel.app`
-- Artifact: `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe` + `win-unpacked` (repack optional after this wire)
+- **Code-close 2026-07-20:** fresh `next build` + repack QA; `audit:package` PASS `shellHardened:true` esbuild; live cloud-ip PASS
+- Artifact: `dist-qa-unsigned/AI-Novel-1.0.0-x64.exe` (~140MB) + `win-unpacked`
+- One-shot verify: `npm run pack:unsigned:qa:verify`
+- **Not code:** Authenticode cert / signed NSIS production only
 
 ## Defense-in-depth layers (2026-07-20)
 

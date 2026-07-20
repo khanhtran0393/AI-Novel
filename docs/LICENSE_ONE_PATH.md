@@ -132,5 +132,6 @@ npm run smoke:ip-catalog
 
 - [`COMMERCIAL.md`](./COMMERCIAL.md) — tổng quan bán hàng  
 - [`DEFENSE_LAYERS.md`](./DEFENSE_LAYERS.md) — giáp  
+- [`LABYRINTH.md`](./LABYRINTH.md) — ma trận lỗi đa tầng (anti-bypass surface; **không** path license thứ hai)  
 - [`ATTACK_SURFACE.md`](./ATTACK_SURFACE.md) — góc RE  
 - [`COMMERCIAL_ADMIN.md`](./COMMERCIAL_ADMIN.md) — revoke / admin  

@@ -25,6 +25,7 @@ Agent-facing truth for release hardening. **Do not encrypt the git source repo.*
 | **L6** | Online heartbeat / revoke when reachable | `licenseHeartbeat` + cloud verify |
 | **L7** | Release audits | `ship-check`, `audit:package`, smokes |
 | **L8** | RE friction (3-phase) | shell harden + strip maps + IP catalog |
+| **L9** | Labyrinth multi-layer tamper cascade | `src/lib/commercial/labyrinth/*` · `docs/LABYRINTH.md` |
 
 ---
 
