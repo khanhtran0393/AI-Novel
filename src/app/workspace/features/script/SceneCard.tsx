@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   API,
   imageAssetKey,
@@ -64,6 +64,9 @@ interface SceneCardProps {
   regeneratingSinglePrompt: Record<string, boolean>;
   onImageZoom: (url: string) => void;
   collapsed?: boolean;
+  /** Prefer this: parent sets expandedScene without double-toggle race */
+  onExpandChange?: (open: boolean) => void;
+  /** @deprecated use onExpandChange */
   onToggleCollapse?: () => void;
 }
 
@@ -102,15 +105,39 @@ function SceneCard({
   regeneratingSinglePrompt,
   onImageZoom,
   collapsed = true,
-  onToggleCollapse
+  onExpandChange,
+  onToggleCollapse,
 }: SceneCardProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { handleOpenFolder } = useFolderActions();
+
+  /**
+   * Local open state is source of truth for expand/collapse.
+   * Parent `collapsed` syncs nav strip (Hook/C1…) — click "Mở" always flips local first.
+   */
+  const [isOpen, setIsOpen] = useState(() => !collapsed);
+  useEffect(() => {
+    if (collapsed === false) setIsOpen(true);
+    if (collapsed === true) setIsOpen(false);
+  }, [collapsed]);
+
+  const toggleOpen = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setIsOpen((prev) => {
+      const next = !prev;
+      requestAnimationFrame(() => {
+        if (onExpandChange) onExpandChange(next);
+        else onToggleCollapse?.();
+      });
+      return next;
+    });
+  };
   
   const [openSceneTab, setOpenSceneTab] = useState<'tts' | 'studio' | null>('studio');
   const [manualDuration, setManualDuration] = useState('');
   
-  const chapterNum = useNovelStore(state => state.chuong_dang_chon) || 1;
+  const chapterNum = Number(useNovelStore(state => state.chuong_dang_chon)) || 1;
   const assetKey = sceneAssetKey(chapterNum, sceneIndex);
   
   const audioAsset = useNovelStore(state => state.generatedAudioPaths[assetKey]);
@@ -231,8 +258,8 @@ function SceneCard({
 
   return (
     <div
-      className={`group relative bg-zinc-950/40 rounded-lg ${
-        collapsed ? 'p-3' : 'p-5'
+      className={`group relative z-[1] bg-zinc-950/40 rounded-lg ${
+        isOpen ? 'p-5' : 'p-3'
       } flex flex-col gap-3 transition-[border-color,box-shadow] duration-200`}
       style={{
         borderWidth: 2,
@@ -241,21 +268,28 @@ function SceneCard({
         boxShadow: mediaComplete
           ? '0 0 14px rgba(16, 185, 129, 0.35)'
           : '0 0 14px rgba(255, 123, 0, 0.35)',
-      }}
+        WebkitAppRegion: 'no-drag',
+      } as React.CSSProperties}
     >
       {/* 1. Thanh tiêu đề + thu gọn + trạng thái media */}
       <div className="flex items-center justify-between gap-2 min-w-0">
         <button
           type="button"
-          onClick={() => onToggleCollapse?.()}
-          className="flex flex-1 items-center gap-2 min-w-0 text-left rounded-lg px-3 py-2 bg-zinc-900/40 hover:bg-zinc-900/70 transition-colors cursor-pointer"
-          style={{ borderWidth: 1, borderStyle: 'solid', borderColor: `${borderColor}66` }}
-          title={collapsed ? 'Mở rộng cảnh' : 'Thu gọn chỉ còn tiêu đề'}
+          onClick={toggleOpen}
+          className="flex flex-1 items-center gap-2 min-w-0 text-left rounded-lg px-3 py-2 bg-zinc-900/40 hover:bg-zinc-900/70 transition-colors cursor-pointer select-none"
+          style={{
+            borderWidth: 1,
+            borderStyle: 'solid',
+            borderColor: `${borderColor}66`,
+            WebkitAppRegion: 'no-drag',
+          } as React.CSSProperties}
+          title={isOpen ? 'Thu gọn chỉ còn tiêu đề' : 'Mở rộng cảnh'}
+          aria-expanded={isOpen}
         >
-          {collapsed ? (
-            <ChevronRight className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-          ) : (
+          {isOpen ? (
             <ChevronDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
           )}
           <h4
             className="text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 font-sans truncate"
@@ -267,7 +301,7 @@ function SceneCard({
         <div className="flex items-center gap-2 shrink-0">
           {promptCount > 0 && (
             <span
-              className="text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded font-sans"
+              className="text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded font-sans pointer-events-none"
               style={{
                 color: titleColor,
                 borderWidth: 1,
@@ -284,28 +318,30 @@ function SceneCard({
           )}
           {audioAsset && (
             <span
-              className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"
+              className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse pointer-events-none"
               title="Đã có file Audio"
             />
           )}
           <button
             type="button"
-            onClick={() => onToggleCollapse?.()}
-            className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer font-sans hover:opacity-90"
+            onClick={toggleOpen}
+            className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer font-sans hover:opacity-90 select-none"
             style={{
               color: titleColor,
               borderWidth: 1,
               borderStyle: 'solid',
               borderColor,
               backgroundColor: 'transparent',
-            }}
+              WebkitAppRegion: 'no-drag',
+            } as React.CSSProperties}
+            aria-expanded={isOpen}
           >
-            {collapsed ? 'Mở' : 'Thu gọn'}
+            {isOpen ? 'Thu gọn' : 'Mở'}
           </button>
         </div>
       </div>
 
-      {collapsed ? null : (
+      {!isOpen ? null : (
       <>
       {/* 2. Textarea câu chuyện của cảnh */}
       <textarea

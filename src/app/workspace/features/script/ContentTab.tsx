@@ -75,7 +75,7 @@ interface ContentTabProps {
   regeneratingSinglePrompt: Record<string, boolean>;
   onImageZoom: (url: string) => void;
   expandedScene: number | null;
-  setExpandedScene: (val: number | null) => void;
+  setExpandedScene: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
 /** Only this leaf re-renders on typewriter ticks. */
@@ -140,6 +140,14 @@ export default function ContentTab(props: ContentTabProps) {
     [chapterContent],
   );
 
+  // Auto-open first scene when chapter body appears and nothing is expanded yet
+  useEffect(() => {
+    if (!chapterContent?.trim()) return;
+    if (expandedScene != null) return;
+    // Prefer first body scene (0); user can still open Hook
+    setExpandedScene(scenes.length > 0 ? 0 : HOOK);
+  }, [chapterNum, chapterContent, scenes.length, expandedScene, setExpandedScene, HOOK]);
+
   if (isStreaming) {
     return <StreamingScriptView />;
   }
@@ -194,8 +202,8 @@ export default function ContentTab(props: ContentTabProps) {
             generatingPrompt={!!generatingPrompt[HOOK]}
             regeneratingSinglePrompt={regeneratingSinglePrompt}
             onImageZoom={onImageZoom}
-            collapsed={expandedScene !== HOOK}
-            onToggleCollapse={() => setExpandedScene(expandedScene === HOOK ? null : HOOK)}
+            collapsed={Number(expandedScene) !== HOOK}
+            onExpandChange={(open) => setExpandedScene(open ? HOOK : null)}
           />
         </div>
 
@@ -231,8 +239,10 @@ export default function ContentTab(props: ContentTabProps) {
               generatingPrompt={!!generatingPrompt[idx]}
               regeneratingSinglePrompt={regeneratingSinglePrompt}
               onImageZoom={onImageZoom}
-              collapsed={expandedScene !== idx}
-              onToggleCollapse={() => setExpandedScene(expandedScene === idx ? null : idx)}
+              collapsed={Number(expandedScene) !== Number(idx)}
+              onExpandChange={(open) =>
+                setExpandedScene(open ? idx : null)
+              }
             />
           </div>
         ))}

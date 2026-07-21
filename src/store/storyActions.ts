@@ -138,11 +138,15 @@ export function createStoryActions(
       updateChuong: (so_chuong, update) =>
         set((state) => ({
           danh_sach_chuong: state.danh_sach_chuong.map((c) =>
-            c.so_chuong === so_chuong ? { ...c, ...update } : c
+            Number(c.so_chuong) === Number(so_chuong) ? { ...c, ...update } : c,
           ),
         })),
 
-      selectChuong: (chuong_dang_chon) => set({ chuong_dang_chon }),
+      selectChuong: (raw) => {
+        const n = typeof raw === 'number' ? raw : Number(raw);
+        const chuong_dang_chon = Number.isFinite(n) && n > 0 ? Math.trunc(n) : 1;
+        set({ chuong_dang_chon, workspaceTab: 'script' });
+      },
 
       setTabHienTai: (tab_hien_tai) => set({ tab_hien_tai }),
 

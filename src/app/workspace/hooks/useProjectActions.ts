@@ -5,6 +5,10 @@ import {
   allowIntentionalStoreReset,
   commitIntentionalProjectResetFromLocal,
 } from '@/store/persistStorage';
+import {
+  clearAppLocalExtrasKeepEntitlement,
+  clearCredentialVault,
+} from '@/store/factoryResetClient';
 import { exportTxtAction, resetProjectAction } from '../modules/projectModule';
 import { resetEngineAction } from '../modules/engineModule';
 import { toast } from '@/lib/toastBus';
@@ -79,8 +83,72 @@ export function useProjectActions(streamText?: string) {
     );
   };
 
+  /**
+   * Factory wipe → app như mới cài: canvas + API keys + GPU/NVENC + TTS/media paths.
+   * **Giữ** Free / Trial / Pro (flags + credits + local entitlement token).
+   */
+  const handleFactoryResetAll = async () => {
+    const plan = useNovelStore.getState();
+    const planLabel = plan.is_trial
+      ? 'TRIAL'
+      : plan.is_pro || plan.is_vip
+        ? 'PRO'
+        : 'FREE';
+    const ok = await appConfirm({
+      title: 'Xóa tất cả — App mới tinh',
+      message:
+        'Xóa toàn bộ dữ liệu và cấu hình trong app (dự án, API key, CUDA/NVENC/GPU, TTS, media, đường dẫn…). ' +
+        `Chế độ gói hiện tại (${planLabel}) được giữ nguyên.`,
+      details: [
+        'Canvas: truyện, chương, lore, nhân vật, media gen, pipeline',
+        'API keys / cookies / session (vault + store)',
+        'Cài đặt GPU / CUDA / NVENC, TTS, provider, model, path lưu',
+        'Kênh multi-channel về mặc định',
+        `KHÔNG xóa: gói ${planLabel} (is_pro / is_trial / credits / token bản quyền)`,
+      ],
+      confirmLabel: 'Xóa tất cả',
+      cancelLabel: 'Hủy',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    const store = useNovelStore.getState();
+    try {
+      await resetProjectAction(store.googleDrivePath || '');
+      await resetEngineAction();
+    } catch (err: unknown) {
+      console.warn(err instanceof Error ? err.message : String(err));
+    }
+
+    allowIntentionalStoreReset(90_000);
+    clearAppLocalExtrasKeepEntitlement();
+    await clearCredentialVault();
+    store.factoryResetKeepPlan();
+    clearPipelineStore();
+    commitIntentionalProjectResetFromLocal();
+    queueMicrotask(() => commitIntentionalProjectResetFromLocal());
+    setTimeout(() => commitIntentionalProjectResetFromLocal(), 200);
+    setTimeout(() => commitIntentionalProjectResetFromLocal(), 1000);
+
+    // Re-clear vault after zustand subscribers may have re-written empty→old race
+    await clearCredentialVault();
+    const live = useNovelStore.getState();
+    if (live.useGpuAcceleration || live.apiKey || live.openaiApiKey) {
+      live.factoryResetKeepPlan();
+      clearPipelineStore();
+      commitIntentionalProjectResetFromLocal();
+      await clearCredentialVault();
+    }
+
+    toast.info(
+      'Notice',
+      `Đã xóa tất cả dữ liệu & cấu hình. Gói ${planLabel} giữ nguyên. Nên restart app nếu GPU/NVENC vẫn nhớ cache hệ thống.`,
+    );
+  };
+
   return {
     handleExportTxt,
     handleResetProject,
+    handleFactoryResetAll,
   };
 }

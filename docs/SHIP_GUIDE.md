@@ -31,6 +31,8 @@ AINOVEL_UPDATE_CHECK_ON_LAUNCH=1
 AINOVEL_ALLOW_LOCAL_TRIAL=0
 ```
 
+**Updater:** app packaged tự check (`CHECK_ON_LAUNCH=1`) → **tự tải sẵn** (kể cả cố tải nốt khi thoát nếu chưa xong) → **không cài lúc đóng** → **lần mở app sau** mới cài (không hỏi). Feed: Supabase Storage `desktop-updates/latest`. Flag: `%APPDATA%/…/update-pending.json`. Dev mode không auto-update.
+
 Tạo customer config:
 
 ```powershell

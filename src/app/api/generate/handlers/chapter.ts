@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   buildContinueContext,
+  buildProseCraftBlock,
   evaluateWordGate,
   formatCharacterBible,
   formatSpentEntities,
@@ -108,11 +109,16 @@ export async function handleChapter(
       : '';
   
     const wordGateExtra = force_word_gate_continue
-      ? `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ: Bản trước CHƯA ĐẠT tối thiểu ${wordMin} từ và/hoặc chưa đủ ${MIN_SCENE_COUNT} phân cảnh. Hãy viết DÀI HƠN, thêm cảnh mới nếu thiếu, miêu tả chi tiết hơn. Chỉ trả về phần MỚI.`
+      ? `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ (CHẤT LƯỢNG, KHÔNG NHỒI):
+Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ ${MIN_SCENE_COUNT} phân cảnh.
+- Viết thêm phần MỚI: sâu hơn stakes (lựa chọn, hậu quả, thoại có lực, nội tâm lệch tính cách).
+- Nếu thiếu cảnh: thêm [CẢNH X: ...] mới với xung đột riêng, nối hệ quả từ open loop trước.
+- CẤM đệm bằng liệt kê giác quan / lặp mô tả / tóm tắt lại / reset giọng.
+- Bám nhịp câu và quirk thoại đã có — như cùng một cây bút. Chỉ trả về phần MỚI.`
       : '';
   
     const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
-  Hãy viết kịch bản chi tiết văn học đa giác quan cho Chương ${chuong_hien_tai.so_chuong}: "${chuong_hien_tai.tieu_de}" thuộc tác phẩm "${ten_tac_pham}".
+  Viết chương truyện / kịch bản kể chuyện mượt, có chiều sâu — Chương ${chuong_hien_tai.so_chuong}: "${chuong_hien_tai.tieu_de}" · tác phẩm "${ten_tac_pham}".
   
   --- SETUP THỂ LOẠI (BẮT BUỘC BÁM) ---
   ${genreLabel}
@@ -122,7 +128,7 @@ export async function handleChapter(
   ${lorebookForPrompt(lorebook)}
   
   2. DÀN Ý TỔNG THỂ (RÚT GỌN — chỉ định hướng arc, KHÔNG chép vào kịch bản):
-  ${outlineBlock || 'Chưa có dàn ý tổng thể.'}
+  ${outlineBlock || 'Chưa có dàn ý tổng thể — dựng xung đột từ dàn ý chương + Setup; không bịa world law mặc định.'}
   
   3. TÓM TẮT CUỐN CHIẾU CÁC CHƯƠNG TRƯỚC (DƯỚI 500 TỪ):
   ${tom_tat_cuon_chieu || 'Chưa viết chương trước nào.'}
@@ -139,29 +145,33 @@ export async function handleChapter(
   7. ENTITIES ĐÃ DÙNG (tránh lặp motif/địa điểm/vật phẩm):
   ${spentBlock}
   
-  8. NHỊP BEAT CHƯƠNG NÀY (bắt buộc định hướng xung đột):
+  8. NHỊP BEAT CHƯƠNG NÀY (định hướng xung đột — dệt vào văn, không dán nhãn beat trong prose):
   ${beat}
   - Beat A (Discovery): khám phá manh mối, bối cảnh, bí ẩn mới.
   - Beat B (Confrontation): đối đầu, va chạm lợi ích, căng thẳng leo thang.
-  - Beat C (Crisis): khủng hoảng cốt lõi theo thể loại Setup (không ép sinh tồn/mạt thế nếu Setup khác), áp lực thời gian/cạn kiệt tài nguyên hoặc mối quan hệ.
+  - Beat C (Crisis): khủng hoảng cốt lõi theo thể loại Setup (không ép sinh tồn/mạt thế nếu Setup khác).
   - Beat D (Insight): bẻ gãy nhận thức, twist logic, hậu quả cảm xúc.
   
   DÀN Ý SỰ KIỆN CHƯƠNG HIỆN TẠI:
-  ${chuong_hien_tai.dan_y}
+  ${chuong_hien_tai.dan_y || '(Trống — tự dựng 3–5 beat sự kiện rõ: mục tiêu NV, trở ngại, bước ngoặt, open loop; bám Setup, không bịa lore mặc định.)'}
   ${interventionBlock}${wordGateExtra}
+  ${buildProseCraftBlock()}
   
-  YÊU CẦU KỸ THUẬT KHI TẠO TÁC KỊCH BẢN CHI TIẾT:
-  - Ngôn ngữ viết: BẮT BUỘC PHẢI VIẾT BẰNG ${ngon_ngu || 'Tiếng Việt'}. Dịch toàn bộ văn cảnh và đối thoại sang ngôn ngữ này nhưng phải giữ văn phong mượt mà, đậm chất điện ảnh.
-  1. TUYỆT ĐỐI CẤM in lại, nhại lại hoặc chép lại Lõi Bất Biến (Lorebook), Trí nhớ, Dàn ý hay bất kỳ thông tin nào từ BỐI CẢNH VÀ TRÍ NHỚ VĨ MÔ vào trong kịch bản. Chữ duy nhất bạn xuất ra phải là NỘI DUNG KỊCH BẢN THUẦN TÚY.
-  2. Viết văn học/kịch bản sạch: CẤM ghi chú đạo diễn / FX kiểu [âm thanh gió rít], (Cười), (thở dài), (nhạc nền). NGOẠI LỆ BẮT BUỘC khi bật tính người: được (và nên) chèn 1–3 câu đùa “người nói với người” trong ngoặc đơn giữa nhịp thoại — xem khối CÂU ĐÙA.
-  3. TUYỆT ĐỐI TUÂN THỦ: Tên mỗi cảnh phải được bọc trong DẤU NGOẶC VUÔNG trên một dòng riêng. Ví dụ:
+  YÊU CẦU KỸ THUẬT KHI VIẾT:
+  - Ngôn ngữ: BẮT BUỘC ${ngon_ngu || 'Tiếng Việt'} — văn phong mượt, có nhịp thở, đọc được cả khi narration.
+  1. CẤM in lại / nhại Lorebook, Trí nhớ, Dàn ý hay khối BỐI CẢNH vào kịch bản. Chỉ xuất NỘI DUNG TRUYỆN thuần.
+  2. Văn sạch: CẤM note đạo diễn / FX kiểu [âm thanh gió rít], (Cười), (thở dài), (nhạc nền). Ngoại lệ khi bật tính người: 1–2 câu đùa “người nói với người” trong ngoặc đơn ở nhịp thở — xem khối CÂU ĐÙA (không chen cao trào).
+  3. Tag cảnh — mỗi cảnh một dòng riêng:
   [CẢNH 1: NỘI CẢNH. ĐỊA ĐIỂM - THỜI GIAN]
-  Nội dung phân cảnh...
-  4. Viết sống động, có chiều sâu tâm lý kể chuyện (pattern interrupt, open loop, loss qua tình huống — xem khối NARRATIVE PSYCH). Real-time pacing: CẤM time-skip / tóm tắt tuần/tháng. Ưu tiên hành động + thoại; miêu tả giác quan có chọn lọc (không stack liên tục 5 giác quan).
-  5. Đạt chuẩn Cổng Từ (Word-Gate): mục tiêu ~${wordGoal} từ (không dưới ${wordMin} từ) bằng xung đột, hội thoại, độc thoại nội tâm — KHÔNG nhồi sáo AI.
-  6. ⚠️ MỆNH LỆNH TUYỆT ĐỐI VỀ PHÂN CẢNH: BẮT BUỘC chia thành TỐI THIỂU ${MIN_SCENE_COUNT} đến 5 phân cảnh. Mỗi cảnh một dòng tag: [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM CỤ THỂ - THỜI GIAN]. Phân bổ đều số từ. CẤM chỉ 1–2 cảnh. Mỗi cảnh: mở căng + cuối open loop.
+  (đoạn văn liền mạch…)
+  4. Kể chuyện sống: subtext, nội tâm chọn lọc, NARRATIVE PSYCH dệt vào tình huống (không dán slogan). Real-time: CẤM time-skip / tóm tắt tuần/tháng. Hành động + thoại là xương; 1–2 chi tiết giác quan đắt/cảnh (không stack 5 giác quan).
+  5. Cổng Từ: ~${wordGoal} từ (không dưới ${wordMin}) bằng xung đột, thoại, lựa chọn, nội tâm — KHÔNG nhồi sáo / lặp mô tả.
+  6. Phân cảnh: TỐI THIỂU ${MIN_SCENE_COUNT}, tối đa ~5. Mỗi cảnh tag [CẢNH X: NỘI/NGOẠI CẢNH. ĐỊA ĐIỂM CỤ THỂ - THỜI GIAN].
+     - Độ dài cảnh theo nhịp truyện (cảnh căng có thể dài hơn) — không chia “đều từ” máy móc.
+     - Mỗi cảnh: vào việc sớm + cuối open loop là hệ quả (không lặp cùng một kiểu “và rồi một tiếng động”).
+     - Cảnh sau nối hệ quả / đối lập với open loop cảnh trước.
   7. 🚫 TỪ CẤM: ${resolvedRules.forbidden_words}
-  8. ⚠️ TỪ SÁO / VĂN AI: Hạn chế tối đa: ${resolvedRules.fatigue_words}
+  8. ⚠️ TỪ SÁO / VĂN AI (hạn chế tối đa): ${resolvedRules.fatigue_words}
   ${buildHumanizeScriptBlock(humanizeOn)}
   ${buildSpeechFingerprintBlock(nhan_vat, nhan_vat_prompts)}
   ${continueBlock}`;
@@ -268,6 +278,7 @@ export async function handleChapter(
   --- LUẬT TỪ ---
   Từ cấm: ${resolvedRules.forbidden_words}
   Từ sáo / văn AI: ${resolvedRules.fatigue_words}
+  ${buildProseCraftBlock()}
   ${buildHumanizeScriptBlock(humanizeOn)}
   ${buildSpeechFingerprintBlock(nhan_vat, nhan_vat_prompts)}
   ${isAudioRead ? buildAudioReadabilityBlock() : ''}
@@ -277,14 +288,14 @@ export async function handleChapter(
   
   NHIỆM VỤ:
   1. ${isAudioRead
-    ? 'Giữ 100% tình tiết và tag cảnh; chỉ tối ưu nhịp đọc audio (câu ngắn hơn, nghỉ thở, cắt sáo).'
+    ? 'Giữ 100% tình tiết và tag cảnh; tối ưu nhịp đọc audio — cắt sáo, nghỉ thở rõ, NHƯNG giữ xen câu ngắn/vừa/dài để không thô đều như checklist.'
     : isRewrite
-    ? 'Viết lại toàn bộ chương, khắc phục mọi chiều điểm thấp (<70), giữ dàn ý sự kiện cốt lõi nhưng nâng pacing/character/hook + NARRATIVE PSYCH (pattern interrupt, open loop cuối cảnh, loss qua tình huống, curiosity gap — CẤM slogan SEO trong prose) + tính người (thoại đời, im lặng hữu ích).'
-    : 'Giữ cấu trúc và tình tiết chính; trau chuốt câu chữ, nhịp, đối thoại đời, cắt sáo rỗng và văn AI; tăng hook đầu cảnh + open loop cuối cảnh theo NARRATIVE PSYCH.'}
+    ? 'Viết lại toàn bộ chương, khắc phục chiều điểm thấp (<70); giữ dàn ý sự kiện cốt lõi; nâng pacing/character/hook + NARRATIVE PSYCH dệt vào văn + subtext + thoại đời. CẤM slogan SEO. Ưu tiên mượt, chống thô cứng.'
+    : 'Giữ cấu trúc và tình tiết chính; trau chuốt câu chữ, nhịp thở, subtext, đối thoại đời; cắt sáo rỗng/văn AI/thô cứng (câu đều đều, tường thuật dàn, giải thích cảm xúc). Open loop cuối cảnh phải là hệ quả, không máy.'}
   2. Ngôn ngữ: ${ngon_ngu || 'Tiếng Việt'}.
-  3. Giữ/khôi phục tag phân cảnh dạng [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN] — tối thiểu ${MIN_SCENE_COUNT} cảnh.
-  4. Độ dài mục tiêu ~${wordGoal} từ (không dưới ${wordMin} từ) — đủ dài bằng xung đột/thoại, không stack giác quan.
-  5. Chỉ trả về NỘI DUNG KỊCH BẢN thuần, không markdown giải thích.`;
+  3. Giữ/khôi phục tag [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN] — tối thiểu ${MIN_SCENE_COUNT} cảnh.
+  4. Độ dài ~${wordGoal} từ (không dưới ${wordMin}) — đủ bằng xung đột/thoại/lựa chọn, không stack giác quan / nhồi tính từ.
+  5. Chỉ trả về NỘI DUNG TRUYỆN thuần, không markdown giải thích.`;
   
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
     let normalized = normalizeSceneTags((aiResponse || '').normalize('NFC'));
@@ -344,11 +355,11 @@ export async function handleChapter(
   - Trừ nặng Aesthetic nếu prose dính slogan SEO ("Đừng bỏ lỡ", "Like Subscribe", template title).
   
   Nhiệm Vụ:
-  1. Đánh giá bản thảo theo 7 chiều: Consistency (Nhất quán), Character (Nhân vật), Pacing (Nhịp điệu + escalation), Continuity (Mạch lạc), Foreshadow (Phục bút + curiosity gap), Hook (Điểm móc + pattern interrupt + open loop), Aesthetic (Thẩm mỹ & Văn phong + tính người / chống văn AI / chống slogan SEO trong prose).
-  2. Nếu bản thảo dính nhiều "Từ cấm tuyệt đối" hoặc "Từ sáo rỗng" như yêu cầu của tác giả, hãy trừ nặng điểm Aesthetic.
-  3. Trừ điểm Character/Aesthetic nếu thoại đồng chất, thiếu im lặng hữu ích, hoặc miêu tả giác quan stack liên tục (văn AI phẳng — rủi ro kênh narration YouTube).
-  4. Trừ điểm Hook nếu mở bằng thơ tả cảnh; trừ Pacing nếu chốt êm giữa chương / thiếu open loop cuối cảnh.
-  5. Cho điểm từ 0-100 cho mỗi chiều. Nếu có bất kỳ chiều nào dưới 60 điểm, hoặc tổng điểm trung bình dưới 70, verdict phải là "rewrite" (bắt viết lại). Nếu từ 70-80 là "polish" (chấp nhận nhưng cần trau chuốt). Trên 80 là "accept" (tuyệt vời).
+  1. Đánh giá 7 chiều: Consistency, Character, Pacing (escalation + nhịp thở), Continuity, Foreshadow (curiosity gap), Hook (pattern interrupt + open loop), Aesthetic (văn phong mượt + tính người + chống văn AI/slogan SEO + chống thô cứng).
+  2. Trừ nặng Aesthetic nếu dính nhiều Từ cấm / Từ sáo theo luật tác giả.
+  3. Trừ Character/Aesthetic nếu thoại đồng chất, thiếu subtext/im lặng hữu ích, stack 5 giác quan, hoặc văn checklist (câu đều đều ngắn, tường thuật dàn, giải thích cảm xúc rỗng — thô cứng).
+  4. Trừ Hook nếu mở thơ tả cảnh; trừ Pacing nếu chốt êm giữa chương / thiếu open loop / open loop máy lặp kiểu; trừ Continuity nếu cảnh sau không nối hệ quả.
+  5. 0–100 mỗi chiều. Bất kỳ chiều <60 hoặc trung bình <70 → verdict "rewrite". 70–80 → "polish". >80 → "accept".
   
   TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (Không bọc bằng markdown \`\`\`json):
   {

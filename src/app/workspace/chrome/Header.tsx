@@ -10,7 +10,6 @@ import {
   selectIsPro,
   selectIsVip,
   selectIsTrial,
-  selectCredits,
 } from '@/store/useNovelStoreSelectors';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { Sparkles } from 'lucide-react';
@@ -27,7 +26,6 @@ export default function Header() {
   const isPro = useNovelStore(selectIsPro);
   const isVip = useNovelStore(selectIsVip);
   const isTrial = useNovelStore(selectIsTrial);
-  const credits = useNovelStore(selectCredits);
   const { handleOpenFolder } = useFolderActions();
 
   return (
@@ -82,10 +80,9 @@ export default function Header() {
           ) : (
             <div
               className="flex items-center gap-1 rounded-2xl border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-semibold tracking-wider text-zinc-400"
-              title="Free — nhấp logo «up to PRO» để mở Bản quyền"
+              title="Free — nhấp logo để mở Bản quyền / nâng cấp Pro"
             >
               <span>FREE</span>
-              <span className="text-amber-500/90">💎 {credits}</span>
             </div>
           )}
         </div>

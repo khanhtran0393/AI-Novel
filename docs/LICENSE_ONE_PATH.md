@@ -36,12 +36,15 @@ App: public verify ────────┤
 
 1. Logo → **Bản quyền** (`LicenseModal`).
 2. Copy **HWID**.
-3. **Trial** (cloud ưu tiên) hoặc dán **`AINOVEL2…`** / mã `AINOVEL-…`.
-4. `POST /api/entitlement/activate` → token → `localStorage.ainovel.entitlementToken`.
-5. Mọi API gửi `x-ainovel-entitlement`.
-6. Badge: `GET /api/commercial/status` → `useEntitlementSync` (TRIAL → PRO → FREE).
+3. **Seller/admin issue** → **phải có row `licenses` active** trên Supabase (Telegram/admin/order).
+4. **Trial** (cloud) hoặc dán **`AINOVEL2…`** / mã `AINOVEL-…` → bind token_hash lên row có sẵn.
+5. `POST /api/entitlement/activate` → token → `localStorage.ainovel.entitlementToken`.
+6. Mọi API gửi `x-ainovel-entitlement`.
+7. Badge: `GET /api/commercial/status` → **chỉ đọc** `licenses` theo HWID → `useEntitlementSync` (TRIAL → PRO → FREE).
 
-**Cấm** đường thứ hai: card settings tự set `is_pro`, HMAC `eyJ…` cũ, derive module key từ token.
+**Sổ cái (bắt buộc):** không có row active (xóa / revoked / expired / chưa cấp) = **Free** (ban hoặc hết hạn). Token Ed25519 local **không** tự INSERT / self-heal Pro.
+
+**Cấm** đường thứ hai: card settings tự set `is_pro`, HMAC `eyJ…` cũ, derive module key từ token, offline token re-create ledger.
 
 ---
 

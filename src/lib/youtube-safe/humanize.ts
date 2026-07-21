@@ -3,15 +3,16 @@ import { buildHumanJokeAsideBlock } from './humanJokes';
 export function buildHumanizeScriptBlock(enabled: boolean): string {
   if (!enabled) return '';
   return `
---- CHẾ ĐỘ TÍNH NGƯỜI / YOUTUBE-SAFE NARRATION (BẮT BUỘC) ---
-A. Ưu tiên HÀNH ĐỘNG + ĐỐI THOẠI + XUNG ĐỘT hơn miêu tả giác quan liên tục.
-B. Mỗi phân cảnh phải có ≥1 câu thoại "đời" (cụt, ngắt quãng, nói tránh, không giải thích hết).
-C. Cho phép im lặng hữu ích: 1–2 nhịp hành động không lời thay vì stack 5 giác quan.
-D. CẤM văn AI sáo: mắt ánh lên quyết tâm, không khí đông đặc, trái tim thắt lại, trong tích tắc…
-E. Mỗi nhân vật có 1 quirk ngôn ngữ (ngắn lời / cộc / mỉa / lắp bắp) bám Bible — không thoại đồng chất.
-F. Hook 3–8 giây đầu chương: mâu thuẫn / đe dọa / câu hỏi rõ — không mở bằng thơ tả cảnh dài.
-G. Cắt bớt 15–25% miêu tả dư; câu vừa miệng đọc audio (ưu tiên ≤22 từ/câu khi có thể).
-H. Word-Gate bằng xung đột & thoại, không nhồi tính từ.
+--- CHẾ ĐỘ TÍNH NGƯỜI / NARRATION TỰ NHIÊN (BẮT BUỘC) ---
+A. Xương sống = HÀNH ĐỘNG + ĐỐI THOẠI + XUNG ĐỘT; miêu tả chỉ là gia vị (1–2 chi tiết đắt/cảnh), không tường thuật dàn đều.
+B. Mỗi phân cảnh ≥1 câu thoại "đời" (cụt, ngắt, nói tránh, không giải thích hết) — có subtext.
+C. Im lặng hữu ích: 1–2 nhịp hành động/không lời; đừng stack 5 giác quan liên tục.
+D. CẤM văn AI sáo: mắt ánh lên quyết tâm, không khí đông đặc, trái tim thắt lại, trong tích tắc… (và các biến thể tương đương).
+E. Mỗi NV 1 quirk ngôn ngữ bám Bible — thoại không đồng chất, không “AI lịch sự”.
+F. 3–8 giây đầu chương: mâu thuẫn / đe dọa / câu hỏi / hành động — không mở thơ tả cảnh dài.
+G. NHỊP ĐỌC: phần lớn câu vừa miệng (thường ≤22 từ), NHƯNG bắt buộc xen vài câu dài hơn để thở — CẤM cả chương toàn câu cắt ngắn đều đều (gây thô cứng).
+H. Đủ số từ bằng stakes (lựa chọn, hậu quả, thoại có lực) — không nhồi tính từ / lặp mô tả.
+I. Giọng kể liền mạch như người kể chuyện hay, không như bảng việc sản xuất.
 ${buildHumanJokeAsideBlock(true)}
 ${buildNarrativePsychBlock(true)}`;
 }
@@ -23,36 +24,37 @@ ${buildNarrativePsychBlock(true)}`;
 export function buildNarrativePsychBlock(enabled: boolean): string {
   if (!enabled) return '';
   return `
---- TÂM LÝ KỂ CHUYỆN (NARRATIVE PSYCH — BẮT BUỘC) ---
-Áp dụng NGUYÊN LÝ vào cốt truyện. CẤM chèn slogan SEO/marketing vào kịch bản
-(ví dụ: "Đừng bỏ lỡ", "sai một bước là mất tất cả", "Like Subscribe", template title YouTube).
+--- TÂM LÝ KỂ CHUYỆN (NARRATIVE PSYCH — BẮT BUỘC, DỆT VÀO VĂN) ---
+Áp dụng NGUYÊN LÝ qua tình tiết/hành động/thoại — như truyện hay, không như checklist marketing.
+CẤM chèn slogan SEO (vd. "Đừng bỏ lỡ", "Like Subscribe", template title YouTube).
 
 1) PATTERN INTERRUPT (mở chương + 1–3 câu đầu mỗi cảnh):
-   - Vào ngay xung đột / đe dọa / câu hỏi / hành động nguy hiểm.
-   - CẤM mở bằng thơ phong cảnh (gió-lá-trăng-hoàng hôn) nếu không gắn đe dọa trong cùng 1–2 câu.
+   - Vào xung đột / đe dọa / câu hỏi / hành động — có thể bằng 1 chi tiết lạ hoặc 1 câu thoại lệch.
+   - CẤM mở thơ phong cảnh (gió-lá-trăng-hoàng hôn) nếu không gắn đe dọa trong 1–2 câu.
 
-2) CURIOSITY GAP (trong cốt, không phải title):
-   - Mỗi cảnh để ≥1 mảnh thông tin nhân vật (và người nghe) CHƯA biết.
-   - Manh mối lộ dần; không dump hết bí mật một lần.
+2) CURIOSITY GAP (trong cốt):
+   - Mỗi cảnh ≥1 mảnh thông tin nhân vật (và người đọc) CHƯA biết; lộ dần, không dump bí mật.
 
-3) ZEIGARNIK / OPEN LOOP:
-   - Cuối mỗi cảnh và cuối chương: cắt ở điểm căng (hành động dở, lựa chọn chưa xong, tiếng động, cánh cửa, câu hỏi).
-   - CẤM chốt êm "mọi thứ yên bình / mỉm cười kết thúc" giữa chương trừ khi đó là twist giả.
+3) OPEN LOOP (tự nhiên, không máy):
+   - Cuối cảnh/chương: cắt ở điểm căng (hành động dở, lựa chọn, tiếng động, cánh cửa, câu hỏi).
+   - CẤM chốt êm "mọi thứ yên bình / mỉm cười kết thúc" giữa chương (trừ twist giả).
+   - Open loop phải là hệ quả của cảnh, không cài máy “và rồi một tiếng động…” lặp lại mỗi cảnh.
 
-4) LOSS AVERSION (qua TÌNH HUỐNG):
-   - Có cược thật: mất người / căn cứ / lựa chọn / danh dự / thời gian sống còn.
-   - Sai lầm phải có hệ quả hữu hình — không chỉ "hắn hối hận trong lòng".
+4) LOSS / CƯỢC THẬT:
+   - Có thứ có thể mất (người, chỗ đứng, lựa chọn, danh dự, thời gian…).
+   - Sai lầm → hệ quả hữu hình, không chỉ “hối hận trong lòng”.
 
-5) ESCALATION (nhịp chương):
-   - Discovery → Confrontation → Survival Crisis → Insight (bẻ nhận thức).
-   - Real-time pacing: CẤM time-skip / tóm tắt tuần-tháng.
+5) ESCALATION (nhịp chương, bám Beat + thể loại Setup):
+   - Discovery → Confrontation → Crisis (theo Setup, không ép sinh tồn/mạt thế nếu khác) → Insight.
+   - Real-time: CẤM time-skip / tóm tắt tuần-tháng.
+   - Xen nhịp thở giữa các đỉnh căng — không gào từ đầu đến cuối.
 
-6) SPECIFICITY + HIGH-AROUSAL (có chọn lọc):
-   - Chi tiết đụng tay (máu ấm, lưỡi dao, hơi thở, tiếng bước) thay vì "hắn sợ hãi vô cùng".
-   - Không dồn dập mọi câu đều gào thét — xen im lặng hữu ích / nhịp thở.
+6) SPECIFICITY:
+   - Chi tiết đụng tay / đụng tai thay vì nhãn cảm xúc rỗng ("sợ hãi vô cùng").
+   - 1–2 chi tiết đắt/cảnh; không liệt kê 5 giác quan.
 
-7) BEAT CUỐI CẢNH (giữ người nghe):
-   - ≥1 câu/hành động khiến muốn sang cảnh tiếp — open loop tình huống, không CTA kênh.`;
+7) KÉO SANG CẢNH TIẾP:
+   - ≥1 câu/hành động khiến muốn đọc tiếp — open loop tình huống, không CTA kênh.`;
 }
 
 export type CharacterPromptLite = {
@@ -139,9 +141,10 @@ ${lines.join('\n')}`;
 export function buildAudioReadabilityBlock(): string {
   return `
 --- AUDIO-READABILITY PASS (đọc TTS / YouTube narration) ---
-1. Tách câu dài >22 từ thành 2 câu khi có thể.
-2. Tránh mệnh đề lồng 3 tầng; ưu tiên nhịp thở tự nhiên.
-3. Giữ tên riêng + thông tin cốt lõi; cắt tính từ stack.
-4. Sau dấu chấm/hỏi/cảm, nhịp nghỉ rõ (không dính câu).
-5. Không thêm ghi chú đạo diễn; chỉ nội dung kịch bản thuần.`;
+1. Ưu tiên câu vừa miệng; tách câu >28 từ khi lồng mệnh đề rối — nhưng GIỮ vài câu dài hơn để văn không thô đều.
+2. Tránh mệnh đề lồng 3 tầng; nhịp thở tự nhiên (ngắn–vừa–dài xen kẽ).
+3. Giữ tên riêng + thông tin cốt lõi; cắt tính từ stack / lặp mô tả.
+4. Sau dấu chấm/hỏi/cảm, nghỉ rõ (không dính câu).
+5. Không thêm ghi chú đạo diễn; chỉ nội dung kịch bản thuần.
+6. Giữ subtext + thoại đời; đừng biến thành checklist hành động.`;
 }

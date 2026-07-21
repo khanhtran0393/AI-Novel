@@ -3,6 +3,17 @@
 Trạng thái phần mềm (local, 2026-07-19): **READY**.
 Chặn ship installer production: **Windows Authenticode certificate** (chưa cấu hình trên máy dev / CI secrets).
 
+**Tiêu chuẩn đóng gói (đóng gói trong app):**  
+`resources/commercial/PACKAGING_STANDARD.md` · `PACKAGING_STANDARD.json`
+
+| | |
+|--|--|
+| Tên | **Ai Novel** |
+| Splash | Logo brand — **cấm** spinner ring |
+| Taskbar icon | Logo brand |
+| Ký số | **Không bắt buộc** để cài; khuyến nghị khi ship rộng |
+| Pack ship | `npm run pack:ship` / `pack:unsigned:qa` |
+
 ---
 
 ## A. Đã xong (không cần lặp)
@@ -97,7 +108,9 @@ Khách: Logo → Bản quyền → dán `AINOVEL2.…` → Kích hoạt.
 
 - Không ship `dist-qa-unsigned` cho khách trả phí (unsigned / SmartScreen).
 - Không bake private key / admin / service-role vào installer.
-- Không `release:publish` khi artifact chưa ký + chưa verify SHA/Authenticode.
+- Không `release:publish` / `release:github` production khi artifact chưa ký + chưa verify SHA/Authenticode.
+- Không bật `AINOVEL_UPDATE_ALLOW_UNSIGNED=1` trên bản bán (public.env commercial = 0).
+- Update channel production: GitHub **public** repo `AI-Novel-release-` (source có thể private).
 
 ---
 

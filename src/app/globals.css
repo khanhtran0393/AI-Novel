@@ -284,19 +284,20 @@ body {
     box-shadow: 0 8px 20px rgba(245, 158, 11, 0.3);
   }
   50% {
-    transform: scale(1.18);
+    transform: scale(1.12);
     box-shadow: 0 10px 28px rgba(245, 158, 11, 0.55);
   }
 }
+/* Badge pulse: chỉ opacity — không transform (tránh lệch neo left:100%) */
 @keyframes ainovel-pro-badge-pulse {
   0%,
   100% {
     opacity: 1;
-    transform: scale(1);
+    filter: brightness(1);
   }
   50% {
-    opacity: 0.92;
-    transform: scale(1.08);
+    opacity: 0.88;
+    filter: brightness(1.12);
   }
 }
 .ainovel-logo-pulse {
@@ -306,8 +307,7 @@ body {
 }
 .ainovel-pro-badge-pulse {
   animation: ainovel-pro-badge-pulse 1.35s ease-in-out infinite;
-  transform-origin: center center;
-  will-change: transform;
+  will-change: opacity, filter;
 }
 @media (prefers-reduced-motion: reduce) {
   .ainovel-logo-pulse,

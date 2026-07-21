@@ -1,0 +1,96 @@
+{
+  "schema": 3,
+  "id": "ainovel-packaging-standard",
+  "title": "Ai Novel — Packaging standard",
+  "version": "1.0.1",
+  "updated": "2026-07-21",
+  "brand": {
+    "appName": "Ai Novel",
+    "productName": "Ai Novel",
+    "shortcutName": "Ai Novel",
+    "windowTitle": "Ai Novel",
+    "logoSource": "build/icon-source-logo.jpg",
+    "splashLogo": "electron/splash-logo.jpg",
+    "icons": {
+      "ico": "build/icon.ico",
+      "png": "build/icon.png"
+    },
+    "splash": {
+      "showLogo": true,
+      "forbidSpinnerRing": true,
+      "caption": "Ai Novel"
+    },
+    "taskbarIcon": "same_as_logo"
+  },
+  "signing": {
+    "requiredForInstall": false,
+    "unsignedInstallAllowed": true,
+    "authenticodePreferred": true
+  },
+  "update": {
+    "provider": "github",
+    "owner": "khanhtran0393",
+    "repo": "AI-Novel-release-",
+    "policy": "download_then_install_next_launch",
+    "allowUnsigned": true,
+    "forbidGhTokenInPackage": true
+  },
+  "security": {
+    "entitlementModePackaged": "enforce",
+    "allowLocalTrial": false,
+    "forbidOwnerUnlimited": true,
+    "forbidModeOpen": true,
+    "forbidPrivateKeysInPackage": true,
+    "credentialStorage": "electron_safeStorage_dpapi",
+    "shellReHardenOnPack": true,
+    "electronFuses": true,
+    "crownIpSeal": true,
+    "productionBrowserSourceMaps": false,
+    "auditPackageRequired": true
+  },
+  "antiCrack": {
+    "required": true,
+    "docs": [
+      "docs/DEFENSE_LAYERS.md",
+      "docs/LABYRINTH.md",
+      "docs/LICENSE_ONE_PATH.md"
+    ],
+    "layers": [
+      "feature_matrix_L0",
+      "ed25519_L1",
+      "api_hard_gate_L2",
+      "packaged_enforce_L3",
+      "electron_sandbox_L4",
+      "hwid_L5",
+      "heartbeat_L6",
+      "audit_L7",
+      "re_friction_L8",
+      "labyrinth_mirage_wrongpath_L9"
+    ],
+    "smokes": [
+      "npm run smoke:anti-tamper",
+      "npm run smoke:labyrinth",
+      "npm run smoke:re-harden",
+      "npm run smoke:crown-ip"
+    ],
+    "noUncrackablePromise": true
+  },
+  "forbidden": [
+    "splash_spinner_ring_instead_of_logo",
+    "taskbar_icon_not_brand_logo",
+    "productName_not_Ai_Novel",
+    "private_key_in_package",
+    "service_role_in_package",
+    "admin_key_in_package",
+    "GH_TOKEN_in_package",
+    "owner_unlimited_in_package",
+    "entitlement_mode_open_in_package",
+    "strip_labyrinth_or_antitamper_on_pack"
+  ],
+  "commands": {
+    "brandIcons": "npm run brand:icons",
+    "packShip": "npm run pack:ship",
+    "audit": "npm run audit:package -- dist-qa-unsigned/win-unpacked",
+    "publishGithub": "npm run release:github"
+  }
+}

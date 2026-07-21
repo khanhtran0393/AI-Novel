@@ -17,8 +17,10 @@ import {
   RefreshCw,
   ExternalLink,
   Download,
+  Trash2,
 } from 'lucide-react';
 import { toast } from '@/lib/toastBus';
+import { useProjectActions } from '../../hooks/useProjectActions';
 import {
   NVENC_DRIVER_LINKS,
   openNvencDriverUrl,
@@ -97,6 +99,7 @@ const PROVIDER_LINKS: Record<
 
 export default function SettingsPanel() {
   const store = useNovelStore();
+  const { handleFactoryResetAll } = useProjectActions('');
 
   const [open, setOpen] = useState(false);
   const [newApiInput, setNewApiInput] = useState('');
@@ -960,6 +963,27 @@ export default function SettingsPanel() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Factory wipe — app mới tinh, giữ Free/Trial/Pro */}
+            <div className="pt-4 mt-4 border-t border-zinc-800 space-y-2">
+              <h4 className="text-[10px] font-bold text-red-400/90 uppercase flex items-center gap-1.5 tracking-wider">
+                <Trash2 className="h-3 w-3" />
+                Dữ liệu ứng dụng
+              </h4>
+              <p className="text-[9px] text-zinc-500 leading-relaxed">
+                Xóa toàn bộ dự án, API key, CUDA/NVENC/GPU, TTS, media và cấu hình về
+                mặc định. Gói Free / Trial / Pro hiện tại được giữ nguyên.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleFactoryResetAll()}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/30 py-2.5 text-[10px] font-bold uppercase tracking-widest text-red-400/90 transition-colors hover:bg-red-950/50 hover:text-red-300 cursor-pointer"
+                title="Xóa toàn bộ dữ liệu & cấu hình. Giữ gói Free/Trial/Pro."
+              >
+                <Trash2 className="h-3 w-3" />
+                Xóa tất cả — App mới tinh
+              </button>
             </div>
           </div>
         </>

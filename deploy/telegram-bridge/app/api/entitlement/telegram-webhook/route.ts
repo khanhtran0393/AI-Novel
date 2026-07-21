@@ -69,10 +69,18 @@ export async function GET(req: Request) {
     return NextResponse.json(result);
   }
 
+  const hasSupabase = Boolean(
+    (
+      process.env.SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      ''
+    ).trim() && (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
+  );
   return NextResponse.json({
     ok: true,
     service: 'ainovel-telegram-bridge',
     configured: telegramConfigured(),
-    hint: 'POST = Telegram updates; GET ?setup=true&url=… = setWebhook',
+    supabaseLedger: hasSupabase,
+    hint: 'POST = Telegram updates; GET ?setup=true&url=… = setWebhook. Cấp Key must write Supabase licenses.',
   });
 }

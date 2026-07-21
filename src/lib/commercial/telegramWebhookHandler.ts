@@ -178,7 +178,7 @@ export async function handleCallbackQuery(cq: TgCallbackQuery): Promise<void> {
     if (!result.dbOk) {
       await sendTelegramMessage(
         `⚠️ Key đã tạo nhưng Supabase LỖI (HWID ${parsed.hwid.toUpperCase()}):\n${result.dbError || 'unknown'}\n` +
-          'Khách dán key vẫn có thể self-heal khi kích hoạt; nên kiểm tra SERVICE_ROLE / bảng licenses.',
+          'Supabase ledger bắt buộc: nếu không ghi được licenses thì khách dán key sẽ Free (không self-heal). Kiểm tra SERVICE_ROLE.',
       );
     }
     await answerTelegramCallback(

@@ -12,8 +12,8 @@ const INITIAL_SETUP: SetupData = {
   ngon_ngu: 'Tiếng Việt',
 };
 
-/** Production rules only — world laws come from Setup + user lore (B10: no mat-the world seed). */
-const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến (khung sản xuất)
+/** Production + prose craft frame — world laws come from Setup + user lore (B10: no mat-the world seed). */
+const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến (khung kể chuyện)
 
 ## 1. Quy luật thế giới
 - (Chưa nạp) Điền theo Setup Chủ đề + Phong cách, hoặc dán lore khi Kế thừa di sản / Sinh dàn ý.
@@ -23,10 +23,11 @@ const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến (khung sản xuất)
 - Real-time pacing: cấm time-skip tóm tắt tuần/tháng.
 - Nhân vật PHẢI có khuyết điểm (điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế xã hội/tâm lý — không bắt buộc "khuyết tật mạt thế").
 - Tên nhân vật: Hán Việt sắc sảo, tránh tên mòn (Lâm Khuyết, …).
+- Văn xuôi có nhịp thở: xen câu ngắn/vừa/dài; subtext trong thoại; 1–2 chi tiết đắt/cảnh — không tường thuật checklist.
 
-## 3. Ghi chú sản xuất
-- Kịch bản chia tối thiểu 3 phân cảnh dạng [CẢNH X: NỘI/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN].
-- Ưu tiên hành động + thoại; miêu tả giác quan có chọn lọc.`;
+## 3. Ghi chú cấu trúc
+- Chia tối thiểu 3 phân cảnh dạng [CẢNH X: NỘI/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN].
+- Xương sống = hành động + thoại + stakes; miêu tả giác quan chọn lọc (không stack 5 giác quan).`;
 
 export const INITIAL_STATE: NovelState = {
   /** Workspace by default — Setup opens only via Sidebar (avoids stuck modal on boot). */
@@ -271,5 +272,66 @@ export function cloneFreshProjectState(): NovelState {
     ttsConfig: { ...INITIAL_STATE.ttsConfig },
     activeChannelId: channelsBoot.activeChannelId,
     channels: channelsBoot.channels,
+  };
+}
+
+/**
+ * Factory snapshot for **Xóa tất cả / App mới tinh**.
+ * Full INITIAL defaults (canvas + keys + GPU/NVENC flag + TTS + media paths + channels).
+ * Entitlement (plan) is re-applied by `factoryResetKeepPlan()` — never wipe Free/Trial/Pro.
+ */
+export function cloneFactoryAppState(): NovelState {
+  const channelsBoot = defaultChannelsBootstrap();
+  return {
+    ...INITIAL_STATE,
+    setup: { ...INITIAL_SETUP },
+    danh_sach_chuong: INITIAL_STATE.danh_sach_chuong.map((c) => ({ ...c })),
+    nhan_vat: [],
+    apiKeys: [],
+    openaiApiKeys: [],
+    grokApiKeys: [],
+    claudeApiKeys: [],
+    lumaApiKeys: [],
+    runwayApiKeys: [],
+    falaiApiKeys: [],
+    googleStudioCookies: [],
+    tiktokSessionIds: [],
+    generatedAudioPaths: {},
+    generatedPrompts: {},
+    generatedPromptsAnalysis: {},
+    generatedImages: {},
+    generatedImageVariants: {},
+    generatedVideos: {},
+    generatedAssetDna: {},
+    projectUrls: {},
+    nhan_vat_prompts: {},
+    tri_nho_ngan_han: [],
+    humanEditFlags: {},
+    chapterHooks: {},
+    editorReviews: {},
+    ttsConfig: { ...INITIAL_STATE.ttsConfig },
+    youtubeSafe: { ...INITIAL_STATE.youtubeSafe },
+    userRules: {
+      forbidden_words: INITIAL_STATE.userRules.forbidden_words,
+      fatigue_words: INITIAL_STATE.userRules.fatigue_words,
+    },
+    voiceCast: { ...EMPTY_VOICE_CAST },
+    da_dien_ra_entities: {
+      dia_diem: [],
+      vat_pham: [],
+      motifs: [],
+    },
+    world_state: {
+      inventory: [],
+      discovered_clues: [],
+      current_location: '',
+    },
+    memoryPipelineStatus: { status: 'idle' },
+    activeChannelId: channelsBoot.activeChannelId,
+    channels: channelsBoot.channels,
+    // Defaults: GPU/CUDA/NVENC off until user re-enables in Settings
+    useGpuAcceleration: false,
+    projectResetEpoch: 0,
+    isHydrated: true,
   };
 }

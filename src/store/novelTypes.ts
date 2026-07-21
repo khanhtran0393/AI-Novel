@@ -324,6 +324,11 @@ export interface NovelActions {
   setTikTokSessionIds: (ids: string[]) => void;
   setHydrated: (hydrated: boolean) => void;
   resetStore: () => void;
+  /**
+   * Factory wipe: canvas + keys + GPU/NVENC + TTS/media settings → INITIAL.
+   * Keeps commercial plan only (is_pro / is_trial / is_vip / credits).
+   */
+  factoryResetKeepPlan: () => void;
 
   // Actions cho luu tr? Google Drive & Assets
   updateGoogleDrivePath: (path: string) => void;

@@ -31,7 +31,9 @@ const nextConfig: NextConfig = {
     "puppeteer",
     "puppeteer-core",
     "puppeteer-extra",
-    "puppeteer-extra-plugin-stealth"
+    "puppeteer-extra-plugin-stealth",
+    // Never bundle npm `electron` into Next server (path.txt / install crash)
+    "electron",
   ],
   // Electron loads http://127.0.0.1:3000 — allow HMR/dev assets (không block click/hot reload)
   allowedDevOrigins: ["127.0.0.1", "localhost"],

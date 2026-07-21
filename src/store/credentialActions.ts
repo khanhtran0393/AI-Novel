@@ -1,4 +1,8 @@
-import { cloneFreshProjectState, PROJECT_RESET_POINT } from './novelInitialState';
+import {
+  cloneFactoryAppState,
+  cloneFreshProjectState,
+  PROJECT_RESET_POINT,
+} from './novelInitialState';
 import type { NovelActions } from './novelTypes';
 import type { StoreGet, StoreSet } from './storeSet';
 
@@ -10,7 +14,7 @@ type CredentialActions = Pick<
   | 'setRunwayApiKey' | 'setRunwayApiKeys' | 'setFalaiApiKey' | 'setFalaiApiKeys'
   | 'prioritizeApiKey' | 'setGoogleStudioCookie' | 'addGoogleCookie' | 'removeGoogleCookie'
   | 'addTikTokSession' | 'removeTikTokSession' | 'setTikTokSessionIds'
-  | 'setHydrated' | 'resetStore'
+  | 'setHydrated' | 'resetStore' | 'factoryResetKeepPlan'
   | 'updateGoogleDrivePath' | 'setGoogleDriveConnected' | 'setGoogleLoggedIn' | 'setGoogleUser'
   | 'setVipStatus' | 'setCredits' | 'deductCredits' | 'setUseGpuAcceleration'
 >;
@@ -197,6 +201,27 @@ export function createCredentialActions(
             generatedImageVariants: {},
             generatedVideos: {},
             generatedAssetDna: {},
+          };
+        }),
+
+      /**
+       * **Xóa tất cả / App mới tinh** — wipe canvas + keys + GPU/NVENC + TTS/media/settings.
+       * Giữ nguyên gói Free / Trial / Pro (`is_*` + credits). Token entitlement không đụng trong action này.
+       */
+      factoryResetKeepPlan: () =>
+        set((state) => {
+          const fresh = cloneFactoryAppState();
+          return {
+            ...fresh,
+            isHydrated: true,
+            projectResetEpoch: Date.now(),
+            is_vip: !!state.is_vip,
+            is_pro: !!state.is_pro,
+            is_trial: !!state.is_trial,
+            credits:
+              typeof state.credits === 'number' && Number.isFinite(state.credits)
+                ? Math.max(0, state.credits)
+                : fresh.credits,
           };
         }),
 

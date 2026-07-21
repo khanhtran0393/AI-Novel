@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Novel — Đang khởi động</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-app-region: drag;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .stage {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: transparent;
+    }
+    /* Full brand mark — no circular frame / 3D orbit; logo sits on real desktop */
+    .logo {
+      width: 200px;
+      height: 200px;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      background: transparent;
+      animation: soft-float 2.8s ease-in-out infinite;
+      filter: drop-shadow(0 12px 28px rgba(245, 158, 11, 0.45));
+    }
+    .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 50%;
+      background: transparent;
+      -webkit-user-drag: none;
+      pointer-events: none;
+    }
+    .caption {
+      margin: 0;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #fafafa;
+      background: rgba(9, 9, 11, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+    }
+    .dots::after {
+      content: "";
+      animation: dots 1.4s steps(4, end) infinite;
+    }
+    @keyframes soft-float {
+      0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+      50% { transform: translateY(-8px) scale(1.02); opacity: 0.96; }
+    }
+    @keyframes dots {
+      0% { content: ""; }
+      25% { content: "."; }
+      50% { content: ".."; }
+      75% { content: "..."; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .logo { animation: none !important; }
+      .dots::after { animation: none !important; content: "…"; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" aria-busy="true" aria-live="polite">
+    <div class="logo" aria-hidden="true">
+      <img src="splash-logo.jpg" alt="" draggable="false" />
+    </div>
+    <p class="caption">Đang khởi động<span class="dots" aria-hidden="true"></span></p>
+  </div>
+</body>
+</html>

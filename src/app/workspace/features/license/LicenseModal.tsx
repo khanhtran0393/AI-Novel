@@ -29,11 +29,45 @@ import {
 } from '@/lib/commercial/pricingPlans';
 
 const ENTITLEMENT_LS_KEY = 'ainovel.entitlementToken';
+/** Khớp server `telegramNotify.COOLDOWN_MS` — 1 báo / máy / 2 phút */
+const PAID_NOTIFY_COOLDOWN_MS = 120_000;
+const PAID_NOTIFY_LS_KEY = 'ainovel.paidNotifyAt';
 
 type Props = {
   open: boolean;
   onClose: () => void;
 };
+
+function readLastPaidNotifyAt(): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw =
+      window.sessionStorage.getItem(PAID_NOTIFY_LS_KEY) ||
+      window.localStorage.getItem(PAID_NOTIFY_LS_KEY) ||
+      '';
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeLastPaidNotifyAt(at: number) {
+  try {
+    const v = String(at);
+    window.sessionStorage.setItem(PAID_NOTIFY_LS_KEY, v);
+    window.localStorage.setItem(PAID_NOTIFY_LS_KEY, v);
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatCooldownLabel(remainSec: number): string {
+  const m = Math.floor(remainSec / 60);
+  const s = remainSec % 60;
+  if (m > 0) return `${m}:${String(s).padStart(2, '0')}`;
+  return `${s}s`;
+}
 
 function readStoredToken(): string {
   if (typeof window === 'undefined') return '';
@@ -78,11 +112,30 @@ export default function LicenseModal({ open, onClose }: Props) {
   const [qrFullscreen, setQrFullscreen] = useState(false);
   const [tier, setTier] = useState('free');
   const [trialDaysLabel, setTrialDaysLabel] = useState(3);
+  /** Timestamp last successful (or server-cooldown) payment notify — anti-spam */
+  const [lastPaidNotifyAt, setLastPaidNotifyAt] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [cloudNote, setCloudNote] = useState('');
 
   useEffect(() => {
     setMounted(true);
+    setLastPaidNotifyAt(readLastPaidNotifyAt());
   }, []);
+
+  const paidNotifyRemainSec = useMemo(() => {
+    if (!lastPaidNotifyAt) return 0;
+    const left = lastPaidNotifyAt + PAID_NOTIFY_COOLDOWN_MS - nowTick;
+    return left > 0 ? Math.ceil(left / 1000) : 0;
+  }, [lastPaidNotifyAt, nowTick]);
+
+  const paidNotifyCooling = paidNotifyRemainSec > 0;
+
+  // Tick 1s while cooling so button label/countdown stays live
+  useEffect(() => {
+    if (!open || !paidNotifyCooling) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [open, paidNotifyCooling]);
 
   const selected = useMemo(
     () => PAID_PLANS.find((p) => p.id === planId) || PAID_PLANS[2],
@@ -455,9 +508,26 @@ export default function LicenseModal({ open, onClose }: Props) {
     }
   };
 
+  const markPaidNotifyCooldown = useCallback((at = Date.now()) => {
+    setLastPaidNotifyAt(at);
+    writeLastPaidNotifyAt(at);
+    setNowTick(at);
+  }, []);
+
   const handlePaidNotify = async () => {
     if (!hwid) {
       toast.warn('Thanh toán', 'Chưa có mã thiết bị — đợi tải HWID rồi thử lại.');
+      return;
+    }
+    const remainMs = lastPaidNotifyAt
+      ? lastPaidNotifyAt + PAID_NOTIFY_COOLDOWN_MS - Date.now()
+      : 0;
+    if (remainMs > 0) {
+      const sec = Math.ceil(remainMs / 1000);
+      toast.warn(
+        'Chống spam',
+        `Bạn vừa báo Admin rồi. Thử lại sau ${formatCooldownLabel(sec)}.`,
+      );
       return;
     }
     setBusy(true);
@@ -471,10 +541,22 @@ export default function LicenseModal({ open, onClose }: Props) {
         ok?: boolean;
         error?: string;
         message?: string;
+        code?: string;
         zaloUrl?: string;
         zalo?: string;
       };
+      const isCooldown =
+        res.status === 429 || data.code === 'QUOTA';
+
       if (!res.ok || !data.ok) {
+        if (isCooldown) {
+          // Server still cooling — sync client lock, do NOT open Zalo again
+          markPaidNotifyCooldown();
+          throw new Error(
+            data.error ||
+              `Bạn vừa báo rồi. Thử lại sau ~${Math.ceil(PAID_NOTIFY_COOLDOWN_MS / 1000)}s (tránh spam).`,
+          );
+        }
         // Vẫn mở Zalo để user gửi bill khi Telegram chưa cấu hình / lỗi mạng
         const zaloUrl =
           data.zaloUrl || `https://zalo.me/${SELLER_BANK.zalo}`;
@@ -488,6 +570,8 @@ export default function LicenseModal({ open, onClose }: Props) {
             `Không gửi được Telegram. Mở Zalo ${SELLER_BANK.zaloDisplay} gửi bill + HWID.`,
         );
       }
+      // Success → start 2 phút cooldown (khớp server)
+      markPaidNotifyCooldown();
       toast.success(
         'Đã báo Admin',
         data.message ||
@@ -762,12 +846,20 @@ export default function LicenseModal({ open, onClose }: Props) {
               </button>
               <button
                 type="button"
-                disabled={busy || !hwid}
+                disabled={busy || !hwid || paidNotifyCooling}
                 onClick={() => void handlePaidNotify()}
-                className="w-full rounded-lg border border-emerald-600/50 bg-emerald-600/90 py-2 text-[11px] font-black uppercase tracking-wide text-black shadow-md shadow-emerald-900/30 hover:bg-emerald-500 cursor-pointer disabled:opacity-50"
-                title="Báo Admin qua Telegram + mở Zalo gửi bill"
+                className="w-full rounded-lg border border-emerald-600/50 bg-emerald-600/90 py-2 text-[11px] font-black uppercase tracking-wide text-black shadow-md shadow-emerald-900/30 hover:bg-emerald-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  paidNotifyCooling
+                    ? `Chống spam — thử lại sau ${formatCooldownLabel(paidNotifyRemainSec)}`
+                    : 'Báo Admin qua Telegram + mở Zalo gửi bill'
+                }
               >
-                ✓ Đã thanh toán — báo Admin
+                {busy
+                  ? 'Đang báo Admin…'
+                  : paidNotifyCooling
+                    ? `Đã báo — đợi ${formatCooldownLabel(paidNotifyRemainSec)}`
+                    : '✓ Đã thanh toán — báo Admin'}
               </button>
               <p className="text-[9px] text-zinc-500 leading-relaxed">
                 Báo Admin: gói + HWID + nội dung CK lên Telegram (nút{' '}
@@ -776,6 +868,14 @@ export default function LicenseModal({ open, onClose }: Props) {
                 ). Đồng thời mở Zalo{' '}
                 <span className="text-sky-400 font-bold">{SELLER_BANK.zaloDisplay}</span>{' '}
                 để gửi ảnh bill.
+                {paidNotifyCooling ? (
+                  <>
+                    {' '}
+                    <span className="text-amber-400/90 font-semibold">
+                      Nút khóa ~2 phút sau mỗi lần báo (tránh spam).
+                    </span>
+                  </>
+                ) : null}
               </p>
             </div>
           </div>

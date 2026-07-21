@@ -149,22 +149,21 @@ export function buildHumanJokeAsideBlock(enabled: boolean): string {
     .map((s) => `   · (${s})`)
     .join('\n');
   return `
---- CÂU ĐÙA “NGƯỜI NÓI VỚI NGƯỜI” (BẮT BUỘC, TÍNH NGƯỜI) ---
-I. Mỗi chương / Hook PHẢI có khoảng 1–3 câu đùa ngắn dạng NGOẶC ĐƠN (...), giọng bạn bè
-   xen ngang khi đang kể — không phải lời nhân vật, không phải note đạo diễn.
-II. Chèn GIỮA nhịp thoại/kể (sau dấu chấm, trước câu thoại tiếp), ví dụ:
+--- CÂU ĐÙA “NGƯỜI NÓI VỚI NGƯỜI” (TÍNH NGƯỜI — MƯỢT, KHÔNG GƯỢNG) ---
+I. Mỗi chương: đúng 1–2 câu đùa ngắn dạng NGOẶC ĐƠN (...), giọng bạn bè xen ngang khi đang kể
+   — không phải lời nhân vật, không phải note đạo diễn. Ưu tiên 1 câu đặt đúng nhịp hơn nhồi 3 câu.
+II. Chèn GIỮA nhịp (sau dấu chấm / hết thoại, trước câu tiếp) — chỗ “thở” tự nhiên, không chen giữa
+   cao trào sinh tử. Ví dụ:
    "Không. Không phải. Mình... mình hơi mệt." (Đề nghị mọi người đi vệ sinh nhớ chùi đít) "Mệt hả?..."
-III. GIỌNG HỘI BẠN ĐỜI — PHẢI VUI (BẮT BUỘC):
-   - Như đứa bạn ngồi cạnh xen ngang: bẩn nhẹ, absurde, “đề nghị” vớ vẩn, troll phòng — nghe người thật.
-   - CẤM mùi AI / setup–punchline công thức: lương về, crush nhắn ok, gym no pain, Google cách giàu,
-     giảm giá 50%, ăn kiêng–bụng nói, “tiết kiệm năng lượng cho ngủ”…
-   - CẤM nhắc nhạt không hài: uống nước, ngồi thẳng, đổ rác, sạc pin, muỗi bay, quạt kêu…
-IV. BÂNG QUƠ VỚI CỐT TRUYỆN (vẫn bắt buộc):
-   - KHÔNG dính nội dung, chủ đề, nhân vật, twist, bối cảnh kịch bản.
-   - CẤM meta plot: "cảnh này căng", "đoán twist", "nhân vật này…", "đoạn vừa rồi…".
-V. CẤM nhầm với SFX/note đạo diễn: (Cười), (thở dài), [âm thanh gió], (nhạc nền)...
-VI. Giọng: mày–tao / đề nghị / xin lỗi vớ vẩn — thả 1 câu rồi im, không giảng.
-VII. Mỗi câu ≤ 1 dòng; không phá beat bằng cả đoạn hài dài.
-VIII. Gợi ý phong cách (tự viết biến thể cùng giọng, đừng copy máy móc cả chương):
+III. GIỌNG HỘI BẠN ĐỜI — vui, đời:
+   - Bẩn nhẹ / absurde / “đề nghị” vớ vẩn — nghe người thật.
+   - CẤM mùi AI / setup–punchline công thức: lương về, crush nhắn ok, gym no pain, Google cách giàu…
+   - CẤM nhắc nhạt: uống nước, ngồi thẳng, đổ rác, sạc pin, muỗi bay, quạt kêu…
+IV. BÂNG QUƠ VỚI CỐT:
+   - KHÔNG dính chủ đề / nhân vật / twist / bối cảnh.
+   - CẤM meta plot: "cảnh này căng", "đoán twist", "nhân vật này…".
+V. CẤM SFX/note đạo diễn: (Cười), (thở dài), [âm thanh gió], (nhạc nền)...
+VI. Thả 1 câu rồi im — không giảng, không lặp joke, không phá open loop cuối cảnh.
+VII. ≤ 1 dòng/câu; tự viết biến thể cùng giọng (đừng copy máy cả chương):
 ${samples}`;
 }

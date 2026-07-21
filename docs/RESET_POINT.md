@@ -14,6 +14,7 @@
 | Persist allow | `src/store/persistStorage.ts` → `allowIntentionalStoreReset()` |
 | UI trigger | `src/app/workspace/hooks/useProjectActions.ts` → `handleResetProject` |
 | Nút | Sidebar → **Làm Mới Dự Án** |
+| Factory wipe | `factoryResetKeepPlan()` + `factoryResetClient.ts` → **Cài đặt (Settings)** → **Xóa tất cả** |
 
 ---
 
@@ -45,6 +46,23 @@
 - `youtubeSafe` flags, `userRules` (từ ngữ cấm/mệt)
 - **Entitlement** (`is_pro` / `is_trial` / credits; `is_vip` chỉ legacy) + token localStorage
 - Multi-channel registry cấu hình (không canvas truyện)
+
+---
+
+## Nút **Xóa tất cả** (App mới tinh)
+
+Khác **Làm Mới Dự Án**: wipe **cả settings + API keys + GPU/NVENC**, không chỉ canvas.
+
+| | **Làm Mới Dự Án** | **Xóa tất cả** |
+|--|-------------------|----------------|
+| Canvas truyện | Xóa | Xóa |
+| API keys / cookies | **Giữ** | **Xóa** |
+| GPU / CUDA / NVENC (`useGpuAcceleration`) | **Giữ** | **Xóa** (về off) |
+| TTS / media / path / channels | **Giữ** | **Xóa** (INITIAL) |
+| Gói Free / Trial / Pro | **Giữ** | **Giữ** |
+| Token `ainovel.entitlementToken` | **Giữ** | **Giữ** |
+
+Code: `factoryResetKeepPlan` · `clearCredentialVault` · `clearAppLocalExtrasKeepEntitlement` · `allowIntentionalStoreReset` + durable commit.
 
 ---
 

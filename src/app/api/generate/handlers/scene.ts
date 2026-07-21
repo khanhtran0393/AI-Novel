@@ -88,10 +88,11 @@ export async function handleScene(
   ${next_scene_content || 'Không có cảnh tiếp theo.'}
   
   NHIỆM VỤ:
-  Bạn hãy mở rộng và viết sâu hơn nội dung của "CẢNH HIỆN TẠI" thêm khoảng 50-100% độ dài so với bản gốc. 
-  Hãy bổ sung chi tiết: miêu tả biểu cảm nhân vật, suy nghĩ nội tâm, không gian xung quanh, bối cảnh thời tiết và vật dụng/đạo cụ đặc trưng theo thể loại Setup (không ép "sinh tồn mạt thế" nếu Setup khác).
-  Đặc biệt quan trọng: NỘI DUNG MỞ RỘNG PHẢI KẾT NỐI MƯỢT MÀ, HỢP LÝ VỚI CẢNH TRƯỚC VÀ CẢNH TIẾP THEO (nếu có). Tránh thay đổi mạch truyện hay tạo ra tình tiết vô lý lệch pha với cảnh kế tiếp.
-  Chỉ trả về nội dung thuần túy của cảnh hiện tại đã được mở rộng. TUYỆT ĐỐI KHÔNG trả về Tên Cảnh (như [CẢNH X...]) hay bất kỳ định dạng nào khác. Không kèm cảnh trước hay cảnh sau vào kết quả.`;
+  Mở rộng "CẢNH HIỆN TẠI" thêm khoảng 50–100% độ dài so với bản gốc — văn mượt, có nhịp thở, chống thô cứng.
+  Bổ sung chọn lọc: 1–2 chi tiết không gian/đạo cụ đắt (theo Setup, không ép mạt thế), biểu cảm/cử chỉ, 1–3 câu nội tâm lệch tính cách, thoại đời có subtext.
+  Xen câu ngắn và câu vừa/dài; CẤM checklist hành động, CẤM stack 5 giác quan, CẤM giải thích cảm xúc bằng lời kể rỗng.
+  NỐI MƯỢT với cảnh trước và cảnh sau (nếu có) — không lệch pha tình tiết.
+  Chỉ trả về nội dung thuần của cảnh hiện tại đã mở rộng. CẤM tag [CẢNH X...], CẤM markdown, CẤM kèm cảnh kề.`;
   
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
     return NextResponse.json({ expanded_content: aiResponse, usedApiKey: getLastWorkingApiKey() });
@@ -166,7 +167,7 @@ export async function handleScene(
   NHIỆM VỤ — VIẾT LẠI NHẸ (LIGHT REWRITE), KHÔNG PHẢI MỞ RỘNG HAY VIẾT LẠI MẠNH:
   
   1. GIỮ NGUYÊN cốt truyện, sự kiện, hành động nhân vật, thông tin quan trọng và thứ tự diễn biến của CẢNH HIỆN TẠI. Không thêm tình tiết mới lớn, không xóa mốc quan trọng.
-  2. Chỉ trau chuốt câu chữ: mượt hơn, tự nhiên hơn, đa giác quan vừa phải — KHÔNG kéo dài quá ~15% số từ so với bản gốc, cũng không rút ngắn quá ~15%.
+  2. Trau chuốt câu chữ: mượt hơn, subtext, nhịp câu xen ngắn–vừa–dài, thoại đời — chống thô cứng/checklist. Chi tiết giác quan chọn lọc (1–2 đắt). KHÔNG đổi độ dài quá ~15% so với bản gốc.
   3. ĐIỀU HÒA & NỐI TIẾP:
      - Câu mở cảnh phải liền mạch với CẢNH TRƯỚC (không nhảy cóc, không lặp lại nguyên khối cuối cảnh trước).
      - Câu kết cảnh phải mở nhịp hợp lý sang CẢNH TIẾP THEO (không mâu thuẫn, không spoil lệch, không cắt đột ngột).

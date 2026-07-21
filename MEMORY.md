@@ -1,5 +1,37 @@
 # Project memory (AI Novel)
 
+## Brand + packaging standard (2026-07-21)
+
+- **Name:** Ai Novel · **Logo:** gold plane mark (`build/icon-source-logo.jpg`)
+- Splash: logo only (no spinner) · Taskbar icon = logo · `npm run brand:icons`
+- **Unsigned install allowed** (`forceCodeSigning: false`, `ALLOW_UNSIGNED=1`)
+- Standard files: `resources/commercial/PACKAGING_STANDARD.{json,md}`
+- Pack: `npm run pack:ship` / `pack:unsigned:qa` (icons auto-regen)
+
+## Updater GitHub Releases (2026-07-21)
+
+- Public release-only repo: `khanhtran0393/AI-Novel-release-` (source stays private)
+- `AINOVEL_UPDATE_PROVIDER=github` · owner/repo in `public.env` + `electron/updater.js`
+- README pushed to release repo; `npm run release:github` needs `GH_TOKEN`
+- Manual: attach `AI-Novel-*.exe` + `latest.yml` to Release tag `vX.Y.Z`
+- Policy: download stage → install next launch; `AINOVEL_UPDATE_ALLOW_UNSIGNED=1`
+- Docs: `docs/APP_UPDATE.md` · `release-repo/README.md`
+
+## Xóa tất cả / factory reset (2026-07-21)
+
+- Settings GUI **Xóa tất cả** → `factoryResetKeepPlan` + vault clear + extras LS wipe
+- Wipes: canvas, keys, GPU/NVENC, TTS, media paths, channels → INITIAL
+- **Keeps:** Free/Trial/Pro (`is_*`, credits) + `ainovel.entitlementToken`
+- Docs: `docs/RESET_POINT.md` (section Xóa tất cả)
+
+## Supabase ledger sole truth (2026-07-21)
+
+- **Rule:** `licenses` active by HWID = Pro/Trial; **no active row** (delete / revoked / expired / never issued) = **Free** (ban or expired).
+- **Removed:** status/verify self-heal INSERT from offline `AINOVEL2` token; `promoteHwidLicenseToPaidPro` **never INSERT**.
+- **Activate:** only bind `token_hash` onto existing active row (or redeem pre-issued code). Missing row → 403.
+- **Status:** pure read `resolveLicenseByHwid`; `clearLocalToken` when no cloud grant; cloud error fail-closed Free.
+- **Files:** `commercial/status`, `licenseBridge.verifyLicenseCloud`, `entitlement/activate`, `LICENSE_ONE_PATH.md`, `COMMERCIAL.md`.
+
 ## Labyrinth + expanded bypass probe (2026-07-20)
 
 - **Bypass probe:** `labyrinth/bypassProbe.ts` — multi canary, matrix free≠video, NODE inject, license host, clock, decoy, packaged policy
@@ -132,6 +164,13 @@
 - **Telegram bridge** webhook live; desktop activates offline Ed25519 (server HWID ≠ client — by design)
 - **Security:** credentialVault DPAPI, public.env no secrets, asar+signing gates, electron security smoke PASS
 - **Ops remaining for full sell:** code-sign cert on build machine, white-machine install once, optional update artifact on feed
+
+## Telegram bridge ledger fix (2026-07-21)
+
+- **Bug:** bridge chỉ ký `AINOVEL2…`, **không** ghi `licenses` → app One-Path reject: «không có license active trên Supabase».
+- **Fix:** `issueAndPersist` + PostgREST insert/update; deploy env `SUPABASE_URL` + `SERVICE_ROLE`; message Telegram hiện `📒 Supabase licenses: OK|LỖI`.
+- Live: `supabaseLedger=true` trên `ainovel-telegram-bridge.vercel.app`.
+- **Ops:** key cũ (trước fix) phải **Cấp Key lại** cho HWID; dán đúng 1 dòng `AINOVEL2.…` đúng máy.
 
 ## Telegram Vercel bridge LIVE (2026-07-19)
 
@@ -275,6 +314,8 @@
 - **Face-lock:** `promptInjector.ts` (nguyên văn FlowAgent English system prompt)
 - **Gen Prompt (2026-07-15):** Cấm hardcode genre/style mạt thế trong director/Seedance. Style = Visual DNA/Media Style; genre = Setup `chu_de`+`phong_cach`. B10: không local-fill prompt; thiếu config/AI fail → toast/API error rõ. Timestamp unified `start-end s`. Shot graph chỉ server.
 - **Write engine (2026-07-15):** `storyWriting.requireGenreLabelFromSetup` + `lorebookForPrompt` + `writeEngineRoleLine`. WRITE/REVISE/EVALUATE/EXPAND/REWRITE/OUTLINE/IDEAS bám Setup; không fallback “Luật thế giới mạt thế”. Initial setup `chu_de`/`phong_cach` rỗng — user phải chọn.
+- **Prose anti-stiff (2026-07-21):** Giữ nguyên TỪ CẤM + TỪ SÁO + time-skip/FX cấm. Cải thiện: role “nhà văn/biên kịch kể chuyện”; `buildProseCraftBlock` (nhịp câu, subtext, chi tiết đắt); humanize cho phép xen câu dài; open loop không máy; word-gate bù “chất lượng không nhồi”; `CONTINUE_TAIL_WORDS=1600` + craft nối giọng; joke 1–2 ở nhịp thở; EVALUATE trừ thô cứng; scene expand/rewrite mượt hơn.
+- **Desktop brand icon/splash (2026-07-21):** Taskbar không đổi vì (1) BrowserWindow thiếu `icon`, (2) boot splash là data-URL spinner không load `electron/splash-logo.jpg`, (3) `pack:unsigned:qa` từng `signAndEditExecutable=false` → .exe không nhúng icon. Fix: `setAppUserModelId` + window icon; loadFile `electron/splash.html`; afterPack rcedit `build/icon.ico`; bỏ flag tắt edit exe; NSIS installer icons.
 - **Pass 3 (2026-07-15):** novel-engine `setupGenrePayload`; OUTLINE/PLAN_ARC/COMMIT hard-require Setup; INITIAL_LOREBOOK production-only; NV **khuyết điểm** bắt buộc (không “khuyết tật mạt thế”); seedance duration hard-fail; soft idea/noi_dung fallback removed.
 - **AGENTS.md (2026-07-15):** viết lại toàn bộ theo runtime hiện tại — native engine, B10, Setup genre, khuyết điểm, Gen Prompt pipeline, domain tree, checklist 30s; gỡ nội dung cũ (CapCut→Edge, path hooks sai, mạt thế hardcode).
 - **UI lag (2026-07-15):** full `useNovelStore()` trên YoutubeSafeChecklist / SceneTtsBar / EditorPanel / CharacterProfileForm gây re-render toàn cây; fix selectors/shallow. Persist debounce 450ms cho localStorage+durable (flush on leave). SceneCard memo so sánh regen theo scene.

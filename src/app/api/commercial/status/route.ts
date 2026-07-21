@@ -1,6 +1,8 @@
 /**
  * Public commercial status: mode, trial, feature matrix, pricing.
- * **When Supabase admin configured → plan from licenses table by HWID (source of truth).**
+ * **When Supabase admin configured → licenses table by HWID is sole truth.**
+ * No active row (delete / revoked / expired / never issued) → Free; clear local token.
+ * No self-heal INSERT from offline Ed25519 token.
  */
 import { NextResponse } from 'next/server';
 import {
@@ -25,11 +27,7 @@ import {
   supabaseConfigPublic,
 } from '@/lib/supabase/env';
 import { createServiceSupabase } from '@/lib/supabase/server';
-import {
-  claimsArePaidPro,
-  promoteHwidLicenseToPaidPro,
-  resolveLicenseByHwid,
-} from '@/lib/cloud/licenseBridge';
+import { resolveLicenseByHwid } from '@/lib/cloud/licenseBridge';
 import { getLicenseTrustStatus } from '@/lib/commercial/licenseTrust';
 import { getAntiTamperPublicStatus } from '@/lib/commercial/antiTamper';
 import {
@@ -64,130 +62,35 @@ export async function GET(req: Request) {
   const openMode = pub.mode === 'open';
   const sb = supabaseConfigPublic();
 
-  // ── Supabase = primary authority for UI tier ──
-  // Local Ed25519 token kept as fallback when cloud has no row (Telegram key
-  // issued before DB write, or offline). Explicit revoke still forces Free.
-  // Paid Pro offline token always beats a leftover cloud trial row.
-  const localTokenClaims = claims;
-  const localPaidPro = claimsArePaidPro(localTokenClaims);
+  // ── Supabase = sole authority for UI tier when configured ──
+  // Missing / revoked / expired row ⇒ Free (ban or expired). Never grant from
+  // offline token alone; never INSERT self-heal on status poll.
   if (isSupabaseAdminConfigured() && !ownerUnlimited) {
     try {
       const service = createServiceSupabase();
       const cloud = await resolveLicenseByHwid(service, hwid);
       authority = 'supabase';
       cloudStatus = cloud.status || null;
+
       if (cloud.found && cloud.claims) {
-        // Customer activated paid key while trial row still active → promote
-        if (localPaidPro && localTokenClaims && claimsIsTrial(cloud.claims)) {
-          const promoted = await promoteHwidLicenseToPaidPro({
-            service,
-            token: token || '',
-            hwid,
-            exp: localTokenClaims.exp,
-          });
-          if (promoted.ok) {
-            claims = {
-              ...localTokenClaims,
-              is_pro: true,
-              is_vip: false,
-              is_trial: false,
-              plan: 'pro',
-            };
-            cloudLicenseId = promoted.licenseId || cloud.licenseId || null;
-            cloudRevoked = false;
-            cloudStatus = 'active';
-          } else {
-            // Still show Pro from offline token if promote fails
-            claims = {
-              ...localTokenClaims,
-              is_pro: true,
-              is_vip: false,
-              is_trial: false,
-              plan: 'pro',
-            };
-            authority = 'local';
-            cloudLicenseId = cloud.licenseId || null;
-          }
-        } else if (localPaidPro && localTokenClaims && claimsArePaidPro(cloud.claims)) {
-          claims = cloud.claims;
-          cloudLicenseId = cloud.licenseId || null;
-          cloudRevoked = false;
-        } else if (localPaidPro && localTokenClaims) {
-          // Cloud row exists but not paid pro (legacy) — prefer paid token
-          claims = {
-            ...localTokenClaims,
-            is_pro: true,
-            is_vip: false,
-            is_trial: false,
-            plan: 'pro',
-          };
-          cloudLicenseId = cloud.licenseId || null;
-          authority = 'local';
-        } else {
-          claims = cloud.claims;
-          cloudLicenseId = cloud.licenseId || null;
-          cloudRevoked = false;
-        }
+        claims = cloud.claims;
+        cloudLicenseId = cloud.licenseId || null;
+        cloudRevoked = false;
       } else if (cloud.status === 'revoked') {
-        // Paid offline token can still win only if not revoked for this HWID
-        // Explicit HWID revoke → Free
         claims = null;
         cloudRevoked = true;
-      } else if (
-        localTokenClaims &&
-        (localTokenClaims.is_pro ||
-          localTokenClaims.is_vip ||
-          claimsIsTrial(localTokenClaims))
-      ) {
-        // No active row: honor signed HWID-bound token; self-heal paid Pro
-        if (localPaidPro && token) {
-          const promoted = await promoteHwidLicenseToPaidPro({
-            service,
-            token,
-            hwid,
-            exp: localTokenClaims.exp,
-          });
-          if (promoted.ok) {
-            claims = {
-              ...localTokenClaims,
-              is_pro: true,
-              is_vip: false,
-              is_trial: false,
-              plan: 'pro',
-            };
-            authority = 'supabase';
-            cloudLicenseId = promoted.licenseId || null;
-            cloudStatus = 'active';
-          } else {
-            claims = localTokenClaims;
-            authority = 'local';
-            cloudStatus = cloud.status || 'none';
-          }
-        } else {
-          claims = localTokenClaims;
-          authority = 'local';
-          cloudStatus = cloud.status || 'none';
-        }
       } else {
+        // none | expired | deleted — Free until seller re-issues licenses row
         claims = null;
         cloudRevoked = false;
+        cloudStatus = cloud.status || 'none';
       }
     } catch {
-      // Cloud error: keep local token if still valid (don't wipe Pro offline)
-      if (
-        localTokenClaims &&
-        (localTokenClaims.is_pro ||
-          localTokenClaims.is_vip ||
-          claimsIsTrial(localTokenClaims))
-      ) {
-        claims = localTokenClaims;
-        authority = 'local';
-        cloudStatus = 'error';
-      } else {
-        claims = null;
-        authority = 'supabase';
-        cloudStatus = 'error';
-      }
+      // Fail closed: cannot read ledger → Free (do not trust offline Pro)
+      claims = null;
+      authority = 'supabase';
+      cloudStatus = 'error';
+      cloudRevoked = false;
     }
   } else if (token) {
     authority = 'local';
@@ -222,7 +125,7 @@ export async function GET(req: Request) {
 
   const effectiveTrial = tier === 'trial';
 
-  // tokenValid for UI: when supabase authority, valid = found cloud claims
+  // tokenValid for UI: when supabase authority, valid = active cloud claims only
   const tokenValid =
     authority === 'supabase'
       ? Boolean(claims && (claims.is_pro || claims.is_vip || claimsIsTrial(claims)))
@@ -293,7 +196,7 @@ export async function GET(req: Request) {
       : null,
     tokenPresent: Boolean(token),
     tokenValid,
-    /** True when UI should drop localStorage token (no cloud license) */
+    /** True when UI should drop localStorage token (no active cloud license) */
     clearLocalToken: authority === 'supabase' && !tokenValid,
     cloudRevoked,
     supabase: sb,
@@ -321,11 +224,13 @@ export async function GET(req: Request) {
       licenseAuthority: authority,
     },
     model: {
-      name: 'Supabase licenses (HWID) primary · Ed25519 offline verification',
+      name: 'Supabase licenses (HWID) sole truth · no offline self-heal',
       byok: true,
-      payment: 'Telegram / Zalo → issue → licenses row → app reads HWID plan',
+      payment: 'Telegram / Zalo → issue licenses row → app reads HWID plan only',
       cloud: sb.adminConfigured,
       multiSeat: true,
+      ledgerRule:
+        'No active licenses row = Free (ban / expired / not issued). Token alone cannot grant or re-insert.',
     },
   });
 }

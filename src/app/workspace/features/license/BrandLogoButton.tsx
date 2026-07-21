@@ -1,15 +1,11 @@
 'use client';
 
 /**
- * Brand mark gốc (Sparkles). Free / chưa mua license:
- * hiệu ứng phóng to–thu nhỏ đều đặn + badge "up to PRO".
+ * Brand logo = public/brand/logo.png (user-approved mark).
+ * Free: pulse + badge "up to PRO". Trial/Pro: badge TRIAL|PRO.
  * Click → License modal.
- *
- * Lưu ý: MODE=open vẫn pulse nếu chưa có token/trial (promo Free),
- * dù API Pro đang mở cho dev.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
 import { API } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
@@ -20,12 +16,13 @@ import {
 import { buildClientApiHeaders } from '../../modules/apiClient';
 import LicenseModal from './LicenseModal';
 
+const LOGO_SRC = '/brand/logo.png';
+
 export default function BrandLogoButton() {
   const isPro = useNovelStore(selectIsPro);
   const isVip = useNovelStore(selectIsVip);
   const isTrial = useNovelStore(selectIsTrial);
   const [licenseOpen, setLicenseOpen] = useState(false);
-  /** Promo Free = chưa license trả phí / trial (kể cả dev open) */
   const [showFreePromo, setShowFreePromo] = useState(!isPro && !isVip && !isTrial);
 
   const refreshPromo = useCallback(async () => {
@@ -40,23 +37,19 @@ export default function BrandLogoButton() {
         ownerUnlimited?: boolean;
         tokenValid?: boolean;
         trial?: { active?: boolean };
-        openMode?: boolean;
       };
       if (!res.ok || !data.ok) {
         setShowFreePromo(!isPro && !isVip && !isTrial);
         return;
       }
-      // Owner CISO unlimited → không promo
       if (data.ownerUnlimited) {
         setShowFreePromo(false);
         return;
       }
-      // Có token Pro hoặc trial → không pulse Free
       if (data.tokenValid || data.trial?.active) {
         setShowFreePromo(false);
         return;
       }
-      // Chưa mua / chưa trial → Free promo (kể cả open mode)
       setShowFreePromo(true);
     } catch {
       setShowFreePromo(!isPro && !isVip && !isTrial);
@@ -73,44 +66,77 @@ export default function BrandLogoButton() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshPromo]);
 
-  // Store free → luôn promo; store pro/trial nhưng chưa token → refreshPromo xử lý
   useEffect(() => {
     if (!isPro && !isVip && !isTrial) setShowFreePromo(true);
   }, [isPro, isVip, isTrial]);
 
-  // Product: Free | Trial | Pro only (legacy is_vip → PRO)
   const planBadge = isTrial ? 'TRIAL' : 'PRO';
   const planBadgeClass = isTrial
     ? 'bg-gradient-to-r from-sky-300 to-cyan-400'
     : 'bg-gradient-to-r from-yellow-300 to-amber-400';
+
+  // Badge neo CHÂN GÓC PHẢI: left=100% → mép trái badge = mép phải logo,
+  // chữ tràn sang phải (không right:0 — right:0 khiến chữ dài mọc sang TRÁI đè logo).
+  const badgeAnchorStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: '100%',
+    left: '100%',
+    right: 'auto',
+    bottom: 'auto',
+    marginTop: 2,
+    marginLeft: -6, // chút đè vào chân góc phải
+    zIndex: 2,
+    whiteSpace: 'nowrap',
+    maxWidth: 'none',
+    pointerEvents: 'none',
+    lineHeight: 1,
+    fontSize: 7,
+    fontWeight: 900,
+    textTransform: 'uppercase',
+    color: '#000',
+    borderRadius: 3,
+    padding: '1px 4px',
+  };
 
   return (
     <>
       <button
         type="button"
         onClick={() => setLicenseOpen(true)}
-        className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-black shadow-lg shadow-amber-500/30 ring-1 ring-amber-300/30 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-200/90 border-0 p-0 overflow-visible ${
+        className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-transparent p-0 shadow-lg shadow-amber-500/25 ring-1 ring-amber-300/25 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-200/90 border-0 overflow-visible ${
           showFreePromo ? 'ainovel-logo-pulse' : ''
         }`}
         title={
           showFreePromo
-            ? 'Free — nhấp để nâng cấp Pro (Bản quyền)'
+            ? 'Free — nhấp logo để mở Bản quyền / nâng cấp Pro'
             : isTrial
               ? 'Trial — nhấp để xem Bản quyền / mua Pro'
               : 'Bản quyền / License'
         }
         aria-label="Mở Bản quyền License"
       >
-        <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 relative z-[1]" />
+        <span className="relative z-[1] block h-11 w-11 overflow-hidden rounded-2xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={LOGO_SRC}
+            alt="AI Novel"
+            width={44}
+            height={44}
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        </span>
 
         {showFreePromo ? (
-          <span className="pointer-events-none absolute -bottom-1 -right-2 z-[2] whitespace-nowrap rounded bg-gradient-to-r from-orange-500 to-amber-400 px-1 py-px text-[7px] font-black uppercase leading-none tracking-tight text-black shadow-md ainovel-pro-badge-pulse">
+          <span
+            className="ainovel-pro-badge-pulse bg-gradient-to-r from-yellow-300 to-amber-400 shadow-md shadow-amber-500/40 ring-1 ring-amber-200/50"
+            style={badgeAnchorStyle}
+            aria-hidden
+          >
             up to PRO
           </span>
         ) : (
-          <span
-            className={`pointer-events-none absolute -bottom-0.5 -right-1 z-[2] rounded px-1 py-px text-[7px] font-black uppercase leading-none text-black shadow ${planBadgeClass}`}
-          >
+          <span className={planBadgeClass} style={badgeAnchorStyle}>
             {planBadge}
           </span>
         )}

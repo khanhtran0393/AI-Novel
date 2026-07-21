@@ -8,7 +8,8 @@ import { formatProfileBibleLine, type NhanVatProfile } from './characterProfile'
 
 export const DEFAULT_WORD_GOAL = 4250;
 export const MIN_SCENE_COUNT = 3;
-export const CONTINUE_TAIL_WORDS = 1200;
+/** Longer tail = better style continuity when auto-continue / word-gate bù. */
+export const CONTINUE_TAIL_WORDS = 1600;
 export const MAX_AUTO_CONTINUES = 2;
 
 export function getWordCount(text: string): number {
@@ -120,9 +121,18 @@ export interface ContinueContext {
   tailWordCount: number;
 }
 
+const CONTINUE_CRAFT =
+  'BẠN ĐANG Ở CHẾ ĐỘ VIẾT TIẾP (nối mạch, không vá máy):\n' +
+  '- Chỉ sinh phần MỚI ngay sau đuôi; KHÔNG lặp câu/cảnh/đoạn đã có.\n' +
+  '- Bám GIỌNG đã có: độ dài câu, cách xưng hô, quirk thoại, nhịp im lặng — như cùng một cây bút.\n' +
+  '- Nối bằng hệ quả / lựa chọn / thông tin mới; CẤM nhồi tính từ, CẤM tóm tắt lại, CẤM reset nhịp “bắt đầu lại từ đầu”.\n' +
+  '- Nếu thiếu phân cảnh: thêm [CẢNH X: ...] mới với xung đột riêng, không cắt cảnh cũ giữa chừng vô lý.\n' +
+  '- Câu đầu phần mới phải đọc liền sau câu cuối đuôi (cùng thời điểm/không gian hoặc chuyển cảnh có lý do).';
+
 /**
  * For continue mode: do not dump full chapter into the prompt.
  * Send a short locked head + last N words as the live tail.
+ * Longer tail + craft rules reduce “thô cứng” when word-gate auto-continues.
  */
 export function buildContinueContext(
   fullText: string,
@@ -139,27 +149,48 @@ export function buildContinueContext(
       promptBody:
         '--- PHẦN NỘI DUNG ĐANG VIẾT DANG DỞ ---\n' +
         text +
-        '\n\nBẠN ĐANG Ở CHẾ ĐỘ VIẾT TIẾP. HÃY ĐỌC PHẦN DANG DỞ TRÊN VÀ BẮT ĐẦU VIẾT NỐI TIẾP VÀO ĐÓ. KHÔNG lặp lại đoạn đã có.',
+        '\n\n' +
+        CONTINUE_CRAFT,
       isTruncated: false,
       tailWordCount: words.length,
     };
   }
 
-  const headWords = words.slice(0, Math.min(180, words.length - tailWords));
+  // More head words = better voice/style fingerprint without dumping full mid-chapter.
+  const headCap = Math.min(280, Math.max(120, words.length - tailWords));
+  const headWords = words.slice(0, headCap);
   const tail = words.slice(-tailWords).join(' ');
   const lockedSummary = headWords.join(' ');
 
   return {
     promptBody:
-      '--- PHẦN ĐÃ KHÓA (CHỈ ĐỌC, TUYỆT ĐỐI KHÔNG VIẾT LẠI / KHÔNG TÓM TẮT LẠI) ---\n' +
+      '--- PHẦN ĐÃ KHÓA (CHỈ ĐỌC — fingerprint giọng; TUYỆT ĐỐI KHÔNG VIẾT LẠI / KHÔNG TÓM TẮT LẠI) ---\n' +
       lockedSummary +
       '\n...[phần giữa đã viết đủ, bị cắt để tiết kiệm ngữ cảnh]...\n\n' +
       '--- ĐUÔI NỘI DUNG CẦN NỐI TIẾP (VIẾT TIẾP NGAY SAU ĐOẠN NÀY) ---\n' +
       tail +
-      '\n\nBẠN ĐANG Ở CHẾ ĐỘ VIẾT TIẾP. Chỉ sinh phần MỚI nối liền sau đuôi trên. Không lặp cảnh/câu đã có. Nếu chưa đủ số cảnh, tiếp tục thêm [CẢNH X: ...] mới.',
+      '\n\n' +
+      CONTINUE_CRAFT,
     isTruncated: true,
     tailWordCount: tailWords,
   };
+}
+
+/**
+ * Prose craft (anti-stiff) — does NOT relax forbidden/fatigue word lists (IRON CẤM stays elsewhere).
+ * Injected into WRITE/REVISE/expand so narration feels novelistic, not production checklist.
+ */
+export function buildProseCraftBlock(): string {
+  return `
+--- NGHỆ THUẬT VĂN XUÔI (CHỐNG THÔ CỨNG — BẮT BUỘC) ---
+1) NHỊP CÂU: Xen câu ngắn (đấm) và câu vừa/dài vừa (thở). CẤM cả đoạn toàn câu đều 8–12 từ; CẤM checklist hành động “A. B. C.”.
+2) ĐOẠN VĂN: Mỗi đoạn 1 ý cảm xúc/tình huống. Đổi đoạn khi đổi focus (nhân vật / không gian / nội tâm) — không tường thuật dàn đều một nhịp.
+3) SUBTEXT: Thoại để lại khoảng trống; nhân vật che giấu, nói tránh, nói dối nhẹ. CẤM giải thích hết cảm xúc bằng lời kể (“hắn sợ vì…”, “cô ấy buồn vì…”).
+4) NỘI TÂM TỰ NHIÊN: 1–3 câu nghĩ/cảm xen hành động — cụ thể, lệch, có tính cách; không monologue giảng giải.
+5) CHI TIẾT ĐẮT: 1–2 chi tiết cụ thể/cảnh (vật, âm thanh, mùi, cử chỉ) thay vì liệt kê 5 giác quan.
+6) CHUYỂN CẢNH: Mở cảnh mới bằng hệ quả hoặc đối lập với open loop cảnh trước — không reset “sáng hôm sau mọi thứ yên” (vẫn cấm time-skip tuần/tháng).
+7) THOẠI ĐỜI: Ngắt quãng, lặp, nói dở, im lặng 1 nhịp. Mỗi NV giữ fingerprint riêng — không thoại “AI lịch sự”.
+8) ĐỦ DÀI BẰNG CỐT: Thêm xung đột, lựa chọn, hậu quả, hội thoại có stakes — KHÔNG đệm tính từ / lặp mô tả.`;
 }
 
 export function truncateOutline(text: string, maxChars = 1800): string {
@@ -303,23 +334,33 @@ export function writeEngineRoleLine(
   const g = genreLabel.trim() || 'theo Setup user';
   switch (kind) {
     case 'writer':
-      return `Bạn là Trợ lý Biên kịch Sản xuất kịch bản tiểu thuyết / narration YouTube chuyên nghiệp — thể loại: ${g}.`;
+      return (
+        `Bạn là nhà văn / biên kịch kể chuyện chuyên nghiệp — văn xuôi tiếng Việt mượt, có nhịp thở và chiều sâu nhân vật, ` +
+        `vẫn đọc tốt khi narration. Thể loại Setup: ${g}. Ưu tiên cảm giác “truyện hay” hơn checklist sản xuất.`
+      );
     case 'editor':
-      return `Bạn là Biên kịch kiêm Editor (chuẩn YouTube-safe narration) — thể loại: ${g}.`;
+      return (
+        `Bạn là biên tập viên văn học kiêm editor narration — trau chuốt nhịp câu, thoại đời, subtext; ` +
+        `cắt thô cứng / sáo rỗng. Thể loại Setup: ${g}.`
+      );
     case 'reviewer':
-      return `Bạn là Tổng biên tập khắt khe — thể loại: ${g}.`;
+      return `Bạn là Tổng biên tập khắt khe (văn học + nhịp kể chuyện) — thể loại: ${g}.`;
     case 'memory':
       return `Bạn là Trợ lý Biên kịch kiêm Bộ Nén Ký Ức logic — thể loại: ${g}.`;
     case 'hook_writer':
-      return `Bạn là Biên kịch cold-open YouTube (~30–45 giây đọc) — thể loại: ${g}.`;
+      return (
+        `Bạn là biên kịch cold-open (~30–45 giây đọc) — câu sắc, hình ảnh đắt, vẫn mượt như văn kể. Thể loại: ${g}.`
+      );
     case 'hook_editor':
-      return `Bạn là Biên tập viên cold-open YouTube (~30 giây đọc) — thể loại: ${g}.`;
+      return `Bạn là biên tập cold-open (~30 giây đọc) — giữ căng, bớt thô, bớt sáo. Thể loại: ${g}.`;
     case 'scene_writer':
-      return `Bạn là Trợ lý Biên kịch Sản xuất kịch bản — thể loại: ${g}.`;
+      return (
+        `Bạn là nhà văn / biên kịch phân cảnh — mở rộng bằng nội tâm, subtext và chi tiết đắt, không nhồi checklist. Thể loại: ${g}.`
+      );
     case 'scene_editor':
-      return `Bạn là Biên tập viên kịch bản chuyên nghiệp — thể loại: ${g}.`;
+      return `Bạn là biên tập phân cảnh — mượt hóa câu chữ, giữ cốt, chống thô cứng. Thể loại: ${g}.`;
     default:
-      return `Bạn là Trợ lý Biên kịch — thể loại: ${g}.`;
+      return `Bạn là nhà văn / biên kịch kể chuyện — thể loại: ${g}.`;
   }
 }
 

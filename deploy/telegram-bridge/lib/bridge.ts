@@ -73,6 +73,137 @@ function b64url(buf: Buffer): string {
     .replace(/=+$/g, '');
 }
 
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+function supabaseConfig(): { url: string; key: string } | null {
+  const url = (
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/$/, '');
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!url || !key) return null;
+  return { url, key };
+}
+
+/**
+ * One-path ledger: app activate requires an active `licenses` row.
+ * Bridge must INSERT/UPDATE — token alone is rejected when Supabase is authority.
+ */
+export async function persistLicenseLedger(input: {
+  token: string;
+  hwid: string;
+  planId: PaidPlanId;
+}): Promise<{ ok: boolean; licenseId?: string; error?: string }> {
+  const cfg = supabaseConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      error:
+        'Thiếu SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY trên bridge Vercel. App sẽ từ chối key (không có row licenses).',
+    };
+  }
+  const hwidNorm = input.hwid.trim().toLowerCase();
+  if (!hwidNorm || hwidNorm.length < 6) {
+    return { ok: false, error: 'HWID không hợp lệ' };
+  }
+  const plan = PAID_PLANS[input.planId] || PAID_PLANS.lifetime;
+  const expAt = new Date(Date.now() + plan.expSeconds * 1000).toISOString();
+  const tokenHash = hashToken(input.token);
+  const headers: Record<string, string> = {
+    apikey: cfg.key,
+    Authorization: `Bearer ${cfg.key}`,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  };
+
+  try {
+    // Prefer update existing active row for this HWID
+    const selUrl =
+      `${cfg.url}/rest/v1/licenses` +
+      `?hwid=ilike.${encodeURIComponent(hwidNorm)}` +
+      `&status=eq.active&select=id&order=created_at.desc&limit=1`;
+    const selRes = await fetch(selUrl, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(12_000),
+    });
+    const selRows = (await selRes.json().catch(() => [])) as Array<{
+      id?: string;
+    }>;
+    if (!selRes.ok) {
+      return {
+        ok: false,
+        error: `Supabase select licenses HTTP ${selRes.status}: ${JSON.stringify(selRows).slice(0, 200)}`,
+      };
+    }
+
+    const existingId = selRows?.[0]?.id;
+    if (existingId) {
+      const upRes = await fetch(
+        `${cfg.url}/rest/v1/licenses?id=eq.${encodeURIComponent(existingId)}`,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            plan: 'pro',
+            hwid: hwidNorm,
+            status: 'active',
+            exp_at: expAt,
+            token_hash: tokenHash,
+            activation_code: null,
+          }),
+          signal: AbortSignal.timeout(12_000),
+        },
+      );
+      const upBody = await upRes.json().catch(() => ({}));
+      if (!upRes.ok) {
+        return {
+          ok: false,
+          error: `Supabase update HTTP ${upRes.status}: ${JSON.stringify(upBody).slice(0, 200)}`,
+        };
+      }
+      return { ok: true, licenseId: String(existingId) };
+    }
+
+    const insRes = await fetch(`${cfg.url}/rest/v1/licenses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        user_id: null,
+        order_id: null,
+        plan: 'pro',
+        hwid: hwidNorm,
+        status: 'active',
+        exp_at: expAt,
+        token_hash: tokenHash,
+        activation_code: null,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const insRows = (await insRes.json().catch(() => [])) as Array<{
+      id?: string;
+    }>;
+    if (!insRes.ok) {
+      return {
+        ok: false,
+        error: `Supabase insert HTTP ${insRes.status}: ${JSON.stringify(insRows).slice(0, 200)}`,
+      };
+    }
+    const id = Array.isArray(insRows) ? insRows[0]?.id : undefined;
+    return { ok: true, licenseId: id ? String(id) : undefined };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
 /** Issue a Pro Ed25519 token bound to HWID (AINOVEL2 wire format). */
 export function issueProToken(hwid: string, planId: PaidPlanId): string {
   const id = hwid.trim().toLowerCase();
@@ -98,6 +229,26 @@ export function issueProToken(hwid: string, planId: PaidPlanId): string {
     crypto.sign(null, Buffer.from(signingInput, 'utf8'), signer.key),
   );
   return `${signingInput}.${sig}`;
+}
+
+/** Sign AINOVEL2 + write Supabase licenses (required for app activate). */
+export async function issueAndPersist(
+  hwid: string,
+  planId: PaidPlanId,
+): Promise<{
+  token: string;
+  dbOk: boolean;
+  dbError?: string;
+  licenseId?: string;
+}> {
+  const token = issueProToken(hwid, planId);
+  const ledger = await persistLicenseLedger({ token, hwid, planId });
+  return {
+    token,
+    dbOk: ledger.ok,
+    dbError: ledger.error,
+    licenseId: ledger.licenseId,
+  };
 }
 
 export function parseCallback(
@@ -190,14 +341,22 @@ export function approveText(
   hwid: string,
   token: string,
   original?: string,
+  opts?: { dbOk?: boolean; dbError?: string; licenseId?: string },
 ): string {
   const plan = PAID_PLANS[planId] || PAID_PLANS.lifetime;
+  const ledgerLine =
+    opts?.dbOk === true
+      ? `📒 Supabase licenses: OK${opts.licenseId ? ` (id ${opts.licenseId})` : ''}`
+      : opts?.dbOk === false
+        ? `⚠️ Supabase licenses LỖI — app sẽ TỪ CHỐI key:\n${opts.dbError || 'unknown'}`
+        : '📒 Supabase: (chưa kiểm tra)';
   const body = [
     '✅ ĐÃ CẤP KEY',
     '',
     `📦 Gói: ${plan.label} (${planId})`,
     `🖥 HWID: ${hwid.toUpperCase()}`,
     '🔐 Bridge: Ed25519 AINOVEL2 (kid = SHA256 public SPKI[:16])',
+    ledgerLine,
     '',
     '🔑 License Key (copy 1 dòng gửi khách — phải bắt đầu AINOVEL2.):',
     token,
@@ -293,20 +452,39 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
     }
 
     try {
-      const token = issueProToken(parsed.hwid, parsed.planId);
+      const issued = await issueAndPersist(parsed.hwid, parsed.planId);
       const text = approveText(
         parsed.planId,
         parsed.hwid,
-        token,
+        issued.token,
         originalText,
+        {
+          dbOk: issued.dbOk,
+          dbError: issued.dbError,
+          licenseId: issued.licenseId,
+        },
       );
       const edited = await editMessage(chatId, messageId, text);
       if (!edited.ok) {
         await sendMessage(
-          approveText(parsed.planId, parsed.hwid, token),
+          approveText(parsed.planId, parsed.hwid, issued.token, undefined, {
+            dbOk: issued.dbOk,
+            dbError: issued.dbError,
+            licenseId: issued.licenseId,
+          }),
         );
       }
-      await answerCallback(cq.id, 'Đã cấp key.', false);
+      if (!issued.dbOk) {
+        await sendMessage(
+          `⚠️ Key đã ký nhưng Supabase LỖI (HWID ${parsed.hwid.toUpperCase()}):\n${issued.dbError || 'unknown'}\n` +
+            'App One-Path: không có row licenses active → khách dán key bị từ chối. Kiểm tra SERVICE_ROLE trên Vercel bridge.',
+        );
+      }
+      await answerCallback(
+        cq.id,
+        issued.dbOk ? 'Đã cấp key + ghi DB.' : 'Đã cấp key (DB lỗi!).',
+        !issued.dbOk,
+      );
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       await answerCallback(cq.id, `Lỗi: ${errMsg}`.slice(0, 200), true);
@@ -329,8 +507,19 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
     return;
   }
   try {
-    const token = issueProToken(hwid, planId);
-    await sendMessage(approveText(planId, hwid, token));
+    const issued = await issueAndPersist(hwid, planId);
+    await sendMessage(
+      approveText(planId, hwid, issued.token, undefined, {
+        dbOk: issued.dbOk,
+        dbError: issued.dbError,
+        licenseId: issued.licenseId,
+      }),
+    );
+    if (!issued.dbOk) {
+      await sendMessage(
+        `⚠️ /gen: Supabase LỖI — app sẽ không nhận key:\n${issued.dbError || 'unknown'}`,
+      );
+    }
   } catch (e) {
     await sendMessage(
       `❌ Lỗi hệ thống: ${e instanceof Error ? e.message : String(e)}`,

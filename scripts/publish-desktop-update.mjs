@@ -237,8 +237,31 @@ async function hashFileBase64(filePath, algorithm) {
 
 async function inspectRelease(config) {
   const releaseDir = path.resolve(root, arg('dir', 'dist'));
+  const allowUnsigned = hasFlag('allow-unsigned');
   const manifestName = `${config.channel}.yml`;
-  const manifestPath = path.join(releaseDir, manifestName);
+  let manifestPath = path.join(releaseDir, manifestName);
+  if (!fs.existsSync(manifestPath) && allowUnsigned) {
+    // Auto-generate electron-updater manifest for QA portable/unsigned dirs
+    const gen = spawnSync(
+      process.execPath,
+      [
+        path.join(root, 'scripts', 'generate-update-manifest.mjs'),
+        '--dir',
+        releaseDir,
+        '--channel',
+        config.channel,
+        '--version',
+        packageJson.version,
+      ],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    if (gen.status !== 0) {
+      throw new Error(
+        `generate-update-manifest failed: ${String(gen.stderr || gen.stdout || '').trim()}`,
+      );
+    }
+    manifestPath = path.join(releaseDir, manifestName);
+  }
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Missing update manifest: ${manifestPath}`);
   }
@@ -266,7 +289,7 @@ async function inspectRelease(config) {
     if (digest !== artifact.sha512) {
       throw new Error(`${artifact.name} SHA-512 mismatch`);
     }
-    if (artifact.executable) {
+    if (artifact.executable && !allowUnsigned) {
       validatePublisherIdentity(
         signatureFor(filePath),
         expectedPublisher,
@@ -284,11 +307,17 @@ async function inspectRelease(config) {
   if (!fs.existsSync(unpackedExecutable)) {
     throw new Error(`Missing packaged application executable: ${unpackedExecutable}`);
   }
-  validatePublisherIdentity(
-    signatureFor(unpackedExecutable),
-    expectedPublisher,
-    expectedThumbprint,
-  );
+  if (!allowUnsigned) {
+    validatePublisherIdentity(
+      signatureFor(unpackedExecutable),
+      expectedPublisher,
+      expectedThumbprint,
+    );
+  } else {
+    console.warn(
+      '[publish] --allow-unsigned: skipping Authenticode (QA / no cert yet)',
+    );
+  }
 
   const uploadFiles = [...artifacts];
   for (const artifact of artifacts) {
@@ -316,6 +345,7 @@ async function inspectRelease(config) {
     uploadFiles,
     expectedPublisher,
     expectedThumbprint,
+    allowUnsigned,
   };
 }
 
@@ -334,36 +364,54 @@ async function uploadSmall(client, config, file, { upsert = false } = {}) {
 async function uploadLarge(config, file) {
   const projectRef = new URL(config.supabaseUrl).hostname.split('.')[0];
   const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
-  await new Promise((resolve, reject) => {
-    const upload = new tus.Upload(fs.createReadStream(file.filePath), {
-      endpoint,
-      uploadSize: file.size,
-      retryDelays: [0, 3_000, 5_000, 10_000, 20_000],
-      headers: {
-        authorization: `Bearer ${config.serviceKey}`,
-        apikey: config.serviceKey,
-      },
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      storeFingerprintForResuming: false,
-      metadata: {
-        bucketName: config.bucket,
-        objectName: `${config.channel}/${file.name}`,
-        contentType: contentTypeFor(file.name),
-        cacheControl: '31536000',
-      },
-      onError: reject,
-      onProgress(bytesUploaded, bytesTotal) {
-        const percent = bytesTotal > 0 ? Math.floor((bytesUploaded / bytesTotal) * 100) : 0;
-        process.stdout.write(`\r[upload] ${file.name} ${percent}%`);
-      },
-      onSuccess() {
-        process.stdout.write(`\r[upload] ${file.name} 100%\n`);
-        resolve();
-      },
+  try {
+    await new Promise((resolve, reject) => {
+      const upload = new tus.Upload(fs.createReadStream(file.filePath), {
+        endpoint,
+        uploadSize: file.size,
+        retryDelays: [0, 3_000, 5_000, 10_000, 20_000],
+        headers: {
+          authorization: `Bearer ${config.serviceKey}`,
+          apikey: config.serviceKey,
+        },
+        uploadDataDuringCreation: true,
+        removeFingerprintOnSuccess: true,
+        storeFingerprintForResuming: false,
+        metadata: {
+          bucketName: config.bucket,
+          objectName: `${config.channel}/${file.name}`,
+          contentType: contentTypeFor(file.name),
+          cacheControl: '31536000',
+        },
+        onError: reject,
+        onProgress(bytesUploaded, bytesTotal) {
+          const percent =
+            bytesTotal > 0 ? Math.floor((bytesUploaded / bytesTotal) * 100) : 0;
+          process.stdout.write(`\r[upload] ${file.name} ${percent}%`);
+        },
+        onSuccess() {
+          process.stdout.write(`\r[upload] ${file.name} 100%\n`);
+          resolve();
+        },
+      });
+      upload.start();
     });
-    upload.start();
-  });
+    return;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Free-tier / project max often 50MB — TUS returns 413 Maximum size exceeded
+    if (/413|maximum size|Payload too large|too large/i.test(msg)) {
+      throw new Error(
+        `Upload ${file.name} (${Math.round(file.size / 1024 / 1024)}MB) bị chặn bởi giới hạn dung lượng Supabase Storage (HTTP 413).\n` +
+          `Cách sửa (bắt buộc cho installer ~100–200MB):\n` +
+          `  1) Supabase Dashboard → Project Settings → Storage → Global file size limit → đặt ≥ 500 MB (hoặc 524288000 bytes)\n` +
+          `  2) Storage → bucket desktop-updates → (tuỳ chọn) File size limit ≥ 500MB\n` +
+          `  3) Chạy lại: npm run release:publish:unsigned\n` +
+          `Chi tiết gốc: ${msg}`,
+      );
+    }
+    throw err;
+  }
 }
 
 async function readPublishedEvidence(config, file, { allowMissing = false } = {}) {
@@ -372,7 +420,10 @@ async function readPublishedEvidence(config, file, { allowMissing = false } = {}
     cache: 'no-store',
     signal: AbortSignal.timeout(10 * 60_000),
   });
-  if (allowMissing && response.status === 404) return null;
+  // Supabase public Storage may return 400 for missing objects (not only 404)
+  if (allowMissing && (response.status === 404 || response.status === 400)) {
+    return null;
+  }
   if (!response.ok) {
     throw new Error(`${file.name} public verification returned HTTP ${response.status}`);
   }

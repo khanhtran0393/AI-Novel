@@ -37,21 +37,26 @@ export const selectSetDangTai = (state: NovelStore) => state.setDangTai;
 export const selectUpdateTenTacPham = (state: NovelStore) => state.updateTenTacPham;
 export const selectSetSetupKind = (state: NovelStore) => state.setSetupKind;
 
+function chapterNumEq(a: unknown, b: unknown): boolean {
+  return Number(a) === Number(b);
+}
+
 export const selectCurrentChapter = (state: NovelStore) =>
-  state.danh_sach_chuong.find((chapter) => chapter.so_chuong === state.chuong_dang_chon) ||
-  null;
+  state.danh_sach_chuong.find((chapter) =>
+    chapterNumEq(chapter.so_chuong, state.chuong_dang_chon),
+  ) || null;
 
 /** Only chapter body for current selection — avoids full list identity churn when possible */
 export const selectCurrentChapterContent = (state: NovelStore) => {
-  const ch = state.danh_sach_chuong.find(
-    (c) => c.so_chuong === state.chuong_dang_chon,
+  const ch = state.danh_sach_chuong.find((c) =>
+    chapterNumEq(c.so_chuong, state.chuong_dang_chon),
   );
   return ch?.noi_dung || '';
 };
 
 export const selectCurrentChapterMeta = (state: NovelStore) => {
-  const ch = state.danh_sach_chuong.find(
-    (c) => c.so_chuong === state.chuong_dang_chon,
+  const ch = state.danh_sach_chuong.find((c) =>
+    chapterNumEq(c.so_chuong, state.chuong_dang_chon),
   );
   if (!ch) return null;
   return {

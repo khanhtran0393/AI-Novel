@@ -1,8 +1,8 @@
 {
   "name": "ai-novel-script-generator",
-  "version": "1.0.0",
-  "description": "AI Novel & Script Generator — Free, Trial and Pro desktop application",
-  "author": "AI Novel",
+  "version": "1.0.1",
+  "description": "Ai Novel — Free, Trial and Pro desktop application",
+  "author": "Ai Novel",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -29,8 +29,16 @@
     "smoke:crown-ip": "node scripts/smoke-crown-ip.cjs",
     "build:desktop": "npm run release:verify && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
     "release:publish": "node scripts/publish-desktop-update.mjs --publish --dir dist",
-    "pack:unsigned:qa": "node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.signAndEditExecutable=false",
-    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:cloud-ip-live",
+    "release:publish:unsigned": "node scripts/publish-desktop-update.mjs --publish --allow-unsigned --dir dist-qa-unsigned",
+    "release:manifest": "node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned",
+    "release:github": "node scripts/publish-github-release.mjs --dir dist-qa-unsigned",
+    "brand:icons": "node scripts/generate-brand-icons.mjs",
+    "assert:commercial-signing": "node scripts/assert-commercial-signing.mjs",
+    "assert:commercial-package": "node scripts/assert-commercial-package.mjs dist",
+    "pack:commercial": "npm run brand:icons && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never && npm run audit:package -- dist/win-unpacked",
+    "pack:ship": "npm run pack:unsigned:qa:verify",
+    "pack:unsigned:qa": "npm run brand:icons && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.signAndEditExecutable=false",
+    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:anti-tamper && npm run smoke:labyrinth && npm run smoke:re-harden && npm run smoke:crown-ip",
     "test:channel-ship": "npx tsx src/scripts/verify-channel-ship.mjs",
     "test:channel-dna": "npx tsx src/scripts/verify-channel-output-dna.mjs",
     "test:integrations": "npx tsx scripts/smoke-pipeline-p0p2.mts",
@@ -84,22 +92,25 @@
     "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts",
     "smoke:nav-analyzer-cloud": "npx tsx scripts/smoke-nav-analyzer-cloud.mts",
     "smoke:toolbox-cloud-ip": "npx tsx scripts/smoke-toolbox-cloud-ip.mts",
-    "compile:python-gateway": "node scripts/compile-python-gateway.cjs"
+    "compile:python-gateway": "node scripts/compile-python-gateway.cjs",
+    "clean:workspace": "node scripts/clean-workspace.mjs"
   },
   "build": {
     "appId": "com.ainovel.desktop",
-    "productName": "AI Novel & Script Generator",
-    "copyright": "Copyright © AI Novel",
+    "productName": "Ai Novel",
+    "copyright": "Copyright © Ai Novel",
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
-    "forceCodeSigning": true,
+    "forceCodeSigning": false,
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://azlizrbjkqcyqnsmuccv.supabase.co/storage/v1/object/public/desktop-updates/latest",
-        "channel": "latest"
+        "provider": "github",
+        "owner": "khanhtran0393",
+        "repo": "AI-Novel-release-",
+        "releaseType": "release",
+        "vPrefixedTagName": true
       }
     ],
     "win": {
@@ -125,7 +136,10 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "AI Novel"
+      "shortcutName": "Ai Novel",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "asar": true,
     "beforePack": "scripts/electron-before-pack.cjs",
@@ -229,7 +243,14 @@
           "!ffmpeg/**",
           "!MediaCrawler/**",
           "!assets/**",
-          "!models/vina_voice/*.onnx"
+          "!models/vina_voice/*.onnx",
+          "!**/*.whl",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!gpu_*.json",
+          "!_login_check.json",
+          "!xu_ly_config.json",
+          "!.vidgen/**"
         ]
       },
       {
@@ -250,7 +271,8 @@
           "!ffmpeg/**",
           "!MediaCrawler/**",
           "!assets/**",
-          "!models/vina_voice/*.onnx"
+          "!models/vina_voice/*.onnx",
+          "!**/*.whl"
         ]
       },
       {
@@ -293,7 +315,9 @@
         "from": "resources/commercial",
         "to": "commercial",
         "filter": [
-          "public.env"
+          "public.env",
+          "PACKAGING_STANDARD.json",
+          "PACKAGING_STANDARD.md"
         ]
       },
       {
@@ -304,7 +328,6 @@
           "!README.md"
         ]
       },
-
       {
         "from": "docs",
         "to": "legal",

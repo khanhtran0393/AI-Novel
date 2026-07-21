@@ -36,9 +36,9 @@ API key, cookie và session của người dùng được tách khỏi Zustand/l
 ## Luồng cấp license
 
 1. Khách lấy HWID trong modal Bản quyền.
-2. Seller/backend phát hành token Pro hoặc mã `AINOVEL-…` bằng private key Ed25519.
-3. App gửi mã tới license API qua HTTPS; token nhận về được kiểm tra bằng public key đóng gói.
-4. Supabase là authority online cho trạng thái active/revoked; token vẫn có chữ ký để kiểm tra offline theo chính sách ứng dụng.
+2. Seller/backend **ghi row `licenses` active** trên Supabase + phát hành token Pro hoặc mã `AINOVEL-…` (Ed25519).
+3. App gửi mã tới license API qua HTTPS; activate **chỉ bind** token vào row đã có — **không** tự INSERT khi thiếu ledger.
+4. **Supabase = sole truth:** không có row active (xóa / revoked / expired) = Free (ban hoặc hết hạn). Token local không self-heal Pro khi ledger trống.
 
 ## Bản public core sạch
 

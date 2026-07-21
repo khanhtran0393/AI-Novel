@@ -78,14 +78,25 @@ function SceneNavButton({
     <button
       type="button"
       title={shortTitle}
-      onClick={() => {
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
         setExpandedScene(sceneIndex);
-        setTimeout(() => {
-          document.getElementById(sceneIndex === 990 ? 'scene-card-container-hook' : `scene-card-container-${sceneIndex}`)
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 50);
+        // Wait for expand layout then scroll (content may mount after state tick)
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            document
+              .getElementById(
+                sceneIndex === 990
+                  ? 'scene-card-container-hook'
+                  : `scene-card-container-${sceneIndex}`,
+              )
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 80);
+        });
       }}
-      className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold transition-all ${cls} ${isActive ? 'ring-1 ring-current shadow-lg' : ''}`}
+      className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer select-none ${cls} ${isActive ? 'ring-1 ring-current shadow-lg' : ''}`}
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       {shortTitle}
     </button>
@@ -100,11 +111,15 @@ export default function Workspace() {
   const workspaceTab = useNovelStore((s) => s.workspaceTab);
   const chuongDangChon = useNovelStore((s) => s.chuong_dang_chon);
   const chapterContent = useNovelStore((s) => {
-    const ch = s.danh_sach_chuong.find((c) => c.so_chuong === s.chuong_dang_chon);
+    const ch = s.danh_sach_chuong.find(
+      (c) => Number(c.so_chuong) === Number(s.chuong_dang_chon),
+    );
     return ch?.noi_dung || '';
   });
   const hasCurrentChapter = useNovelStore((s) =>
-    s.danh_sach_chuong.some((c) => c.so_chuong === s.chuong_dang_chon),
+    s.danh_sach_chuong.some(
+      (c) => Number(c.so_chuong) === Number(s.chuong_dang_chon),
+    ),
   );
   const soTuChuong = useNovelStore((s) => s.setup?.so_tu_chuong || 4250);
   const dangTai = useNovelStore((s) => s.dang_tai);

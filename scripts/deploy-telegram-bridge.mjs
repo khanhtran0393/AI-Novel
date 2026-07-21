@@ -73,12 +73,26 @@ if (!privateKeyB64) {
   process.exit(1);
 }
 
+const supabaseUrl =
+  env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseService = env.SUPABASE_SERVICE_ROLE_KEY || '';
+if (!supabaseUrl || !supabaseService) {
+  console.error(
+    'Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — bridge must write licenses or app rejects keys',
+  );
+  process.exit(1);
+}
+
 const envs = {
   AINOVEL_ENTITLEMENT_MODE: 'enforce',
   AINOVEL_ENTITLEMENT_PRIVATE_KEY_B64: privateKeyB64,
   AINOVEL_TELEGRAM_BOT_TOKEN: env.AINOVEL_TELEGRAM_BOT_TOKEN,
   AINOVEL_TELEGRAM_CHAT_ID: env.AINOVEL_TELEGRAM_CHAT_ID,
   AINOVEL_TELEGRAM_WEBHOOK_SECRET: env.AINOVEL_TELEGRAM_WEBHOOK_SECRET || '',
+  // One-path ledger: Cấp Key must INSERT/UPDATE licenses for HWID
+  SUPABASE_URL: supabaseUrl,
+  NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+  SUPABASE_SERVICE_ROLE_KEY: supabaseService,
 };
 
 log('link', projectName);

@@ -25,8 +25,10 @@ export default function ChapterList() {
       </label>
       <div className="grid grid-cols-5 gap-2 max-h-[140px] overflow-y-auto pr-1">
         {chapters.map((ch) => {
-          const isActive = ch.so_chuong === active;
-          const hasContent = ch.trang_thai === 'ready';
+          const so = Number(ch.so_chuong);
+          const isActive = so === Number(active);
+          const hasContent =
+            ch.trang_thai === 'ready' || Boolean(String(ch.noi_dung || '').trim());
           const cls = isActive
             ? 'border-amber-500 bg-amber-500/10 text-amber-500 glow-amber-sm'
             : hasContent
@@ -34,15 +36,20 @@ export default function ChapterList() {
               : 'border-zinc-800 bg-zinc-900/30 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200';
           return (
             <button
-              key={ch.so_chuong}
+              key={so}
               type="button"
-              onClick={() => selectChuong(ch.so_chuong)}
-              className={`relative flex h-9 items-center justify-center rounded border text-xs font-bold transition-all duration-200 cursor-pointer ${cls}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectChuong(so);
+              }}
+              className={`relative z-[1] flex h-9 items-center justify-center rounded border text-xs font-bold transition-all duration-200 cursor-pointer select-none ${cls}`}
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
-              {ch.so_chuong}
-              <span className="absolute right-1 top-1">
+              {so}
+              <span className="pointer-events-none absolute right-1 top-1">
                 <QualityGateBadge
-                  chapter={ch.so_chuong}
+                  chapter={so}
                   variant="dot"
                   lazyScan={hasContent}
                 />

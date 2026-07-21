@@ -3,8 +3,9 @@
  * Body: { token?: string, code?: string, hwid?: string }
  *
  * Telegram keys are AINOVEL2.<kid>.<payload>.<sig> bound to HWID.
- * When Supabase is authority, a valid offline token may self-heal insert
- * if Telegram issued the key but DB write failed (dbOk:false).
+ * When Supabase is authority: ledger is sole truth — activate only **binds**
+ * token_hash onto an existing active licenses row (or redeems a pre-issued code).
+ * Missing row = ban / expired / not issued — **never** self-heal INSERT.
  */
 import { NextResponse } from 'next/server';
 import {
@@ -114,7 +115,11 @@ function diagnoseFailedToken(
   );
 }
 
-async function ensureCloudLicenseFromToken(input: {
+/**
+ * Bind token onto existing active licenses row only — never INSERT.
+ * Missing active row ⇒ ban / expired / not issued.
+ */
+async function bindTokenToExistingLicense(input: {
   token: string;
   hwid: string;
   exp: number;
@@ -126,41 +131,39 @@ async function ensureCloudLicenseFromToken(input: {
     const hwidNorm = input.hwid.trim().toLowerCase();
     const expAt = new Date(Math.max(input.exp, 0) * 1000).toISOString();
     const tokenHash = hashToken(input.token);
-    // Prefer existing active row for this HWID
     const { data: existing } = await service
       .from('licenses')
-      .select('id,status')
-      .eq('hwid', hwidNorm)
+      .select('id,status,plan')
+      .ilike('hwid', hwidNorm)
       .eq('status', 'active')
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (existing?.id) {
-      await service
-        .from('licenses')
-        .update({
-          token_hash: tokenHash,
-          exp_at: expAt,
-          plan: input.isTrial ? 'trial' : 'pro',
-        })
-        .eq('id', existing.id);
-      return { ok: true, licenseId: String(existing.id) };
+    if (!existing?.id) {
+      return {
+        ok: false,
+        error:
+          'Không có license active trên Supabase cho HWID này (đã ban / hết hạn / chưa cấp). Liên hệ admin issue lại.',
+      };
     }
-    const { data, error } = await service
+    // Do not demote an existing pro row when binding a trial-shaped token
+    const plan =
+      existing.plan === 'pro' || existing.plan === 'vip'
+        ? 'pro'
+        : input.isTrial
+          ? 'trial'
+          : 'pro';
+    const { error } = await service
       .from('licenses')
-      .insert({
-        user_id: null,
-        order_id: null,
-        plan: input.isTrial ? 'trial' : 'pro',
-        hwid: hwidNorm,
-        status: 'active',
-        exp_at: expAt,
+      .update({
         token_hash: tokenHash,
-        activation_code: null,
+        exp_at: expAt,
+        plan,
+        hwid: hwidNorm,
       })
-      .select('id')
-      .single();
+      .eq('id', existing.id);
     if (error) return { ok: false, error: error.message };
-    return { ok: true, licenseId: data?.id ? String(data.id) : undefined };
+    return { ok: true, licenseId: String(existing.id) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -356,7 +359,7 @@ export async function POST(req: Request) {
       try {
         const service = createServiceSupabase();
 
-        // Paid Pro: always promote trial→pro in DB; keep paid claims for client
+        // Paid Pro: upgrade existing trial/pro row only — never INSERT
         if (paidToken) {
           const promoted = await promoteHwidLicenseToPaidPro({
             service,
@@ -366,14 +369,39 @@ export async function POST(req: Request) {
           });
           if (!promoted.ok) {
             throw new AppError(
-              `Key Pro hợp lệ nhưng ghi Supabase thất bại: ${promoted.error || 'unknown'}. ` +
-                'Admin kiểm tra SERVICE_ROLE / bảng licenses.',
-              { code: 'INFRA', status: 503 },
+              promoted.error ||
+                'Key Pro hợp lệ nhưng không có license active trên Supabase (ban / hết hạn / chưa cấp).',
+              { code: 'AUTH', status: 403 },
             );
           }
           authority = 'supabase';
           licenseId = promoted.licenseId;
         } else {
+          // Trial / other: bind token to existing active row only
+          const bound = await bindTokenToExistingLicense({
+            token,
+            hwid: machineHwid,
+            exp: claims.exp,
+            isTrial: claimsIsTrial(claims),
+          });
+          if (!bound.ok) {
+            const cloud = await verifyLicenseCloud({
+              service,
+              token,
+              hwid: machineHwid,
+            });
+            if (cloud.cloud.revoked) {
+              throw new AppError('License đã bị thu hồi trên Supabase.', {
+                code: 'AUTH',
+                status: 403,
+              });
+            }
+            throw new AppError(
+              bound.error ||
+                'Không có license active trên Supabase (ban / hết hạn / chưa cấp).',
+              { code: 'AUTH', status: 403 },
+            );
+          }
           const cloud = await verifyLicenseCloud({
             service,
             token,
@@ -381,31 +409,9 @@ export async function POST(req: Request) {
           });
           if (cloud.valid && cloud.claims) {
             claims = cloud.claims;
-            authority = 'supabase';
-            licenseId = cloud.cloud.licenseId;
-          } else if (cloud.cloud.revoked) {
-            throw new AppError('License đã bị thu hồi trên Supabase.', {
-              code: 'AUTH',
-              status: 403,
-            });
-          } else {
-            // Trial/self-heal path
-            const healed = await ensureCloudLicenseFromToken({
-              token,
-              hwid: machineHwid,
-              exp: claims.exp,
-              isTrial: claimsIsTrial(claims),
-            });
-            if (!healed.ok) {
-              throw new AppError(
-                `Key hợp lệ offline nhưng ghi Supabase thất bại: ${healed.error || 'unknown'}. ` +
-                  'Admin kiểm tra SERVICE_ROLE / bảng licenses.',
-                { code: 'INFRA', status: 503 },
-              );
-            }
-            authority = 'supabase';
-            licenseId = healed.licenseId;
           }
+          authority = 'supabase';
+          licenseId = bound.licenseId;
         }
       } catch (e) {
         if (e instanceof AppError) throw e;
