@@ -104,9 +104,12 @@ Copy **chỉ** file `.exe` sang máy khác hoặc user mới.
 ```powershell
 cd "D:\My app\AI Novel"
 
-# 1) Logo brand đã có trong public/brand + build/icon.ico + electron/splash-logo.jpg
+# 1) Brand LOCKED — logo nổi trong suốt ≥5s (docs/BRAND_SPLASH.md)
+npm run brand:icons
+npm run brand:sync
+npm run smoke:brand-splash
 
-# 2) Pack portable sạch (không code-sign)
+# 2) Pack portable sạch (không code-sign) — script gọi brand:* lại
 npm run pack:unsigned:qa
 
 # 3) Audit artifact
@@ -120,6 +123,8 @@ npm run audit:package -- dist-qa-unsigned/win-unpacked
 ### Signed / production (khi đủ cert + secrets)
 
 ```powershell
+npm run brand:icons
+npm run brand:sync
 npm run build:desktop
 # Output: dist\AI-Novel-1.0.0-x64.exe (NSIS)
 ```

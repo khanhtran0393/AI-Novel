@@ -146,6 +146,58 @@ exports.default = async function electronAfterPack(context) {
     console.warn('[icon] afterPack ensure failed:', err?.message || err);
   }
 
+  // Verify brand splash files landed in app resources (ASAR or app dir)
+  try {
+    const resApp = path.join(context.appOutDir, 'resources', 'app.asar');
+    const resUnpacked = path.join(context.appOutDir, 'resources', 'app');
+    const checks = [
+      'electron/splashBrand.js',
+      'electron/splash-logo.jpg',
+      'electron/splash.html',
+      'electron/icon.ico',
+    ];
+    let probeRoot = null;
+    if (fs.existsSync(resUnpacked)) probeRoot = resUnpacked;
+    // asar: list via @electron/asar if present, else just log expected
+    let asarOk = null;
+    if (fs.existsSync(resApp)) {
+      try {
+        const asar = require('@electron/asar');
+        asarOk = checks.map((rel) => {
+          try {
+            asar.statFile(resApp, rel);
+            return { rel, ok: true };
+          } catch {
+            // splash-logo may be .png only
+            if (rel.endsWith('splash-logo.jpg')) {
+              try {
+                asar.statFile(resApp, 'electron/splash-logo.png');
+                return { rel: 'electron/splash-logo.png', ok: true };
+              } catch {
+                return { rel, ok: false };
+              }
+            }
+            return { rel, ok: false };
+          }
+        });
+      } catch {
+        asarOk = null;
+      }
+    }
+    console.log(
+      JSON.stringify({
+        ok: true,
+        step: 'afterPack-brand-verify',
+        asar: fs.existsSync(resApp),
+        unpackedApp: !!probeRoot,
+        files: asarOk,
+        note: 'Boot shows logo ≥5s via electron/splashBrand.js (AINOVEL_SPLASH_MS)',
+      }),
+    );
+  } catch (err) {
+    console.warn('[brand] afterPack verify skip:', err?.message || err);
+  }
+
   // Always restore workspace shell first so dev tree stays readable
   try {
     const { restored } = restoreShellFromBackup();

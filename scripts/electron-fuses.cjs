@@ -59,6 +59,15 @@ exports.default = async function flipElectronFuses(context) {
 };
 
 async function applyFuses(flipFuses, FuseVersion, FuseV1Options, exePath) {
+  // ASAR integrity validation MUST stay off unless the integrity hash is
+  // re-stamped *after* every afterPack mutation (rcedit icon, portable wrap).
+  // Enabling it after rcedit → "ASAR Integrity Violation" → app exits on boot
+  // (Next SWC then fails with ENOTDIR when native load breaks).
+  // Opt-in for fully signed CI pipelines: AINOVEL_ASAR_INTEGRITY=1
+  const asarIntegrity =
+    process.env.AINOVEL_ASAR_INTEGRITY === '1' ||
+    process.env.AINOVEL_ASAR_INTEGRITY === 'true';
+
   const options = {
     version: FuseVersion.V1,
     // Hardening for customer builds
@@ -66,15 +75,18 @@ async function applyFuses(flipFuses, FuseVersion, FuseV1Options, exePath) {
     [FuseV1Options.EnableCookieEncryption]: true,
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
     [FuseV1Options.EnableNodeCliInspectArguments]: false,
-    // Keep embedded ASAR integrity when Electron supports it
-    [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+    [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: asarIntegrity,
     // Only load app from asar (native modules stay in asarUnpack)
     [FuseV1Options.OnlyLoadAppFromAsar]: true,
   };
 
   try {
     await flipFuses(exePath, options);
-    console.log('[fuses] flipped OK:', exePath);
+    console.log(
+      '[fuses] flipped OK:',
+      exePath,
+      asarIntegrity ? '(asar integrity ON)' : '(asar integrity OFF — boot-safe)',
+    );
   } catch (err) {
     // Some Electron versions reject individual fuses — retry without OnlyLoadAppFromAsar
     console.warn(

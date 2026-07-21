@@ -17,12 +17,15 @@ const BACKUP_DIR = path.join(ROOT, 'build', '.shell-src-backup');
 const PREVIEW_DIR = path.join(ROOT, 'build', 'shell-hardened-preview');
 
 const SHELL_FILES = [
-  'main.js',
+  // main.js is boot-critical (Next prepare + splash). Do NOT minify in-place during
+  // beforePack — observed corrupted/truncated main.js in ASAR when minify raced pack.
+  // Keep friction on secondary shell modules only.
   'preload.js',
   'electron/credentialVault.js',
   'electron/durableStore.js',
   'electron/securityPolicy.js',
   'electron/updater.js',
+  // splashBrand.js intentionally not minified (brand boot + AINOVEL_SPLASH_MS)
 ];
 
 function resolveEsbuild() {

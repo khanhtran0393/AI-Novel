@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, nativeImage } = require('electron');
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
@@ -13,6 +13,12 @@ const {
   isExactOriginUrl,
   isTrustedNavigationUrl,
 } = require('./electron/securityPolicy');
+const {
+  DEFAULT_SPLASH_MIN_MS,
+  resolveBrandPaths,
+  buildSplashDataUrl,
+  createSplashGate,
+} = require('./electron/splashBrand');
 const { ZUSTAND_STORE_KEY } = durable;
 const appUpdater = require('./electron/updater');
 
@@ -20,6 +26,26 @@ const STABLE_PORT = Number(process.env.AI_NOVEL_PORT || process.env.PORT || 3000
 const dev = !app.isPackaged;
 const appDir = app.getAppPath();
 const preloadPath = path.join(appDir, 'preload.js');
+
+/** Brand logo splash ≥5s. Window is transparent so logo floats on desktop. */
+const brandPaths = resolveBrandPaths(appDir, __dirname);
+const SPLASH_MIN_MS = (() => {
+  const n = Number(process.env.AINOVEL_SPLASH_MS);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_SPLASH_MIN_MS;
+})();
+const splashGate = createSplashGate(SPLASH_MIN_MS);
+const BOOT_SPLASH_HTML = buildSplashDataUrl({
+  logoPath: brandPaths.logo,
+  title: 'AI Novel',
+});
+
+if (process.platform === 'win32') {
+  try {
+    app.setAppUserModelId('com.ainovel.desktop');
+  } catch {
+    /* ignore */
+  }
+}
 
 // ─── Single-instance (triêt để: cấm 2 Electron → kill cổng / exit 1) ───
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -889,25 +915,33 @@ function focusMainWindow(opts = {}) {
   }
 }
 
-const BOOT_SPLASH_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><title>AI Novel — Đang khởi động</title>
-<style>
-  html,body{margin:0;height:100%;background:#050505;color:#fbbf24;font-family:system-ui,sans-serif;
-    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
-  .spin{width:64px;height:64px;border:4px solid #451a03;border-top-color:#f59e0b;border-radius:50%;
-    animation:s 0.9s linear infinite}
-  @keyframes s{to{transform:rotate(360deg)}}
-  p{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#a1a1aa}
-</style></head>
-<body>
-  <div class="spin"></div>
-  <h1 style="font-size:18px;font-weight:600;margin:0;color:#f4f4f5">AI Novel Generator</h1>
-  <p id="msg">Đang mở máy chủ nội bộ…</p>
-  <script>
-    // Visual only — main will navigate to /workspace when ready
-  </script>
-</body></html>`)}`;
 trustedInternalDataUrls.add(BOOT_SPLASH_HTML);
+
+function enterWorkspaceWhenAllowed() {
+  const st = splashGate.status();
+  console.log(
+    `[Splash] enter workspace minElapsed=${st.minElapsed} serverReady=${st.serverReady} shownForMs=${st.shownForMs} minMs=${st.minMs}`,
+  );
+  // Workspace is opaque HTML; set solid underlay for any subpixel gaps
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setBackgroundColor('#09090b');
+    }
+  } catch {
+    /* ignore */
+  }
+  loadWorkspaceUrl();
+}
+
+function requestEnterWorkspace() {
+  splashGate.markServerReady(enterWorkspaceWhenAllowed);
+  if (!splashGate.status().entered) {
+    const st = splashGate.status();
+    console.log(
+      `[Splash] holding floating logo — wait min=${!st.minElapsed} server=${!st.serverReady} (${st.shownForMs}ms / ${st.minMs}ms)`,
+    );
+  }
+}
 
 function createMainWindow(opts = {}) {
   const { loadApp = false } = opts;
@@ -915,9 +949,20 @@ function createMainWindow(opts = {}) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     focusMainWindow({ forcePlace: false, flashTop: false });
     if (loadApp) {
-      loadWorkspaceUrl();
+      requestEnterWorkspace();
     }
     return mainWindow;
+  }
+
+  const iconPath = brandPaths.icon;
+  let iconImage;
+  if (iconPath) {
+    try {
+      iconImage = nativeImage.createFromPath(iconPath);
+      if (iconImage.isEmpty()) iconImage = undefined;
+    } catch {
+      iconImage = undefined;
+    }
   }
 
   mainWindow = new BrowserWindow({
@@ -926,9 +971,12 @@ function createMainWindow(opts = {}) {
     minWidth: 1024,
     minHeight: 768,
     title: 'AI Novel & Script Generator',
+    ...(iconPath ? { icon: iconPath } : {}),
     frame: false,
-    transparent: false,
-    backgroundColor: '#050505',
+    // Transparent shell: boot splash = logo only floating on desktop
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: true,
     autoHideMenuBar: true,
     show: false, // show after place + ready-to-show
     webPreferences: {
@@ -942,8 +990,20 @@ function createMainWindow(opts = {}) {
       devTools: !app.isPackaged,
       // Dev Next on localhost
       webSecurity: true,
+      backgroundThrottling: false,
     },
   });
+
+  if (iconPath) {
+    try {
+      mainWindow.setIcon(iconImage || iconPath);
+    } catch (e) {
+      console.warn('[Window] setIcon failed:', e?.message || e);
+    }
+  }
+  console.log(
+    `[Window] transparent-splash icon=${iconPath || '(none)'} logo=${brandPaths.logo || '(none)'} splashMinMs=${SPLASH_MIN_MS}`,
+  );
 
   if (app.isPackaged) {
     mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -1023,14 +1083,14 @@ function createMainWindow(opts = {}) {
     });
   }
 
-  // Always start with local splash so user never stares at empty void
+  // Floating logo only (transparent HTML) — min 5s before /workspace
+  splashGate.arm(enterWorkspaceWhenAllowed);
   mainWindow.loadURL(BOOT_SPLASH_HTML).catch((e) => {
     appendCrashLog(`[splash load] ${e?.message || e}`);
   });
 
   if (loadApp) {
-    // slight delay so splash paints first
-    setTimeout(() => loadWorkspaceUrl(), 200);
+    requestEnterWorkspace();
   }
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -1163,12 +1223,16 @@ app.whenReady().then(async () => {
 
     if (portMode === 'adopt') {
       ownsHttpServer = false;
-      console.log(`[Startup] Adopt mode — UI → /workspace`);
-      loadWorkspaceUrl();
+      console.log(
+        `[Startup] Adopt mode — floating logo then workspace (${SPLASH_MIN_MS}ms min)`,
+      );
+      requestEnterWorkspace();
       return;
     }
 
-    console.log('[Startup] next.prepare()… (GUI splash already visible)');
+    console.log(
+      `[Startup] next.prepare()… floating logo splash (min ${SPLASH_MIN_MS}ms, logo=${brandPaths.logo ? 'yes' : 'no'})`,
+    );
     await nextApp.prepare();
 
     const server = createServer((req, res) => {
@@ -1225,8 +1289,8 @@ app.whenReady().then(async () => {
         });
     }, 3500);
 
-    // 2) Navigate to workspace (skip `/` client redirect spinner)
-    loadWorkspaceUrl();
+    // 2) Enter workspace after floating-logo min time (default 5s)
+    requestEnterWorkspace();
   } catch (err) {
     exitCode = 1;
     appendCrashLog(

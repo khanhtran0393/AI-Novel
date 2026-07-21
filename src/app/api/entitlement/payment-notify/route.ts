@@ -1,6 +1,9 @@
 /**
  * POST — user bấm "Đã thanh toán" → báo Admin qua Telegram.
  * Body: { hwid?, planId, note? }
+ *
+ * Packaged customer app: **never** embeds bot token — proxy to license API
+ * (Vercel) where TELEGRAM_* secrets live. Same pattern as activate/trial.
  */
 import { NextResponse } from 'next/server';
 import { getHwid } from '@/lib/entitlement';
@@ -15,6 +18,8 @@ import {
 import type { PaidPlanId } from '@/lib/commercial/pricingPlans';
 import { PAID_PLANS, SELLER_BANK } from '@/lib/commercial/pricingPlans';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
+import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
+import { proxyLicenseApiPost } from '@/lib/commercial/licenseApiProxy';
 
 export const runtime = 'nodejs';
 
@@ -39,6 +44,45 @@ export async function POST(req: Request) {
     const hwid =
       (typeof body.hwid === 'string' && body.hwid.trim()) || getHwid();
 
+    // Installed desktop: forward to seller HTTPS (Telegram secrets only on server)
+    if (isPackagedCustomerRuntime()) {
+      const remote = await proxyLicenseApiPost(
+        '/api/entitlement/payment-notify',
+        {
+          hwid,
+          planId,
+          note: typeof body.note === 'string' ? body.note : undefined,
+        },
+      );
+      if (remote.status < 200 || remote.status >= 300) {
+        throw new AppError(
+          String(
+            remote.payload.error ||
+              remote.payload.message ||
+              `Báo Admin HTTP ${remote.status}. Kiểm tra mạng / license API.`,
+          ),
+          {
+            code:
+              remote.status === 429
+                ? 'QUOTA'
+                : remote.status === 401 || remote.status === 403
+                  ? 'AUTH'
+                  : 'INFRA',
+            status: remote.status,
+          },
+        );
+      }
+      return NextResponse.json(
+        {
+          ...remote.payload,
+          zalo: SELLER_BANK.zaloDisplay,
+          zaloUrl: `https://zalo.me/${SELLER_BANK.zalo}`,
+          authority: 'license-api',
+        },
+        { status: remote.status },
+      );
+    }
+
     if (!telegramConfigured()) {
       throw new AppError(
         `Telegram admin chưa cấu hình trên server. Liên hệ Zalo ${SELLER_BANK.zaloDisplay} và gửi bill + HWID ${hwid.toUpperCase()}.`,
@@ -46,7 +90,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Desktop: long-poll getUpdates so ✅ Cấp Key works without public webhook
+    // Dev/seller desktop: long-poll getUpdates so ✅ Cấp Key works without public webhook
     ensureTelegramPoller();
 
     const result = await notifyPaymentReported({
@@ -72,6 +116,7 @@ export async function POST(req: Request) {
       zalo: SELLER_BANK.zaloDisplay,
       zaloUrl: `https://zalo.me/${SELLER_BANK.zalo}`,
       poller: getTelegramPollerStatus(),
+      authority: 'local',
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {
@@ -81,7 +126,18 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  // Keep poller warm when admin opens settings / health
+  // Packaged customer: report whether cloud path is intended (no secrets locally)
+  if (isPackagedCustomerRuntime()) {
+    return NextResponse.json({
+      ok: true,
+      endpoint: '/api/entitlement/payment-notify',
+      mode: 'proxy-license-api',
+      telegramConfigured: true,
+      zalo: SELLER_BANK.zaloDisplay,
+      note: 'Packaged app proxies to Vercel; bot token never in installer.',
+    });
+  }
+  // Keep poller warm when admin opens settings / health (dev/seller only)
   if (telegramConfigured()) ensureTelegramPoller();
   return NextResponse.json({
     ok: true,
@@ -89,5 +145,6 @@ export async function GET() {
     telegramConfigured: telegramConfigured(),
     zalo: SELLER_BANK.zaloDisplay,
     poller: getTelegramPollerStatus(),
+    mode: 'local-telegram',
   });
 }

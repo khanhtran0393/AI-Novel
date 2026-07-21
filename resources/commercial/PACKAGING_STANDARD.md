@@ -16,24 +16,35 @@ JSON máy đọc: `PACKAGING_STANDARD.json`.
 | shortcut / menu Start | `Ai Novel` |
 | Window title | `Ai Novel` |
 | **Logo nguồn** | `build/icon-source-logo.jpg` (nút vàng / máy bay +) |
-| Splash | `electron/splash.html` + `electron/splash-logo.jpg` |
+| Splash assets | `electron/splash-logo.jpg` + `electron/splashBrand.js` + `electron/splash.html` |
 | Icon taskbar / Alt-Tab / .exe | `build/icon.ico` + `build/icon.png` (+ `electron/icon.*`) |
 
 ```powershell
 npm run brand:icons
+npm run brand:sync
+npm run smoke:brand-splash
 ```
+
+Spec chi tiết: [`docs/BRAND_SPLASH.md`](../../docs/BRAND_SPLASH.md).
 
 ---
 
-## 2. Khởi động (LOCKED)
+## 2. Khởi động — logo nổi trong suốt (LOCKED)
 
 | Được | Cấm |
 |------|-----|
-| Hiện **logo** ngay khi mở app | Vòng tròn spinner / loading ring thay logo |
-| Caption “Ai Novel” | Màn đen trống lâu không logo |
-| Splash → workspace | |
+| Cửa sổ **`transparent: true`**, nền HTML **trong suốt** | Nền đen/full panel che desktop |
+| **Chỉ logo brand nổi** (base64 data-URL) | Spinner ring / loading ring **thay** logo |
+| Giữ splash **≥ 5 giây** (`AINOVEL_SPLASH_MS`, mặc định 5000) | Nhảy `/workspace` ngay khi server sẵn (<5s) |
+| Splash **trước** `next.prepare()`; vào app khi đủ 5s **và** server ready | Soft-success / fake splash |
 
-Code: `main.js` load splash **trước** `next.prepare()`.
+Code: `main.js` + `electron/splashBrand.js`.  
+Pack: `beforePack` sync brand + hard-fail thiếu logo; `afterPack` rcedit icon + verify ASAR.
+
+Lệnh pack **bắt buộc** prefix brand:
+
+- `npm run pack:unsigned:qa` → đã gồm `brand:icons` + `brand:sync`
+- `npm run pack:commercial` → đã gồm `brand:icons` + `brand:sync`
 
 ---
 
@@ -48,7 +59,19 @@ Code: `main.js` load splash **trước** `next.prepare()`.
 
 ---
 
-## 4. Update (LOCKED)
+## 4. Telegram «Đã thanh toán» (LOCKED)
+
+| | |
+|--|--|
+| Bot token / chat id | **Chỉ** trên Vercel license API — **cấm** nhét vào installer |
+| App đóng gói | `POST /api/entitlement/payment-notify` → **proxy** `AINOVEL_LICENSE_API_URL` |
+| Dev (unpacked) | Gọi Telegram local nếu có `AINOVEL_TELEGRAM_*` trong `.env.local` |
+
+Vercel env bắt buộc: `AINOVEL_TELEGRAM_BOT_TOKEN` + `AINOVEL_TELEGRAM_CHAT_ID`.
+
+---
+
+## 5. Update (LOCKED)
 
 | | |
 |--|--|
@@ -71,7 +94,8 @@ Code: `main.js` load splash **trước** `next.prepare()`.
 | Credential user | Electron safeStorage (DPAPI) |
 | `npm run audit:package` | **PASS** |
 | Shell re-harden (main/preload/electron) | **On** khi pack |
-| Electron fuses + ASAR | **On** |
+| Electron fuses (RunAsNode off, inspect off) | **On** |
+| ASAR integrity fuse | **Off mặc định** (tránh boot fail sau rcedit icon). Bật: `AINOVEL_ASAR_INTEGRITY=1` |
 | Crown IP seal (toolbox formulas) | **On** (with-crown-sealed-build) |
 | Source maps browser production | **Off** |
 

@@ -51,6 +51,28 @@ Chuyển/thu hồi seat: `npm run license:transfer`. Bridge Telegram chạy trê
 
 ## 4. Kiểm tra và build ký số
 
+### Brand splash (LOCKED — mọi pack)
+
+Trước builder **bắt buộc**:
+
+```powershell
+npm run brand:icons
+npm run brand:sync
+npm run smoke:brand-splash
+```
+
+Yêu cầu ship:
+
+- Splash = **logo nổi trên cửa sổ trong suốt** (không nền đen, không spinner thay logo).
+- Tối thiểu **5 giây** rồi mới vào workspace (`AINOVEL_SPLASH_MS`).
+- File: `electron/splash-logo.jpg`, `electron/splashBrand.js`, `build/icon.ico`.
+- Spec: `docs/BRAND_SPLASH.md` · chuẩn pack: `resources/commercial/PACKAGING_STANDARD.md` §1–2.
+
+`pack:unsigned:qa` / `pack:commercial` đã gọi `brand:icons` + `brand:sync`.  
+`beforePack` hard-fail nếu thiếu logo / không wire `transparent` splash.
+
+### Build ký số
+
 ```powershell
 $env:WIN_CSC_PUBLISHER_NAME = '<EXACT_CERTIFICATE_COMMON_NAME>'
 $env:WIN_CSC_CERTIFICATE_SHA1 = '<40_HEX_CERTIFICATE_THUMBPRINT>'
@@ -59,6 +81,8 @@ $env:CSC_KEY_PASSWORD = '<FROM_SECRET_MANAGER>'
 
 npm run prepare:publish
 npm run release:verify
+npm run brand:icons
+npm run brand:sync
 npm run build:desktop
 ```
 

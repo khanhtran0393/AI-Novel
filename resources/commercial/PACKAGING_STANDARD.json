@@ -18,7 +18,22 @@
     "splash": {
       "showLogo": true,
       "forbidSpinnerRing": true,
+      "transparentWindow": true,
+      "floatingLogoOnly": true,
+      "forbidSolidBackdrop": true,
+      "minDisplayMs": 5000,
+      "envOverride": "AINOVEL_SPLASH_MS",
+      "module": "electron/splashBrand.js",
+      "logoFile": "electron/splash-logo.jpg",
+      "htmlFallback": "electron/splash.html",
+      "docs": "docs/BRAND_SPLASH.md",
       "caption": "Ai Novel"
+    },
+    "packCommands": {
+      "icons": "npm run brand:icons",
+      "sync": "npm run brand:sync",
+      "smoke": "npm run smoke:brand-splash",
+      "requiredBeforeBuilder": ["brand:icons", "brand:sync"]
     },
     "taskbarIcon": "same_as_logo"
   },
@@ -77,6 +92,9 @@
   },
   "forbidden": [
     "splash_spinner_ring_instead_of_logo",
+    "splash_solid_black_backdrop_instead_of_floating_logo",
+    "splash_skip_under_5s_on_ship_build",
+    "pack_without_brand_icons_sync",
     "taskbar_icon_not_brand_logo",
     "productName_not_Ai_Novel",
     "private_key_in_package",

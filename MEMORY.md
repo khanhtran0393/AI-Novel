@@ -1,5 +1,19 @@
 # Project memory (AI Novel)
 
+## Boot fail ASAR + main harden (2026-07-21)
+
+- Symptom: packaged .exe exits immediately; stderr `ASAR Integrity Violation` + Next SWC ENOTDIR
+- Cause: EnableEmbeddedAsarIntegrityValidation after rcedit icon; plus main.js minify race
+- Fix: asar integrity fuse **off** by default (`AINOVEL_ASAR_INTEGRITY=1` opt-in); exclude `main.js` from re-harden minify
+- Boot verified: win-unpacked 1.0.3 → API commercial/status **200**
+
+## Packaged payment-notify → Telegram (2026-07-21)
+
+- Cause: packaged strips TELEGRAM_* secrets; local notify failed with 503
+- Fix: `payment-notify` proxies to license API when `isPackagedCustomerRuntime()`
+- Vercel must have `AINOVEL_TELEGRAM_BOT_TOKEN` + `CHAT_ID`
+- Rebuild ship exe after this fix
+
 ## Brand + packaging standard (2026-07-21)
 
 - **Name:** Ai Novel · **Logo:** gold plane mark (`build/icon-source-logo.jpg`)
@@ -316,6 +330,8 @@
 - **Write engine (2026-07-15):** `storyWriting.requireGenreLabelFromSetup` + `lorebookForPrompt` + `writeEngineRoleLine`. WRITE/REVISE/EVALUATE/EXPAND/REWRITE/OUTLINE/IDEAS bám Setup; không fallback “Luật thế giới mạt thế”. Initial setup `chu_de`/`phong_cach` rỗng — user phải chọn.
 - **Prose anti-stiff (2026-07-21):** Giữ nguyên TỪ CẤM + TỪ SÁO + time-skip/FX cấm. Cải thiện: role “nhà văn/biên kịch kể chuyện”; `buildProseCraftBlock` (nhịp câu, subtext, chi tiết đắt); humanize cho phép xen câu dài; open loop không máy; word-gate bù “chất lượng không nhồi”; `CONTINUE_TAIL_WORDS=1600` + craft nối giọng; joke 1–2 ở nhịp thở; EVALUATE trừ thô cứng; scene expand/rewrite mượt hơn.
 - **Desktop brand icon/splash (2026-07-21):** Taskbar không đổi vì (1) BrowserWindow thiếu `icon`, (2) boot splash là data-URL spinner không load `electron/splash-logo.jpg`, (3) `pack:unsigned:qa` từng `signAndEditExecutable=false` → .exe không nhúng icon. Fix: `setAppUserModelId` + window icon; loadFile `electron/splash.html`; afterPack rcedit `build/icon.ico`; bỏ flag tắt edit exe; NSIS installer icons.
+- **Boot logo 5s (2026-07-21):** `electron/splashBrand.js` — embed logo base64 + `createSplashGate` min 5000ms (`AINOVEL_SPLASH_MS`). `main.js` không nhảy `/workspace` cho đến server ready **và** đủ 5s. Pack: `brand:icons` + `brand:sync` + beforePack `syncBrandAssets` hard-fail thiếu logo; afterPack verify asar brand files. Lưu ý: re-harden minify có thể ghi đè main.js — afterPack restore; nếu kẹt hardened → `restoreShellFromBackup`.
+- **Brand pack LOCKED (2026-07-21):** Spec `docs/BRAND_SPLASH.md`; chuẩn `PACKAGING_STANDARD.md` §1–2 + JSON splash.transparentWindow; ship-check/audit required brand files; beforePack gate transparent+splashBrand; `npm run smoke:brand-splash`. Splash = logo nổi trong suốt, không panel.
 - **Pass 3 (2026-07-15):** novel-engine `setupGenrePayload`; OUTLINE/PLAN_ARC/COMMIT hard-require Setup; INITIAL_LOREBOOK production-only; NV **khuyết điểm** bắt buộc (không “khuyết tật mạt thế”); seedance duration hard-fail; soft idea/noi_dung fallback removed.
 - **AGENTS.md (2026-07-15):** viết lại toàn bộ theo runtime hiện tại — native engine, B10, Setup genre, khuyết điểm, Gen Prompt pipeline, domain tree, checklist 30s; gỡ nội dung cũ (CapCut→Edge, path hooks sai, mạt thế hardcode).
 - **UI lag (2026-07-15):** full `useNovelStore()` trên YoutubeSafeChecklist / SceneTtsBar / EditorPanel / CharacterProfileForm gây re-render toàn cây; fix selectors/shallow. Persist debounce 450ms cho localStorage+durable (flush on leave). SceneCard memo so sánh regen theo scene.
