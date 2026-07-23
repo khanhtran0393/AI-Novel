@@ -8,6 +8,10 @@ import {
   buildThumbnailPrompt,
   scoreNarrativePsychScript,
   YOUTUBE_META_PASS_SCORE,
+  YOUTUBE_MOBILE_TITLE_MAX,
+  YOUTUBE_TITLE_HARD_MAX,
+  buildFiveTitleFormulas,
+  enforceMobileTitle,
 } from '@/lib/youtubeSafe';
 import {
   fetchYoutubeMetaWithQA,
@@ -68,6 +72,13 @@ export async function finishChapterWrite(
       noi_dung: updatedChapter.noi_dung,
       trang_thai: 'ready',
     });
+
+    try {
+      const { markOnboardingStep } = await import('@/lib/onboarding');
+      markOnboardingStep('write');
+    } catch {
+      /* ignore */
+    }
 
     await recordEngineCheckpoint({
       step: params.overwrite ? 'chapter_rewrite' : 'chapter_write',
@@ -292,11 +303,27 @@ export async function finishChapterWrite(
         characterHint:
           (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
         signal: params.signal,
+        chu_de: live.setup?.chu_de,
+        phong_cach: live.setup?.phong_cach,
+        styleEngineId: live.activeStyleEngineId,
       });
+      let seoTitle = (meta.seoTitle || '').normalize('NFC').trim();
+      if (seoTitle.length > YOUTUBE_MOBILE_TITLE_MAX) {
+        const clipped = enforceMobileTitle(seoTitle, YOUTUBE_MOBILE_TITLE_MAX);
+        if (clipped.length >= 28) seoTitle = clipped;
+      }
+      seoTitle = seoTitle.slice(0, YOUTUBE_TITLE_HARD_MAX);
+      const titleVariants = buildFiveTitleFormulas({
+        hook: meta.hook || seoTitle,
+        novelTitle: live.ten_tac_pham,
+        seed: params.chapterNumber * 97 + meta.rounds,
+      });
+      const { buildEndScreenPromptHint } = await import('@/lib/matrixEngine');
       live.setChapterHook(params.chapterNumber, {
         hook: meta.hook,
         thumbnailLine: meta.thumbnailLine.slice(0, 30),
-        seoTitle: meta.seoTitle.slice(0, 100),
+        seoTitle,
+        seoTitleVariants: titleVariants,
         seoDescription: meta.seoDescription,
         seoTags: meta.seoTags,
         thumbnailPrompt:
@@ -308,9 +335,16 @@ export async function finishChapterWrite(
             characterHint:
               (live.nhan_vat || []).slice(0, 2).join(' and ') || undefined,
           }),
+        endScreenPrompt: buildEndScreenPromptHint({
+          genreLabel: [live.setup?.chu_de, live.setup?.phong_cach]
+            .filter(Boolean)
+            .join(' / '),
+          visualDna,
+          nextHook: (meta.hook || seoTitle || '').slice(0, 80),
+        }),
       });
       try {
-        live.rememberChannelMotif?.('hook', meta.seoTitle.slice(0, 120));
+        live.rememberChannelMotif?.('hook', seoTitle.slice(0, 120));
         live.rememberChannelMotif?.('thumb', meta.thumbnailLine.slice(0, 80));
       } catch (motifErr) {
         throw new Error(

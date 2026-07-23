@@ -45,7 +45,7 @@ CẤM chèn slogan SEO (vd. "Đừng bỏ lỡ", "Like Subscribe", template titl
    - Sai lầm → hệ quả hữu hình, không chỉ “hối hận trong lòng”.
 
 5) ESCALATION (nhịp chương, bám Beat + thể loại Setup):
-   - Discovery → Confrontation → Crisis (theo Setup, không ép sinh tồn/mạt thế nếu khác) → Insight.
+   - Discovery → Confrontation → Crisis (theo Setup, không tự đổi thể loại ngoài Setup) → Insight.
    - Real-time: CẤM time-skip / tóm tắt tuần-tháng.
    - Xen nhịp thở giữa các đỉnh căng — không gào từ đầu đến cuối.
 

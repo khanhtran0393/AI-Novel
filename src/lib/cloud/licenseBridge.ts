@@ -26,6 +26,122 @@ export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
+/**
+ * `licenses.user_id` = mã thiết bị (HWID) của app user.
+ * Desktop không bắt login Auth — cột này neo máy, cùng chuẩn hóa với `hwid`.
+ * Cần migration 003 (user_id text). Trước 003 cột uuid → insert dùng null.
+ */
+export function licenseDeviceUserId(hwid: string): string {
+  return String(hwid || '')
+    .trim()
+    .toLowerCase();
+}
+
+function isUuidUserIdColumnError(message: string | undefined | null): boolean {
+  const m = String(message || '').toLowerCase();
+  return (
+    m.includes('invalid input syntax for type uuid') ||
+    (m.includes('user_id') && m.includes('uuid')) ||
+    m.includes('22p02')
+  );
+}
+
+export type LicenseInsertRow = {
+  hwid: string;
+  plan: 'trial' | 'pro' | string;
+  status?: string;
+  exp_at: string;
+  token_hash?: string | null;
+  activation_code?: string | null;
+  order_id?: string | null;
+};
+
+/**
+ * Insert licenses row — sole-truth ledger write.
+ * Prefers user_id = HWID; if column still uuid (pre-003), retries user_id=null
+ * so Trial/Pro still land on Supabase (never silent local-only).
+ */
+export async function insertLicenseRow(
+  service: SupabaseClient,
+  row: LicenseInsertRow,
+): Promise<{ id: string; userIdWritten: string | null }> {
+  const hwid = licenseDeviceUserId(row.hwid);
+  if (!hwid || hwid.length < 6) {
+    throw new AppError('HWID không hợp lệ khi ghi licenses.', {
+      code: 'VALIDATION',
+      status: 400,
+    });
+  }
+  const base = {
+    plan: row.plan,
+    hwid,
+    status: row.status || 'active',
+    exp_at: row.exp_at,
+    token_hash: row.token_hash ?? null,
+    activation_code: row.activation_code ?? null,
+    order_id: row.order_id ?? null,
+  };
+
+  const withDevice = { ...base, user_id: hwid };
+  let { data, error } = await service
+    .from('licenses')
+    .insert(withDevice)
+    .select('id')
+    .single();
+
+  if (error && isUuidUserIdColumnError(error.message)) {
+    const retry = await service
+      .from('licenses')
+      .insert({ ...base, user_id: null })
+      .select('id')
+      .single();
+    data = retry.data;
+    error = retry.error;
+    if (!error && data) {
+      return { id: String(data.id), userIdWritten: null };
+    }
+  }
+
+  if (error || !data) {
+    throw new AppError(
+      `Ghi Supabase licenses thất bại (sole truth): ${error?.message || 'unknown'}`,
+      { code: 'INFRA', status: 502 },
+    );
+  }
+  return { id: String(data.id), userIdWritten: hwid };
+}
+
+/** Update user_id/hwid; skip user_id if column still uuid. */
+export async function updateLicenseDeviceFields(
+  service: SupabaseClient,
+  licenseId: string,
+  hwid: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  const device = licenseDeviceUserId(hwid);
+  const full = { hwid: device, user_id: device, ...(extra || {}) };
+  const { error } = await service.from('licenses').update(full).eq('id', licenseId);
+  if (error && isUuidUserIdColumnError(error.message)) {
+    const { error: e2 } = await service
+      .from('licenses')
+      .update({ hwid: device, ...(extra || {}) })
+      .eq('id', licenseId);
+    if (e2) {
+      throw new AppError(`Update license fail: ${e2.message}`, {
+        code: 'INFRA',
+        status: 502,
+      });
+    }
+    return;
+  }
+  if (error) {
+    throw new AppError(`Update license fail: ${error.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+}
+
 /** Redeem a persistent Supabase activation code and issue a fresh HWID token. */
 export async function redeemCloudActivationCode(input: {
   service: SupabaseClient;
@@ -83,16 +199,9 @@ export async function redeemCloudActivationCode(input: {
     license_id: String(row.id),
     expSeconds: secondsLeft,
   });
-  const { error: updateError } = await input.service
-    .from('licenses')
-    .update({ token_hash: hashToken(token) })
-    .eq('id', row.id);
-  if (updateError) {
-    throw new AppError(`License update fail: ${updateError.message}`, {
-      code: 'INFRA',
-      status: 502,
-    });
-  }
+  await updateLicenseDeviceFields(input.service, String(row.id), hwid, {
+    token_hash: hashToken(token),
+  });
   const claims = verifyEntitlementToken(token, { requireHwidMatch: false });
   if (!claims || claims.hwid?.toLowerCase() !== hwid) {
     throw new AppError('Token vừa cấp không verify được.', {
@@ -342,27 +451,15 @@ export async function confirmOrderAndIssue(input: {
     });
   }
 
-  const { data: lic, error: licErr } = await input.service
-    .from('licenses')
-    .insert({
-      user_id: order.user_id,
-      order_id: order.id,
-      plan: meta.licensePlan,
-      hwid,
-      status: 'active',
-      exp_at: expAt,
-      token_hash: tokenHash,
-      activation_code: activationCode || null,
-    })
-    .select('id')
-    .single();
-
-  if (licErr || !lic) {
-    throw new AppError(`Insert license fail: ${licErr?.message || 'unknown'}`, {
-      code: 'INFRA',
-      status: 502,
-    });
-  }
+  const lic = await insertLicenseRow(input.service, {
+    order_id: order.id,
+    plan: meta.licensePlan,
+    hwid,
+    status: 'active',
+    exp_at: expAt,
+    token_hash: tokenHash,
+    activation_code: activationCode || null,
+  });
 
   // device upsert
   if (order.user_id) {
@@ -475,17 +572,19 @@ export async function promoteHwidLicenseToPaidPro(input: {
       };
     }
 
-    const { error: upErr } = await input.service
-      .from('licenses')
-      .update({
+    try {
+      await updateLicenseDeviceFields(input.service, primary.id, hwidNorm, {
         token_hash: tokenHash,
         exp_at: expAt,
         plan: 'pro',
-        hwid: hwidNorm,
         status: 'active',
-      })
-      .eq('id', primary.id);
-    if (upErr) return { ok: false, error: upErr.message };
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
 
     // Expire other active trial rows so resolveLicenseByHwid cannot stick on trial
     const others = active
@@ -592,9 +691,11 @@ export async function resolveLicenseByHwid(
 }
 
 /**
- * Online verify: when Supabase admin configured → DB is authority.
- * - No matching active row (by token_hash or HWID) → invalid (delete row = Free)
- * - Without Supabase → local Ed25519 verification only
+ * Online verify: **Supabase licenses table is sole truth** when admin configured.
+ * - No matching active row (by token_hash or HWID) → invalid (**delete row = Free**)
+ * - Token Ed25519 may still be cryptographically valid — irrelevant without ledger row
+ * - Without Supabase service on this process → local ticket only (packaged must proxy
+ *   to LICENSE_API which has Supabase; see /api/cloud/license/verify)
  */
 export async function verifyLicenseCloud(input: {
   service: SupabaseClient | null;
@@ -633,6 +734,8 @@ export async function verifyLicenseCloud(input: {
   }
 
   if (!input.service || !isSupabaseAdminConfigured()) {
+    // No ledger on this host — ticket only. Callers that need sole-truth must
+    // use packaged proxy → LICENSE_API (has Supabase) or configure SERVICE_ROLE.
     return {
       valid: true,
       claims: localClaims,
@@ -771,14 +874,41 @@ export async function startCloudTrial(input: {
 }> {
   const hwid = input.hwid.trim().toLowerCase();
   const days =
-    input.days ?? (Number(process.env.AINOVEL_TRIAL_DAYS || 3) || 3);
+    input.days ?? (Number(process.env.AINOVEL_TRIAL_DAYS || 7) || 7);
 
-  const { data: existing } = await input.service
+  // Prefer paid Pro already on ledger (ilike HWID) — no need for trial
+  const already = await resolveLicenseByHwid(input.service, hwid);
+  if (already.found && already.claims && !claimsIsTrial(already.claims)) {
+    if (already.claims.is_pro || already.claims.is_vip) {
+      const leftSec = Math.max(
+        60,
+        (already.claims.exp || 0) - Math.floor(Date.now() / 1000),
+      );
+      const token = issueEntitlementToken({
+        is_pro: true,
+        is_vip: false,
+        is_trial: false,
+        plan: 'pro',
+        hwid,
+        expSeconds: leftSec,
+      });
+      return {
+        created: false,
+        token,
+        expAt: new Date((already.claims.exp || 0) * 1000).toISOString(),
+        licenseId: already.licenseId || '',
+      };
+    }
+  }
+
+  const { data: existingRows } = await input.service
     .from('licenses')
     .select('id,status,exp_at,plan')
-    .eq('hwid', hwid)
+    .ilike('hwid', hwid)
     .eq('plan', 'trial')
-    .maybeSingle();
+    .order('created_at', { ascending: false })
+    .limit(5);
+  const existing = (existingRows || [])[0];
 
   if (existing) {
     if (
@@ -821,34 +951,23 @@ export async function startCloudTrial(input: {
   }
 
   const { token, expAt } = issueTrialToken(hwid, days);
-  const { data: lic, error } = await input.service
-    .from('licenses')
-    .insert({
-      user_id: input.userId || null,
-      plan: 'trial',
-      hwid,
-      status: 'active',
-      exp_at: expAt.toISOString(),
-      token_hash: hashToken(token),
-    })
-    .select('id')
-    .single();
-
-  if (error || !lic) {
-    throw new AppError(`Trial cloud fail: ${error?.message || 'unknown'}`, {
-      code: 'INFRA',
-      status: 502,
-    });
-  }
+  // Sole truth: MUST land on Supabase. Local vault is mirror only.
+  const lic = await insertLicenseRow(input.service, {
+    plan: 'trial',
+    hwid,
+    status: 'active',
+    exp_at: expAt.toISOString(),
+    token_hash: hashToken(token),
+  });
 
   await auditLog(
     input.service,
     'trial.start',
-    { hwid, licenseId: lic.id, days },
+    { hwid, licenseId: lic.id, days, userIdWritten: lic.userIdWritten },
     input.userId,
   );
 
-  // Mirror local vault so assertProAccess / offline trial stay aligned
+  // Mirror local vault (display only — never authority when Supabase configured)
   try {
     startTrial(hwid);
   } catch {
@@ -859,7 +978,7 @@ export async function startCloudTrial(input: {
     created: true,
     token,
     expAt: expAt.toISOString(),
-    licenseId: lic.id as string,
+    licenseId: lic.id,
   };
 }
 

@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   const vieneuMsg = await assertRejects(
     () =>
       provider_vieneu_tts.generate('Xin chao.', opts('not-a-real-vieneu-voice')),
-    /not-a-real-vieneu-voice|Kh[oô]ng fallback/i,
+    /đã gỡ|da go|VieNeu|VinaVoice|không fallback|Kh[oô]ng fallback/i,
   );
 
   console.log(

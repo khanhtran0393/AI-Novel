@@ -6,7 +6,6 @@ import type { ChannelOutputDna, ChannelTtsDna } from './channelModel';
 import { defaultOutputDna, defaultTtsDna } from './channelModel';
 
 export type GenrePackId =
-  | 'mat_the'
   | 'trinh_tham'
   | 'horror_audio'
   | 'romance_dark'
@@ -28,29 +27,6 @@ export type GenrePack = {
 };
 
 export const GENRE_PACKS: GenrePack[] = [
-  {
-    id: 'mat_the',
-    label: 'Mạt thế / Sinh tồn',
-    description: 'Hoang phế, khuyết tật, pacing chậm đa giác quan.',
-    niche: 'Mạt thế',
-    forbidden_words:
-      'đáng chú ý là, nhìn chung, có thể nói rằng, không thể phủ nhận, trong bối cảnh hiện nay, nói một cách dễ hiểu, tóm lại là, nói tóm lại',
-    fatigue_words:
-      'không khỏi, dường như, bất chợt, bỗng nhiên, ánh mắt sâu thẳm, trái tim thắt lại, không khí như đông đặc, trong tích tắc, lướt qua tâm trí, một cảm giác khó tả, ánh lên quyết tâm, nuốt nước bọt, siết chặt nắm đấm',
-    visualDna:
-      'post-apocalyptic survival, dusty ruined streets, tactile grit, overcast cold light, grounded realism, scars and hardship readable at medium shot',
-    mediaStylePreset:
-      'cinematic natural realism, grounded production design, expressive practical lighting, tactile materials, restrained color grade',
-    outputDna: { imageAspectRatio: '16:9', videoAspectRatio: '16:9' },
-    ttsDna: {
-      platform: 'vina_voice',
-      language: 'vi',
-      speed: 0.97,
-      pitch: 0,
-      syncMode: 'pro',
-    },
-    defaultShipMode: 'longform',
-  },
   {
     id: 'trinh_tham',
     label: 'Trinh thám / Tâm lý',
@@ -88,7 +64,9 @@ export const GENRE_PACKS: GenrePack[] = [
       'moody cinematic horror, low-key lighting, desaturated teal-orange restraint',
     outputDna: { imageAspectRatio: '16:9', videoAspectRatio: '16:9' },
     ttsDna: {
-      platform: 'vina_voice',
+      // vina_voice removed — free-safe Edge default (LA Studio = Trial/Pro manual)
+      platform: 'edge_tts',
+      voice: 'vi-VN-NamMinhNeural',
       language: 'vi',
       speed: 0.92,
       pitch: -2,
@@ -132,7 +110,8 @@ export const GENRE_PACKS: GenrePack[] = [
       'cinematic fantasy realism, tactile fabrics, volumetric light, epic yet intimate',
     outputDna: { imageAspectRatio: '16:9', videoAspectRatio: '16:9' },
     ttsDna: {
-      platform: 'vina_voice',
+      platform: 'edge_tts',
+      voice: 'vi-VN-HoaiMyNeural',
       language: 'vi',
       speed: 1,
       pitch: 0,
@@ -143,6 +122,8 @@ export const GENRE_PACKS: GenrePack[] = [
 
 export function getGenrePack(id: string | undefined | null): GenrePack | null {
   if (!id) return null;
+  // Legacy id `mat_the` removed — treat as unknown (no silent pack apply)
+  if (id === 'mat_the') return null;
   return GENRE_PACKS.find((p) => p.id === id) || null;
 }
 

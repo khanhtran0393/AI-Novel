@@ -16,6 +16,26 @@ import {
   MIN_SCENE_COUNT,
 } from '@/lib/storyWriting';
 import {
+  buildScriptModeColdOpenBlock,
+  buildScriptModePacingBlock,
+  buildShortManhuaWordGateExtra,
+  isShortManhuaMode,
+  maxScenesForScriptMode,
+  minScenesForScriptMode,
+  normalizeScriptMode,
+} from '@/lib/scriptMode';
+import {
+  buildStyleEngineWriteBlock,
+  resolveStyleEngineFromSetupPayload,
+} from '@/lib/styleEngineProfiles';
+import {
+  buildMatrixWriteBlock,
+  buildMatrixTtsHintBlock,
+  buildWaveRhythmBlock,
+  buildCliffhangerBlock,
+  composeMatrixFromPayload,
+} from '@/lib/matrixEngine';
+import {
   buildHumanizeScriptBlock,
   buildNarrativePsychBlock,
   buildShotDiversityBlock,
@@ -75,6 +95,9 @@ export async function handleChapter(
       intervention_directive,
       force_word_gate_continue,
       humanize_script,
+      scriptMode,
+      mo_ta,
+      wpm,
     } = payload;
 
     let genreLabel: string;
@@ -86,7 +109,24 @@ export async function handleChapter(
         { status: 400 },
       );
     }
+
+    if (
+      !chuong_hien_tai ||
+      typeof chuong_hien_tai !== 'object' ||
+      chuong_hien_tai.so_chuong == null
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Thiếu chuong_hien_tai (so_chuong + tieu_de). Client phải gửi object chương đang viết — không gửi so_chuong lẻ.',
+        },
+        { status: 400 },
+      );
+    }
   
+    const mode = normalizeScriptMode(scriptMode);
+    const minScenes = minScenesForScriptMode(mode);
+    const maxScenes = maxScenesForScriptMode(mode);
     const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : DEFAULT_WORD_GOAL;
     const wordMin = Math.round(wordGoal * 0.92);
     const charBible = formatCharacterBible(nhan_vat, nhan_vat_prompts);
@@ -97,11 +137,16 @@ export async function handleChapter(
     const resolvedRules = resolveUserRules(userRules);
     const humanizeOn = humanize_script !== false;
   
+    const isContinue = !!(noi_dung_hien_tai && String(noi_dung_hien_tai).trim());
     let continueBlock = '';
-    if (noi_dung_hien_tai && String(noi_dung_hien_tai).trim()) {
+    if (isContinue) {
       continueBlock = '\n' + buildContinueContext(String(noi_dung_hien_tai)).promptBody;
+    } else if (isShortManhuaMode(mode)) {
+      continueBlock =
+        '\nĐừng thêm tiêu đề chương. Bắt đầu bằng [CẢNH 0: COLD OPEN - HOOK] rồi [CẢNH 1: ...] theo nhịp short/manhua.';
     } else {
-      continueBlock = '\nĐừng thêm tiêu đề chương, hãy bắt đầu viết trực tiếp nội dung chương truyện với [CẢNH 1: ...] ngay.';
+      continueBlock =
+        '\nĐừng thêm tiêu đề chương, hãy bắt đầu viết trực tiếp nội dung chương truyện với [CẢNH 1: ...] ngay.';
     }
   
     const interventionBlock = intervention_directive
@@ -109,8 +154,10 @@ export async function handleChapter(
       : '';
   
     const wordGateExtra = force_word_gate_continue
-      ? `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ (CHẤT LƯỢNG, KHÔNG NHỒI):
-Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ ${MIN_SCENE_COUNT} phân cảnh.
+      ? isShortManhuaMode(mode)
+        ? buildShortManhuaWordGateExtra(wordMin, minScenes)
+        : `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ (CHẤT LƯỢNG, KHÔNG NHỒI):
+Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ ${minScenes} phân cảnh.
 - Viết thêm phần MỚI: sâu hơn stakes (lựa chọn, hậu quả, thoại có lực, nội tâm lệch tính cách).
 - Nếu thiếu cảnh: thêm [CẢNH X: ...] mới với xung đột riêng, nối hệ quả từ open loop trước.
 - CẤM đệm bằng liệt kê giác quan / lặp mô tả / tóm tắt lại / reset giọng.
@@ -136,7 +183,7 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   4. TRÍ NHỚ NGẮN HẠN (3 CHƯƠNG GẦN NHẤT):
   ${(tri_nho_ngan_han && tri_nho_ngan_han.length > 0) ? tri_nho_ngan_han.join('\n') : 'Chưa có trí nhớ ngắn hạn.'}
   
-  5. HỒ SƠ NHÂN VẬT (BIBLE — giữ tính cách/hành vi/ngoại hình/khuyết điểm nhất quán; khuyết điểm = điểm yếu, không ép khuyết tật mạt thế):
+  5. HỒ SƠ NHÂN VẬT (BIBLE — giữ tính cách/hành vi/ngoại hình/khuyết điểm nhất quán; khuyết điểm = điểm yếu, không ép trope khuyết tật theo thể loại):
   ${charBible}
   
   6. WORLD STATE (trạng thái hiện tại — tôn trọng inventory/clue/location):
@@ -149,13 +196,45 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   ${beat}
   - Beat A (Discovery): khám phá manh mối, bối cảnh, bí ẩn mới.
   - Beat B (Confrontation): đối đầu, va chạm lợi ích, căng thẳng leo thang.
-  - Beat C (Crisis): khủng hoảng cốt lõi theo thể loại Setup (không ép sinh tồn/mạt thế nếu Setup khác).
+  - Beat C (Crisis): khủng hoảng cốt lõi theo thể loại Setup (không tự đổi thể loại ngoài Setup).
   - Beat D (Insight): bẻ gãy nhận thức, twist logic, hậu quả cảm xúc.
   
   DÀN Ý SỰ KIỆN CHƯƠNG HIỆN TẠI:
   ${chuong_hien_tai.dan_y || '(Trống — tự dựng 3–5 beat sự kiện rõ: mục tiêu NV, trở ngại, bước ngoặt, open loop; bám Setup, không bịa lore mặc định.)'}
   ${interventionBlock}${wordGateExtra}
-  ${buildProseCraftBlock()}
+  ${buildProseCraftBlock(scriptMode)}
+  ${buildScriptModePacingBlock(mode)}
+  ${buildScriptModeColdOpenBlock(mode, { isContinue })}
+  ${buildWaveRhythmBlock({
+    scriptMode: mode,
+    wpm: wpm != null ? Number(wpm) : undefined,
+    so_tu_chuong: wordGoal,
+    isContinue,
+  })}
+  ${buildCliffhangerBlock({ scriptMode: mode, isContinue })}
+  ${buildMatrixWriteBlock(
+    composeMatrixFromPayload({
+      ...(payload || {}),
+      mo_ta: mo_ta ?? (payload as { mo_ta?: string })?.mo_ta,
+      lorebook,
+      chu_de: (payload as { chu_de?: string })?.chu_de,
+      phong_cach: (payload as { phong_cach?: string })?.phong_cach,
+      genre: genreLabel,
+    }),
+    { isContinue },
+  )}
+  ${buildStyleEngineWriteBlock(resolveStyleEngineFromSetupPayload(payload || {}), {
+    scriptMode: mode,
+    isContinue,
+  })}
+  ${buildMatrixTtsHintBlock(
+    composeMatrixFromPayload({
+      ...(payload || {}),
+      genre: genreLabel,
+      lorebook,
+      mo_ta,
+    }),
+  )}
   
   YÊU CẦU KỸ THUẬT KHI VIẾT:
   - Ngôn ngữ: BẮT BUỘC ${ngon_ngu || 'Tiếng Việt'} — văn phong mượt, có nhịp thở, đọc được cả khi narration.
@@ -166,10 +245,19 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   (đoạn văn liền mạch…)
   4. Kể chuyện sống: subtext, nội tâm chọn lọc, NARRATIVE PSYCH dệt vào tình huống (không dán slogan). Real-time: CẤM time-skip / tóm tắt tuần/tháng. Hành động + thoại là xương; 1–2 chi tiết giác quan đắt/cảnh (không stack 5 giác quan).
   5. Cổng Từ: ~${wordGoal} từ (không dưới ${wordMin}) bằng xung đột, thoại, lựa chọn, nội tâm — KHÔNG nhồi sáo / lặp mô tả.
-  6. Phân cảnh: TỐI THIỂU ${MIN_SCENE_COUNT}, tối đa ~5. Mỗi cảnh tag [CẢNH X: NỘI/NGOẠI CẢNH. ĐỊA ĐIỂM CỤ THỂ - THỜI GIAN].
+  6. Phân cảnh: TỐI THIỂU ${minScenes}, tối đa ~${maxScenes}${
+    isShortManhuaMode(mode)
+      ? ' cảnh NGẮN (short/manhua — nhiều cut, mỗi cảnh 1 beat hình ảnh).'
+      : '.'
+  } Mỗi cảnh tag [CẢNH X: NỘI/NGOẠI CẢNH. ĐỊA ĐIỂM CỤ THỂ - THỜI GIAN].
      - Độ dài cảnh theo nhịp truyện (cảnh căng có thể dài hơn) — không chia “đều từ” máy móc.
      - Mỗi cảnh: vào việc sớm + cuối open loop là hệ quả (không lặp cùng một kiểu “và rồi một tiếng động”).
      - Cảnh sau nối hệ quả / đối lập với open loop cảnh trước.
+     ${
+       isShortManhuaMode(mode)
+         ? '- Short/Manhua: narration tối giản; ưu tiên thoại + action nhìn được (sẵn storyboard).'
+         : ''
+     }
   7. 🚫 TỪ CẤM: ${resolvedRules.forbidden_words}
   8. ⚠️ TỪ SÁO / VĂN AI (hạn chế tối đa): ${resolvedRules.fatigue_words}
   ${buildHumanizeScriptBlock(humanizeOn)}
@@ -194,7 +282,7 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
     const mergedForGate = noi_dung_hien_tai
       ? `${noi_dung_hien_tai}\n\n${normalized}`
       : normalized;
-    const gate = evaluateWordGate(mergedForGate, wordGoal, MIN_SCENE_COUNT);
+    const gate = evaluateWordGate(mergedForGate, wordGoal, minScenes);
     const narrativePsych = scoreNarrativePsychScript(mergedForGate);
   
     return NextResponse.json({
@@ -228,6 +316,8 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
       nhan_vat,
       nhan_vat_prompts,
       humanize_script,
+      scriptMode,
+      mo_ta,
     } = payload;
 
     let genreLabel: string;
@@ -240,6 +330,8 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
       );
     }
   
+    const modeSm = normalizeScriptMode(scriptMode);
+    const minScenesRev = minScenesForScriptMode(modeSm);
     const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : DEFAULT_WORD_GOAL;
     const wordMin = Math.round(wordGoal * 0.92);
     const dims = Array.isArray(review?.dimensions) ? review.dimensions : [];
@@ -262,6 +354,7 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   Tác phẩm: "${ten_tac_pham}" — Chương ${chuong_hien_tai?.so_chuong}: "${chuong_hien_tai?.tieu_de}".
   Chế độ: ${modeLabel}.
   Setup thể loại: ${genreLabel}.
+  Phong cách kịch bản (scriptMode): ${modeSm}.
   
   --- LOREBOOK ---
   ${lorebookForPrompt(lorebook)}
@@ -278,7 +371,20 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   --- LUẬT TỪ ---
   Từ cấm: ${resolvedRules.forbidden_words}
   Từ sáo / văn AI: ${resolvedRules.fatigue_words}
-  ${buildProseCraftBlock()}
+  ${buildProseCraftBlock(scriptMode)}
+  ${buildMatrixWriteBlock(
+    composeMatrixFromPayload({
+      ...(payload || {}),
+      mo_ta,
+      lorebook,
+      genre: genreLabel,
+    }),
+    { isContinue: true },
+  )}
+  ${buildStyleEngineWriteBlock(resolveStyleEngineFromSetupPayload(payload || {}), {
+    scriptMode: modeSm,
+    isContinue: true,
+  })}
   ${buildHumanizeScriptBlock(humanizeOn)}
   ${buildSpeechFingerprintBlock(nhan_vat, nhan_vat_prompts)}
   ${isAudioRead ? buildAudioReadabilityBlock() : ''}
@@ -290,10 +396,14 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   1. ${isAudioRead
     ? 'Giữ 100% tình tiết và tag cảnh; tối ưu nhịp đọc audio — cắt sáo, nghỉ thở rõ, NHƯNG giữ xen câu ngắn/vừa/dài để không thô đều như checklist.'
     : isRewrite
-    ? 'Viết lại toàn bộ chương, khắc phục chiều điểm thấp (<70); giữ dàn ý sự kiện cốt lõi; nâng pacing/character/hook + NARRATIVE PSYCH dệt vào văn + subtext + thoại đời. CẤM slogan SEO. Ưu tiên mượt, chống thô cứng.'
+    ? isShortManhuaMode(modeSm)
+      ? 'Viết lại mạnh theo logic Short/Manhua: thoại + action nhìn được, đủ [CẢNH] ngắn, open loop; khắc phục điểm thấp; CẤM monologue thrift / slogan SEO.'
+      : 'Viết lại toàn bộ chương, khắc phục chiều điểm thấp (<70); giữ dàn ý sự kiện cốt lõi; nâng pacing/character/hook + NARRATIVE PSYCH dệt vào văn + subtext + thoại đời. CẤM slogan SEO. Ưu tiên mượt, chống thô cứng.'
+    : isShortManhuaMode(modeSm)
+    ? 'Giữ cấu trúc; trau chuốt thoại dứt + beat visual; cắt tường thuật thừa; open loop hệ quả cuối cảnh.'
     : 'Giữ cấu trúc và tình tiết chính; trau chuốt câu chữ, nhịp thở, subtext, đối thoại đời; cắt sáo rỗng/văn AI/thô cứng (câu đều đều, tường thuật dàn, giải thích cảm xúc). Open loop cuối cảnh phải là hệ quả, không máy.'}
   2. Ngôn ngữ: ${ngon_ngu || 'Tiếng Việt'}.
-  3. Giữ/khôi phục tag [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN] — tối thiểu ${MIN_SCENE_COUNT} cảnh.
+  3. Giữ/khôi phục tag [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN] — tối thiểu ${minScenesRev} cảnh.
   4. Độ dài ~${wordGoal} từ (không dưới ${wordMin}) — đủ bằng xung đột/thoại/lựa chọn, không stack giác quan / nhồi tính từ.
   5. Chỉ trả về NỘI DUNG TRUYỆN thuần, không markdown giải thích.`;
   
@@ -302,7 +412,7 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
     if (humanizeOn) {
       normalized = injectHumanJokeAsides(normalized, { minCount: 1, enabled: true });
     }
-    const gate = evaluateWordGate(normalized, wordGoal, MIN_SCENE_COUNT);
+    const gate = evaluateWordGate(normalized, wordGoal, minScenesRev);
     const narrativePsych = scoreNarrativePsychScript(normalized);
     return NextResponse.json({
       noi_dung: normalized,
@@ -323,7 +433,8 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
     const { 
       chuong_hien_tai, 
       noi_dung_kich_ban, 
-      userRules
+      userRules,
+      scriptMode
     } = payload;
 
     let genreLabel: string;
@@ -357,7 +468,13 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   Nhiệm Vụ:
   1. Đánh giá 7 chiều: Consistency, Character, Pacing (escalation + nhịp thở), Continuity, Foreshadow (curiosity gap), Hook (pattern interrupt + open loop), Aesthetic (văn phong mượt + tính người + chống văn AI/slogan SEO + chống thô cứng).
   2. Trừ nặng Aesthetic nếu dính nhiều Từ cấm / Từ sáo theo luật tác giả.
-  3. Trừ Character/Aesthetic nếu thoại đồng chất, thiếu subtext/im lặng hữu ích, stack 5 giác quan, hoặc văn checklist (câu đều đều ngắn, tường thuật dàn, giải thích cảm xúc rỗng — thô cứng).
+  ${
+    scriptMode === 'sang_van'
+      ? '3. Không trừ điểm Pacing/Aesthetic nếu nhịp truyện cực nhanh, câu ngắn gọn dứt khoát, hoặc buff nhân vật lố nhưng thỏa mãn. Sảng văn ƯU TIÊN tiết tấu nhanh, vả mặt, và dopamine hit. Đừng phạt kiểu "thiếu miêu tả chiều sâu nội tâm rườm rà".'
+      : scriptMode === 'short_manhua'
+        ? '3. Short/Manhua: ƯU TIÊN thoại + hành động nhìn được, nhiều [CẢNH] ngắn, open loop. KHÔNG trừ Aesthetic vì thiếu monologue nội tâm dài / prose tiểu thuyết. Trừ nặng nếu: tường thuật dài không visual, thiếu tag cảnh, không có beat hành động, time-skip, hoặc note đạo diễn thô [zoom].'
+        : '3. Trừ Character/Aesthetic nếu thoại đồng chất, thiếu subtext/im lặng hữu ích, stack 5 giác quan, hoặc văn checklist (câu đều đều ngắn, tường thuật dàn, giải thích cảm xúc rỗng — thô cứng).'
+  }
   4. Trừ Hook nếu mở thơ tả cảnh; trừ Pacing nếu chốt êm giữa chương / thiếu open loop / open loop máy lặp kiểu; trừ Continuity nếu cảnh sau không nối hệ quả.
   5. 0–100 mỗi chiều. Bất kỳ chiều <60 hoặc trung bình <70 → verdict "rewrite". 70–80 → "polish". >80 → "accept".
   

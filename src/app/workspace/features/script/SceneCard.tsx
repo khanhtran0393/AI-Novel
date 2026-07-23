@@ -28,6 +28,7 @@ import { toast } from '@/lib/toastBus';
 import FloatingMenu from '../../shared/FloatingMenu';
 import ScenePromptRow from './ScenePromptRow';
 import SceneTtsBar from './SceneTtsBar';
+import { resolveVideoKeyframeRange } from '@/lib/projectProgress';
 import QualityGateBadge from './QualityGateBadge';
 
 interface SceneCardProps {
@@ -76,6 +77,8 @@ type ScenePromptItem = {
   script_prompt?: string;
   sentence?: string;
   video_prompt?: string;
+  use_end_frame?: boolean;
+  end_image_key?: string;
 };
 
 function SceneCard({
@@ -571,10 +574,17 @@ function SceneCard({
                 } else if (defaultDuration > 0) {
                   durationVal = defaultDuration;
                 }
+                if (!scene.content.trim()) {
+                  toast.error(
+                    'Cảnh trống',
+                    'Viết / sinh kịch bản cảnh trước khi Gen Prompt Studio.',
+                  );
+                  return;
+                }
                 if (!durationVal) {
                   toast.error(
                     'Thiếu thời lượng',
-                    'Chạy TTS trước, nhập thời lượng tay, hoặc cấu hình WPM (Media Config) + nội dung cảnh. App không tự gán duration.',
+                    'Thứ tự: 1) TTS Voice (hoặc nhập giây) → 2) Gen Prompt Studio → 3) Gen ảnh. Hoặc cấu hình WPM trong Ảnh/Video. App không tự gán duration.',
                   );
                   return;
                 }
@@ -731,11 +741,21 @@ function SceneCard({
                       handleGenerateImage(sceneIndex, pIdx, imagePromptText, scriptPromptText)
                     }
                     onGenVideo={() => {
-                      if (pIdx === 0 || pIdx === promptsAsset.length - 1) {
-                        handleGenerateVideo(sceneIndex, pIdx, pIdx, videoPromptText);
-                      } else {
-                        handleGenerateVideo(sceneIndex, pIdx - 1, pIdx, videoPromptText);
-                      }
+                      // P2 keyframe optional: use_end_frame → dual stills; else legacy edge/middle
+                      const range = resolveVideoKeyframeRange({
+                        promptIndex: pIdx,
+                        promptsLen: promptsAsset.length,
+                        useEndFrame: !!promptItem.use_end_frame,
+                        endImageKey: promptItem.end_image_key,
+                        chapter: chapterNum,
+                        sceneIndex,
+                      });
+                      handleGenerateVideo(
+                        sceneIndex,
+                        range.startPromptIndex,
+                        range.endPromptIndex,
+                        videoPromptText,
+                      );
                     }}
                     onExtendVideo={
                       handleExtendVideo

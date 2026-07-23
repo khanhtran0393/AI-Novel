@@ -55,6 +55,7 @@ const required = [
   'resources/commercial/public.env',
   'resources/commercial/PACKAGING_STANDARD.json',
   'resources/commercial/PACKAGING_STANDARD.md',
+  'resources/commercial/release-notes.json',
   'scripts/assert-commercial-signing.mjs',
   'scripts/assert-commercial-package.mjs',
   'scripts/publish-github-release.mjs',
@@ -133,7 +134,12 @@ check(
   'build.files excludes docs from ASAR',
 );
 check(pkg.build?.asar === true, 'asar enabled');
-check(pkg.build?.forceCodeSigning === true, 'forceCodeSigning enabled');
+check(
+  resources.includes('release-notes.json'),
+  'extraResources includes commercial/release-notes.json (update changelog)',
+);
+// PACKAGING_STANDARD §3: unsigned still installable — forceCodeSigning MUST be false.
+check(pkg.build?.forceCodeSigning === false, 'forceCodeSigning disabled (unsigned install allowed)');
 check(pkg.build?.win?.signAndEditExecutable === true, 'Windows signing enabled');
 check(
   Array.isArray(pkg.build?.win?.signtoolOptions?.publisherName),
@@ -269,18 +275,46 @@ const publicLicenseApi = publicCommercialConfig
   .find((line) => line.startsWith('AINOVEL_LICENSE_API_URL='))
   ?.slice('AINOVEL_LICENSE_API_URL='.length);
 check(realHttps(publicLicenseApi), 'packaged public config has real HTTPS license API');
+const publicUpdateProvider =
+  publicCommercialConfig
+    .split(/\r?\n/)
+    .find((line) => line.startsWith('AINOVEL_UPDATE_PROVIDER='))
+    ?.slice('AINOVEL_UPDATE_PROVIDER='.length)
+    ?.trim() || 'github';
 const publicUpdateFeed = publicCommercialConfig
   .split(/\r?\n/)
   .find((line) => line.startsWith('AINOVEL_UPDATE_FEED_URL='))
   ?.slice('AINOVEL_UPDATE_FEED_URL='.length);
-const packagedUpdateFeed = pkg.build?.publish?.find(
+const publicGithubOwner = publicCommercialConfig
+  .split(/\r?\n/)
+  .find((line) => line.startsWith('AINOVEL_UPDATE_GITHUB_OWNER='))
+  ?.slice('AINOVEL_UPDATE_GITHUB_OWNER='.length)
+  ?.trim();
+const publicGithubRepo = publicCommercialConfig
+  .split(/\r?\n/)
+  .find((line) => line.startsWith('AINOVEL_UPDATE_GITHUB_REPO='))
+  ?.slice('AINOVEL_UPDATE_GITHUB_REPO='.length)
+  ?.trim();
+const packagedGenericFeed = pkg.build?.publish?.find(
   (entry) => entry?.provider === 'generic',
 )?.url;
-check(realHttps(publicUpdateFeed), 'packaged public config has real HTTPS update feed');
-check(
-  packagedUpdateFeed === publicUpdateFeed,
-  'electron-builder feed matches packaged public update feed',
-);
+const packagedGithub = pkg.build?.publish?.find((entry) => entry?.provider === 'github');
+if (publicUpdateProvider === 'github') {
+  check(
+    Boolean(publicGithubOwner && publicGithubRepo),
+    'packaged public config has GitHub update owner/repo',
+  );
+  check(
+    packagedGithub?.owner === publicGithubOwner && packagedGithub?.repo === publicGithubRepo,
+    'electron-builder GitHub publish matches packaged public update config',
+  );
+} else {
+  check(realHttps(publicUpdateFeed), 'packaged public config has real HTTPS update feed');
+  check(
+    packagedGenericFeed === publicUpdateFeed,
+    'electron-builder feed matches packaged public update feed',
+  );
+}
 const entitlement = fs.readFileSync(path.join(root, 'src/lib/entitlement.ts'), 'utf8');
 check(!entitlement.includes('createHmac'), 'license verifier contains no shared HMAC');
 check(entitlement.includes('crypto.verify'), 'Ed25519 verification wired');

@@ -171,7 +171,7 @@ CẤM bịa quy tắc không có trong nguồn. CẤM copy nguyên đoạn tho�
   }`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
     const parsed = cleanAndParseJson(aiResponse);
-    // Apply still formula only when client provided style/genre (no mat-the hardcode)
+    // Apply still formula only when client provided style/genre (no silent genre hardcode)
     const importStyle = String(
       payload.styleHint || payload.style || payload.visualDnaPrompt || '',
     ).trim();

@@ -16,9 +16,10 @@ import { getHwid } from '@/lib/entitlement';
 import { isPackagedCustomerRuntime } from '@/lib/commercial/packagedAttestation';
 import { AppError } from '@/lib/errors';
 
+/** Concurrent seat window — default **10 min** (was 15). Override: AINOVEL_SEAT_PRESENCE_WINDOW_SEC */
 const PRESENCE_WINDOW_SEC = (() => {
-  const n = Number(process.env.AINOVEL_SEAT_PRESENCE_WINDOW_SEC || 15 * 60);
-  return Number.isFinite(n) && n >= 60 ? Math.floor(n) : 15 * 60;
+  const n = Number(process.env.AINOVEL_SEAT_PRESENCE_WINDOW_SEC || 10 * 60);
+  return Number.isFinite(n) && n >= 60 ? Math.floor(n) : 10 * 60;
 })();
 
 type SeatRow = {
@@ -125,7 +126,26 @@ export function enforceSeatPresence(
   const peers = rows.filter((r) => r.licenseId === lid);
   const distinct = new Set(peers.map((r) => r.hwid));
   if (distinct.size > maxSeats) {
-    // Do not write overflow peer — deny share
+    // Do not write overflow peer — deny share + local deny breadcrumb (no token)
+    try {
+      const base =
+        process.env.AI_NOVEL_USER_DATA ||
+        process.env.AINOVEL_DATA_ROOT ||
+        path.join(os.homedir(), '.ainovel-license');
+      fs.mkdirSync(base, { recursive: true });
+      fs.appendFileSync(
+        path.join(base, 'deny-events.jsonl'),
+        JSON.stringify({
+          at: new Date().toISOString(),
+          reason: 'seat_overflow',
+          detail: `n=${distinct.size}/max=${maxSeats}`,
+          hwid8: hwid.slice(0, 8),
+        }) + '\n',
+        'utf8',
+      );
+    } catch {
+      /* ignore */
+    }
     throw new AppError(
       `License đang dùng trên ${distinct.size} máy (tối đa ${maxSeats} seat). ` +
         'Ngắt máy khác hoặc liên hệ seller transfer seat.',

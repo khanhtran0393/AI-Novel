@@ -86,11 +86,17 @@ for (const d of [
   'public/watermarked',
   'public/images',
   'public/isolated',
-  'data/vina-voices',
+  // data/vina-voices: KHÔNG emptyDir — wipe profiles_goc + samples làm hỏng «Cấu Hình Giọng Đọc Toàn Cục»
+  // (Zero-Shot 0 profile / 0 WAV). Chỉ dọn temp/session; catalog JSON + samples giữ.
   'data/omnivoice-profiles',
   'data/flow-bridge',
 ]) {
   emptyDir(d);
+}
+
+// Vina: chỉ xóa scratch, giữ profiles_goc / samples / user-clones
+for (const rel of ['data/vina-voices/temp', 'data/vina-voices/session']) {
+  emptyDir(rel);
 }
 
 for (const f of [

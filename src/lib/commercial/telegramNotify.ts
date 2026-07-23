@@ -1,10 +1,10 @@
 /**
- * Seller Telegram notify — "Đã thanh toán" + inline approve/reject.
+ * Seller Telegram notify — "Đã thanh toán" + inline approve/reject + admin ops.
  * Env: AINOVEL_TELEGRAM_BOT_TOKEN + AINOVEL_TELEGRAM_CHAT_ID
+ *   CHAT_ID có thể nhiều id, cách nhau bằng dấu phẩy (user + group).
  *
- * callback_data (≤64 bytes, HWID = 16 hex, no `_` ambiguity):
- *   issue:<planId>:<hwid>
- *   reject:<hwid>
+ * callback_data (≤64 bytes):
+ *   issue:|reject:|pick:|pick_cancel|revoke_*|menu:*
  */
 
 import type { PaidPlanId } from './pricingPlans';
@@ -14,6 +14,7 @@ import {
   buildTransferContent,
   formatVnd,
 } from './pricingPlans';
+import { BOT_MENU_COMMANDS } from './telegramAdminCommands';
 
 export type PaymentNotifyPayload = {
   hwid: string;
@@ -23,7 +24,32 @@ export type PaymentNotifyPayload = {
 
 export type TelegramCallbackAction =
   | { action: 'issue'; planId: PaidPlanId; hwid: string }
-  | { action: 'reject'; hwid: string };
+  | { action: 'reject'; hwid: string }
+  | { action: 'pick'; planId: PaidPlanId; hwid: string }
+  | { action: 'pick_cancel' }
+  | { action: 'revoke_confirm'; licenseId: string }
+  | { action: 'revoke_cancel' }
+  | {
+      action: 'menu';
+      item:
+        | 'activate'
+        | 'lookup'
+        | 'list'
+        | 'revoke'
+        | 'plans'
+        | 'status'
+        | 'help';
+    };
+
+export type TgReplyMarkup =
+  | { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> }
+  | {
+      keyboard: Array<Array<{ text: string }>>;
+      resize_keyboard?: boolean;
+      is_persistent?: boolean;
+      one_time_keyboard?: boolean;
+    }
+  | { remove_keyboard: true };
 
 /** Simple in-memory cooldown (per process) — 1 report / HWID / 2 minutes */
 const lastReportAt = new Map<string, number>();
@@ -46,11 +72,43 @@ export function telegramAdminChatId(): string {
   return (process.env.AINOVEL_TELEGRAM_CHAT_ID || '').trim();
 }
 
+/** All allowed admin chat/user ids (comma / space / semicolon separated). */
+export function telegramAdminIdSet(): Set<string> {
+  const raw = telegramAdminChatId();
+  const set = new Set<string>();
+  for (const part of raw.split(/[,;\s]+/)) {
+    const id = part.trim();
+    if (id) set.add(id);
+  }
+  return set;
+}
+
 /** Normalize chat id compare (number | string from Telegram JSON). */
 export function isAdminChatId(chatId: string | number | undefined | null): boolean {
-  const expected = telegramAdminChatId();
-  if (!expected || chatId == null || chatId === '') return false;
-  return String(chatId).trim() === expected;
+  if (chatId == null || chatId === '') return false;
+  const ids = telegramAdminIdSet();
+  if (!ids.size) return false;
+  return ids.has(String(chatId).trim());
+}
+
+/**
+ * Admin gate for messages + callbacks.
+ * Accepts either message.chat.id OR callback_query.from.id
+ * (fix case: payment notify vào group, admin bấm nút bằng user id khác config).
+ */
+export function isAdminActor(input: {
+  chatId?: string | number | null;
+  fromId?: string | number | null;
+}): boolean {
+  const ids = telegramAdminIdSet();
+  if (!ids.size) return false;
+  if (input.chatId != null && input.chatId !== '' && ids.has(String(input.chatId).trim())) {
+    return true;
+  }
+  if (input.fromId != null && input.fromId !== '' && ids.has(String(input.fromId).trim())) {
+    return true;
+  }
+  return false;
 }
 
 export function buildIssueCallbackData(planId: PaidPlanId, hwid: string): string {
@@ -74,6 +132,51 @@ export function parseTelegramCallbackData(
 ): TelegramCallbackAction | null {
   const s = (raw || '').trim();
   if (!s) return null;
+
+  if (s === 'pick_cancel') return { action: 'pick_cancel' };
+  if (s === 'revoke_cancel') return { action: 'revoke_cancel' };
+
+  if (s.startsWith('menu:')) {
+    const item = s.slice('menu:'.length).trim().toLowerCase();
+    const allowed = new Set([
+      'activate',
+      'lookup',
+      'list',
+      'revoke',
+      'plans',
+      'status',
+      'help',
+    ]);
+    if (!allowed.has(item)) return null;
+    return {
+      action: 'menu',
+      item: item as
+        | 'activate'
+        | 'lookup'
+        | 'list'
+        | 'revoke'
+        | 'plans'
+        | 'status'
+        | 'help',
+    };
+  }
+
+  if (s.startsWith('revoke_confirm:')) {
+    const licenseId = s.slice('revoke_confirm:'.length).trim();
+    if (!licenseId || licenseId.length < 6) return null;
+    return { action: 'revoke_confirm', licenseId };
+  }
+
+  if (s.startsWith('pick:')) {
+    const rest = s.slice('pick:'.length);
+    const colon = rest.indexOf(':');
+    if (colon <= 0) return null;
+    const planRaw = rest.slice(0, colon) as PaidPlanId;
+    const hwid = rest.slice(colon + 1).trim().toUpperCase();
+    if (!hwid || hwid.length < 6) return null;
+    const planId: PaidPlanId = PLAN_IDS.has(planRaw) ? planRaw : 'lifetime';
+    return { action: 'pick', planId, hwid };
+  }
 
   if (s.startsWith('issue:')) {
     // issue:<planId>:<hwid>  — hwid may contain no colons (hex)
@@ -225,11 +328,19 @@ async function telegramApi(
   }
 }
 
+/**
+ * Prefer first configured admin id for outbound notify.
+ * For multi-id, optional overrideChatId targets the active conversation.
+ */
 export async function sendTelegramMessage(
   text: string,
-  reply_markup?: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> },
+  reply_markup?: TgReplyMarkup,
+  overrideChatId?: string | number,
 ): Promise<TgApiResult> {
-  const chatId = telegramAdminChatId();
+  const chatId =
+    overrideChatId != null && overrideChatId !== ''
+      ? String(overrideChatId)
+      : telegramAdminIdSet().values().next().value || telegramAdminChatId();
   if (!chatId) {
     return {
       ok: false,
@@ -243,6 +354,90 @@ export async function sendTelegramMessage(
     disable_web_page_preview: true,
     ...(reply_markup ? { reply_markup } : {}),
   });
+}
+
+/**
+ * Gửi cùng nội dung tới MỌI admin chat id (CHAT_ID có thể phẩy nhiều id).
+ * Thành công nếu ≥1 chat nhận được message_id.
+ */
+export async function sendTelegramMessageToAllAdmins(
+  text: string,
+  reply_markup?: TgReplyMarkup,
+): Promise<TgApiResult & { messageIds?: number[]; errors?: string[] }> {
+  const ids = [...telegramAdminIdSet()];
+  if (!ids.length) {
+    return {
+      ok: false,
+      error:
+        'Chưa cấu hình Telegram (AINOVEL_TELEGRAM_BOT_TOKEN / AINOVEL_TELEGRAM_CHAT_ID).',
+    };
+  }
+  const messageIds: number[] = [];
+  const errors: string[] = [];
+  for (const chatId of ids) {
+    const sent = await sendTelegramMessage(text, reply_markup, chatId);
+    if (sent.ok && sent.messageId != null) {
+      messageIds.push(sent.messageId);
+    } else {
+      errors.push(`${chatId}: ${sent.error || 'send failed'}`);
+    }
+  }
+  if (!messageIds.length) {
+    return {
+      ok: false,
+      error: errors.join(' | ') || 'Telegram không trả message_id (admin không nhận tin).',
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    messageId: messageIds[0],
+    messageIds,
+    errors: errors.length ? errors : undefined,
+  };
+}
+
+/** Deep-link start payload: pay_<planId>_<hwid> (Telegram start ≤64 chars) */
+export function buildPayStartPayload(planId: PaidPlanId, hwid: string): string {
+  const plan = PLAN_IDS.has(planId) ? planId : 'lifetime';
+  const id = (hwid || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return `pay_${plan}_${id}`.slice(0, 64);
+}
+
+export function parsePayStartPayload(
+  raw: string | undefined | null,
+): { planId: PaidPlanId; hwid: string } | null {
+  const s = (raw || '').trim();
+  // /start pay_lifetime_ABC  or just pay_lifetime_ABC
+  const m = s.match(/^(?:\/start\s+)?pay_([a-z]+)_([A-Za-z0-9]{6,48})$/i);
+  if (!m) return null;
+  const planRaw = m[1].toLowerCase() as PaidPlanId;
+  const hwid = m[2].toUpperCase();
+  const planId: PaidPlanId = PLAN_IDS.has(planRaw) ? planRaw : 'lifetime';
+  return { planId, hwid };
+}
+
+/** t.me deep link so customer can re-open bot with HWID baked in */
+export function buildPayTelegramDeepLink(
+  planId: PaidPlanId,
+  hwid: string,
+): string {
+  const payload = buildPayStartPayload(planId, hwid);
+  return `https://t.me/${SELLER_BANK.telegramBotUsername}?start=${encodeURIComponent(payload)}`;
+}
+
+/** Register left-corner Menu button commands (Bot API setMyCommands). */
+export async function registerTelegramBotMenu(): Promise<TgApiResult> {
+  const commands = BOT_MENU_COMMANDS.map((c) => ({
+    command: c.command,
+    description: c.description.slice(0, 256),
+  }));
+  const setCmds = await telegramApi('setMyCommands', { commands });
+  // Ensure default menu opens command list (Telegram clients show ☰ / Menu)
+  await telegramApi('setChatMenuButton', {
+    menu_button: { type: 'commands' },
+  });
+  return setCmds;
 }
 
 /**
@@ -300,7 +495,7 @@ export async function notifyPaymentReported(p: PaymentNotifyPayload): Promise<{
   }
 
   const text = buildPaymentNotifyMessage({ ...p, hwid, planId });
-  const sent = await sendTelegramMessage(text, {
+  const keyboard: TgReplyMarkup = {
     inline_keyboard: [
       [
         {
@@ -313,8 +508,18 @@ export async function notifyPaymentReported(p: PaymentNotifyPayload): Promise<{
         },
       ],
     ],
-  });
-  if (!sent.ok) return { ok: false, error: sent.error, text };
+  };
+  // Fan-out mọi admin id — fail-closed nếu không có message_id nào
+  const sent = await sendTelegramMessageToAllAdmins(text, keyboard);
+  if (!sent.ok || sent.messageId == null) {
+    return {
+      ok: false,
+      error:
+        sent.error ||
+        'Telegram không xác nhận message_id — Admin chưa nhận tin báo thanh toán.',
+      text,
+    };
+  }
   lastReportAt.set(hwid, now);
   return { ok: true, messageId: sent.messageId, text };
 }
@@ -346,6 +551,7 @@ export async function setTelegramWebhook(publicBaseUrl: string): Promise<{
     });
     const data = await res.json().catch(() => ({}));
     const ok = Boolean((data as { ok?: boolean }).ok);
+    await registerTelegramBotMenu().catch(() => undefined);
     return {
       ok,
       webhookUrl,

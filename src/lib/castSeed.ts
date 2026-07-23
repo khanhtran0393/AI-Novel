@@ -71,14 +71,14 @@ export function seedRolesFromProject(state: CastSeedSnapshot): VoiceRole[] {
   const platform = (state.ttsConfig.platform || '').trim();
   const language = (state.ttsConfig.language || '').trim();
   if (!platform) {
-    throw new Error('Chua chon engine TTS (platform).');
+    throw new Error('Chưa chọn engine TTS (platform).');
   }
   if (!language) {
-    throw new Error('Chua chon ngon ngu TTS.');
+    throw new Error('Chưa chọn ngôn ngữ TTS.');
   }
   const defaultVoice = (state.ttsConfig.voice || '').trim();
   if (!defaultVoice) {
-    throw new Error('Chua chon voice TTS narrator.');
+    throw new Error('Chưa chọn voice TTS narrator.');
   }
   const baseSpeed = coerceTtsSpeed(state.ttsConfig.speed, 1);
   const basePitch = coerceTtsPitch(state.ttsConfig.pitch, 0);

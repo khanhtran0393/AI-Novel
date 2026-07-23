@@ -25,7 +25,7 @@ Mục tiêu: hiểu sẽ bị đập ở đâu, và app đã chặn gì.
 | 10 | `/api/entitlement/issue` trên packaged | Mint key | **Có** | `assertSellerRuntime` 404 |
 | 11 | Token rác / sửa payload | Fake claims | **Có** | verify + canary |
 | 12 | Trial cloud kẹt đè Pro | Không lên Pro | **Đã fix** | promote trial→pro |
-| 13 | Offline forever sau revoke | Dùng token đã revoke | **Siết** | Heartbeat online + cache revoked; grace 48h/12h/6h |
+| 13 | Offline forever sau revoke | Dùng token đã revoke | **Siết** | Heartbeat online + cache revoked; grace **24h/6h/3h** |
 | 14 | Nop một hàm assertProAccess | Video free | **Siết** | `assertPremiumAccessHard` + `assertFeatureAccessHard` mesh |
 | 15 | Clear only `AI_NOVEL_PACKAGED` | Fake dev open | **Siết** | Multi-signal attest (ELECTRON_PACKAGED + ATTEST + layout) |
 | 16 | Gọi toolbox API không Pro (video-editor/bypass/…) | Free labs | **Có** | `requireToolboxAccess` hard mesh |
@@ -34,6 +34,7 @@ Mục tiêu: hiểu sẽ bị đập ở đâu, và app đã chặn gì.
 | 19 | CapAssistant/util API không gate | Free toolbox | **Có** | Toàn bộ capassistant + isolate/split/… → toolbox |
 | 20 | 1 license nhiều máy online | Share seat | **Siết** | `seatPresence` concurrent window |
 | 21 | Clone disk / HWID spoof mạnh | Drift fingerprint | **Siết** | `hwidRebind` + activate clear |
+| 21b | Xóa portable + giải nén lại | Reset free/trial local | **Siết** | vault ngoài app (`licenseMachineStore` + HKCU secondary) |
 | 22 | SEO psych chỉ local client | IP extract | **Siết** | `/api/youtube-meta` + cloud psych actions |
 
 ## Lớp phòng thủ hiện có
@@ -75,12 +76,13 @@ Không có desktop license 100% chống crack; mục tiêu là **đắt hơn mua
 Env (packaged / public.env optional):
 
 ```
-AINOVEL_HEARTBEAT_GRACE_SEC=172800
-AINOVEL_HEARTBEAT_FIRST_RUN_SEC=43200
-AINOVEL_STRICT_ONLINE_GRACE_SEC=21600
+AINOVEL_HEARTBEAT_GRACE_SEC=86400
+AINOVEL_HEARTBEAT_FIRST_RUN_SEC=21600
+AINOVEL_STRICT_ONLINE_GRACE_SEC=10800
+AINOVEL_SEAT_PRESENCE_WINDOW_SEC=600
 ```
 
-Defaults if unset: **48h** / **12h** / **6h** strict.
+Defaults if unset: **24h** / **6h** / **3h** strict · seat **10m**.
 
 ## Sau khi rotate key
 

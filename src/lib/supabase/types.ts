@@ -34,6 +34,10 @@ export type LicenseStatus = 'active' | 'revoked' | 'expired';
 
 export type LicenseRow = {
   id: string;
+  /**
+   * Desktop identity: device HWID (mã máy app), not Supabase Auth uuid.
+   * Same normalized value as `hwid` when issued from the app/seller tools.
+   */
   user_id: string | null;
   order_id: string | null;
   plan: LicensePlan;

@@ -89,6 +89,14 @@ export const API = {
   getTiktokSession: '/api/get-tiktok-session',
   ttsVoices: '/api/tts/voices',
   omnivoiceStatus: '/api/omnivoice/status',
+  /** LA Studio desktop local API bridge status / ensure */
+  laStudioStatus: '/api/la-studio/status',
+  /** LA Studio list / create clone voices */
+  laStudioVoices: '/api/la-studio/voices',
+  /** Ship-safe sample WAV stream (userData/data/pack) */
+  laStudioSampleAudio: '/api/la-studio/sample-audio',
+  /** Multi-family LA Studio runtime status / ensure */
+  laStudioFamilies: '/api/la-studio/families',
   vinaVoiceClone: '/api/vina-voice/clone',
   vinaVoiceProfiles: '/api/vina-voice/profiles',
   vinaVoiceStatus: '/api/vina-voice/status',

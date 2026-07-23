@@ -15,7 +15,7 @@ export interface ProjectContext {
   so_chuong: number;
   so_tu_chuong: number;
   ngon_ngu: string;
-  /** Setup truyện — bắt buộc cho write/gen (B10, không ép mạt thế) */
+  /** Setup truyện — bắt buộc cho write/gen (B10, không ép thể loại ngoài Setup) */
   chu_de: string;
   phong_cach: string;
   /** visual DNA / media style for director formulas */
@@ -37,7 +37,7 @@ export interface ProjectContext {
   userRules?: { forbidden_words: string; fatigue_words: string };
 }
 
-/** Payload fields for /api/generate that need Setup genre (no silent mat-the). */
+/** Payload fields for /api/generate that need Setup genre (no silent genre default). */
 export function setupGenrePayload(ctx: ProjectContext): {
   chu_de: string;
   phong_cach: string;
@@ -47,7 +47,7 @@ export function setupGenrePayload(ctx: ProjectContext): {
   const phong_cach = String(ctx.phong_cach || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Thieu Setup Chu de + Phong cach trong store. Mo Setup chon truoc khi chay AI Novel engine. App khong tu gan mat the.',
+      'Thieu Setup Chu de + Phong cach trong store. Mo Setup chon truoc khi chay AI Novel engine. App khong tu gan the loai mac dinh.',
     );
   }
   return {

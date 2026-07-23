@@ -29,7 +29,7 @@ const ready = evaluatePublishReadiness({
   thumbnailLine: 'CỬA SỔ KẸT',
   seoTitle: 'Bí mật sau cánh cửa sổ kẹt — bạn sẽ không tin',
   seoDescription:
-    'CỬA SỔ KẸT\n\nĐêm ấy tiếng gõ không phải từ ngoài… Xem full chương để biết sự thật.\n\n#matthe #truyen',
+    'CỬA SỔ KẸT\n\nĐêm ấy tiếng gõ không phải từ ngoài… Xem full chương để biết sự thật.\n\n#truyenaudio #truyen',
   thumbnailPrompt: 'cinematic youtube thumbnail still, 16:9, high contrast',
   thumbnailImagePath: 'D:/tmp/thumb.png',
   ttsPlatform: 'vina_voice',

@@ -34,6 +34,28 @@ API:
 3. Khách dán **1 dòng** bắt đầu `AINOVEL2.` → Kích hoạt → badge **PRO**.
 4. Key cũ `eyJ…` (HMAC) = vứt; cấp lại.
 
+## Bot Telegram — menu + nút (không cần gõ lệnh)
+
+Bot: `@AINovel_license_bot` · runtime: bridge Vercel **hoặc** poller seller desktop.
+
+| UI | Việc |
+|----|------|
+| **Menu (góc trái khung nhập)** | Danh sách lệnh Bot API `setMyCommands` |
+| **Nút trong tin nhắn** (inline only) | 🔑 Cấp key · 🔎 Tra cứu · 📋 List · 🚫 Thu hồi · 📦 Gói · 🩺 Status · ❓ Help |
+| **Dán HWID thuần** | Wizard chọn gói → cấp `AINOVEL2` |
+| Nút **✅ Cấp Key** (payment-notify) | Cấp theo gói khách đã chọn |
+
+**Không** dùng reply keyboard dưới khung chat (đã `remove_keyboard`).
+
+Lệnh slash vẫn dùng được: `/activate` `/lookup` `/list` `/revoke` `/plans` `/status` `/help`.
+
+**Nếu nút “không chạy”:**
+1. Redeploy bridge: `npm run telegram:deploy-bridge` (code mới + `setMyCommands`).
+2. `AINOVEL_TELEGRAM_CHAT_ID` = **user id** (chat private với bot) và/hoặc group id — nhiều id cách nhau bằng dấu phẩy.
+3. Gõ `/start` trong chat admin để hiện lại bàn phím + menu.
+
+`plan` = `month` \| `year` \| `lifetime`.
+
 ## Trust layers (chống server/key giả + crack thường)
 
 | Lớp | Việc |

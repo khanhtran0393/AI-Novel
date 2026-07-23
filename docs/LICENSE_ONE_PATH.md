@@ -42,7 +42,15 @@ App: public verify ────────┤
 6. Mọi API gửi `x-ainovel-entitlement`.
 7. Badge: `GET /api/commercial/status` → **chỉ đọc** `licenses` theo HWID → `useEntitlementSync` (TRIAL → PRO → FREE).
 
-**Sổ cái (bắt buộc):** không có row active (xóa / revoked / expired / chưa cấp) = **Free** (ban hoặc hết hạn). Token Ed25519 local **không** tự INSERT / self-heal Pro.
+**Sổ cái (bắt buộc — SOLE TRUTH):** bảng Supabase `licenses` theo **HWID máy**.
+
+| Ledger | Kết quả |
+|--------|---------|
+| Row `active` cho HWID | Trial / Pro theo `plan` |
+| **Xóa id / row** · `revoked` · `expired` · chưa cấp | **Free ngay** (online) |
+| Token `AINOVEL2…` crypto vẫn verify | **Không đủ** — chỉ là vé; không có row active = Free |
+
+Token Ed25519 local **không** tự INSERT / self-heal Pro. Heartbeat packaged: `valid:false` / status `none` = thu hồi (không còn “missing row = offline OK”).
 
 **Cấm** đường thứ hai: card settings tự set `is_pro`, HMAC `eyJ…` cũ, derive module key từ token, offline token re-create ledger.
 

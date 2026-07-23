@@ -1,0 +1,81 @@
+{
+  "schema": "ainovel.release-notes.v1",
+  "product": "AI Novel",
+  "versions": {
+    "1.0.6": {
+      "date": "2026-07-23",
+      "title": "Workflow UX + Free scale + License clarity",
+      "items": [
+        "License: tier 1 nguồn (hết FREE·Pro mâu thuẫn); Trial ẩn khi đã Pro; báo thanh toán giữ banner Cấp Key/messageId",
+        "Free: clamp Setup ≤2 chương · ≤600 từ khi sinh dàn ý (không ép 4250/10 ch)",
+        "Cổng từ vượt mục tiêu: cảnh báo đỏ; danh sách chương 🔒 ngoài Free/Trial",
+        "Empty workspace: bước Setup → API key → Outline → Viết rõ ràng",
+        "TTS modal: Đóng/Esc; Free chỉ Edge/Piper; Gen Prompt nhắc thứ tự TTS→Prompt→Ảnh",
+        "Onboarding core-loop tick thật khi làm từng bước; lỗi Setup/media tiếng Việt có dấu"
+      ]
+    },
+    "1.0.5": {
+      "date": "2026-07-22",
+      "title": "Auto-update desktop (fix)",
+      "items": [
+        "Tự cập nhật: GitHub Releases + feed Supabase dự phòng (dual-feed)",
+        "Tự tải bản mới khi mở app; cài khi mở lại lần sau (không hỏi)",
+        "Cho phép bản unsigned (ALLOW_UNSIGNED) — không kẹt chữ ký khi chưa có Authenticode",
+        "Gói cài NSIS để cập nhật ổn định hơn portable",
+        "Sửa lỗi app tắt auto-update khi thiếu FEED_URL (chỉ dùng GitHub)"
+      ],
+      "packedAt": "2026-07-22T14:11:01.116Z"
+    },
+    "1.0.4": {
+      "date": "2026-07-22",
+      "title": "Update changelog + pack ship",
+      "items": [
+        "Thông báo «Cập nhật thành công»: liệt kê mục đã đổi so với bản cũ (X → Y)",
+        "Ghi chú phiên bản nhúng khi pack (resources/commercial/release-notes.json + stamp packedAt)",
+        "LA Studio multi-family TTS chỉ Trial/Pro; Free = Edge TTS / Piper",
+        "Nghe thử ▶ family tải on-demand: bake sample WAV trên máy user (userData)",
+        "Tải family ghi userData (an toàn trên cài Program Files)",
+        "Gate API /api/la-studio/* + generate-tts la_studio qua tts_premium"
+      ],
+      "packedAt": "2026-07-22T08:07:03.664Z"
+    },
+    "1.0.3": {
+      "date": "2026-07-22",
+      "title": "LA Studio + TTS commercial",
+      "items": [
+        "LA Studio multi-family TTS: Kokoro-VI ship + tải family on-demand (VieNeu, Vibe…)",
+        "Nghe thử ▶ family mới: bake sample WAV trên máy user (userData) — list có là nghe được",
+        "LA Studio chỉ gói Trial/Pro; Free dùng Edge TTS / Piper",
+        "Tải family ghi vào userData (an toàn trên máy cài Program Files)",
+        "Bootstrap engine LA Studio ẩn chỉ khi Trial/Pro"
+      ]
+    },
+    "1.0.2": {
+      "date": "2026-06-01",
+      "title": "Desktop update & commercial",
+      "items": [
+        "Kênh cập nhật desktop (electron-updater + feed HTTPS)",
+        "Free / Trial / Pro entitlement + license one-path",
+        "Cải thiện TTS Edge/Piper và quota Free"
+      ]
+    },
+    "1.0.1": {
+      "date": "2026-05-01",
+      "title": "Ổn định workspace",
+      "items": [
+        "Hydration store không kẹt màn nạp",
+        "Setup genre bắt buộc cho write/gen prompt",
+        "Ship pack / CapCut export ổn định hơn"
+      ]
+    },
+    "1.0.0": {
+      "date": "2026-04-01",
+      "title": "Bản phát hành đầu",
+      "items": [
+        "Workspace viết truyện + Gen Prompt + Ảnh/Video/TTS",
+        "Engine AI Novel native TypeScript",
+        "Gói Free / Trial / Pro"
+      ]
+    }
+  }
+}

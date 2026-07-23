@@ -16,6 +16,10 @@ import {
 } from '@/store/useNovelStoreSelectors';
 import { useStreamUi } from '../../modules/streamUiStore';
 import { parseScenes, getWordCount } from '../../utils/stringUtils';
+import {
+  bodySceneIndicesForWorkspace,
+  groupScenesIntoPhan,
+} from '@/lib/sceneWorkspaceGroups';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
 
@@ -24,25 +28,40 @@ export function WordGatePill() {
   const liveWordCount = useStreamUi((s) => s.liveWordCount);
   const targetWords = useNovelStore(selectTargetWords);
   const chapterContent = useNovelStore(selectCurrentChapterContent);
+  const is_pro = useNovelStore((s) => s.is_pro);
+  const is_trial = useNovelStore((s) => s.is_trial);
+  const is_vip = useNovelStore((s) => s.is_vip);
+  const freeTier = !is_pro && !is_trial && !is_vip;
+  const trialTier = !!is_trial;
 
   const wordsCount = isStreaming
     ? liveWordCount
     : getWordCount(chapterContent);
   const progressPercent =
     targetWords > 0 ? Math.round((wordsCount / targetWords) * 100) : 0;
+  const overCap = targetWords > 0 && wordsCount > targetWords;
   const progressBarPct = Math.min(100, Math.max(0, progressPercent));
+  const tierHint = freeTier
+    ? 'Free ≤600 từ/chương'
+    : trialTier
+      ? 'Trial ≤3000 từ/chương'
+      : '';
 
   return (
     <span
       className={`relative inline-flex items-center gap-1.5 overflow-hidden rounded border px-2 py-0.5 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ${
-        progressPercent >= 92
-          ? 'border-emerald-900/50 bg-emerald-950/30 text-emerald-400'
-          : 'border-amber-900/50 bg-amber-950/30 text-amber-400'
+        overCap
+          ? 'border-rose-800/60 bg-rose-950/40 text-rose-300'
+          : progressPercent >= 92
+            ? 'border-emerald-900/50 bg-emerald-950/30 text-emerald-400'
+            : 'border-amber-900/50 bg-amber-950/30 text-amber-400'
       } ${isStreaming ? 'ring-1 ring-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.15)]' : ''}`}
       title={
-        isStreaming
-          ? `Đang sinh… ${wordsCount}/${targetWords} từ (live)`
-          : `Tối thiểu ${Math.round(targetWords * 0.92)} từ (92%)`
+        overCap
+          ? `Vượt mục tiêu ${wordsCount}/${targetWords} từ${tierHint ? ` · ${tierHint}` : ''}. Cắt bớt, Pro, hoặc hạ mục tiêu Setup.`
+          : isStreaming
+            ? `Đang sinh… ${wordsCount}/${targetWords} từ (live)`
+            : `Tối thiểu ${Math.round(targetWords * 0.92)} từ (92%)${tierHint ? ` · ${tierHint}` : ''}`
       }
       aria-live="polite"
       aria-atomic="true"
@@ -50,16 +69,20 @@ export function WordGatePill() {
       <span
         aria-hidden
         className={`pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-150 ease-out ${
-          progressPercent >= 92
-            ? 'bg-emerald-500/25'
-            : isStreaming
-              ? 'bg-amber-500/20'
-              : 'bg-amber-500/10'
+          overCap
+            ? 'bg-rose-500/30'
+            : progressPercent >= 92
+              ? 'bg-emerald-500/25'
+              : isStreaming
+                ? 'bg-amber-500/20'
+                : 'bg-amber-500/10'
         }`}
-        style={{ width: `${progressBarPct}%` }}
+        style={{ width: `${Math.min(100, progressBarPct)}%` }}
       />
       <span className="relative z-[1]">
+        {overCap ? '⚠ ' : ''}
         Cổng từ {wordsCount}/{targetWords} · {progressPercent}%
+        {overCap ? ' · vượt' : ''}
         {isStreaming && (
           <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current align-middle opacity-80" />
         )}
@@ -154,6 +177,14 @@ export function MemoryStatusPill({
 export function SceneNavStrip() {
   const content = useNovelStore(selectCurrentChapterContent);
   const scenesList = useMemo(() => parseScenes(content), [content]);
+  const bodyIdx = useMemo(
+    () => bodySceneIndicesForWorkspace(scenesList),
+    [scenesList],
+  );
+  const groups = useMemo(
+    () => groupScenesIntoPhan(bodyIdx, scenesList, 3),
+    [bodyIdx, scenesList],
+  );
   if (!content.trim()) return null;
 
   return (
@@ -169,30 +200,49 @@ export function SceneNavStrip() {
       >
         Hook
       </button>
-      {scenesList.map((sc, idx) => {
-        let shortTitle = `C${idx + 1}`;
-        if (sc.title.toUpperCase().includes('CẢNH')) {
-          const match = sc.title.match(/CẢNH\s+(\d+)/i);
-          if (match) shortTitle = `C${match[1]}`;
-        } else if (sc.title.toUpperCase() === 'MỞ ĐẦU') {
-          shortTitle = 'Mở';
-        }
-        return (
-          <button
-            key={idx}
-            type="button"
-            title={sc.title}
-            onClick={() => {
-              document
-                .getElementById(`scene-card-container-${idx}`)
-                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
-            className="shrink-0 px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 hover:text-amber-400 border border-zinc-800 text-[10px] font-bold"
-          >
-            {shortTitle}
-          </button>
-        );
-      })}
+      {bodyIdx.length > 4
+        ? groups.map((g) => {
+            const first = g.sceneIndices[0];
+            return (
+              <button
+                key={`p-${g.phan}`}
+                type="button"
+                title={g.label}
+                onClick={() => {
+                  document
+                    .getElementById(`scene-card-container-${first}`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="shrink-0 px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 hover:text-amber-400 border border-zinc-800 text-[10px] font-bold"
+              >
+                P{g.phan}
+              </button>
+            );
+          })
+        : bodyIdx.map((idx) => {
+            const sc = scenesList[idx];
+            if (!sc) return null;
+            let shortTitle = `C${idx + 1}`;
+            if (sc.title.toUpperCase().includes('CẢNH')) {
+              const match = sc.title.match(/CẢNH\s+(\d+)/i);
+              if (match) shortTitle = `C${match[1]}`;
+            }
+            return (
+              <button
+                key={idx}
+                type="button"
+                title={sc.title}
+                onClick={() => {
+                  document
+                    .getElementById(`scene-card-container-${idx}`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="shrink-0 px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 hover:text-amber-400 border border-zinc-800 text-[10px] font-bold"
+              >
+                {shortTitle}
+              </button>
+            );
+          })}
     </div>
   );
 }

@@ -7,6 +7,19 @@ import {
   writeEngineRoleLine,
 } from '@/lib/storyWriting';
 import {
+  buildShortManhuaOutlineBlock,
+  normalizeScriptMode,
+} from '@/lib/scriptMode';
+import {
+  buildStyleEngineOutlineBlock,
+  resolveStyleEngineFromSetupPayload,
+} from '@/lib/styleEngineProfiles';
+import {
+  buildMatrixOutlineBlock,
+  buildWaveRhythmBlock,
+  composeMatrix,
+} from '@/lib/matrixEngine';
+import {
   callActiveModel,
   generateJsonWithRetry,
   getLastWorkingApiKey,
@@ -35,7 +48,9 @@ export async function handleOutline(
       youtube_title,
       youtube_captions_excerpt,
       rewrite_source_kind,
+      scriptMode: scriptModeRaw,
     } = payload || {};
+    const scriptMode = normalizeScriptMode(scriptModeRaw);
 
     const soChuongN = Number(soChuongRaw);
     const so_chuong =
@@ -97,7 +112,7 @@ export async function handleOutline(
       return NextResponse.json(
         {
           error:
-            'Thieu mo_ta (y tuong cot truyen). Sinh y tuong hoac nhap cot truyen truoc khi tao dan y. App khong tu bi a bối cảnh.',
+            'Thiếu mô tả (ý tưởng cốt truyện). Sinh ý tưởng hoặc nhập cốt truyện trước khi tạo dàn ý. App không tự bịa bối cảnh.',
         },
         { status: 400 },
       );
@@ -130,13 +145,44 @@ ${captionsExcerpt}
   - Ý tưởng cốt truyện gốc: ${moTa || '(chế độ viết lại — lấy từ nguồn mẫu)'}
   - Số lượng chương cần phân bổ: ${so_chuong} chương (BẮT BUỘC: chỉ được phép lên dàn ý đúng chính xác ${so_chuong} chương, không thừa không thiếu)
   - Ngôn ngữ đầu ra: ${ngon_ngu || 'Tiếng Việt'}
+  - Phong cách kịch bản (scriptMode): ${scriptMode}
   ${rewriteBlock}
+  ${scriptMode === 'short_manhua' ? buildShortManhuaOutlineBlock(so_chuong) : ''}
+  ${buildMatrixOutlineBlock(
+    composeMatrix({
+      chu_de,
+      phong_cach,
+      mo_ta: moTa,
+      genre: genreLabel,
+    }),
+  )}
+  ${buildWaveRhythmBlock({
+    scriptMode,
+    so_tu_chuong: Number(so_chuong) > 0 ? Number(so_chuong) * 400 : 3000,
+  })}
+  ${buildStyleEngineOutlineBlock(resolveStyleEngineFromSetupPayload({ chu_de, phong_cach }))}
   Nhiệm vụ của bạn là:
-  1. Đề xuất một tên tác phẩm bằng ${ngon_ngu || 'Tiếng Việt'} kịch tính, độc đáo${isRewrite ? ' (KHÔNG copy tiêu đề nguồn)' : `, bám thể loại Setup: ${genreLabel} — KHÔNG ép mạt thế/sinh tồn nếu Setup khác`}.
-  2. Thiết lập Dàn ý Tổng thể (World-building & Plot Outline) thật chi tiết dưới dạng Markdown, khớp Setup thể loại.
-  3. Bóc tách ra khoảng 2-4 tên nhân vật chính yếu (bắt buộc tên Hán Việt độc đáo mới mẻ, ví dụ: Tiêu Hàn, Thạch Dã, Diệp Dao... tuyệt đối không dùng Lâm Khuyết hay tên mòn). Mỗi nhân vật PHẢI có khuyết điểm (điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế — KHÔNG bắt buộc "khuyết tật mạt thế").
-  4. Phác thảo dàn ý chi tiết cho từng chương (từ Chương 1 đến Chương ${so_chuong}) để người dùng chốt chặn trước khi viết. (BẮT BUỘC: danh sách "danh_sach_chuong" bên dưới phải có đúng chính xác ${so_chuong} phần tử chương, không được phép tự tiện thêm bớt bất kỳ chương nào ngoài số lượng này).
-  5. Xây dựng Bản Đồ Lưu Trữ Lõi Bất Biến (Lorebook) bao gồm các quy luật, hệ sinh thái, bối cảnh, hoặc nguyên tắc cốt lõi của thế giới này theo Setup — không ép mạt thế. Trình bày dưới dạng Markdown.
+  1. Đề xuất một tên tác phẩm bằng ${ngon_ngu || 'Tiếng Việt'} kịch tính, độc đáo${isRewrite ? ' (KHÔNG copy tiêu đề nguồn)' : `, bám thể loại Setup: ${genreLabel} — không tự đổi thể loại ngoài Setup`}.
+  2. Thiết lập Dàn ý Tổng thể (World-building & Plot Outline) ${
+    scriptMode === 'short_manhua'
+      ? 'GỌN (short series bible: logline + arc 3–5 beat chính), Markdown'
+      : 'thật chi tiết dưới dạng Markdown'
+  }, khớp Setup thể loại.
+  3. Bóc tách ra khoảng 2-4 tên nhân vật chính yếu (bắt buộc tên Hán Việt độc đáo mới mẻ, ví dụ: Tiêu Hàn, Thạch Dã, Diệp Dao... tuyệt đối không dùng Lâm Khuyết hay tên mòn). Mỗi nhân vật PHẢI có khuyết điểm (điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế — không ép trope khuyết tật)${
+    scriptMode === 'short_manhua'
+      ? ' + 1 visual anchor (trang phục/đặc điểm nhìn thấy).'
+      : '.'
+  }
+  4. Phác thảo dàn ý chi tiết cho từng chương (từ Chương 1 đến Chương ${so_chuong}) để người dùng chốt chặn trước khi viết. (BẮT BUỘC: danh sách "danh_sach_chuong" bên dưới phải có đúng chính xác ${so_chuong} phần tử chương, không được phép tự tiện thêm bớt bất kỳ chương nào ngoài số lượng này)${
+    scriptMode === 'short_manhua'
+      ? '. Mỗi chương = 1 tập short: logline 1 câu + 3–6 beat hành động/thoại.'
+      : '.'
+  }
+  5. Xây dựng Bản Đồ Lưu Trữ Lõi Bất Biến (Lorebook) ${
+    scriptMode === 'short_manhua'
+      ? 'NGẮN (5–10 luật/bối cảnh tái dùng) — không world-bible dày'
+      : 'bao gồm các quy luật, hệ sinh thái, bối cảnh, hoặc nguyên tắc cốt lõi của thế giới này theo Setup'
+  } — không ép thể loại ngoài Setup. Trình bày dưới dạng Markdown.
   
   Hạn chế/Yêu cầu:
   - Trả về định dạng JSON duy nhất và TUYỆT ĐỐI không bao bọc bởi tag markdown \`\`\`json hay text thừa. Khối JSON phải khớp chính xác cấu trúc sau:
@@ -179,7 +225,7 @@ ${captionsExcerpt}
   Tác phẩm: "${ten_tac_pham}"
   Chương hiện tại cần lên dàn ý: Chương ${chuong_so}
   Setup thể loại (BẮT BUỘC bám): ${genreLabel}.
-  Nhân vật trong dàn ý phải có khuyết điểm (điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế — KHÔNG bắt buộc "khuyết tật mạt thế").
+  Nhân vật trong dàn ý phải có khuyết điểm (điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế — không ép trope khuyết tật).
   
   --- LOREBOOK ---
   ${lorebookForPrompt(lorebook)}
@@ -218,7 +264,7 @@ ${captionsExcerpt}
     const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
   Bạn là Kiến trúc sư của tiểu thuyết "${ten_tac_pham}" — thể loại Setup: ${genreLabel}.
   Hãy lập Dàn Ý cho Arc (Cung/Tập) ${cung_hien_tai + 1} gồm ${so_chuong_moi_cung} chương tiếp theo.
-  Bám Setup; nhân vật giữ khuyết điểm (điểm yếu) nhất quán — không ép khuyết tật mạt thế.
+  Bám Setup; nhân vật giữ khuyết điểm (điểm yếu) nhất quán — không ép trope khuyết tật theo thể loại.
   
   1. LÕI BẤT BIẾN:
   ${lorebookForPrompt(lorebook)}

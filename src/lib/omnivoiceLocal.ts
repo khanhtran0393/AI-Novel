@@ -66,39 +66,133 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function resolveOmniPython(): string {
-  const candidates = [
-    process.env.OMNIVOICE_PYTHON,
-    process.env.PYTHON_PATH,
-    path.join(process.cwd(), 'omnivoice-python', 'python.exe'),
-  ].filter(Boolean) as string[];
-  for (const p of candidates) {
-    if (p === 'python' || p === 'py') continue;
-    if (fs.existsSync(p)) return p;
+/** SuperAudioTools portable runtime (has omnivoice_server + CUDA torch). */
+const SUPER_AUDIO_OMNI_PYTHON = 'D:\\SuperAudioTools\\omnivoice-python\\python.exe';
+const SUPER_AUDIO_ROOT = 'D:\\SuperAudioTools';
+const SUPER_AUDIO_PROFILES = path.join(SUPER_AUDIO_ROOT, 'omnivoice-profiles');
+const SUPER_AUDIO_REFS = path.join(SUPER_AUDIO_ROOT, 'omnivoice-refs');
+const SUPER_AUDIO_LIBRARY = path.join(SUPER_AUDIO_ROOT, 'omnivoice-library.json');
+
+/** Read python.path from python_core/gpu_profile.json when present. */
+function pythonFromGpuProfile(cwd = process.cwd()): string | null {
+  try {
+    const profilePath = path.join(cwd, 'python_core', 'gpu_profile.json');
+    if (!fs.existsSync(profilePath)) return null;
+    const raw = JSON.parse(fs.readFileSync(profilePath, 'utf8')) as {
+      python?: { path?: string };
+    };
+    const p = raw?.python?.path?.trim();
+    if (p && fs.existsSync(p)) return p;
+  } catch {
+    /* ignore */
   }
-  return 'python';
+  return null;
+}
+
+/** True if this python tree looks like an Omni runtime (server exe or site-packages). */
+function looksLikeOmniPython(pythonExe: string): boolean {
+  try {
+    if (!pythonExe || !fs.existsSync(pythonExe)) return false;
+    const dir = path.dirname(pythonExe);
+    if (fs.existsSync(path.join(dir, 'Scripts', 'omnivoice-server.exe'))) return true;
+    if (fs.existsSync(path.join(dir, 'Lib', 'site-packages', 'omnivoice_server'))) return true;
+    // SuperAudioTools / project portable names
+    if (/omnivoice-python/i.test(pythonExe)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Resolve Python that has `omnivoice_server` installed.
+ * CẤM fallback C:\\Python314 (system) — thiếu module → spawn exit 1 / engine offline.
+ * Prefer SuperAudioTools portable runtime (same as Vina / gpu_profile).
+ * Generic PYTHON_PATH chỉ dùng khi tree đó thực sự có omnivoice.
+ */
+export function resolveOmniPython(cwd = process.cwd()): string {
+  // Explicit Omni-only env first (even if looksLike fails — user override)
+  const omniEnv = [
+    process.env.OMNIVOICE_PYTHON,
+    process.env.AINOVEL_PYTHON_EXE,
+  ].filter(Boolean) as string[];
+
+  const portable = [
+    pythonFromGpuProfile(cwd),
+    SUPER_AUDIO_OMNI_PYTHON,
+    path.join(cwd, 'omnivoice-python', 'python.exe'),
+    path.join(cwd, 'runtime', 'omnivoice-python', 'python.exe'),
+    path.join(cwd, 'python_core', '.venv', 'Scripts', 'python.exe'),
+  ].filter(Boolean) as string[];
+
+  // Generic PATH envs last — only if they contain omnivoice (avoid system 3.14)
+  const genericEnv = [
+    process.env.PYTHON_PATH,
+    process.env.PYTHON_EXE,
+  ].filter(Boolean) as string[];
+
+  for (const p of [...omniEnv, ...portable]) {
+    if (p === 'python' || p === 'py' || p === 'python.exe') continue;
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* next */
+    }
+  }
+
+  for (const p of genericEnv) {
+    if (p === 'python' || p === 'py' || p === 'python.exe') continue;
+    try {
+      if (fs.existsSync(p) && looksLikeOmniPython(p)) return p;
+    } catch {
+      /* next */
+    }
+  }
+
+  // Prefer any portable candidate that exists even if first loop missed
+  for (const p of portable) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch {
+      /* next */
+    }
+  }
+
+  // Last resort — only if no portable runtime found (will likely fail with clear log)
+  return process.platform === 'win32' ? 'python.exe' : 'python';
 }
 
 /** Prefer packaged omnivoice-server.exe (SuperAudioTools), else python -m. */
-export function resolveOmniServerLauncher(): {
+export function resolveOmniServerLauncher(cwd = process.cwd()): {
   cmd: string;
   args: string[];
   cwd: string;
   kind: 'exe' | 'module';
 } {
-  const py = resolveOmniPython();
+  const py = resolveOmniPython(cwd);
   const pyDir = path.dirname(py);
+  const superScripts = path.join(
+    path.dirname(SUPER_AUDIO_OMNI_PYTHON),
+    'Scripts',
+    'omnivoice-server.exe',
+  );
   const exeCandidates = [
     process.env.OMNIVOICE_SERVER_EXE,
     path.join(pyDir, 'Scripts', 'omnivoice-server.exe'),
-    path.join(process.cwd(), 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
+    superScripts,
+    path.join(cwd, 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
+    path.join(cwd, 'runtime', 'omnivoice-python', 'Scripts', 'omnivoice-server.exe'),
   ].filter(Boolean) as string[];
 
-  const runCwd = process.env.OMNIVOICE_HOME?.trim() || process.cwd();
+  const runCwd = process.env.OMNIVOICE_HOME?.trim() || cwd;
 
   for (const exe of exeCandidates) {
-    if (fs.existsSync(exe)) {
-      return { cmd: exe, args: [], cwd: runCwd, kind: 'exe' };
+    try {
+      if (fs.existsSync(exe)) {
+        return { cmd: exe, args: [], cwd: runCwd, kind: 'exe' };
+      }
+    } catch {
+      /* next */
     }
   }
   return {
@@ -132,12 +226,19 @@ export function resolveOmniProfileDir(cwd = process.cwd()): string {
   if (process.env.OMNIVOICE_PROFILE_DIR && fs.existsSync(process.env.OMNIVOICE_PROFILE_DIR)) {
     return process.env.OMNIVOICE_PROFILE_DIR;
   }
+  // Prefer SuperAudioTools when it already has clone packs (410+ library voices)
   const candidates = [
+    SUPER_AUDIO_PROFILES,
     path.join(cwd, 'omnivoice-profiles'),
     path.join(cwd, 'data', 'omnivoice-profiles'),
+    path.join(cwd, 'public', 'omnivoice-profiles'),
   ];
   for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* next */
+    }
   }
   const fallback = path.join(cwd, 'data', 'omnivoice-profiles');
   fs.mkdirSync(fallback, { recursive: true });
@@ -147,6 +248,7 @@ export function resolveOmniProfileDir(cwd = process.cwd()): string {
 export function resolveOmniRefsDirs(cwd = process.cwd()): string[] {
   return [
     process.env.OMNIVOICE_REFS_DIR?.trim(),
+    SUPER_AUDIO_REFS,
     path.join(cwd, 'public', 'omnivoice-refs'),
     path.join(cwd, 'omnivoice-refs'),
     path.join(cwd, 'data', 'omnivoice-refs'),
@@ -159,12 +261,13 @@ export function loadOmniLibrary(cwd = process.cwd()): OmniLibraryEntry[] {
     path.join(cwd, 'public', 'omnivoice-library.json'),
     path.join(cwd, 'omnivoice-library.json'),
     path.join(cwd, 'data', 'omnivoice-library.json'),
+    SUPER_AUDIO_LIBRARY,
   ].filter((file): file is string => Boolean(file));
   for (const f of files) {
     if (!fs.existsSync(f)) continue;
     try {
       const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
-      if (Array.isArray(raw)) return raw as OmniLibraryEntry[];
+      if (Array.isArray(raw) && raw.length > 0) return raw as OmniLibraryEntry[];
     } catch {
       /* next */
     }
@@ -205,6 +308,15 @@ export function resolveOmniRefAudioPath(
 
   const candidates: string[] = [];
   if (raw && fs.existsSync(raw)) candidates.push(raw);
+
+  // Legacy SuperFreeVoice install → SuperAudioTools on this machine
+  if (raw) {
+    const remapped = raw
+      .replace(/^E:\\SuperFreeVoice\\SuperAudioTools\\/i, `${SUPER_AUDIO_ROOT}\\`)
+      .replace(/^E:\/SuperFreeVoice\/SuperAudioTools\//i, `${SUPER_AUDIO_ROOT}/`)
+      .replace(/^E:\\SuperFreeVoice\\/i, `${SUPER_AUDIO_ROOT}\\`);
+    if (remapped !== raw && fs.existsSync(remapped)) candidates.push(remapped);
+  }
 
   const base = raw ? path.basename(raw) : '';
   for (const dir of resolveOmniRefsDirs(cwd)) {
@@ -485,9 +597,9 @@ async function spawnOmniServer(cwd = process.cwd()): Promise<string | null> {
     const already = await probeOmniBaseUrl(process.env.OMNIVOICE_API_URL, 1200);
     if (already) return already;
 
-    const py = resolveOmniPython();
+    const py = resolveOmniPython(cwd);
     patchOmniServerConfigExtraIgnore(py);
-    const launcher = resolveOmniServerLauncher();
+    const launcher = resolveOmniServerLauncher(cwd);
     const port = Number(process.env.OMNIVOICE_PORT || 8880);
     const profileDir = resolveOmniProfileDir(cwd);
     const host = '127.0.0.1';
@@ -659,12 +771,14 @@ export async function ensureOmniServer(cwd = process.cwd()): Promise<string> {
   const again = await probeOmniBaseUrl(preferred, 2000);
   if (again) return again;
 
-  const launcher = resolveOmniServerLauncher();
+  const launcher = resolveOmniServerLauncher(cwd);
+  const py = resolveOmniPython(cwd);
   const logPath = getOmniLogPath(cwd);
   const detail = lastSpawnError ? ` Chi tiết: ${lastSpawnError}` : '';
   throw new Error(
     'OmniVoice engine chưa sẵn sàng (:8880). ' +
       'App đã thử tự khởi động từ SuperAudioTools/omnivoice-python nhưng chưa lên. ' +
+      `Python: ${py}. Launcher: "${launcher.cmd}" (${launcher.kind}). ` +
       `Thử: "${launcher.cmd}" --port 8880 --profile-dir "${resolveOmniProfileDir(cwd)}". ` +
       `Log: ${logPath}.${detail}`,
   );
@@ -861,6 +975,8 @@ export function isForeignOmniVoiceId(voiceKey: string): boolean {
   if (OPENAI_PRESETS.has(v.toLowerCase())) return false;
   if (v.toLowerCase().startsWith('clone:')) return false;
   if (v.startsWith('omnivoice_') || v.startsWith('omni_')) return false;
+  // Durable LA Studio / Voice Clone tab ids
+  if (/^lsc_/i.test(v)) return false;
   // Edge neural, Piper onnx, TikTok BV*, CapCut-style, Google Cloud ids
   if (/Neural$/i.test(v)) return true;
   if (/\.onnx$/i.test(v)) return true;
@@ -908,13 +1024,43 @@ async function synthesizeOmniVoiceLocalInner(params: {
   }
   if (!voiceKey) throw new Error('OmniVoice: chưa chọn giọng (voice).');
 
+  // LA Studio durable user-clone (lsc_*) → use saved ref WAV as Omni profile
+  let userCloneRefPath: string | null = null;
+  if (/^lsc_/i.test(voiceKey)) {
+    try {
+      const { resolveCloneAudioPath } = await import('@/lib/laStudioClones');
+      const hit = resolveCloneAudioPath(voiceKey, cwd);
+      if (hit?.path) {
+        userCloneRefPath = hit.path;
+        // Prefer previously registered Omni profile id
+        if (hit.meta.omniProfileId) {
+          voiceKey = hit.meta.omniProfileId;
+        } else {
+          voiceKey = voiceKey
+            .replace(/^lsc_/, 'omni_')
+            .replace(/[^a-zA-Z0-9_-]/g, '')
+            .slice(0, 48);
+        }
+      }
+    } catch {
+      /* continue with raw key */
+    }
+  }
+
   const speed =
     typeof params.speed === 'number' && Number.isFinite(params.speed) ? params.speed : 1;
   const entry = findOmniLibraryEntry(voiceKey, cwd);
   const isDesign = OPENAI_PRESETS.has(voiceKey.toLowerCase());
 
   // Foreign voice kept from previous engine (Edge/Piper…) — skip clone spam
-  if (!isDesign && !entry && isForeignOmniVoiceId(voiceKey)) {
+  // (allow lsc_/omni_ user clones + library entries)
+  if (
+    !isDesign &&
+    !entry &&
+    !userCloneRefPath &&
+    !/^omni_/i.test(voiceKey) &&
+    isForeignOmniVoiceId(voiceKey)
+  ) {
     throw new Error(
       `Giọng "${voiceKey}" không thuộc OmniVoice (đổi sang alloy/nova hoặc clone library).`,
     );
@@ -957,7 +1103,8 @@ async function synthesizeOmniVoiceLocalInner(params: {
   }
 
   const profileId = (entry?.id || voiceKey).replace(/[^a-zA-Z0-9_-]/g, '') || voiceKey;
-  const refPath = resolveOmniRefAudioPath(entry || voiceKey, cwd);
+  const refPath =
+    userCloneRefPath || resolveOmniRefAudioPath(entry || voiceKey, cwd);
   const refText = resolveOmniRefText(entry, profileId, cwd);
 
   // 1) Registered profile or create from ref
@@ -965,6 +1112,20 @@ async function synthesizeOmniVoiceLocalInner(params: {
     try {
       if (refPath) {
         await ensureOmniCloneProfile(baseUrl, profileId, refPath, refText);
+        // Persist omni id back onto durable clone meta when source was lsc_
+        if (userCloneRefPath && params.voice) {
+          try {
+            const raw = String(params.voice).replace(/^clone:/i, '').trim();
+            if (/^lsc_/i.test(raw)) {
+              const { updateLaStudioUserClone } = await import(
+                '@/lib/laStudioClones'
+              );
+              updateLaStudioUserClone(raw, { omniProfileId: profileId }, cwd);
+            }
+          } catch {
+            /* optional */
+          }
+        }
       }
       const buffer = await synthViaJson(
         baseUrl,

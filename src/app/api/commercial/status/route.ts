@@ -38,7 +38,11 @@ import { getPackagedAttestationPublicStatus } from '@/lib/commercial/packagedAtt
 import { getSeatPresencePublicStatus } from '@/lib/commercial/seatPresence';
 import { getHeartbeatPublicStatus } from '@/lib/commercial/licenseHeartbeat';
 import { getLicenseOnePathPublicStatus } from '@/lib/commercial/licenseOnePath';
-import { FREE_LIMITS } from '@/lib/commercial/freeLimitsPolicy';
+import {
+  FREE_LIMITS,
+  TRIAL_LIMITS,
+  limitsForMeteredTier,
+} from '@/lib/commercial/freeLimitsPolicy';
 import { readFreeUsageForHwid } from '@/lib/commercial/freeQuota';
 
 export const runtime = 'nodejs';
@@ -62,9 +66,9 @@ export async function GET(req: Request) {
   const openMode = pub.mode === 'open';
   const sb = supabaseConfigPublic();
 
-  // ── Supabase = sole authority for UI tier when configured ──
-  // Missing / revoked / expired row ⇒ Free (ban or expired). Never grant from
-  // offline token alone; never INSERT self-heal on status poll.
+  // ── Supabase licenses (HWID) = sole truth for UI tier ──
+  // Cryptographically valid AINOVEL2 token is a ticket only.
+  // Missing / revoked / expired / **deleted** row ⇒ Free. Never self-heal INSERT.
   if (isSupabaseAdminConfigured() && !ownerUnlimited) {
     try {
       const service = createServiceSupabase();
@@ -92,7 +96,23 @@ export async function GET(req: Request) {
       cloudStatus = 'error';
       cloudRevoked = false;
     }
+  } else if (!ownerUnlimited && pub.mode === 'enforce') {
+    // enforce without SERVICE_ROLE on this process:
+    // Packaged customer: UI still shows ticket until heartbeat/proxy verify;
+    // seller/dev enforce must not mint Pro from local token alone.
+    // Packaged uses remote LICENSE_API (Supabase) via heartbeat — not local grant.
+    if (token && claims) {
+      // Keep ticket claims only for display of exp; tier resolution below
+      // will not treat local as authority when we set cloudStatus.
+      authority = 'local';
+      cloudStatus = 'ledger_required_remote';
+    } else {
+      claims = null;
+      authority = 'local';
+      cloudStatus = 'none';
+    }
   } else if (token) {
+    // open mode (dev): local ticket may show Pro for convenience
     authority = 'local';
   }
 
@@ -107,12 +127,13 @@ export async function GET(req: Request) {
     !tokenIsTrial &&
     !!(claims.is_pro || claims.is_vip);
 
-  // Local vault trial only when Supabase is NOT authority
+  // Local vault trial ONLY when Supabase is NOT authority (dev without SERVICE_ROLE).
+  // When authority=supabase: sole truth = licenses row — vault never grants TRIAL badge.
   const vaultTrial =
     authority !== 'supabase' &&
     trial.active &&
-    !claims?.is_vip &&
-    !paidPro;
+    !paidPro &&
+    !tokenIsTrial;
 
   const tier = resolvePlanTier({
     openMode: false,
@@ -125,11 +146,14 @@ export async function GET(req: Request) {
 
   const effectiveTrial = tier === 'trial';
 
-  // tokenValid for UI: when supabase authority, valid = active cloud claims only
+  // tokenValid: ledger claims only when supabase authority (no ghost vault)
   const tokenValid =
     authority === 'supabase'
-      ? Boolean(claims && (claims.is_pro || claims.is_vip || claimsIsTrial(claims)))
-      : Boolean(claims);
+      ? Boolean(
+          claims &&
+            (claims.is_pro || claims.is_vip || claimsIsTrial(claims)),
+        )
+      : Boolean(claims) || vaultTrial;
 
   const licenseTrust = getLicenseTrustStatus();
   const antiTamper = getAntiTamperPublicStatus();
@@ -164,17 +188,27 @@ export async function GET(req: Request) {
     cloudStatus,
     trial: {
       enabled: trial.enabled,
-      active: effectiveTrial || (authority !== 'supabase' && trial.active),
-      used: trial.used,
+      // UI "active" only when ledger/token says trial — not local vault under supabase
+      active: effectiveTrial,
+      used:
+        authority === 'supabase'
+          ? tokenIsTrial || Boolean(claims && claimsIsTrial(claims))
+          : trial.used || vaultTrial || tokenIsTrial,
       days: trial.days,
-      endsAt: trial.record?.endsAt ?? (claims?.is_trial ? claims.exp : null),
-      endsIso: trial.record
-        ? new Date(trial.record.endsAt * 1000).toISOString()
-        : claimsIsTrial(claims) && claims
+      endsAt:
+        claimsIsTrial(claims) && claims
+          ? claims.exp
+          : vaultTrial
+            ? trial.record?.endsAt ?? null
+            : null,
+      endsIso:
+        claimsIsTrial(claims) && claims
           ? new Date(claims.exp * 1000).toISOString()
-          : null,
+          : vaultTrial && trial.record
+            ? new Date(trial.record.endsAt * 1000).toISOString()
+            : null,
       fromToken: tokenIsTrial,
-      fromVault: authority !== 'supabase' && trial.active,
+      fromVault: vaultTrial,
       fromSupabase: authority === 'supabase' && tokenIsTrial,
     },
     ownerUnlimited,
@@ -193,7 +227,16 @@ export async function GET(req: Request) {
           exp: claims.exp,
           expIso: new Date(claims.exp * 1000).toISOString(),
         }
-      : null,
+      : vaultTrial && trial.record && authority !== 'supabase'
+        ? {
+            is_pro: true,
+            is_vip: false,
+            is_trial: true,
+            plan: 'trial' as const,
+            exp: trial.record.endsAt,
+            expIso: new Date(trial.record.endsAt * 1000).toISOString(),
+          }
+        : null,
     tokenPresent: Boolean(token),
     tokenValid,
     /** True when UI should drop localStorage token (no active cloud license) */
@@ -202,12 +245,20 @@ export async function GET(req: Request) {
     supabase: sb,
     features: FEATURE_MATRIX,
     pricing: PRICING_PLANS,
-    /** Free product caps + daily remaining (server vault; Pro metering still off) */
+    /** Free/Trial product caps + daily remaining (server vault; Pro not metered) */
     freeLimits: (() => {
-      const snap = readFreeUsageForHwid(hwid);
+      const limits = limitsForMeteredTier(tier) || {
+        maxWordsPerChapter: FREE_LIMITS.maxWordsPerChapter,
+        maxChapters: FREE_LIMITS.maxChapters,
+        dailyUsesPerFeature: FREE_LIMITS.dailyUsesPerFeature,
+      };
+      const snap = readFreeUsageForHwid(hwid, limits.dailyUsesPerFeature);
       return {
-        ...FREE_LIMITS,
-        applies: tier === 'free',
+        ...limits,
+        freeDefaults: FREE_LIMITS,
+        trialDefaults: TRIAL_LIMITS,
+        applies: tier === 'free' || tier === 'trial',
+        tier,
         day: snap.day,
         used: snap.used,
         remaining: snap.remaining,
@@ -224,7 +275,7 @@ export async function GET(req: Request) {
       licenseAuthority: authority,
     },
     model: {
-      name: 'Supabase licenses (HWID) sole truth · no offline self-heal',
+      name: 'Supabase licenses (HWID) sole truth · delete row = Free · ticket crypto alone ≠ Pro',
       byok: true,
       payment: 'Telegram / Zalo → issue licenses row → app reads HWID plan only',
       cloud: sb.adminConfigured,

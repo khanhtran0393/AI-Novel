@@ -115,14 +115,14 @@ export async function handleCharacter(
   - Giọng thoại/quirk: ${giong_thoai || 'chưa nhập'}
   - Ngoại hình (face lock): ${ngoai_hinh || 'chưa nhập'}
   - Đặc điểm nhận dạng: ${dac_diem_nhan_dang || 'chưa nhập'}
-  - Khuyết điểm (điểm yếu / thói xấu / nỗi sợ — không bắt buộc khuyết tật mạt thế): ${khuet_tat || 'chưa nhập'}
+  - Khuyết điểm (điểm yếu / thói xấu / nỗi sợ — không bắt buộc trope khuyết tật cứng): ${khuet_tat || 'chưa nhập'}
   
   NHIỆM VỤ:
-  1. Xây hồ sơ đầy đủ, phù hợp bối cảnh/setup (dựa lorebook + dàn ý + Setup thể loại — không ép mạt thế).
+  1. Xây hồ sơ đầy đủ, phù hợp bối cảnh/setup (dựa lorebook + dàn ý + Setup thể loại — không ép thể loại ngoài Setup).
   2. TÁCH RÕ: gioi_tinh chỉ giới tính; tuoi riêng; dang_nguoi riêng; dong_co không nhét vào thoi_quen.
   3. dac_diem_nhan_dang BẮT BUỘC cụ thể, nhìn thấy được (sẹo, nốt ruồi, xăm, mắt lệch, vật đeo signature...). Phải giữ y hệt mọi góc/mọi biểu cảm.
   4. ngoai_hinh = face lock: tóc, mắt, da, xương mặt, tuổi vẻ ngoài — ổn định.
-  5. khuet_tat = KHuyết điểm BẮT BUỘC: điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế (có thể gồm thương tật nếu hợp Setup — CẤM mặc định "khuyết tật mạt thế").
+  5. khuet_tat = KHuyết điểm BẮT BUỘC: điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế (có thể gồm thương tật nếu hợp Setup — CẤM mặc định trope khuyết tật cứng).
   6. prompt = master English identity lock (portrait base, front-facing, neutral expression).
   7. angle_prompts: 4 prompt EN cho front / three_quarter / side / back — CÙNG identity + marks, CHỈ đổi góc máy.
   8. expression_prompts: 8 prompt EN close-up face cho neutral/happy/sad/angry/fear/surprised/determined/pain — CÙNG face lock + marks, CHỈ đổi cơ mặt/biểu cảm.
@@ -141,7 +141,7 @@ export async function handleCharacter(
     "giong_thoai": "quirk thoại ngắn",
     "ngoai_hinh": "face lock chi tiết (tóc, mắt, da, xương mặt)",
     "dac_diem_nhan_dang": "marks nhận dạng cố định, cụ thể",
-    "khuet_tat": "khuyết điểm BẮT BUỘC: điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế (không ép khuyết tật mạt thế)",
+    "khuet_tat": "khuyết điểm BẮT BUỘC: điểm yếu tính cách / thói xấu / nỗi sợ / hạn chế (không ép trope khuyết tật theo thể loại)",
     "prompt": "English master identity lock portrait, neutral expression, front view...",
     "angle_prompts": {
   "front": "English full turnaround front...",
@@ -163,7 +163,7 @@ export async function handleCharacter(
   
     const result = await generateJsonWithRetry(prompt, keysToUse, 2, model);
   
-    // Director formula on master + turnaround + expression sheet — style/genre from client (no mat-the default)
+    // Director formula on master + turnaround + expression sheet — style/genre from client (no silent genre default)
     const styleHint = String(
       payload.styleHint || payload.style || payload.visualDnaPrompt || '',
     ).trim();
@@ -176,7 +176,7 @@ export async function handleCharacter(
       return NextResponse.json(
         {
           error:
-            'Thieu Visual DNA / Media Style va Setup (chu de/phong cach) khi gen prompt nhan vat. App khong tu gan mat the.',
+            'Thiếu Visual DNA / Media Style và Setup (chủ đề/phong cách) khi gen prompt nhân vật. App không tự gán thể loại mặc định.',
           ...result,
           usedApiKey: getLastWorkingApiKey(),
         },
@@ -245,13 +245,13 @@ export async function handleCharacter(
   - Habit: ${thoi_quen || 'unknown'}
   - Face lock: ${ngoai_hinh || 'unknown'}
   - Distinctive marks (MUST include): ${dac_diem_nhan_dang || 'none specified'}
-  - Character flaw/weakness: ${khuet_tat || 'must invent a non-mat-the character flaw if missing'}
+  - Character flaw/weakness: ${khuet_tat || 'must invent a character flaw matching setup if missing'}
   
   YÊU CẦU:
   1. English only, detailed, policy-safe wording (no gore/sexual/explicit violence).
   2. Front portrait, neutral expression, natural cinematic lighting.
   3. Lock face + distinctive marks + outfit so the same character can be redrawn consistently.
-  4. Cinematic production design matching setup — do NOT force post-apocalyptic survival look.
+  4. Cinematic production design matching setup — do NOT force a look outside Setup genre/style.
   5. Return ONLY the English prompt string, no markdown, no explanation.`;
   
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
@@ -274,7 +274,7 @@ export async function handleCharacter(
       return NextResponse.json(
         {
           error:
-            'Thieu Visual DNA / Setup khi gen character prompt only. App khong tu gan mat the.',
+            'Thiếu Visual DNA / Setup khi gen character prompt only. App không tự gán thể loại mặc định.',
         },
         { status: 400 },
       );

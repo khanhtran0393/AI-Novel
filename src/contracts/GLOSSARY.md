@@ -40,6 +40,8 @@ Mọi feature / hook / module / API **không** invent key/field ad-hoc.
 | Video từ image key | `videoAssetKeyFromImageKey(imgKey)` | `3_2_0_video` |
 | Ảnh nhân vật / role id | `characterImageKey` / `characterRoleId` | `char_Hàn Dực` |
 | Angle / emotion NV | `characterAngleImageKey` / `characterExprImageKey` | `char_X_angle_front` |
+| Wardrobe NV | `characterWardrobeImageKey(name, id)` | `char_X_wardrobe_battle` |
+| Scene location ref | `sceneLocationImageKey(name)` | `loc_Phố đêm mưa` |
 | Prefix lọc chương | `chapterAssetPrefix(ch)` | `3_` |
 | File đĩa audio | `localAudioFilename` | `chapter_3_scene_2.mp3` |
 | File đĩa ảnh | `localImageFilename` | `chapter_3_scene_2_prompt_0.png` |

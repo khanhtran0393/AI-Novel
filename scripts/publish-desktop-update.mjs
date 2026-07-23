@@ -240,8 +240,8 @@ async function inspectRelease(config) {
   const allowUnsigned = hasFlag('allow-unsigned');
   const manifestName = `${config.channel}.yml`;
   let manifestPath = path.join(releaseDir, manifestName);
-  if (!fs.existsSync(manifestPath) && allowUnsigned) {
-    // Auto-generate electron-updater manifest for QA portable/unsigned dirs
+  // Always rewrite canonical latest.yml (builder/portable formats drift; version must exist)
+  {
     const gen = spawnSync(
       process.execPath,
       [
@@ -252,6 +252,7 @@ async function inspectRelease(config) {
         config.channel,
         '--version',
         packageJson.version,
+        '--strict',
       ],
       { cwd: root, encoding: 'utf8', windowsHide: true },
     );

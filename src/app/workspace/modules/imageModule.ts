@@ -29,7 +29,7 @@ interface GenImagePromptParams {
   /** Scene index for Seedance sequence (video_prompt continuity) */
   sceneIndex?: number;
   chapterNum?: number;
-  /** Setup truyện — genre for director formula (no mat-the default) */
+  /** Setup truyện — genre for director formula (no silent genre default) */
   chu_de?: string;
   phong_cach?: string;
   genre?: string;
@@ -63,7 +63,7 @@ export async function generateImagePromptAction(params: GenImagePromptParams): P
   ).trim();
   if (!genre) {
     throw new Error(
-      'Thieu Setup Chu de + Phong cach. Mo Setup chon truoc khi Gen Prompt. App khong tu gan mat the.',
+      'Thieu Setup Chu de + Phong cach. Mo Setup chon truoc khi Gen Prompt. App khong tu gan the loai mac dinh.',
     );
   }
 
@@ -77,6 +77,7 @@ export async function generateImagePromptAction(params: GenImagePromptParams): P
     chu_de,
     phong_cach,
     genre,
+    scriptMode: live.scriptMode,
     // Seedance sequence auto — bakes continuity into every video_prompt
     chapterNum:
       typeof params.chapterNum === 'number'
@@ -183,7 +184,7 @@ export async function regenPromptAction(params: RegenPromptParams): Promise<stri
   ).trim();
   if (!genre) {
     throw new Error(
-      'Thieu Setup Chu de + Phong cach khi viet lai prompt. App khong tu gan mat the.',
+      'Thieu Setup Chu de + Phong cach khi viet lai prompt. App khong tu gan the loai mac dinh.',
     );
   }
 

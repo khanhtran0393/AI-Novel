@@ -92,7 +92,7 @@ export async function runMultiVoiceTts(params: {
   );
   // Piper: true multi-process same model (no GPU mutex). Vina/Omni: daemon/GPU slots.
   const concurrency =
-    plat === 'vina_voice' || plat === 'omnivoice_local'
+    plat === 'vina_voice' || plat === 'omnivoice_local' || plat === 'la_studio'
       ? Number.isFinite(envMulti) && envMulti > 0
         ? Math.min(vinaWorkers, Math.trunc(envMulti))
         : vinaWorkers

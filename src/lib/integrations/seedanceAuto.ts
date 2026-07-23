@@ -201,7 +201,7 @@ export function applySequenceToVideoPrompts(input: {
             const g = String(genre || '').trim();
             if (!g && !String(styleHint || '').trim()) {
               throw new Error(
-                'Thieu genre/styleHint cho Seedance sequence. Cau hinh Setup + Visual DNA. App khong tu gan mat the.',
+                'Thieu genre/styleHint cho Seedance sequence. Cau hinh Setup + Visual DNA. App khong tu gan the loai mac dinh.',
               );
             }
             return g || String(styleHint || '').trim();

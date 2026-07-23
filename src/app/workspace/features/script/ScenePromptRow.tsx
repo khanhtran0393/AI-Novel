@@ -7,7 +7,7 @@
  */
 import React, { useMemo } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
-import { imageAssetKey, videoAssetKey } from '@/contracts';
+import { imageAssetKey, sceneAssetKey, videoAssetKey } from '@/contracts';
 import { scenePromptCode } from '@/lib/youtubeSafe';
 import { useMediaGenSlot } from '../../modules/mediaGenSlotStore';
 import { useNovelStore } from '@/store/useNovelStore';
@@ -401,11 +401,17 @@ function ScenePromptRow({
     () => videoAssetKey(chapter, sceneIndex, pIdx),
     [chapter, sceneIndex, pIdx],
   );
+  const sceneKey = useMemo(
+    () => sceneAssetKey(chapter, sceneIndex),
+    [chapter, sceneIndex],
+  );
 
   // Chỉ path của key này — Zustand selector không re-render hàng khác
   const generatedImg = useNovelStore((state) => state.generatedImages?.[imageKey]);
   const generatedVideo = useNovelStore((state) => state.generatedVideos?.[videoKey]);
   const projectUrl = useNovelStore((state) => state.projectUrls?.[imageKey]);
+  const patchGeneratedPrompt = useNovelStore((s) => s.patchGeneratedPrompt);
+  const useEndFrame = !!promptItem.use_end_frame;
 
   return (
     <div
@@ -445,6 +451,35 @@ function ScenePromptRow({
               onExtend={onExtendVideo}
               hasVideo={!!generatedVideo}
             />
+
+            <label
+              className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide cursor-pointer select-none ${
+                useEndFrame
+                  ? 'border-cyan-700/50 bg-cyan-950/40 text-cyan-300'
+                  : 'border-zinc-800 bg-zinc-950/50 text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Keyframe start+end frame (Printfilm P2). Duration vẫn theo timestamp/TTS. Thiếu ảnh end → hard-fail."
+            >
+              <input
+                type="checkbox"
+                className="h-2.5 w-2.5 accent-cyan-500"
+                checked={useEndFrame}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  const endKey =
+                    pIdx + 1 < promptsLen
+                      ? imageAssetKey(chapter, sceneIndex, pIdx + 1)
+                      : pIdx > 0
+                        ? imageAssetKey(chapter, sceneIndex, pIdx - 1)
+                        : imageKey;
+                  patchGeneratedPrompt(sceneKey, pIdx, {
+                    use_end_frame: on,
+                    end_image_key: on ? endKey : undefined,
+                  });
+                }}
+              />
+              Start+End
+            </label>
 
             <button
               type="button"

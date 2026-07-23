@@ -29,36 +29,46 @@ function firstExisting(candidates) {
  */
 function resolveBrandPaths(appDir, moduleDir) {
   // Prefer electron/ packaged paths first (ASAR + beforePack sync).
+  // Prefer transparent PNG (no black square) over photographic JPG backdrop.
   const logo = firstExisting([
-    path.join(appDir, 'electron', 'splash-logo.jpg'),
     path.join(appDir, 'electron', 'splash-logo.png'),
-    path.join(moduleDir, 'electron', 'splash-logo.jpg'),
     path.join(moduleDir, 'electron', 'splash-logo.png'),
+    path.join(appDir, 'electron', 'icon.png'),
+    path.join(moduleDir, 'electron', 'icon.png'),
+    path.join(moduleDir, 'build', 'icon.png'),
+    path.join(moduleDir, 'public', 'brand', 'logo.png'),
+    path.join(appDir, 'electron', 'splash-logo.jpg'),
+    path.join(moduleDir, 'electron', 'splash-logo.jpg'),
     path.join(appDir, 'splash-logo.jpg'),
     path.join(moduleDir, 'splash-logo.jpg'),
-    path.join(appDir, 'electron', 'icon.png'),
-    path.join(moduleDir, 'electron', 'icon.png'),
     path.join(moduleDir, 'build', 'app-logo.jpg'),
-    path.join(moduleDir, 'build', 'icon.png'),
     path.join(moduleDir, 'public', 'brand', 'logo.jpg'),
-    path.join(moduleDir, 'public', 'brand', 'logo.png'),
   ]);
 
-  const icon = firstExisting([
+  // Windows taskbar needs multi-size .ico for reliable brand mark.
+  // PNG alone often leaves the host electron.exe atom icon on the taskbar in dev.
+  const iconIco = firstExisting([
     path.join(appDir, 'electron', 'icon.ico'),
     path.join(moduleDir, 'electron', 'icon.ico'),
+    path.join(moduleDir, 'build', 'icon.ico'),
+  ]);
+  const iconPng = firstExisting([
     path.join(appDir, 'electron', 'icon.png'),
     path.join(moduleDir, 'electron', 'icon.png'),
-    path.join(moduleDir, 'build', 'icon.ico'),
     path.join(moduleDir, 'build', 'icon.png'),
   ]);
+  // Prefer ICO on win32 (taskbar); PNG elsewhere / fallback.
+  const icon =
+    process.platform === 'win32'
+      ? iconIco || iconPng
+      : iconPng || iconIco;
 
   const splashHtml = firstExisting([
     path.join(appDir, 'electron', 'splash.html'),
     path.join(moduleDir, 'electron', 'splash.html'),
   ]);
 
-  return { logo, icon, splashHtml };
+  return { logo, icon, iconIco, iconPng, splashHtml };
 }
 
 function mimeFor(filePath) {
@@ -84,13 +94,15 @@ function buildSplashDataUrl(opts = {}) {
     try {
       const buf = fs.readFileSync(logoPath);
       const dataUri = `data:${mimeFor(logoPath)};base64,${buf.toString('base64')}`;
-      logoHtml = `<div class="logo" aria-hidden="true"><img src="${dataUri}" alt="" draggable="false"/></div>`;
+      // plate = solid circular disc under PNG (Windows transparent GPU often paints
+      // only drop-shadow / leaves alpha logo looking like a black void).
+      logoHtml = `<div class="logo" aria-hidden="true"><span class="plate"></span><img src="${dataUri}" alt="" draggable="false"/></div>`;
     } catch {
       /* keep spinner */
     }
   }
 
-  // Transparent shell: only floating logo (no panel / no solid backdrop).
+  // Transparent shell: floating logo only (no full-window panel).
   // Requires BrowserWindow { transparent: true, backgroundColor: '#00000000' }.
   const html = `<!DOCTYPE html>
 <html lang="vi"><head>
@@ -113,16 +125,29 @@ function buildSplashDataUrl(opts = {}) {
     background:transparent !important;
   }
   .logo{
+    position:relative;
     width:min(220px,42vw);height:min(220px,42vw);
     border:0;padding:0;margin:0;
     background:transparent !important;
-    filter:drop-shadow(0 14px 36px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(245,158,11,.4));
     animation:float 2.8s ease-in-out infinite;
     -webkit-app-region:drag;
   }
+  /* Solid disc + box-shadow (not filter) — survives DWM transparent-window bugs */
+  .logo .plate{
+    position:absolute;inset:4%;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at 35% 30%, #3f2a12 0%, #1a1208 55%, #0a0806 100%);
+    box-shadow:
+      0 16px 40px rgba(0,0,0,.65),
+      0 0 0 1px rgba(245,158,11,.35),
+      0 0 36px rgba(245,158,11,.45);
+    z-index:0;
+  }
   .logo img{
-    width:100%;height:100%;object-fit:cover;border-radius:50%;
-    display:block;background:transparent;
+    position:relative;z-index:1;
+    width:100%;height:100%;object-fit:contain;border-radius:50%;
+    display:block;background:transparent;opacity:1;
     -webkit-user-drag:none;pointer-events:none;
   }
   .spin{

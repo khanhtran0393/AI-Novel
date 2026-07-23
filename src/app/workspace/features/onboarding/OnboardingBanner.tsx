@@ -8,6 +8,7 @@ import { useNovelStore } from '@/store/useNovelStore';
 import { selectIsHydrated } from '@/store/useNovelStoreSelectors';
 import {
   CORE_LOOP_STEPS,
+  ONBOARDING_CHANGE_EVENT,
   dismissOnboarding,
   loadOnboarding,
   type OnboardingState,
@@ -20,6 +21,21 @@ export default function OnboardingBanner() {
 
   useEffect(() => {
     setState(loadOnboarding());
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<OnboardingState>).detail;
+      if (detail && typeof detail === 'object') {
+        setState({
+          dismissed: !!detail.dismissed,
+          completedSteps: Array.isArray(detail.completedSteps)
+            ? detail.completedSteps
+            : [],
+        });
+      } else {
+        setState(loadOnboarding());
+      }
+    };
+    window.addEventListener(ONBOARDING_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(ONBOARDING_CHANGE_EVENT, onChange);
   }, []);
 
   if (!state || state.dismissed || !isHydrated) return null;

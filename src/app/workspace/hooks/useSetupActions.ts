@@ -9,6 +9,7 @@ import {
   analyzeYoutubePlotAction,
   fetchYoutubeSourceAction,
   getFriendlyErrorMessage,
+  summarizeSetupErrorForToast,
 } from '../modules/setupModule';
 
 function isRawYoutubeMoTa(mo: string): boolean {
@@ -146,9 +147,10 @@ export function useSetupActions() {
         const data = await fetchYoutubeSourceAction({ url, preferredLangs });
         transcript = (data.transcript || '').trim();
         if (transcript.length < 20) {
+          // Server already returns WHAT·WHERE·FIX; keep full text for promptError
           throw new Error(
-            data.error ||
-              'Không lấy được bản chép lời (phụ đề). Video phải có captions.',
+            (data.error || '').trim() ||
+              '❌ Không lấy được bản chép lời (phụ đề).\n\n🔎 Vì sao: Video thiếu captions hoặc fetch Python fail.\n📍 Ở đâu: /api/youtube-source → youtube-transcript-api\n✅ Cách khắc phục: Bật CC trên video · pip install youtube-transcript-api · hoặc gõ cốt truyện tay ô 3.',
           );
         }
         title = data.title || title;
@@ -172,7 +174,8 @@ export function useSetupActions() {
     } catch (err: unknown) {
       const friendly = getFriendlyErrorMessage(err);
       setPromptError(friendly);
-      toast.error('Phân tích YouTube', friendly.slice(0, 220));
+      // Toast: tóm tắt vì sao + 1 bước sửa (ô lỗi sticky giữ full message)
+      toast.error('Phân tích YouTube', summarizeSetupErrorForToast(friendly, 240));
     } finally {
       setIsAnalyzingPlot(false);
     }
@@ -239,17 +242,23 @@ export function useSetupActions() {
       return;
     }
 
-    // Chuẩn hóa quy mô
-    const soChuongRaw = Number(store.setup.so_chuong);
-    const soChuong =
-      Number.isFinite(soChuongRaw) && soChuongRaw >= 1
-        ? Math.min(500, Math.round(soChuongRaw))
-        : 10;
-    const soTuRaw = Number(store.setup.so_tu_chuong);
-    const soTu =
-      Number.isFinite(soTuRaw) && soTuRaw >= 500
-        ? Math.min(10000, Math.round(soTuRaw))
-        : 4250;
+    // Chuẩn hóa quy mô theo gói (Free ≤2 ch · ≤600 từ — cấm ép 10 ch / 4250)
+    const {
+      normalizeSetupScaleForTier,
+      resolveMeteredTierFromFlags,
+    } = await import('@/lib/commercial/freeLimitsPolicy');
+    const tier = resolveMeteredTierFromFlags({
+      is_pro: store.is_pro,
+      is_trial: store.is_trial,
+      is_vip: store.is_vip,
+    });
+    const scaled = normalizeSetupScaleForTier(
+      store.setup.so_chuong,
+      store.setup.so_tu_chuong,
+      tier,
+    );
+    const soChuong = scaled.so_chuong;
+    const soTu = scaled.so_tu_chuong;
     if (store.setup.so_chuong !== soChuong || store.setup.so_tu_chuong !== soTu) {
       store.setSetup({ so_chuong: soChuong, so_tu_chuong: soTu });
     }
@@ -260,28 +269,50 @@ export function useSetupActions() {
       'Sinh kịch bản AI',
       `Đang tạo dàn ý ${soChuong} chương… Giữ cửa sổ mở, đợi toast xong.`,
     );
+    if (ytMode && !captionCache) {
+      toast.info(
+        'YouTube rewrite',
+        'Không có captions cache — AI bám ô cốt truyện + % trùng (bấm Phân tích để canh % chính xác hơn).',
+      );
+    }
 
     try {
       const live = useNovelStore.getState();
-      const data = (await generateOutlineAction({
-        apiKey: live.apiKey,
-        apiKeys: live.apiKeys || [],
-        setupData: {
-          ...live.setup,
-          mo_ta: moTa,
-          so_chuong: soChuong,
-          so_tu_chuong: soTu,
-        },
-        youtubeRewrite: ytMode
-          ? {
-              enabled: true,
-              similarityTarget: live.youtubeSimilarityTarget ?? 80,
-              sourceTitle: live.youtubeSourceTitle || '',
-              // Captions cache → đối chiếu % trùng trong prompt, rồi xóa sau
-              captionCache: captionCache || live.youtubeSourceText || '',
-            }
-          : { enabled: false },
-      })) as Record<string, unknown>;
+      const runOutline = () =>
+        generateOutlineAction({
+          apiKey: live.apiKey,
+          apiKeys: live.apiKeys || [],
+          setupData: {
+            ...live.setup,
+            mo_ta: moTa,
+            so_chuong: soChuong,
+            so_tu_chuong: soTu,
+          },
+          youtubeRewrite: ytMode
+            ? {
+                enabled: true,
+                similarityTarget: live.youtubeSimilarityTarget ?? 80,
+                sourceTitle: live.youtubeSourceTitle || '',
+                // Captions cache → đối chiếu % trùng trong prompt, rồi xóa sau
+                captionCache: captionCache || live.youtubeSourceText || '',
+              }
+            : { enabled: false },
+        });
+
+      let data: Record<string, unknown>;
+      try {
+        data = (await runOutline()) as Record<string, unknown>;
+      } catch (firstErr: unknown) {
+        // One automatic retry after Gemini RPM 429 (common on free keys)
+        const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+        if (/429|RPM|chờ 30|rate/i.test(msg)) {
+          toast.info('Sinh kịch bản', 'Gặp giới hạn RPM — chờ 35s rồi tự thử lại…');
+          await new Promise((r) => setTimeout(r, 35_000));
+          data = (await runOutline()) as Record<string, unknown>;
+        } else {
+          throw firstErr;
+        }
+      }
 
       const title = pickStr(data, ['tieu_de', 'title', 'ten_tac_pham']);
       const outline = pickStr(data, [
@@ -364,6 +395,9 @@ export function useSetupActions() {
       }
 
       store.setGiaiDoan(2);
+      const { markOnboardingStep } = await import('@/lib/onboarding');
+      markOnboardingStep('setup');
+      markOnboardingStep('outline');
       toast.success(
         'Sinh kịch bản xong',
         `«${title}» · ${convertedChapters.length} chương — sang workspace viết.`,

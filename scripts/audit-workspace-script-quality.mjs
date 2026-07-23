@@ -130,7 +130,7 @@ const desc = buildSeoDescription({
   thumbnailLine: meta.thumbnailLine,
   novelTitle: 'Tiếng Vọng Tường Cổ',
   chapter: 1,
-  tags: '#matthe #sinhton',
+  tags: '#truyenaudio #kichban',
 });
 soft('desc starts with thumb or curiosity', desc.length > 50);
 // Flag stock lines for rewrite
@@ -155,7 +155,7 @@ const directed = applyDirectorFormulasToPromptPair({
   imagePrompt: shot[0].image_prompt,
   videoPrompt: shot[0].video_prompt,
   characterHints: ['Hàn Dực'],
-  styleHint: 'dark survival realism',
+  styleHint: 'cinematic natural realism',
   durationSec: 5,
 });
 hard('image formula strips 8k/cinematic', !/\b(8k|cinematic|masterpiece)\b/i.test(directed.image_prompt), directed.image_prompt.slice(0, 100));

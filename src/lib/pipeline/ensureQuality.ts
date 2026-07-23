@@ -12,6 +12,7 @@ export function ensureChapterQuality(input: {
   wordGoal?: number;
   userRules?: { forbidden_words?: string; fatigue_words?: string };
   editorVerdict?: string;
+  scriptMode?: string;
   force?: boolean;
 }): ChapterQualityReport | null {
   if (!input.force) {
@@ -27,6 +28,7 @@ export function ensureChapterQuality(input: {
     wordGoal: input.wordGoal,
     userRules: input.userRules,
     editorVerdict: input.editorVerdict,
+    scriptMode: input.scriptMode,
   });
   setChapterQuality(report);
   return report;

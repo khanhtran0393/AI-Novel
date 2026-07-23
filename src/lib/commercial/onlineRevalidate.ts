@@ -17,10 +17,10 @@ import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
 import type { EntitlementClaims } from '@/lib/entitlement';
 import { AppError } from '@/lib/errors';
 
-/** Default **6h** for strict Pro IP features (vs 48h general heartbeat grace). */
+/** Default **3h** for strict Pro IP features (vs 24h general heartbeat grace). */
 export function strictOnlineGraceSec(): number {
-  const n = Number(process.env.AINOVEL_STRICT_ONLINE_GRACE_SEC || 6 * 3600);
-  return Number.isFinite(n) && n >= 600 ? Math.floor(n) : 6 * 3600;
+  const n = Number(process.env.AINOVEL_STRICT_ONLINE_GRACE_SEC || 3 * 3600);
+  return Number.isFinite(n) && n >= 600 ? Math.floor(n) : 3 * 3600;
 }
 
 /**

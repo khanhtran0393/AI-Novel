@@ -32,6 +32,8 @@ const ENTITLEMENT_LS_KEY = 'ainovel.entitlementToken';
 /** Khớp server `telegramNotify.COOLDOWN_MS` — 1 báo / máy / 2 phút */
 const PAID_NOTIFY_COOLDOWN_MS = 120_000;
 const PAID_NOTIFY_LS_KEY = 'ainovel.paidNotifyAt';
+/** UX: bấm Dùng thử → toast + đếm ngược 3s trên nút (kèm API song song) */
+const TRIAL_WAIT_SEC = 3;
 
 type Props = {
   open: boolean;
@@ -105,21 +107,37 @@ export default function LicenseModal({ open, onClose }: Props) {
   const [planId, setPlanId] = useState<PaidPlanId>('lifetime');
   const [hwid, setHwid] = useState('');
   const [keyDraft, setKeyDraft] = useState('');
+  /** Trial / activate / paid-notify in flight — not status refresh */
   const [busy, setBusy] = useState(false);
+  /** HWID + commercial/status load only (tránh «Đang xử lý trial» khi mở modal) */
+  const [statusLoading, setStatusLoading] = useState(false);
   const [copiedHwid, setCopiedHwid] = useState(false);
   const [copiedContent, setCopiedContent] = useState(false);
   const [qrBroken, setQrBroken] = useState(false);
   const [qrFullscreen, setQrFullscreen] = useState(false);
-  const [tier, setTier] = useState('free');
+  /** API tier hint only — display uses store flags (single source) */
+  const [apiTier, setApiTier] = useState('free');
   const [trialDaysLabel, setTrialDaysLabel] = useState(3);
+  /** Countdown còn lại khi đang bật trial (hiển thị «chờ Ns») */
+  const [trialWaitSec, setTrialWaitSec] = useState(0);
   /** Timestamp last successful (or server-cooldown) payment notify — anti-spam */
   const [lastPaidNotifyAt, setLastPaidNotifyAt] = useState(0);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [cloudNote, setCloudNote] = useState('');
+  /** Durable success copy in modal (toast alone biến mất → user bối rối) */
+  const [paidNotifySuccessMsg, setPaidNotifySuccessMsg] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setMounted(true);
     setLastPaidNotifyAt(readLastPaidNotifyAt());
+    try {
+      const prev = sessionStorage.getItem('ainovel.paidNotifySuccessMsg');
+      if (prev) setPaidNotifySuccessMsg(prev);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const paidNotifyRemainSec = useMemo(() => {
@@ -185,7 +203,7 @@ export default function LicenseModal({ open, onClose }: Props) {
   );
 
   const refresh = useCallback(async () => {
-    setBusy(true);
+    setStatusLoading(true);
     try {
       const res = await fetch(API.commercialStatus, {
         method: 'GET',
@@ -218,7 +236,7 @@ export default function LicenseModal({ open, onClose }: Props) {
       };
       const id = (data.entitlement?.hwid || '').toUpperCase();
       if (id) setHwid(id);
-      setTier(data.tier || 'free');
+      setApiTier(String(data.tier || 'free').toLowerCase());
       if (typeof data.trial?.days === 'number' && data.trial.days > 0) {
         setTrialDaysLabel(data.trial.days);
       }
@@ -241,9 +259,7 @@ export default function LicenseModal({ open, onClose }: Props) {
         );
         writeStoredToken('');
       } else if (data.supabase?.adminConfigured) {
-        setCloudNote(
-          `Cloud Supabase: bật (order + revoke online).${onePathSuffix}`,
-        );
+        setCloudNote('');
       } else if (data.supabase?.configured) {
         setCloudNote(
           `Supabase URL/anon có — thiếu SERVICE_ROLE (admin).${onePathSuffix}`,
@@ -256,6 +272,14 @@ export default function LicenseModal({ open, onClose }: Props) {
       if (data.ownerUnlimited) {
         setVipStatus(false, true, false);
         setCredits(999_999_999);
+      } else if (
+        data.tier === 'free' ||
+        data.tier === 'FREE' ||
+        data.tokenValid === false
+      ) {
+        // Free is sole truth when server says free / no valid ticket
+        setVipStatus(false, false, false);
+        setCredits(100);
       } else if (
         data.tokenValid &&
         data.claims &&
@@ -282,7 +306,7 @@ export default function LicenseModal({ open, onClose }: Props) {
         }
       } else if (data.tokenValid && data.claims) {
         applyClaims(data.claims);
-      } else if (!data.tokenValid) {
+      } else {
         setVipStatus(false, false, false);
         setCredits(100);
       }
@@ -297,7 +321,7 @@ export default function LicenseModal({ open, onClose }: Props) {
         e instanceof Error ? e.message : 'Không đọc được HWID / trạng thái',
       );
     } finally {
-      setBusy(false);
+      setStatusLoading(false);
     }
   }, [applyClaims, keyDraft, setCredits, setVipStatus]);
 
@@ -458,52 +482,98 @@ export default function LicenseModal({ open, onClose }: Props) {
   };
 
   const handleStartTrial = async () => {
+    if (busy || trialWaitSec > 0) return;
     setBusy(true);
+    setTrialWaitSec(TRIAL_WAIT_SEC);
+    toast.info(
+      'Trial',
+      `Đang kích hoạt — vui lòng chờ ${TRIAL_WAIT_SEC}s…`,
+    );
+
+    // Đếm ngược 3 → 2 → 1 trên nút (user feedback rõ, không im lặng)
+    let remaining = TRIAL_WAIT_SEC;
+    const tickId = window.setInterval(() => {
+      remaining -= 1;
+      setTrialWaitSec(Math.max(0, remaining));
+      if (remaining <= 0) window.clearInterval(tickId);
+    }, 1000);
+
+    const minWait = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, TRIAL_WAIT_SEC * 1000);
+    });
+
     try {
       // Prefer cloud trial (Supabase) → fallback local entitlement trial
-      let res = await fetch(API.cloudLicenseTrial, {
-        method: 'POST',
-        headers: buildClientApiHeaders(),
-        body: JSON.stringify({ hwid }),
-      });
-      let data = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-        message?: string;
-        token?: string;
-        cloud?: boolean;
-        status?: { active?: boolean };
-      };
-
-      if (!res.ok || !data.ok) {
-        res = await fetch(API.entitlementTrial, {
+      const runTrialApi = async () => {
+        let res = await fetch(API.cloudLicenseTrial, {
           method: 'POST',
           headers: buildClientApiHeaders(),
           body: JSON.stringify({ hwid }),
         });
-        data = (await res.json().catch(() => ({}))) as typeof data;
-      }
+        let data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          message?: string;
+          token?: string;
+          cloud?: boolean;
+          licenseId?: string;
+          status?: { active?: boolean };
+          plan?: string;
+        };
 
-      if (!res.ok || !data.ok) throw new Error(data.error || 'Trial thất bại');
+        if (!res.ok || !data.ok) {
+          res = await fetch(API.entitlementTrial, {
+            method: 'POST',
+            headers: buildClientApiHeaders(),
+            body: JSON.stringify({ hwid }),
+          });
+          data = (await res.json().catch(() => ({}))) as typeof data;
+        }
 
-      if (data.token) {
-        writeStoredToken(data.token);
-        setKeyDraft(data.token);
-        setVipStatus(false, true, true);
-        setCredits(50_000);
-      } else if (data.status?.active) {
-        setVipStatus(false, true, true);
-        setCredits(50_000);
-      }
+        if (!res.ok || !data.ok) {
+          throw new Error(
+            data.error ||
+              'Trial thất bại — bắt buộc ghi row Supabase licenses (sole truth).',
+          );
+        }
+        if (!data.token) {
+          throw new Error(
+            'Trial không có token ledger. Không bật Trial chỉ từ vault local.',
+          );
+        }
+        return data;
+      };
+
+      // API song song với countdown tối thiểu 3s — luôn hiện «chờ Ns»
+      const [data] = await Promise.all([runTrialApi(), minWait]);
+
+      writeStoredToken(data.token!);
+      setKeyDraft(data.token!);
+      // Tentative UI; refresh() is sole truth from commercial/status → Supabase
+      setVipStatus(false, true, true);
+      setCredits(50_000);
+
       toast.success(
         'Trial',
         data.message ||
-          (data.cloud ? 'Trial cloud đã bật' : 'Trial local đã bật'),
+          (data.cloud || data.licenseId
+            ? `Trial đã ghi Supabase${data.licenseId ? ` (${String(data.licenseId).slice(0, 8)}…)` : ''} — video · CapCut · ship · TTS premium.`
+            : 'Trial đã bật.'),
       );
       await refresh();
+      // Do NOT re-force vault TRIAL if ledger says Free
+      const st = useNovelStore.getState();
+      if (!st.is_pro && !st.is_trial && !st.is_vip) {
+        toast.warn(
+          'Trial',
+          'Chưa thấy row active trên Supabase cho HWID này — badge Free. Kiểm tra Table Editor → licenses.',
+        );
+      }
     } catch (e) {
       toast.error('Trial', e instanceof Error ? e.message : String(e));
     } finally {
+      window.clearInterval(tickId);
+      setTrialWaitSec(0);
       setBusy(false);
     }
   };
@@ -512,6 +582,17 @@ export default function LicenseModal({ open, onClose }: Props) {
     setLastPaidNotifyAt(at);
     writeLastPaidNotifyAt(at);
     setNowTick(at);
+  }, []);
+
+  const openTelegramDeepLink = useCallback((url?: string) => {
+    const href =
+      (typeof url === 'string' && url.trim()) ||
+      `https://t.me/${SELLER_BANK.telegramBotUsername}`;
+    try {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const handlePaidNotify = async () => {
@@ -542,50 +623,56 @@ export default function LicenseModal({ open, onClose }: Props) {
         error?: string;
         message?: string;
         code?: string;
+        messageId?: number;
+        notified?: boolean;
+        telegramUrl?: string;
+        telegramDeepLink?: string;
+        telegram?: string;
         zaloUrl?: string;
         zalo?: string;
       };
       const isCooldown =
         res.status === 429 || data.code === 'QUOTA';
+      const adminNotified =
+        res.ok &&
+        data.ok === true &&
+        typeof data.messageId === 'number' &&
+        Number.isFinite(data.messageId);
 
-      if (!res.ok || !data.ok) {
+      if (!adminNotified) {
         if (isCooldown) {
-          // Server still cooling — sync client lock, do NOT open Zalo again
+          // Server still cooling — do NOT open bot again
           markPaidNotifyCooldown();
           throw new Error(
             data.error ||
               `Bạn vừa báo rồi. Thử lại sau ~${Math.ceil(PAID_NOTIFY_COOLDOWN_MS / 1000)}s (tránh spam).`,
           );
         }
-        // Vẫn mở Zalo để user gửi bill khi Telegram chưa cấu hình / lỗi mạng
-        const zaloUrl =
-          data.zaloUrl || `https://zalo.me/${SELLER_BANK.zalo}`;
-        try {
-          window.open(zaloUrl, '_blank', 'noopener,noreferrer');
-        } catch {
-          /* ignore */
-        }
+        // Fail-closed: Admin CHƯA nhận tin → mở deep-link pay_HWID để bot forward ticket
+        const fallback =
+          data.telegramDeepLink ||
+          data.telegramUrl ||
+          `https://t.me/${SELLER_BANK.telegramBotUsername}?start=${encodeURIComponent(
+            `pay_${planId}_${hwid.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 48)}`,
+          )}`;
+        openTelegramDeepLink(fallback);
         throw new Error(
           data.error ||
-            `Không gửi được Telegram. Mở Zalo ${SELLER_BANK.zaloDisplay} gửi bill + HWID.`,
+            `Admin chưa nhận tin (thiếu messageId). Đã mở bot với HWID — bấm Start để gửi lại ticket.`,
         );
       }
-      // Success → start 2 phút cooldown (khớp server)
+      // Success: Admin đã nhận tin trên Telegram (messageId) — không mở bot trống
       markPaidNotifyCooldown();
-      toast.success(
-        'Đã báo Admin',
+      const successLine =
         data.message ||
-          `Telegram OK. Gửi bill qua Zalo ${SELLER_BANK.zaloDisplay} để nhận key.`,
-      );
+        `Admin đã nhận báo thanh toán (messageId #${data.messageId}). Admin có nút Cấp Key / Từ chối. Chờ key trong app — không mở bot trống.`;
+      setPaidNotifySuccessMsg(successLine);
       try {
-        window.open(
-          data.zaloUrl || `https://zalo.me/${SELLER_BANK.zalo}`,
-          '_blank',
-          'noopener,noreferrer',
-        );
+        sessionStorage.setItem('ainovel.paidNotifySuccessMsg', successLine);
       } catch {
         /* ignore */
       }
+      toast.success('Admin đã nhận báo thanh toán', successLine);
     } catch (e) {
       toast.error(
         'Báo thanh toán',
@@ -598,11 +685,24 @@ export default function LicenseModal({ open, onClose }: Props) {
 
   if (!mounted || !open) return null;
 
-  const statusLine = isTrial
-    ? ' · Trial đang dùng (chưa mua Pro)'
+  // Single source: store flags (sau refresh) — không ghép FREE + «Pro đã kích hoạt»
+  const displayTier: 'trial' | 'pro' | 'free' = isTrial
+    ? 'trial'
     : isPro || isVip
-      ? ' · Pro đã kích hoạt'
-      : ' · Free — nâng Pro bên dưới';
+      ? 'pro'
+      : apiTier === 'trial'
+        ? 'trial'
+        : apiTier === 'pro'
+          ? 'pro'
+          : 'free';
+  const statusLine =
+    displayTier === 'trial'
+      ? 'Trial đang dùng (chưa mua Pro)'
+      : displayTier === 'pro'
+        ? 'Pro đã kích hoạt'
+        : 'Free — nâng Pro bên dưới';
+  const alreadyPro = displayTier === 'pro';
+  const alreadyTrial = displayTier === 'trial';
 
   const qrSrc = qrBroken ? STATIC_QR_FALLBACK : qrUrl;
 
@@ -635,8 +735,12 @@ export default function LicenseModal({ open, onClose }: Props) {
               </h2>
               <p className="text-[10px] text-sky-400/80 truncate">
                 Tier hiện tại:{' '}
-                <span className="font-bold text-amber-300 uppercase">{tier}</span>
+                <span className="font-bold text-amber-300 uppercase">
+                  {displayTier}
+                </span>
+                {' · '}
                 {statusLine}
+                {statusLoading ? ' · đang đồng bộ…' : ''}
               </p>
               {cloudNote ? (
                 <p className="text-[9px] text-zinc-500 truncate" title={cloudNote}>
@@ -656,7 +760,7 @@ export default function LicenseModal({ open, onClose }: Props) {
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Free product caps */}
+          {/* Free product caps (unchanged) */}
           {!isPro && !isVip && !isTrial ? (
             <div className="rounded-xl border border-amber-800/40 bg-amber-950/25 px-3 py-2.5 text-[11px] text-amber-100/90 space-y-1">
               <p className="font-bold uppercase tracking-wide text-amber-300 text-[10px]">
@@ -668,7 +772,31 @@ export default function LicenseModal({ open, onClose }: Props) {
                   Mỗi mục Free: 3 lượt/ngày (viết · outline · gen prompt · gen
                   ảnh · TTS Edge/Piper)
                 </li>
-                <li>Trial 3 ngày hoặc Pro để bỏ giới hạn</li>
+                <li>
+                  Trial {trialDaysLabel} ngày · video/CapCut/ship/TTS premium · 5 lượt/mục · ≤10 ch. (Toolbox/multi-channel = Pro)
+                  hoặc Pro không giới hạn
+                </li>
+              </ul>
+            </div>
+          ) : null}
+          {/* Trial product caps */}
+          {isTrial ? (
+            <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/25 px-3 py-2.5 text-[11px] text-cyan-100/90 space-y-1">
+              <p className="font-bold uppercase tracking-wide text-cyan-300 text-[10px]">
+                Giới hạn gói Trial ({trialDaysLabel} ngày · như Pro)
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 text-cyan-100/80">
+                <li>
+                  Quyền như Pro (video · CapCut · ship · TTS premium · …)
+                </li>
+                <li>
+                  5 lượt/ngày mỗi mục: viết · outline · gen prompt · gen ảnh ·
+                  TTS Edge/Piper
+                </li>
+                <li>
+                  Viết kịch bản: tối đa 3000 từ/chương · tối đa 10 chương
+                </li>
+                <li>Pro để bỏ giới hạn lượt và số chương</li>
               </ul>
             </div>
           ) : null}
@@ -678,7 +806,7 @@ export default function LicenseModal({ open, onClose }: Props) {
               Mã thiết bị
             </span>
             <code className="flex-1 min-w-[140px] rounded-lg border border-sky-800/40 bg-black/50 px-3 py-1.5 text-sm font-mono font-bold tracking-wider text-amber-300">
-              {hwid || (busy ? '…' : '—')}
+              {hwid || (statusLoading ? '…' : '—')}
             </code>
             <button
               type="button"
@@ -821,15 +949,28 @@ export default function LicenseModal({ open, onClose }: Props) {
                   Bill / xác nhận chuyển khoản thành công.
                 </li>
                 <li>
-                  <span className="text-amber-400 font-bold">3. Gửi Admin:</span> Zalo{' '}
+                  <span className="text-amber-400 font-bold">3. Gửi Admin:</span> Telegram{' '}
                   <a
-                    href={`https://zalo.me/${SELLER_BANK.zalo}`}
+                    href={SELLER_BANK.telegramBotUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-sky-300 underline font-bold hover:text-amber-300"
                   >
-                    {SELLER_BANK.zaloDisplay}
+                    {SELLER_BANK.telegramBotDisplay}
                   </a>
+                  <span className="text-zinc-500">
+                    {' '}
+                    (Zalo dự phòng{' '}
+                    <a
+                      href={`https://zalo.me/${SELLER_BANK.zalo}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-zinc-400 underline hover:text-sky-300"
+                    >
+                      {SELLER_BANK.zaloDisplay}
+                    </a>
+                    )
+                  </span>
                 </li>
                 <li>
                   <span className="text-amber-400 font-bold">4. Nhận Key:</span> Gửi kèm{' '}
@@ -838,21 +979,44 @@ export default function LicenseModal({ open, onClose }: Props) {
               </ol>
               <button
                 type="button"
-                disabled={busy}
+                disabled={
+                  busy ||
+                  trialWaitSec > 0 ||
+                  alreadyPro ||
+                  alreadyTrial ||
+                  statusLoading
+                }
                 onClick={() => void handleStartTrial()}
                 className="mt-1 w-full rounded-lg border border-sky-700/50 bg-sky-950/40 py-1.5 text-[10px] font-bold uppercase text-sky-300 hover:bg-sky-900/50 cursor-pointer disabled:opacity-50"
+                title={
+                  alreadyPro
+                    ? 'Máy này đã Pro — không cần Trial'
+                    : alreadyTrial
+                      ? 'Trial đang active trên máy này'
+                      : trialWaitSec > 0
+                        ? `Đang kích hoạt trial — chờ ${trialWaitSec}s`
+                        : `Bật Trial ${trialDaysLabel} ngày (1 máy)`
+                }
               >
-                {`Dùng thử Trial ${trialDaysLabel} ngày (1 máy)`}
+                {alreadyPro
+                  ? 'Đã Pro — không cần Trial'
+                  : alreadyTrial
+                    ? 'Trial đang dùng'
+                    : trialWaitSec > 0
+                      ? `Đang kích hoạt — chờ ${trialWaitSec}s…`
+                      : busy
+                        ? 'Đang xử lý trial…'
+                        : `Dùng thử Trial ${trialDaysLabel} ngày (1 máy)`}
               </button>
               <button
                 type="button"
-                disabled={busy || !hwid || paidNotifyCooling}
+                disabled={busy || !hwid || paidNotifyCooling || statusLoading}
                 onClick={() => void handlePaidNotify()}
                 className="w-full rounded-lg border border-emerald-600/50 bg-emerald-600/90 py-2 text-[11px] font-black uppercase tracking-wide text-black shadow-md shadow-emerald-900/30 hover:bg-emerald-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 title={
                   paidNotifyCooling
                     ? `Chống spam — thử lại sau ${formatCooldownLabel(paidNotifyRemainSec)}`
-                    : 'Báo Admin qua Telegram + mở Zalo gửi bill'
+                    : 'Gửi gói + HWID tới Admin Telegram (nút Cấp Key). Chỉ OK khi server trả messageId. Không tự mở Zalo.'
                 }
               >
                 {busy
@@ -861,22 +1025,20 @@ export default function LicenseModal({ open, onClose }: Props) {
                     ? `Đã báo — đợi ${formatCooldownLabel(paidNotifyRemainSec)}`
                     : '✓ Đã thanh toán — báo Admin'}
               </button>
-              <p className="text-[9px] text-zinc-500 leading-relaxed">
-                Báo Admin: gói + HWID + nội dung CK lên Telegram (nút{' '}
-                <span className="text-emerald-400 font-bold">Cấp Key</span> /{' '}
-                <span className="text-rose-400 font-bold">Từ chối</span>
-                ). Đồng thời mở Zalo{' '}
-                <span className="text-sky-400 font-bold">{SELLER_BANK.zaloDisplay}</span>{' '}
-                để gửi ảnh bill.
-                {paidNotifyCooling ? (
-                  <>
-                    {' '}
-                    <span className="text-amber-400/90 font-semibold">
-                      Nút khóa ~2 phút sau mỗi lần báo (tránh spam).
-                    </span>
-                  </>
-                ) : null}
-              </p>
+              {paidNotifySuccessMsg ? (
+                <p
+                  className="rounded-lg border border-emerald-700/50 bg-emerald-950/40 px-2.5 py-2 text-[10px] font-semibold leading-relaxed text-emerald-200"
+                  data-testid="paid-notify-success"
+                >
+                  {paidNotifySuccessMsg}
+                </p>
+              ) : null}
+              {paidNotifyCooling ? (
+                <p className="text-[9px] text-amber-400/90 font-semibold leading-relaxed">
+                  Nút khóa ~2 phút sau mỗi lần báo (tránh spam). Thành công vẫn
+                  hiện dòng «Cấp Key / messageId» ở trên.
+                </p>
+              ) : null}
             </div>
           </div>
 

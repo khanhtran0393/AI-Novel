@@ -112,7 +112,7 @@ const directed = shot.map((p) =>
     imagePrompt: p.image_prompt,
     videoPrompt: p.video_prompt,
     characterHints: ['Hàn Dực', 'Liễu Yên'],
-    styleHint: 'dark survival',
+    styleHint: 'cinematic natural realism',
     durationSec: 5,
   }),
 );

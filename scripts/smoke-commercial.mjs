@@ -52,6 +52,50 @@ assert.ok(main.includes("process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0'"));
 assert.ok(main.includes('devTools: !app.isPackaged'));
 assert.ok(main.includes('isAllowedShellOpenPath'));
 assert.ok(main.includes('before-input-event'));
+// Auto-update: seller-controlled github provider must load from public.env
+assert.ok(main.includes('AINOVEL_UPDATE_PROVIDER'));
+assert.ok(main.includes('AINOVEL_UPDATE_GITHUB_OWNER'));
+assert.ok(main.includes('AINOVEL_UPDATE_GITHUB_REPO'));
+assert.ok(main.includes('AINOVEL_UPDATE_ALLOW_UNSIGNED'));
+
+const updaterJs = fs.readFileSync(path.join(root, 'electron/updater.js'), 'utf8');
+assert.ok(updaterJs.includes("provider: 'github'"), 'updater must support github provider');
+assert.ok(updaterJs.includes('listFeedCandidates'), 'dual-feed candidates required');
+assert.ok(updaterJs.includes('autoDownload = true'), 'policy C: auto download');
+assert.ok(updaterJs.includes('autoInstallOnAppQuit = false'), 'policy C: no install on quit');
+assert.ok(updaterJs.includes('update-pending.json'), 'stage flag for next-launch install');
+assert.ok(updaterJs.includes('acknowledgeJustUpdated'));
+// NsisUpdater setter ignores falsy — must assign async () => null
+assert.ok(
+  updaterJs.includes('verifyUpdateCodeSignature = async () => null'),
+  'ALLOW_UNSIGNED must set verifyUpdateCodeSignature to async () => null',
+);
+assert.ok(!/verifyUpdateCodeSignature\s*=\s*false/.test(updaterJs), 'false is a no-op for signature skip');
+assert.ok(
+  fs.existsSync(path.join(root, 'scripts/verify-github-update-feed.mjs')),
+  'missing verify-github-update-feed.mjs',
+);
+assert.ok(
+  fs.existsSync(path.join(root, 'scripts/ship-update-ready.mjs')),
+  'missing ship-update-ready.mjs',
+);
+const publicEnv = fs.readFileSync(
+  path.join(root, 'resources/commercial/public.env'),
+  'utf8',
+);
+assert.ok(/AINOVEL_UPDATE_PROVIDER\s*=\s*github/.test(publicEnv));
+assert.ok(/AINOVEL_UPDATE_GITHUB_OWNER\s*=/.test(publicEnv));
+assert.ok(/AINOVEL_UPDATE_CHECK_ON_LAUNCH\s*=\s*1/.test(publicEnv));
+assert.ok(
+  /AINOVEL_UPDATE_FEED_URL\s*=\s*https:\/\/azlizrbjkqcyqnsmuccv\.supabase\.co/.test(
+    publicEnv,
+  ),
+  'dual-feed requires generic FEED_URL enabled',
+);
+
+const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
+assert.ok(preload.includes('ackChangelog'));
+assert.ok(preload.includes('ainovel-update-ack-changelog'));
 
 assert.ok(entitlement.includes('isCustomerPackagedRuntime'));
 assert.ok(entitlement.includes("return 'enforce'"));

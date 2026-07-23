@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { EdgeTTS } from 'node-edge-tts';
 
@@ -44,12 +45,10 @@ async function edgeOnce(
     timeout: timeoutMs,
   };
 
-  const audioDir = path.join(process.cwd(), 'public', 'audio');
-  if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
-
+  // Temp under OS tmp — never public/audio (0-byte leftovers were fetchable as broken /audio/*)
   const tempPath = path.join(
-    audioDir,
-    `temp_edge_${Date.now()}_${Math.random().toString(36).slice(2, 9)}.mp3`,
+    os.tmpdir(),
+    `ainovel_edge_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}.mp3`,
   );
 
   try {

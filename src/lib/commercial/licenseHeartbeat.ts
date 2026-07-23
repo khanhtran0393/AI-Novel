@@ -22,20 +22,48 @@ import { AppError } from '@/lib/errors';
 
 /**
  * Max time offline after a successful online verify.
- * Production default **48h** (was 72h) — tighter crack+offline window.
+ * Production default **24h** (was 48h → 72h) — tighter crack+offline window.
+ * Override: AINOVEL_HEARTBEAT_GRACE_SEC (min 1h).
  */
 export function heartbeatGraceSec(): number {
-  const n = Number(process.env.AINOVEL_HEARTBEAT_GRACE_SEC || 48 * 3600);
-  return Number.isFinite(n) && n >= 3600 ? Math.floor(n) : 48 * 3600;
+  const n = Number(process.env.AINOVEL_HEARTBEAT_GRACE_SEC || 24 * 3600);
+  return Number.isFinite(n) && n >= 3600 ? Math.floor(n) : 24 * 3600;
 }
 
 /**
  * First-run offline allowance if never reached license API.
- * Production default **12h** (was 24h).
+ * Production default **6h** (was 12h → 24h).
+ * Override: AINOVEL_HEARTBEAT_FIRST_RUN_SEC (min 10m).
  */
 export function heartbeatFirstRunSec(): number {
-  const n = Number(process.env.AINOVEL_HEARTBEAT_FIRST_RUN_SEC || 12 * 3600);
-  return Number.isFinite(n) && n >= 600 ? Math.floor(n) : 12 * 3600;
+  const n = Number(process.env.AINOVEL_HEARTBEAT_FIRST_RUN_SEC || 6 * 3600);
+  return Number.isFinite(n) && n >= 600 ? Math.floor(n) : 6 * 3600;
+}
+
+/**
+ * Local deny log (no token plaintext, no PII body).
+ * Path: %USER_DATA%/.ainovel-license/deny-events.jsonl
+ */
+export function appendLicenseDenyEvent(event: {
+  reason: string;
+  detail?: string;
+}): void {
+  try {
+    const base =
+      process.env.AI_NOVEL_USER_DATA ||
+      process.env.AINOVEL_DATA_ROOT ||
+      path.join(os.homedir(), '.ainovel-license');
+    fs.mkdirSync(base, { recursive: true });
+    const line = JSON.stringify({
+      at: new Date().toISOString(),
+      reason: String(event.reason || 'deny').slice(0, 64),
+      detail: event.detail ? String(event.detail).slice(0, 160) : undefined,
+      hwid8: getHwid().toLowerCase().slice(0, 8),
+    });
+    fs.appendFileSync(path.join(base, 'deny-events.jsonl'), line + '\n', 'utf8');
+  } catch {
+    /* non-fatal */
+  }
 }
 
 type HeartbeatFile = {
@@ -93,6 +121,16 @@ export function clearHeartbeatStamp(): void {
   }
 }
 
+/**
+ * Online probe against pinned license API (Supabase ledger on seller host).
+ *
+ * Policy (LICENSE_ONE_PATH · sole ledger = Supabase):
+ * - valid:true + active row → valid
+ * - valid:false / revoked / expired / **deleted / no row** → revoked (→ Free)
+ * - Network / 5xx / parse fail → offline (grace stamp only)
+ *
+ * Cryptographically valid AINOVEL2 token alone is NOT enough once ledger says none.
+ */
 async function probeOnlineVerify(
   token: string,
   hwid: string,
@@ -115,22 +153,35 @@ async function probeOnlineVerify(
     try {
       payload = JSON.parse(res.bodyText) as typeof payload;
     } catch {
-      return res.status >= 500 ? 'offline' : 'offline';
+      return 'offline';
     }
-    // Explicit revoke only — missing DB row must NOT kill offline-signed keys
-    if (payload.cloud?.revoked === true || payload.cloud?.status === 'revoked') {
+    if (res.status >= 500) return 'offline';
+
+    const cloudStatus = String(payload.cloud?.status || '')
+      .trim()
+      .toLowerCase();
+    // Explicit ledger kill: revoke, expire, delete, never issued
+    if (
+      payload.cloud?.revoked === true ||
+      cloudStatus === 'revoked' ||
+      cloudStatus === 'expired' ||
+      cloudStatus === 'none' ||
+      cloudStatus === 'deleted'
+    ) {
       return 'revoked';
     }
     if (payload.valid === true || payload.ok === true) return 'valid';
-    if (res.status >= 500) return 'offline';
-    // Network/auth edge: treat as offline so local Ed25519 + grace still work
-    if (res.status === 401 || res.status === 403) {
-      // 403 with revoked already handled; other 403 → offline soft
-      return 'offline';
+
+    // Online response that is not valid = ledger denies (deleted id / no active row)
+    // Do NOT treat as offline grace — that was the stale-PRO bug after Supabase delete.
+    if (payload.valid === false || payload.ok === false) {
+      return 'revoked';
     }
-    // valid:false + not revoked (e.g. no cloud row) → still stamp as online-OK
-    // Local signature was already verified before probe.
-    return 'valid';
+    if (res.status === 401 || res.status === 403) {
+      return 'revoked';
+    }
+    // Ambiguous 2xx without valid flag → offline soft
+    return 'offline';
   } catch {
     return 'offline';
   }
@@ -171,6 +222,7 @@ export async function enforcePackagedHeartbeat(
   const stamp = readStamp();
 
   if (stamp?.revoked && stamp.tokenHash === th) {
+    appendLicenseDenyEvent({ reason: 'cache_revoked' });
     throw new AppError(
       'License đã bị thu hồi (heartbeat cache). Liên hệ seller hoặc kích hoạt key mới.',
       { code: 'AUTH', status: 403 },
@@ -199,16 +251,21 @@ export async function enforcePackagedHeartbeat(
       revoked: true,
       revokedAt: now,
     });
+    appendLicenseDenyEvent({
+      reason: 'ledger_deny',
+      detail: 'supabase_deleted_or_revoked_or_expired',
+    });
     throw new AppError(
-      'License đã bị thu hồi trên server. Pro đã tắt.',
+      'License không còn active trên sổ cái Supabase (đã xóa / revoke / hết hạn). App về Free.',
       { code: 'AUTH', status: 403 },
     );
   }
 
   // ── offline path ──
   if (stamp?.revoked && stamp.tokenHash === th) {
+    appendLicenseDenyEvent({ reason: 'cache_revoked_offline' });
     throw new AppError(
-      'License đã bị thu hồi (cache offline). Cần mạng + key mới.',
+      'License đã bị gỡ trên sổ cái (cache offline). Cần mạng + key mới từ seller.',
       { code: 'AUTH', status: 403 },
     );
   }
@@ -217,6 +274,10 @@ export async function enforcePackagedHeartbeat(
   if (stamp && stamp.tokenHash === th && stamp.lastOkAt > 0 && !stamp.revoked) {
     const age = now - stamp.lastOkAt;
     if (age <= heartbeatGraceSec()) return;
+    appendLicenseDenyEvent({
+      reason: 'offline_grace_expired',
+      detail: `ageSec=${age}`,
+    });
     throw new AppError(
       `Hết cửa sổ offline license (${Math.floor(heartbeatGraceSec() / 3600)}h). ` +
         'Kết nối mạng để heartbeat với server license, rồi thử lại.',

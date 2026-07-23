@@ -172,7 +172,7 @@ const directed = applyDirectorFormulasToPromptPair({
   imagePrompt: shot[0].image_prompt,
   videoPrompt: shot[0].video_prompt,
   characterHints: ['Hàn Dực'],
-  styleHint: 'dark survival realism',
+  styleHint: 'cinematic natural realism',
   durationSec: 5,
 });
 hardCheck(
@@ -283,7 +283,7 @@ const liveMerged = mergeLiveSettingsIntoChannel(
     videoModel: 'sora',
     videoAspectRatio: '9:16',
     videoDuration: 10,
-    mediaStylePreset: 'dark survival realism',
+    mediaStylePreset: 'cinematic natural realism',
     visualDnaPrompt: 'neon fog alley',
   },
   {

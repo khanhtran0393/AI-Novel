@@ -15,6 +15,23 @@ export const provider_edge_tts: TTSProvider = {
     if (!voice) {
       throw new Error('Edge TTS: chưa chọn voice.');
     }
+    // Fail-fast: sai catalog (Vina/Piper/Omni id) → không treo WS 55–90s rồi timeout UI.
+    // Edge voice chuẩn: vi-VN-HoaiMyNeural / en-US-JennyNeural…
+    const looksLikeEdge =
+      /Neural$/i.test(voice) ||
+      /^[a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+$/i.test(voice);
+    const looksForeign =
+      /\.onnx$/i.test(voice) ||
+      /^omnivoice_/i.test(voice) ||
+      /lồng tiếng|kể chuyện|tin tức|user\s*·/i.test(voice) ||
+      /\s/.test(voice);
+    if (!looksLikeEdge || looksForeign) {
+      throw new Error(
+        `Edge TTS: voice «${voice}» không phải giọng Microsoft Edge. ` +
+          `Chọn lại trong dropdown Engine (vd. vi-VN-HoaiMyNeural / vi-VN-NamMinhNeural). ` +
+          `Không đổi sang giọng khác ngầm.`,
+      );
+    }
     // Always natural rate — route applyAudioEffects handles speed/pitch.
     // Do not substitute another Edge voice on failure; surface the selected voice error.
     const buffer = await generateEdgeTTS(text, voice, 1.0, 0);

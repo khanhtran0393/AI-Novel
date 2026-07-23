@@ -84,10 +84,26 @@ async function applyShellHardenInPlace() {
     const backupPath = path.join(BACKUP_DIR, rel);
     ensureDir(path.dirname(backupPath));
 
-    // If leftover hardened file exists without backup, refuse (avoid double-minify)
-    if (!fs.existsSync(backupPath)) {
-      fs.copyFileSync(abs, backupPath);
+    // Workspace is source of truth. If a previous pack left minified content
+    // in place, restore from backup first — then re-snapshot CURRENT clean
+    // source. Never re-use a stale backup that predates edits (that bug
+    // shipped outdated electron/updater.js and broke auto-update).
+    let current = fs.readFileSync(abs, 'utf8');
+    if (
+      current.includes('ainovel-re-harden') &&
+      fs.existsSync(backupPath)
+    ) {
+      fs.copyFileSync(backupPath, abs);
+      current = fs.readFileSync(abs, 'utf8');
     }
+    if (current.includes('ainovel-re-harden')) {
+      throw new Error(
+        `[re-harden] ${rel} is still minified and no clean backup exists — restore from git`,
+      );
+    }
+
+    // Always refresh backup from current workspace (pick up agent/user edits)
+    fs.copyFileSync(abs, backupPath);
 
     const raw = fs.readFileSync(backupPath, 'utf8');
     const out = await transformSource(raw, rel);

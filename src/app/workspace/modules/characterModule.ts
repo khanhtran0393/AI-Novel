@@ -25,7 +25,7 @@ export async function generateCharPromptAction(
   const genre = [chu_de, phong_cach].filter(Boolean).join(' / ');
   if (!styleHint && !genre) {
     throw new Error(
-      'Thieu Visual DNA / Media Style va Setup (Chu de + Phong cach) khi gen prompt nhan vat. App khong tu gan mat the.',
+      'Thieu Visual DNA / Media Style va Setup (Chu de + Phong cach) khi gen prompt nhan vat. App khong tu gan the loai mac dinh.',
     );
   }
   const data = await postGenerate(
@@ -70,7 +70,7 @@ export async function regenerateCharPromptOnlyAction(
   const genre = [chu_de, phong_cach].filter(Boolean).join(' / ');
   if (!styleHint && !genre) {
     throw new Error(
-      'Thieu Visual DNA / Setup khi gen character prompt only. App khong tu gan mat the.',
+      'Thieu Visual DNA / Setup khi gen character prompt only. App khong tu gan the loai mac dinh.',
     );
   }
   const data = await postGenerate(

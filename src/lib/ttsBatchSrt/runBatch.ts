@@ -157,6 +157,7 @@ export async function runTtsBatchSrt(
     'piper',
     'vina_voice',
     'omnivoice_local',
+    'la_studio',
     'capcut_tts',
   ]);
   if (forceCloud && localBlocked.has(platform)) {

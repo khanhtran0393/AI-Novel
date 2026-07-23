@@ -3,7 +3,8 @@
 > **Status: LOCKED** — cập nhật theo code runtime **2026-07-19**  
 > **Đọc trước khi build tiếp.** Nguồn chân lý ngắn gọn cho agent/dev.  
 > Giải phẫu đầy đủ: [`AGENTS.md`](../AGENTS.md) · Domain: [`DOMAIN_MAP.md`](./DOMAIN_MAP.md) · Commercial: [`COMMERCIAL.md`](./COMMERCIAL.md)  
-> Máy đọc được: `src/contracts/*` · Reset: [`RESET_POINT.md`](./RESET_POINT.md) · `MEMORY.md`
+> Máy đọc được: `src/contracts/*` · Reset: [`RESET_POINT.md`](./RESET_POINT.md) · `MEMORY.md`  
+> Printfilm adoptions (wardrobe / keyframe / checklist): [`PRINTFILM_ADOPTIONS.md`](./PRINTFILM_ADOPTIONS.md)
 
 ---
 
@@ -152,7 +153,7 @@ Ma trận: `src/lib/commercial/featureMatrix.ts` · docs: [`COMMERCIAL.md`](./CO
 ### A9. Setup genre bắt buộc
 
 - `setup.chu_de` + `setup.phong_cach` bắt buộc cho write / gen prompt / engine.
-- Thiếu → **400 / throw** — **không** default mạt thế.
+- Thiếu → **400 / throw** — **không** default thể loại ngoài Setup.
 - Helpers: `src/lib/storyWriting.ts` · engine: `projectContext.setupGenrePayload()`.
 
 ### A10. Vietnamese text
@@ -238,7 +239,7 @@ Nguồn: `src/lib/voiceCast.ts` + `docs/design-multi-character-voice-cast.md`
 | Hard-fail + message hành động | Soft-success / fake media |
 | | CapCut → Edge; Flow → Gemini ngầm |
 | | Local director fill khi AI fail |
-| | Genre mạt thế default; `|| 5` duration |
+| | genre default ngoài Setup; `|| 5` duration |
 | | Auto browser → Google Chrome khi cần Chromium sạch |
 | | Trial badge gộp thành PRO trả phí |
 
@@ -273,7 +274,7 @@ Nguồn: `src/lib/voiceCast.ts` + `docs/design-multi-character-voice-cast.md`
 
 - [ ] Có chạm `ainovel-gui` / `:8080`? → rollback
 - [ ] Cross-domain lậu? → contracts/API
-- [ ] Hardcode mạt thế / local prompt fill?
+- [ ] hardcode thể loại mặc định / local prompt fill?
 - [ ] Setup genre có truyền write/gen/engine?
 - [ ] TTS multi dính `sceneEmotion`?
 - [ ] Duration/beat hard-fail (không `|| 5`)?

@@ -12,6 +12,7 @@ import { generateActivationCode } from '@/lib/commercial/activationVault';
 import {
   auditLog,
   hashToken,
+  insertLicenseRow,
   issueProLicenseForPlan,
   paidPlanToLicense,
 } from '@/lib/cloud/licenseBridge';
@@ -103,23 +104,15 @@ export async function POST(req: Request) {
     let licenseId: string | null = null;
     if (isSupabaseAdminConfigured()) {
       const service = createServiceSupabase();
-      const { data, error } = await service
-        .from('licenses')
-        .insert({
-          user_id: body.userId || null,
-          plan: meta.licensePlan,
-          hwid,
-          status: 'active',
-          exp_at: expAt,
-          token_hash: tokenHash,
-          activation_code: activationCode || null,
-        })
-        .select('id')
-        .single();
-      if (error) {
-        throw new AppError(error.message, { code: 'INFRA', status: 502 });
-      }
-      licenseId = data.id as string;
+      const lic = await insertLicenseRow(service, {
+        plan: meta.licensePlan,
+        hwid,
+        status: 'active',
+        exp_at: expAt,
+        token_hash: tokenHash,
+        activation_code: activationCode || null,
+      });
+      licenseId = lic.id;
       await auditLog(
         service,
         'license.issue_direct',

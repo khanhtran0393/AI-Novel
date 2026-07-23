@@ -365,6 +365,12 @@ export function useTTSActions() {
           `${finalVoice}${multiHint} · ${duration}s`,
         );
       }
+      try {
+        const { markOnboardingStep } = await import('@/lib/onboarding');
+        markOnboardingStep('tts');
+      } catch {
+        /* ignore */
+      }
       if (!options.silent && selfRepair?.message) {
         toast.warn('Self-heal TTS', selfRepair.message);
       }

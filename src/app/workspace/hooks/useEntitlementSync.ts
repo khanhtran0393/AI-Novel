@@ -27,6 +27,9 @@ type CommercialStatus = {
   tokenValid?: boolean;
   /** When true, drop local token — Supabase has no active license for HWID */
   clearLocalToken?: boolean;
+  /** Supabase ledger status: none | revoked | expired | active | … */
+  cloudStatus?: string | null;
+  cloudRevoked?: boolean;
   authority?: string;
   entitlement?: { publishHint?: boolean; hwid?: string };
   trial?: { active?: boolean; endsIso?: string | null; fromToken?: boolean };
@@ -126,8 +129,16 @@ export function useEntitlementSync() {
         }
       }
 
-      // Supabase says no license → drop local token so stale PRO cannot stick
-      if (data.clearLocalToken || (data.authority === 'supabase' && !data.tokenValid)) {
+      // Ledger (Supabase) says no license → drop local ticket so stale PRO cannot stick
+      // Also clear when remote heartbeat already wiped token above.
+      if (
+        data.clearLocalToken ||
+        (data.authority === 'supabase' && !data.tokenValid) ||
+        data.cloudRevoked ||
+        data.cloudStatus === 'none' ||
+        data.cloudStatus === 'expired' ||
+        data.cloudStatus === 'revoked'
+      ) {
         try {
           window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
         } catch {
@@ -142,7 +153,36 @@ export function useEntitlementSync() {
         return;
       }
 
-      // Paid Pro token claims first (before free/trial branches)
+      // Prefer server tier (Supabase-first): Free wins over stale local ticket
+      if (data.tier === 'free' || data.tier === 'FREE') {
+        setVipStatus(false, false, false);
+        const cur = useNovelStore.getState().credits;
+        if (cur > 100_000) setCredits(100);
+        // Clamp Free product caps (default store often 4250 từ)
+        try {
+          const {
+            FREE_LIMITS,
+            clampFreeChapterCount,
+            clampFreeWordGoal,
+          } = await import('@/lib/commercial/freeLimitsPolicy');
+          const st = useNovelStore.getState();
+          const ch = clampFreeChapterCount(Number(st.setup?.so_chuong) || 1);
+          const words = clampFreeWordGoal(
+            Number(st.setup?.so_tu_chuong) || FREE_LIMITS.maxWordsPerChapter,
+          );
+          if (
+            st.setup?.so_chuong !== ch ||
+            st.setup?.so_tu_chuong !== words
+          ) {
+            st.setSetup({ so_chuong: ch, so_tu_chuong: words });
+          }
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
+      // Paid Pro only when server still says token/ledger valid
       if (data.tokenValid && data.claims && claimsArePaidPro(data.claims)) {
         setVipStatus(false, true, false);
         setCredits(999_999_999);
@@ -152,14 +192,6 @@ export function useEntitlementSync() {
       if (data.tier === 'pro' || data.tier === 'vip') {
         setVipStatus(false, true, false);
         setCredits(999_999_999);
-        return;
-      }
-
-      // Prefer server tier (Supabase-first when configured)
-      if (data.tier === 'free' || data.tier === 'FREE') {
-        setVipStatus(false, false, false);
-        const cur = useNovelStore.getState().credits;
-        if (cur > 100_000) setCredits(100);
         return;
       }
 

@@ -10,6 +10,8 @@ import { synthesizeVinaVoice, probeVinaEngine } from '@/lib/vinaVoice';
 import {
   optimizeCloneSample,
   stableSeedFromString,
+  assessRefTextAlignment,
+  probeDuration,
 } from '@/lib/vinaVoice/sampleOptimize';
 import { inspectTtsAudioFile } from '@/lib/tts/audioQuality';
 import { requireFeature } from '@/lib/commercial/apiGate';
@@ -96,6 +98,9 @@ export async function POST(req: Request) {
     fs.writeFileSync(rawPath, buf);
 
     // —— Tự tối ưu mẫu ——
+    // Identity-first: do NOT auto-nudge pitch/speed from char quirks during clone.
+    // Quirk-based pitch (±2 st) was a common reason clone F0 sounded far from source.
+    let sampleDurSec = 0;
     if (autoOptimize) {
       const opt = optimizeCloneSample(rawPath, refWav, { maxSec: 12 });
       optimizeLog.push(...(opt.steps || []));
@@ -105,8 +110,9 @@ export async function POST(req: Request) {
           { status: 500 },
         );
       }
-      if (opt.durationHintSec) {
-        optimizeLog.push(`dur≈${opt.durationHintSec.toFixed(1)}s`);
+      sampleDurSec = opt.durationHintSec || 0;
+      if (sampleDurSec) {
+        optimizeLog.push(`dur≈${sampleDurSec.toFixed(1)}s`);
       }
       // Seed ổn định từ tên file + text
       if (!speakerSeed) {
@@ -117,7 +123,7 @@ export async function POST(req: Request) {
         styleSeed = stableSeedFromString(text.slice(0, 80), 2);
         optimizeLog.push(`style_seed=${styleSeed}`);
       }
-      // Gender auto từ form char / filename
+      // Gender auto từ form char / filename (metadata only — ONNX does not use gender)
       if (gender === 'auto' || !gender) {
         const blob = `${charGender} ${charQuirk} ${name} ${refText}`.toLowerCase();
         if (/(nữ|nu |female|cô |chị |bà |girl|woman)/i.test(blob)) {
@@ -131,21 +137,8 @@ export async function POST(req: Request) {
           optimizeLog.push('gender=male(default)');
         }
       }
-      // Prosody auto từ quirk NV nếu client gửi (delta nhẹ so với input)
       if (charQuirk) {
-        const q = charQuirk.toLowerCase();
-        if (!Number.isFinite(speed) || speed === 1) {
-          if (/(nhanh|vội|hối)/i.test(q)) speed = 1.12;
-          else if (/(chậm|từ tốn|kể chuyện)/i.test(q)) speed = 0.9;
-          else speed = Number.isFinite(speed) ? speed : 1;
-          optimizeLog.push(`speed=${speed}(quirk)`);
-        }
-        if (!Number.isFinite(pitch) || pitch === 0) {
-          if (/(trầm|khàn)/i.test(q)) pitch = -2;
-          else if (/(cao|ngọt|trong)/i.test(q)) pitch = 2;
-          else pitch = Number.isFinite(pitch) ? pitch : 0;
-          optimizeLog.push(`pitch=${pitch}(quirk)`);
-        }
+        optimizeLog.push('char_quirk_ignored_for_pitch_identity');
       }
     } else {
       // plain convert only
@@ -157,6 +150,7 @@ export async function POST(req: Request) {
           { status: 500 },
         );
       }
+      sampleDurSec = opt.durationHintSec || 0;
       if (!speakerSeed) speakerSeed = 2336;
       if (!styleSeed) styleSeed = 4125;
       if (gender === 'auto') gender = 'male';
@@ -164,8 +158,30 @@ export async function POST(req: Request) {
 
     if (!Number.isFinite(speed)) speed = 1;
     if (!Number.isFinite(pitch)) pitch = 0;
+    // Clone identity default: speed=1, pitch=0 unless user explicitly moved sliders
     speed = Math.max(0.5, Math.min(2, speed));
     pitch = Math.max(-12, Math.min(12, pitch));
+
+    // Hard-fail when transcript does not match kept sample length (F0 drift root cause)
+    if (!sampleDurSec || sampleDurSec < 0.5) {
+      sampleDurSec = probeDuration(refWav);
+    }
+    const align = assessRefTextAlignment(refText, sampleDurSec || 8);
+    if (!align.ok) {
+      return NextResponse.json(
+        {
+          error: align.error,
+          optimize: optimizeLog,
+          align: { charsPerSec: align.charsPerSec, durationSec: sampleDurSec },
+        },
+        { status: 400 },
+      );
+    }
+    if (align.warning) {
+      optimizeLog.push(`align_warn:${align.charsPerSec.toFixed(1)}cps`);
+    } else {
+      optimizeLog.push(`align_ok:${align.charsPerSec.toFixed(1)}cps`);
+    }
 
     const referenceQuality = inspectTtsAudioFile(refWav);
     if (!referenceQuality.ok) {
@@ -242,19 +258,25 @@ export async function POST(req: Request) {
       /* ignore */
     }
 
-    // isPreview: NFE 16 — đủ nghe thử "Tạo giọng đọc", nhanh hơn full chapter (NFE 32).
+    // Full NFE for clone create (not preview-16): better pitch/timbre lock to sample.
+    // Identity prosody: emotion=neutral so post-FX does not shift F0 vs reference.
     const result = await synthesizeVinaVoice(
       {
         text,
         profileName,
         forceBuiltin: false,
-        isPreview: true,
+        isPreview: false,
+        isChapter: false,
         settings: {
           gender: gender === 'female' ? 'female' : 'male',
+          area: 'southern',
+          emotion: 'neutral',
           speed,
           pitch_shift: pitch,
           speaker_seed: speakerSeed,
           style_seed: styleSeed,
+          formant: 1.0,
+          treble_boost: 0,
           use_clone: true,
           reference_audio: refWav,
           reference_text: refText,

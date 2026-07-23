@@ -1,12 +1,14 @@
 /**
  * B — Auto cast ingredients: match names in prompt/script → concept/face refs (max 3).
  */
-import { characterImageKey } from '@/contracts';
+import { characterImageKey, characterWardrobeImageKey } from '@/contracts';
 
 export type CastProfileLite = {
   prompt?: string;
   face_ref?: string;
   identity_lock?: string;
+  active_wardrobe_id?: string;
+  wardrobe_variants?: Array<{ id?: string; image_key?: string }>;
 };
 
 function stripQuery(p: string): string {
@@ -59,9 +61,19 @@ export function resolveCastIngredientPaths(opts: {
     if (paths.length >= max) break;
     if (!mentionsName(text, name)) continue;
 
-    const prof = opts.nhan_vat_prompts?.[name];
+    const prof = opts.nhan_vat_prompts?.[name] as CastProfileLite | undefined;
     if (prof && typeof prof === 'object') {
-      push((prof as CastProfileLite).face_ref);
+      push(prof.face_ref);
+      // Prefer active wardrobe still when set (Printfilm P1)
+      const activeId = String(prof.active_wardrobe_id || '').trim();
+      if (activeId) {
+        const wHit = (prof.wardrobe_variants || []).find(
+          (w) => String(w?.id || '') === activeId,
+        );
+        push(wHit?.image_key ? images[String(wHit.image_key)] : undefined);
+        push(images[characterWardrobeImageKey(name, activeId)]);
+        if (wHit?.image_key) push(images[String(wHit.image_key)]);
+      }
     }
     // Concept sheet from gen map
     push(images[characterImageKey(name)]);

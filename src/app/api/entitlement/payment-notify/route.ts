@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { getHwid } from '@/lib/entitlement';
 import {
+  buildPayTelegramDeepLink,
   notifyPaymentReported,
   telegramConfigured,
 } from '@/lib/commercial/telegramNotify';
@@ -72,12 +73,31 @@ export async function POST(req: Request) {
           },
         );
       }
+      const remoteOk = remote.payload.ok === true;
+      const messageId = remote.payload.messageId;
+      if (
+        remote.status >= 200 &&
+        remote.status < 300 &&
+        remoteOk &&
+        (typeof messageId !== 'number' || !Number.isFinite(messageId))
+      ) {
+        // Fail-closed: proxy 200 without messageId means Admin never got the ticket
+        throw new AppError(
+          'License server trả OK nhưng không có messageId Telegram — Admin chưa nhận tin. Thử lại hoặc báo Zalo.',
+          { code: 'INFRA', status: 502 },
+        );
+      }
+      const deepLink = buildPayTelegramDeepLink(planId, hwid);
       return NextResponse.json(
         {
           ...remote.payload,
+          telegramUrl: deepLink,
+          telegramDeepLink: deepLink,
+          telegram: SELLER_BANK.telegramBotDisplay,
           zalo: SELLER_BANK.zaloDisplay,
           zaloUrl: `https://zalo.me/${SELLER_BANK.zalo}`,
           authority: 'license-api',
+          notified: remoteOk && typeof messageId === 'number',
         },
         { status: remote.status },
       );
@@ -85,7 +105,7 @@ export async function POST(req: Request) {
 
     if (!telegramConfigured()) {
       throw new AppError(
-        `Telegram admin chưa cấu hình trên server. Liên hệ Zalo ${SELLER_BANK.zaloDisplay} và gửi bill + HWID ${hwid.toUpperCase()}.`,
+        `Telegram admin chưa cấu hình trên server. Mở ${SELLER_BANK.telegramBotDisplay} (${SELLER_BANK.telegramBotUrl}) hoặc Zalo ${SELLER_BANK.zaloDisplay} — gửi bill + HWID ${hwid.toUpperCase()}.`,
         { code: 'INFRA', status: 503 },
       );
     }
@@ -99,24 +119,34 @@ export async function POST(req: Request) {
       note: typeof body.note === 'string' ? body.note : undefined,
     });
 
-    if (!result.ok) {
-      throw new AppError(result.error || 'Gửi Telegram thất bại', {
-        code: result.cooldown ? 'QUOTA' : 'INFRA',
-        status: result.cooldown ? 429 : 502,
-      });
+    if (!result.ok || result.messageId == null) {
+      throw new AppError(
+        result.error ||
+          'Gửi Telegram thất bại — Admin chưa nhận tin (không có message_id).',
+        {
+          code: result.cooldown ? 'QUOTA' : 'INFRA',
+          status: result.cooldown ? 429 : 502,
+        },
+      );
     }
+
+    const deepLink = buildPayTelegramDeepLink(planId, hwid);
 
     return NextResponse.json({
       ok: true,
       message:
-        'Đã báo Admin (Telegram có nút Cấp Key / Từ chối). Gửi bill + HWID qua Zalo để nhận key nhanh hơn.',
+        'Admin đã nhận báo thanh toán trên Telegram (nút Cấp Key / Từ chối). Chờ key — không cần chat bot trống.',
       messageId: result.messageId,
       hwid: hwid.toUpperCase(),
       planId,
+      telegramUrl: deepLink,
+      telegram: SELLER_BANK.telegramBotDisplay,
+      telegramDeepLink: deepLink,
       zalo: SELLER_BANK.zaloDisplay,
       zaloUrl: `https://zalo.me/${SELLER_BANK.zalo}`,
       poller: getTelegramPollerStatus(),
       authority: 'local',
+      notified: true,
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {
@@ -133,6 +163,8 @@ export async function GET() {
       endpoint: '/api/entitlement/payment-notify',
       mode: 'proxy-license-api',
       telegramConfigured: true,
+      telegramUrl: SELLER_BANK.telegramBotUrl,
+      telegram: SELLER_BANK.telegramBotDisplay,
       zalo: SELLER_BANK.zaloDisplay,
       note: 'Packaged app proxies to Vercel; bot token never in installer.',
     });
@@ -143,6 +175,8 @@ export async function GET() {
     ok: true,
     endpoint: '/api/entitlement/payment-notify',
     telegramConfigured: telegramConfigured(),
+    telegramUrl: SELLER_BANK.telegramBotUrl,
+    telegram: SELLER_BANK.telegramBotDisplay,
     zalo: SELLER_BANK.zaloDisplay,
     poller: getTelegramPollerStatus(),
     mode: 'local-telegram',

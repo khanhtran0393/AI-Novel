@@ -9,10 +9,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { inspectTtsAudioFile } from './audioQuality';
+import { inspectTtsAudioBuffer, inspectTtsAudioFile } from './audioQuality';
 
 /** Bump when synthesis conditioning or the signal-quality contract changes. */
-const PREVIEW_CACHE_VERSION = 'v2-conditioning-quality';
+const PREVIEW_CACHE_VERSION = 'v3-peak-headroom-nfe20';
 
 export type PreviewCacheKeyInput = {
   platform: string;
@@ -34,6 +34,8 @@ export type PreviewCacheHit = {
   filename: string;
   ageMs: number;
   method: string;
+  /** Real duration from quality probe (not hardcoded 5s) */
+  durationSec?: number;
 };
 
 function previewRoot(cwd = process.cwd()): string {
@@ -176,8 +178,18 @@ function hitFromFile(
       console.warn(
         `[TTS Preview] reject corrupt cache ${filename}: ${quality.reasons.join('; ')}`,
       );
+      // Purge bad cache so next Nghe thử re-synths instead of looping MISS→HIT→reject
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        /* ignore */
+      }
       return null;
     }
+    const durationSec =
+      Number.isFinite(quality.durationSec) && quality.durationSec > 0
+        ? quality.durationSec
+        : undefined;
 
     if (publicPathToEnsure && publicPathToEnsure !== filePath) {
       const pubDir = path.dirname(publicPathToEnsure);
@@ -194,9 +206,10 @@ function hitFromFile(
         filename,
         ageMs,
         method,
+        durationSec,
       };
     }
-    return { filePath, publicUrl, filename, ageMs, method };
+    return { filePath, publicUrl, filename, ageMs, method, durationSec };
   } catch {
     return null;
   }
@@ -277,6 +290,18 @@ export function writePreviewCache(
   buffer: Buffer,
   cwd = process.cwd(),
 ): { filename: string; publicUrl: string; durablePath: string; publicPath: string } {
+  if (!buffer || buffer.length < 500) {
+    throw new Error(
+      `writePreviewCache: buffer quá nhỏ (${buffer?.length || 0}B) — không ghi cache nghe thử.`,
+    );
+  }
+  // Reject writing known-bad signals so "Nghe thử" never seals noise forever
+  const quality = inspectTtsAudioBuffer(buffer, cwd);
+  if (!quality.ok) {
+    throw new Error(
+      `writePreviewCache: audio không đạt chuẩn speech: ${quality.reasons.join('; ')}`,
+    );
+  }
   const n = normalizePreviewCacheInput(input);
   const paths = previewCachePaths(n, ext, cwd);
   const durableDir = path.dirname(paths.durablePath);

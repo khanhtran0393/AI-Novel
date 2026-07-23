@@ -224,7 +224,7 @@ function extractVisibleAction(sceneText: string): string {
 }
 
 /**
- * B10: no silent mat-the / dark-survival style.
+ * B10: no silent genre default / dark-survival style.
  * Callers must pass Visual DNA / Media Style and/or Setup genre (chu_de + phong_cach).
  */
 export function requireDirectorStyle(input: {
@@ -236,7 +236,7 @@ export function requireDirectorStyle(input: {
   const genre = String(input.genre || '').trim();
   if (genre) return genre;
   throw new Error(
-    'Thieu styleHint/genre cho cong thuc dao dien. Cau hinh Visual DNA / Media Style va Setup (Chu de + Phong cach). App khong tu gan mat the.',
+    'Thieu styleHint/genre cho cong thuc dao dien. Cau hinh Visual DNA / Media Style va Setup (Chu de + Phong cach). App khong tu gan the loai mac dinh.',
   );
 }
 
@@ -262,7 +262,7 @@ export function requireGenreFromSetup(opts: {
   const g = buildGenreFromSetup(opts);
   if (!g) {
     throw new Error(
-      'Thieu genre/chu_de/phong_cach. Mo Setup chon Chu de + Phong cach truoc khi Gen Prompt. App khong tu gan mat the.',
+      'Thieu genre/chu_de/phong_cach. Mo Setup chon Chu de + Phong cach truoc khi Gen Prompt. App khong tu gan the loai mac dinh.',
     );
   }
   return g;

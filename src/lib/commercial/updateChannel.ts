@@ -23,10 +23,11 @@ export function resolveUpdateChannel(): UpdateChannelConfig {
   const repo = (
     process.env.AINOVEL_UPDATE_GITHUB_REPO || 'AI-Novel-release-'
   ).trim();
+  const githubUrl = `https://github.com/${owner}/${repo}/releases`;
+  const genericUrl = (process.env.AINOVEL_UPDATE_FEED_URL || '').trim() || null;
+  // Prefer github URL for status when provider=github; dual-feed still has generic.
   const feedUrl =
-    provider === 'github'
-      ? `https://github.com/${owner}/${repo}/releases`
-      : (process.env.AINOVEL_UPDATE_FEED_URL || '').trim() || null;
+    provider === 'github' ? githubUrl : genericUrl || githubUrl;
   return {
     channel,
     feedUrl,
@@ -44,10 +45,13 @@ export function getUpdatePublicStatus() {
   const repo = (
     process.env.AINOVEL_UPDATE_GITHUB_REPO || 'AI-Novel-release-'
   ).trim();
+  const genericUrl = (process.env.AINOVEL_UPDATE_FEED_URL || '').trim() || null;
   return {
     ...cfg,
     provider: provider === 'generic' ? 'generic' : 'github',
     github: { owner, repo },
+    genericFeedUrl: genericUrl,
+    dualFeed: Boolean(genericUrl),
     /**
      * Policy C': check → auto download (stage) → install on **next** launch.
      * See electron/updater.js
@@ -58,9 +62,9 @@ export function getUpdatePublicStatus() {
     installOnNextLaunch: true,
     configured: Boolean(cfg.feedUrl),
     hint: cfg.feedUrl
-      ? provider === 'github'
-        ? `GitHub Releases ${owner}/${repo} · tự tải, cài lần mở sau`
-        : `Update channel=${cfg.channel} · tự tải sẵn, cài lần mở app sau`
+      ? `GitHub ${owner}/${repo}` +
+        (genericUrl ? ' + Supabase fallback' : '') +
+        ' · tự tải, cài lần mở sau'
       : 'Chưa cấu hình update feed — cài tay installer mới.',
   };
 }

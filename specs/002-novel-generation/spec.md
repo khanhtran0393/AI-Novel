@@ -4,7 +4,7 @@
 002-novel-generation
 
 ## 2. Overview
-The Novel Generation Engine is the core writing mechanism of the application. It utilizes a sophisticated prompt structure combined with state-of-the-art AI to generate detailed, multi-sensory scenes for a post-apocalyptic narrative. It includes a Typing Effect feature to render text organically and a Zero-Legacy validation layer.
+The Novel Generation Engine is the core writing mechanism of the application. It utilizes a sophisticated prompt structure combined with state-of-the-art AI to generate detailed, multi-sensory scenes for a story narrative matching Setup genre. It includes a Typing Effect feature to render text organically and a Zero-Legacy validation layer.
 
 ## 3. User Stories
 - As a writer, I want to write the next part of the chapter without losing the context of previous chapters (using short-term and long-term memory).

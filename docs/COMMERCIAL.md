@@ -10,10 +10,10 @@ Mô hình thương mại duy nhất là **License + BYOK + Free / Trial / Pro**.
 | Tier | Quyền | Badge |
 |---|---|---|
 | Free | Viết (≤600 từ/chương, ≤2 chương, 3 lượt/ngày), outline/prompt/ảnh BYOK/TTS Edge-Piper (mỗi mục 3 lượt/ngày) | FREE + credits |
-| Trial | Quyền Trial theo ma trận, giới hạn thời gian và HWID | TRIAL |
-| Pro | Video, CapCut, ship, pipeline, multi-channel, toolbox, Flow multi-account | PRO |
+| Trial | **Như Pro** · 7 ngày / 1 HWID · 5 lượt/ngày mỗi mục (viết·outline·prompt·ảnh·TTS Edge/Piper) · ≤**3000** từ/chương · ≤10 chương | TRIAL |
+| Pro | Video, CapCut, ship, pipeline, multi-channel, toolbox, Flow multi-account — không meter lượt | PRO |
 
-**Free caps (server):** `src/lib/commercial/freeLimitsPolicy.ts` + vault `data/licenses/free-usage.json` (`freeQuota.ts`). Chỉ áp khi `tier === 'free'` (enforce). **Không** đếm lượt Pro (LICENSE_ONE_PATH).
+**Free + Trial caps (server):** `src/lib/commercial/freeLimitsPolicy.ts` (`FREE_LIMITS` · `TRIAL_LIMITS`) + machine vault ngoài folder portable (`licenseMachineStore.ts` → `%USER_DATA%/.ainovel-license/` hoặc `~/.ainovel-license/`: `free-usage.json`, `trials.json`) + stamp phụ Windows HKCU. **Cấm** tin vault trong folder app (xóa+giải nén lại không reset). Áp khi `tier === 'free' | 'trial'`. **Không** đếm lượt Pro (LICENSE_ONE_PATH).
 
 `is_vip` chỉ đọc snapshot/token cũ và được chuẩn hóa thành Pro. Token mới, API và UI không phát hành tier VIP.
 
@@ -28,6 +28,8 @@ Mô hình thương mại duy nhất là **License + BYOK + Free / Trial / Pro**.
 - UI `is_pro` / credits chỉ cosmetic; authorization = token + `assertFeatureAccess` / `assertProAccess`.
 
 Backend production hiện dùng `https://ai-novel-flax.vercel.app` với Supabase là authority và Ed25519 để verify offline.
+
+**`licenses.user_id` = mã thiết bị (HWID)** của app user (desktop), không phải uuid `auth.users`. Cùng chuẩn hóa lowercase với cột `hwid`. Migration: `supabase/migrations/003_licenses_user_id_device.sql` · backfill: `npx tsx scripts/backfill-license-user-id-device.mts`.
 
 ## Credential local
 

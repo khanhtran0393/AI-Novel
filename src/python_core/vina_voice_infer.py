@@ -621,10 +621,19 @@ def main() -> int:
     out_dir = os.path.dirname(os.path.abspath(args.output))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+    # Peak headroom: vocoder often hits ~1.0 full-scale → digital clip / nghe rè.
+    sig = np.asarray(generated_signal, dtype=np.float32).reshape(-1)
+    peak = float(np.max(np.abs(sig))) if sig.size else 0.0
+    target_peak = 0.89  # ≈ -1 dBFS
+    if peak > target_peak and peak > 1e-9:
+        sig = sig * (target_peak / peak)
+        print(f"[vina_infer] peak normalize {peak:.4f} → {target_peak:.2f}")
+    else:
+        print(f"[vina_infer] peak={peak:.4f} (no scale)")
     # Standard PCM WAV (not WAVEX) — better browser/Electron <audio> decode.
     sf.write(
         args.output,
-        generated_signal.reshape(-1),
+        sig,
         MODEL_SAMPLE_RATE,
         subtype="PCM_16",
         format="WAV",

@@ -41,10 +41,16 @@ function ensureDir(d: string) {
 }
 
 function findFfmpeg(): string {
-  const local = path.join(process.cwd(), 'bin', 'ffmpeg', 'ffmpeg.exe');
-  if (fs.existsSync(local)) return local;
-  return 'ffmpeg';
+  const candidates = [
+    path.join(process.cwd(), 'bin', 'ffmpeg.exe'),
+    path.join(process.cwd(), 'bin', 'ffmpeg', 'ffmpeg.exe'),
+  ];
+  const hit = candidates.find((p) => fs.existsSync(p));
+  return hit || 'ffmpeg';
 }
+
+/** Soft ceiling ~-1 dBFS — model/vocoder often hits 0.0 dBFS → nghe rè khi DAC/browser. */
+const PEAK_LIMITER_AF = 'alimiter=limit=0.89:level=disabled:attack=5:release=50';
 
 /** Chain atempo (each step must stay in [0.5, 2.0]) */
 function buildAtempoChain(tempo: number): string[] {
@@ -67,6 +73,7 @@ function buildAtempoChain(tempo: number): string[] {
 /**
  * Áp speed + pitch (semitone) + treble/formant lên file wav.
  * Đây là chỗ duy nhất đảm bảo slider UI Clone Voice có hiệu lực.
+ * Luôn chèn peak limiter — raw ONNX hay chạm 0.0 dBFS (rè).
  */
 function postProcessWav(
   inPath: string,
@@ -83,20 +90,19 @@ function postProcessWav(
   const needFormant =
     !!settings.formant && Math.abs(settings.formant - 1) > 0.01;
 
-  // Không đổi gì → copy thẳng (tránh decode/encode thừa)
-  if (!needPitch && !needSpeed && !needTreble && !needFormant) {
-    if (path.resolve(inPath) !== path.resolve(outPath)) {
-      fs.copyFileSync(inPath, outPath);
-    }
-    return;
-  }
-
   const filters: string[] = [];
-  // Pitch: asetrate + aresample, rồi atempo bù + speed người dùng
+  // Pitch: aresample→asetrate→aresample (SR-safe, input may be 24k before finalize)
+  // then atempo bù duration + speed UI.
   if (needPitch) {
-    const rate = Math.round(44100 * Math.pow(2, pitch / 12));
-    const tempo = speed * (44100 / rate);
-    filters.push(`asetrate=${rate}`, 'aresample=44100');
+    const rateFactor = Math.pow(2, pitch / 12);
+    const newSampleRate = Math.max(
+      8000,
+      Math.min(192000, Math.round(44100 * rateFactor)),
+    );
+    const tempo = (1 / rateFactor) * speed;
+    filters.push('aresample=44100');
+    filters.push(`asetrate=${newSampleRate}`);
+    filters.push('aresample=44100');
     filters.push(...buildAtempoChain(tempo));
   } else if (needSpeed) {
     filters.push(...buildAtempoChain(speed));
@@ -109,6 +115,8 @@ function postProcessWav(
     const g = ((settings.formant - 1) * 6).toFixed(2);
     filters.push(`equalizer=f=1200:t=q:w=1:g=${g}`);
   }
+  // Always keep ~1 dB headroom (even when speed/pitch = neutral).
+  filters.push(PEAK_LIMITER_AF);
 
   const af = filters.join(',');
   console.log(
@@ -116,7 +124,20 @@ function postProcessWav(
   );
   execFileSync(
     ffmpeg,
-    ['-y', '-i', inPath, '-af', af, '-ac', '1', '-ar', '44100', outPath],
+    [
+      '-y',
+      '-i',
+      inPath,
+      '-af',
+      af,
+      '-ac',
+      '1',
+      '-ar',
+      '44100',
+      '-sample_fmt',
+      's16',
+      outPath,
+    ],
     { stdio: 'pipe' },
   );
 }
@@ -634,7 +655,7 @@ export async function synthesizeVinaVoice(
     const engineRaw = path.join(outDir, 'engine_raw.bin');
     let ext: { ok: boolean; method?: string; error?: string } = { ok: false };
 
-    // NFE: preview 16 / chapter 20 / full 24 (env overrides). Never use 4 — pure noise.
+    // NFE: preview 20 / chapter 20 / full 24 (env overrides). Never use ≤8 — pure noise.
     const nfeStep = resolveNfeStep({
       isPreview: !!req.isPreview,
       isChapter: !!req.isChapter && !req.isPreview,

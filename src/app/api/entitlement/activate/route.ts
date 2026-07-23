@@ -153,16 +153,21 @@ async function bindTokenToExistingLicense(input: {
         : input.isTrial
           ? 'trial'
           : 'pro';
-    const { error } = await service
-      .from('licenses')
-      .update({
+    const { updateLicenseDeviceFields } = await import(
+      '@/lib/cloud/licenseBridge'
+    );
+    try {
+      await updateLicenseDeviceFields(service, String(existing.id), hwidNorm, {
         token_hash: tokenHash,
         exp_at: expAt,
         plan,
-        hwid: hwidNorm,
-      })
-      .eq('id', existing.id);
-    if (error) return { ok: false, error: error.message };
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
     return { ok: true, licenseId: String(existing.id) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

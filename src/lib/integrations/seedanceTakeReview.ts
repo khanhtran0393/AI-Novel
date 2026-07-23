@@ -382,7 +382,7 @@ export function buildContinuationPrompt(input: {
   ).trim();
   if (!styleHint) {
     throw new Error(
-      'Thieu styleHint/tone cho continuation. Cau hinh Visual DNA. App khong tu gan mat the.',
+      'Thieu styleHint/tone cho continuation. Cau hinh Visual DNA. App khong tu gan the loai mac dinh.',
     );
   }
   const directed = compileSeedancePrompt({

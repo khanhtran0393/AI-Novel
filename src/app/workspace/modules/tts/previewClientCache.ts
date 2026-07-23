@@ -8,9 +8,13 @@ import {
   buildTtsCacheVariantKey,
   type TtsCacheVariantConfig,
 } from '@/lib/tts/prosodyVariant';
+import {
+  TTS_PRELISTEN_CACHE_NAME,
+  VINA_PREVIEW_NFE_DEFAULT,
+} from '@/lib/tts/previewDefaults';
 
-/** v6: invalidate blobs rendered before conditioning + signal-quality fixes. */
-const CACHE_NAME = 'tts-prelisten-cache-v6';
+/** v8: magic-byte MIME (never trust wrong Content-Type) + NFE default 20. */
+const CACHE_NAME = TTS_PRELISTEN_CACHE_NAME;
 const MAX_SESSION_BLOBS = 16;
 
 /** Session memory: key → blob URL (instant replay, no network) */
@@ -36,7 +40,7 @@ export function buildClientPreviewKey(params: {
   pitch?: number;
   speakerSeed?: number;
   styleSeed?: number;
-  /** Vina flow-matching steps — must be in key (NFE=4 was noise, NFE=16 speech) */
+  /** Vina flow-matching steps — must match server resolveNfeStep(isPreview) */
   nfeStep?: number;
   variantKey?: string;
 } & TtsCacheVariantConfig): string {
@@ -59,7 +63,7 @@ export function buildClientPreviewKey(params: {
     platform === 'vina_voice'
       ? Number.isFinite(Number(params.nfeStep)) && Number(params.nfeStep) > 0
         ? Math.trunc(Number(params.nfeStep))
-        : 16
+        : VINA_PREVIEW_NFE_DEFAULT
       : '';
   const variantKey =
     params.variantKey !== undefined
@@ -89,7 +93,7 @@ async function openCache(): Promise<Cache | null> {
 
 function cacheRequestUrl(key: string): string {
   // Synthetic URL for Cache Storage (not fetched from network)
-  return `https://tts-prelisten.local/v2?k=${encodeURIComponent(key)}`;
+  return `https://tts-prelisten.local/v8?k=${encodeURIComponent(key)}`;
 }
 
 /** Instant hit from session Map (blob:) */
@@ -127,7 +131,64 @@ export function putSessionPreviewBlob(key: string, blobUrl: string): void {
   }
 }
 
-/** Cache Storage hit → blob URL */
+/**
+ * Detect real audio/* from magic bytes.
+ * Never trust Content-Type alone — server/CDN often returns audio/mpeg for WAV
+ * which makes <audio> fail silently or crackle.
+ */
+export async function sniffAudioMime(blob: Blob, hint?: string): Promise<string> {
+  try {
+    const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    // RIFF....WAVE
+    if (
+      head.length >= 12 &&
+      head[0] === 0x52 &&
+      head[1] === 0x49 &&
+      head[2] === 0x46 &&
+      head[3] === 0x46 &&
+      head[8] === 0x57 &&
+      head[9] === 0x41 &&
+      head[10] === 0x56 &&
+      head[11] === 0x45
+    ) {
+      return 'audio/wav';
+    }
+    // ID3 or MPEG frame sync
+    if (
+      (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33) ||
+      (head[0] === 0xff && (head[1] & 0xe0) === 0xe0)
+    ) {
+      return 'audio/mpeg';
+    }
+    // Ogg
+    if (
+      head.length >= 4 &&
+      head[0] === 0x4f &&
+      head[1] === 0x67 &&
+      head[2] === 0x67 &&
+      head[3] === 0x53
+    ) {
+      return 'audio/ogg';
+    }
+  } catch {
+    /* ignore */
+  }
+  const h = (hint || blob.type || '').split(';')[0].trim().toLowerCase();
+  if (h.startsWith('audio/')) return h;
+  return 'audio/mpeg';
+}
+
+/** Seal blob with correct MIME so HTMLAudioElement can decode. */
+export async function sealAudioBlob(
+  blob: Blob,
+  hint?: string,
+): Promise<Blob> {
+  const type = await sniffAudioMime(blob, hint);
+  if (blob.type === type) return blob;
+  return new Blob([blob], { type });
+}
+
+/** Cache Storage hit → blob URL (re-sniff MIME every time). */
 export async function readBrowserPreviewCache(key: string): Promise<string | null> {
   const session = getSessionPreviewBlob(key);
   if (session) return session;
@@ -137,9 +198,13 @@ export async function readBrowserPreviewCache(key: string): Promise<string | nul
   try {
     const res = await cache.match(cacheRequestUrl(key));
     if (!res) return null;
-    const blob = await res.blob();
-    if (!blob || blob.size < 400) return null;
-    const blobUrl = URL.createObjectURL(blob);
+    const raw = await res.blob();
+    if (!raw || raw.size < 400) return null;
+    const sealed = await sealAudioBlob(
+      raw,
+      res.headers.get('Content-Type') || raw.type,
+    );
+    const blobUrl = URL.createObjectURL(sealed);
     putSessionPreviewBlob(key, blobUrl);
     return blobUrl;
   } catch {
@@ -153,12 +218,12 @@ export async function writeBrowserPreviewCache(
   blob: Blob,
   contentType?: string,
 ): Promise<string> {
-  const type =
-    contentType ||
-    (blob.type && blob.type !== 'application/octet-stream'
-      ? blob.type
-      : 'audio/mpeg');
-  const sealed = blob.type === type ? blob : new Blob([blob], { type });
+  if (!blob || blob.size < 400) {
+    throw new Error(
+      `File nghe thử quá nhỏ (${blob?.size || 0} byte) — không phải audio hợp lệ.`,
+    );
+  }
+  const sealed = await sealAudioBlob(blob, contentType);
   const blobUrl = URL.createObjectURL(sealed);
   putSessionPreviewBlob(key, blobUrl);
 
@@ -167,11 +232,35 @@ export async function writeBrowserPreviewCache(
     try {
       await cache.put(
         cacheRequestUrl(key),
-        new Response(sealed, { headers: { 'Content-Type': type } }),
+        new Response(sealed, {
+          headers: { 'Content-Type': sealed.type || 'audio/mpeg' },
+        }),
       );
     } catch {
       /* private mode / quota */
     }
   }
   return blobUrl;
+}
+
+/** Resolve relative /audio/... for browser + Electron. */
+export function resolvePlayableAudioUrl(raw: string): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (
+    s.startsWith('blob:') ||
+    s.startsWith('data:') ||
+    /^https?:\/\//i.test(s)
+  ) {
+    return s;
+  }
+  if (s.startsWith('/') && typeof window !== 'undefined') {
+    return `${window.location.origin}${s}`;
+  }
+  if (s.startsWith('audio/')) {
+    return typeof window !== 'undefined'
+      ? `${window.location.origin}/${s}`
+      : `/${s}`;
+  }
+  return s;
 }

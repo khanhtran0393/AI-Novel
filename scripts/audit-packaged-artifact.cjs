@@ -232,8 +232,60 @@ for (const secretName of [
   );
 }
 
+// resources/bin is reserved for ship TTS (la-studio-kokoro only) — not a free-for-all dump
+const binRoot = path.join(resources, 'bin');
+if (fs.existsSync(binRoot)) {
+  const binKids = fs
+    .readdirSync(binRoot, { withFileTypes: true })
+    .map((d) => d.name)
+    .filter((n) => n !== '.' && n !== '..')
+    .sort();
+  const allowedBin = new Set(['la-studio-kokoro']);
+  const leaked = binKids.filter((n) => !allowedBin.has(n));
+  assert.deepEqual(
+    leaked,
+    [],
+    `Unapproved resources under resources/bin: ${JSON.stringify(leaked)} (only la-studio-kokoro allowed)`,
+  );
+  const kokoroCli = path.join(
+    binRoot,
+    'la-studio-kokoro',
+    'bin',
+    'kokoro-vi-cli.exe',
+  );
+  const kokoroOnnx = path.join(
+    binRoot,
+    'la-studio-kokoro',
+    'models',
+    'kokoro_vi.onnx',
+  );
+  assert.ok(
+    fs.existsSync(kokoroCli),
+    'Packaged Kokoro-VI missing: bin/la-studio-kokoro/bin/kokoro-vi-cli.exe',
+  );
+  assert.ok(
+    fs.existsSync(kokoroOnnx),
+    'Packaged Kokoro-VI missing: bin/la-studio-kokoro/models/kokoro_vi.onnx',
+  );
+}
+// release notes for UpdateSuccessModal
+const releaseNotesPath = path.join(resources, 'commercial', 'release-notes.json');
+assert.ok(
+  fs.existsSync(releaseNotesPath),
+  'Packaged commercial/release-notes.json missing',
+);
+try {
+  const notes = JSON.parse(fs.readFileSync(releaseNotesPath, 'utf8'));
+  assert.ok(
+    notes?.versions && typeof notes.versions === 'object',
+    'release-notes.json invalid versions map',
+  );
+} catch (e) {
+  assert.fail(
+    `release-notes.json unreadable: ${e instanceof Error ? e.message : e}`,
+  );
+}
 const forbiddenResourcePaths = [
-  'bin',
   'fonts',
   'python_core/ffmpeg',
   'python_core/MediaCrawler',

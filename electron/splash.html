@@ -24,26 +24,38 @@
       justify-content: center;
       background: transparent !important;
     }
-    /* Logo only — floats on real desktop through transparent window */
+    /* Logo only — floats on desktop; solid plate under PNG (GPU-safe) */
     .logo {
+      position: relative;
       width: min(220px, 42vw);
       height: min(220px, 42vw);
       border: 0;
       padding: 0;
       margin: 0;
       background: transparent !important;
-      filter:
-        drop-shadow(0 14px 36px rgba(0, 0, 0, 0.55))
-        drop-shadow(0 0 28px rgba(245, 158, 11, 0.4));
       animation: soft-float 2.8s ease-in-out infinite;
     }
+    .logo .plate {
+      position: absolute;
+      inset: 4%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #3f2a12 0%, #1a1208 55%, #0a0806 100%);
+      box-shadow:
+        0 16px 40px rgba(0, 0, 0, 0.65),
+        0 0 0 1px rgba(245, 158, 11, 0.35),
+        0 0 36px rgba(245, 158, 11, 0.45);
+      z-index: 0;
+    }
     .logo img {
+      position: relative;
+      z-index: 1;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       display: block;
       border-radius: 50%;
       background: transparent;
+      opacity: 1;
       -webkit-user-drag: none;
       pointer-events: none;
     }
@@ -59,7 +71,8 @@
 <body>
   <div class="stage" aria-busy="true" aria-label="AI Novel">
     <div class="logo" aria-hidden="true">
-      <img src="splash-logo.jpg" alt="" draggable="false" />
+      <span class="plate"></span>
+      <img src="splash-logo.png" alt="" draggable="false" />
     </div>
   </div>
 </body>

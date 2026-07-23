@@ -100,7 +100,7 @@ assert.ok(!/\s{2}/.test(hook.seoTitle));
 assert.ok(hook.thumbnailPrompt.length > 10);
 assert.ok(hook.seoDescription.length > 20);
 assert.ok(toHashtag('truyện audio') === '#truyệnaudio' || toHashtag('truyen audio') === '#truyenaudio');
-assert.ok(normalizeHashtagField('truyện audio, mạt thế').includes('#'));
+assert.ok(normalizeHashtagField('truyện audio, kịch bản').includes('#'));
 assert.ok(!normalizeHashtagField('a b').includes(','));
 const title = buildSeoTitleFromHook(
   'Hắn chỉ còn ba viên đạn rồi cơn bão cát sẽ nuốt trọn cả phố phường tan hoang trong đêm tối dài dằng dặc không lối thoát',

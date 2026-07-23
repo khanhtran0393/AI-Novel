@@ -3,36 +3,32 @@ import { API } from '@/contracts';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
-import {
-  X,
-  Volume2,
-} from 'lucide-react';
+import { X, Volume2 } from 'lucide-react';
 import {
   getDefaultVoiceConfig,
   getVoiceList,
   isVoiceValidForPlatform,
-  resolveVoiceForPlatform,
   STATIC_VOICE_CATALOG,
 } from '@/lib/voiceCatalog';
-import {
-  coerceCloneFilterToAvailable,
-  filterCloneProfilesByFields,
-} from '@/lib/vinaVoice/profileFilter';
 import RoleCastStudioModal from './RoleCastStudioModal';
 import { isCastActive, normalizeVoiceCast } from '@/lib/voiceCast';
 import { toast } from '@/lib/toastBus';
-import CreateVoiceTab from './tabs/CreateVoiceTab';
-import CloneVoiceTab from './tabs/CloneVoiceTab';
+import LaStudioStudioTab from './tabs/LaStudioStudioTab';
 import EngineVoiceTab from './tabs/EngineVoiceTab';
-import { useCloneStack } from './hooks/useCloneStack';
 import { useTikTokSessions } from './hooks/useTikTokSessions';
 import { useVoiceCatalogPrep } from './hooks/useVoiceCatalogPrep';
 import { getTTSCredentialsForConfig } from '../../modules/tts/credentials';
 import { ttsPreviewTimeoutMs } from '../../modules/tts/previewTimeout';
+import { assertPreviewPreflight } from '../../modules/tts/previewPreflight';
 import { FREE_TTS_PLATFORMS } from '@/lib/commercial/featureMatrix';
+import {
+  isLaStudioEnvPlatform,
+  isEngineManualTtsPlatform,
+} from '@/lib/tts/activePlatforms';
 import { buildClientApiHeaders } from '../../modules/apiClient';
+import { TTS_PREVIEW_SCENE_TEXT } from '@/lib/tts/previewDefaults';
 
-/** Free: chỉ edge_tts / piper (server requireTtsPlatformAccess). */
+/** Free: chỉ edge_tts / piper */
 function isFreeTtsPlatform(platform: string): boolean {
   return FREE_TTS_PLATFORMS.has(String(platform || '').trim().toLowerCase());
 }
@@ -48,6 +44,8 @@ interface TTSConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type VoiceUiTab = 'la_studio' | 'engine';
 
 export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps) {
   const store = useNovelStore();
@@ -66,278 +64,129 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     handleSetPrimaryTikTokSession,
     handleRemoveTikTokRow,
   } = useTikTokSessions(config);
+
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [castStudioOpen, setCastStudioOpen] = useState(false);
-  /** clone = catalog Vina | engine = TTS cloud/local | create = clone từ file mẫu MP3/WAV */
-  const [voiceUiTab, setVoiceUiTab] = useState<'clone' | 'engine' | 'create'>(() =>
-    store.ttsConfig?.platform === 'vina_voice' ? 'clone' : 'engine',
-  );
-  const [testText, setTestText] = useState('Xin chào, đây là giọng đọc được clone từ mẫu của tôi.');
-  const [cloneRefText, setCloneRefText] = useState('');
-  const [cloneSampleFile, setCloneSampleFile] = useState<File | null>(null);
-  const [cloneSampleLabel, setCloneSampleLabel] = useState('');
-  const cloneFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [isTestGenerating, setIsTestGenerating] = useState(false);
-  const [testAudioUrl, setTestAudioUrl] = useState<string | null>(null);
-  const [previewingCloneName, setPreviewingCloneName] = useState<string | null>(null);
-  const [lastCloneResult, setLastCloneResult] = useState<{
-    profileName: string;
-    refPath?: string;
-    method?: string;
-  } | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const testAudioRef = useRef<HTMLAudioElement | null>(null);
-  const { dynamicVoices, runVoicePrep } = useVoiceCatalogPrep(isOpen);
-  const currentVoices = getVoiceList(dynamicVoices, config.platform, config.language);
-  const selectedVoice = currentVoices.find(v => v.id === config.voice) || null;
-  const activeVoiceId = selectedVoice?.id || config.voice || '';
-  const {
-    cloneProfiles,
-    engineHealth,
-    refreshCloneStack,
-    startCloneEngine,
-    deleteCloneProfile,
-    deleteAllUserClones,
-    deletingCloneName,
-  } = useCloneStack({
-    isOpen,
-    voiceUiTab,
-    runVoicePrep,
-    engineUrl: config.vinaEngineUrl,
+  const [voiceUiTab, setVoiceUiTab] = useState<VoiceUiTab>(() => {
+    const plat = String(store.ttsConfig?.platform || '');
+    // Free: only Edge/Piper on Engine. LA Studio / Omni = Trial/Pro tab.
+    if (isFreeTier) return 'engine';
+    // LA Studio env: la_studio + omnivoice_local (Omni is not on Engine dropdown)
+    if (!plat || isLaStudioEnvPlatform(plat) || plat === 'vina_voice') {
+      return 'la_studio';
+    }
+    return 'engine';
   });
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
+  const lastPreviewSigRef = useRef<string | null>(null);
+  const suppressPreviewCancelRef = useRef(false);
+
+  const { dynamicVoices, runVoicePrep, capcutDiag } = useVoiceCatalogPrep(isOpen);
+  const catalogForUi =
+    Object.keys(dynamicVoices).length > 0 ? dynamicVoices : STATIC_VOICE_CATALOG;
+  const currentVoices = getVoiceList(
+    catalogForUi,
+    config.platform,
+    config.language,
+  );
+  const selectedVoice = currentVoices.find((v) => v.id === config.voice) || null;
+  const activeVoiceId = selectedVoice?.id || config.voice || '';
 
   useEffect(() => {
     if (!isOpen) return;
-    // Đồng bộ tab UI khi mở modal (giữ create nếu user đang ở đó)
-    const timer = window.setTimeout(() => {
-      setVoiceUiTab((prev) => {
-        if (prev === 'create') return 'create';
-        return store.ttsConfig?.platform === 'vina_voice' ? 'clone' : 'engine';
-      });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [isOpen, store.ttsConfig?.platform]);
+    void runVoicePrep(false);
+  }, [isOpen, runVoicePrep]);
 
-  const nfc = (s: string) => (s || '').normalize('NFC');
-
-  const isUserCloneVoice = (p: {
-    name: string;
-    isUser?: boolean;
-    source?: string;
-  }) =>
-    !!(
-      p.isUser ||
-      p.source === 'user_upload' ||
-      p.source === 'user_scan' ||
-      /^USER/i.test(p.name)
-    );
-
-  /** Giọng USER đã clone (ưu tiên có sample) — dropdown phân vai tab Tạo */
-  const userCloneProfiles = cloneProfiles.filter(
-    (p) => isUserCloneVoice(p) && p.hasSample !== false,
-  );
-
-  const filteredCloneProfiles = filterCloneProfilesByFields(cloneProfiles, {
-    gender: config.vinaGender || 'male',
-    // Không lọc vùng miền (Bắc/Trung/Nam)
-    group: config.vinaGroup || 'story',
-    emotion: config.vinaEmotion || 'neutral',
-  });
-  const firstUsableCloneProfile = (
-    profiles: typeof cloneProfiles,
-  ) => profiles.find((p) => p.hasSample !== false) || null;
-
-  const applyCloneProfile = (profileName: string) => {
-    const p =
-      cloneProfiles.find((x) => nfc(x.name) === nfc(profileName)) || null;
-    const canonical = p?.name || profileName;
-    const gender: 'male' | 'female' = /nữ|nu |female|cô |chị /i.test(canonical)
-      ? 'female'
-      : 'male';
-    // Never keep previous voice's samplePath — that made every preview identical.
-    store.updateTTSConfig({
-      platform: 'vina_voice',
-      language: 'vi',
-      voice: canonical,
-      vinaUseClone: true,
-      vinaGender: gender,
-      vinaReferenceAudio: p?.samplePath || '',
-      vinaReferenceText: p?.text || '',
-      vinaSpeakerSeed: p?.speaker_seed ?? 2336,
-      vinaStyleSeed: p?.style_seed ?? 4125,
-      pitch: typeof p?.pitch_shift === 'number' ? p.pitch_shift : store.ttsConfig.pitch,
-    });
-  };
-
-  /**
-   * Chỉ tab «Não Zero-Shot» auto-gán profile.
-   * Không chạy khi platform=vina trên tab Engine — tránh ghi đè giọng vừa đổi nền tảng.
-   */
+  /** Migrate legacy vina / empty platform → Trial/Pro: LA Studio; Free: Edge. */
   useEffect(() => {
-    if (!isOpen || !cloneProfiles.length) return;
-    if (voiceUiTab !== 'clone') return;
+    if (!isOpen) return;
+    const plat = String(config.platform || '');
+    const voice = String(config.voice || '').trim();
+    const badVoice =
+      !voice ||
+      voice === 'default' ||
+      /model dang load|model đang load/i.test(voice);
+    if (plat === 'vina_voice' || !plat) {
+      if (isFreeTier) {
+        store.updateTTSConfig({
+          platform: 'edge_tts',
+          language: config.language || 'vi',
+          voice: badVoice ? 'vi-VN-HoaiMyNeural' : voice,
+          vinaUseClone: false,
+        });
+        setVoiceUiTab('engine');
+      } else {
+        store.updateTTSConfig({
+          platform: 'la_studio',
+          language: config.language || 'vi',
+          voice: badVoice ? 'diem_trinh' : voice,
+          laStudioFamily: config.laStudioFamily || 'kokoro-vietnamese',
+          vinaUseClone: false,
+        });
+        setVoiceUiTab('la_studio');
+      }
+      return;
+    }
+    if (plat === 'la_studio' && badVoice && !isFreeTier) {
+      store.updateTTSConfig({ voice: 'diem_trinh', vinaUseClone: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isFreeTier]);
 
-    // Persist cũ có thể là Tin tức+Vui (=0) → ép về tổ hợp còn giọng, ẩn option rỗng.
-    const coerced = coerceCloneFilterToAvailable(cloneProfiles, {
-      gender: config.vinaGender || 'male',
-      group: config.vinaGroup || 'story',
-      emotion: config.vinaEmotion || 'neutral',
-    });
-    const gender = coerced.gender || 'male';
-    const group = coerced.group || 'story';
-    const emotion = coerced.emotion || 'neutral';
-    if (
-      gender !== (config.vinaGender || 'male') ||
-      group !== (config.vinaGroup || 'story') ||
-      emotion !== (config.vinaEmotion || 'neutral')
-    ) {
+  /** Free: kick premium platforms (incl. LA Studio) → Edge TTS */
+  useEffect(() => {
+    if (!isOpen || !isFreeTier) return;
+    if (!isFreeTtsPlatform(config.platform || '')) {
       store.updateTTSConfig({
-        vinaGender: gender as 'male' | 'female',
-        vinaGroup: group,
-        vinaEmotion: emotion,
-        platform: 'vina_voice',
+        platform: 'edge_tts',
+        language: 'vi',
+        voice: 'vi-VN-HoaiMyNeural',
+        vinaUseClone: false,
+      });
+      setVoiceUiTab('engine');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isFreeTier, config.platform]);
+
+  /** Seed empty voice on engine / LA Studio env platforms */
+  useEffect(() => {
+    if (!isOpen) return;
+    if (String(config.voice || '').trim()) return;
+    if (!config.platform || config.platform === 'la_studio') {
+      if (config.platform === 'la_studio') {
+        store.updateTTSConfig({ voice: 'diem_trinh' });
+      }
+      return;
+    }
+    if (config.platform === 'omnivoice_local') {
+      store.updateTTSConfig({ voice: 'alloy', laStudioFamily: 'omnivoice' });
+      return;
+    }
+    const next = getDefaultVoiceConfig(
+      catalogForUi,
+      config.platform,
+      config.language || 'vi',
+    );
+    if (next.voice) {
+      store.updateTTSConfig({
+        language: next.language || config.language || 'vi',
+        voice: next.voice,
       });
     }
-
-    const voice = nfc(config.voice || '').trim();
-    const hit = voice
-      ? cloneProfiles.find(
-          (p) => nfc(p.name) === voice && p.hasSample !== false,
-        )
-      : null;
-
-    if (hit) {
-      const stillVisible = filterCloneProfilesByFields(cloneProfiles, {
-        gender,
-        group,
-        emotion,
-      }).some((p) => nfc(p.name) === nfc(hit.name));
-      if (stillVisible) {
-        const needRef =
-          !String(config.vinaReferenceAudio || '').trim() && !!hit.samplePath;
-        const needCloneFlag = config.vinaUseClone === false;
-        const needPlatform = config.platform !== 'vina_voice';
-        if (needRef || needCloneFlag || needPlatform) {
-          applyCloneProfile(hit.name);
-        }
-        return;
-      }
-    }
-
-    const filtered = filterCloneProfilesByFields(cloneProfiles, {
-      gender,
-      group,
-      emotion,
-    });
-    const first =
-      firstUsableCloneProfile(filtered) || firstUsableCloneProfile(cloneProfiles);
-    if (first) applyCloneProfile(first.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-seed when stack/filters change
-  }, [
-    isOpen,
-    cloneProfiles,
-    voiceUiTab,
-    config.platform,
-    config.voice,
-    config.vinaGender,
-    config.vinaGroup,
-    config.vinaEmotion,
-    config.vinaReferenceAudio,
-    config.vinaUseClone,
-  ]);
-
-  const handleDeleteCloneProfile = async (name: string) => {
-    const ok = await deleteCloneProfile(name);
-    if (!ok) return;
-    if (store.ttsConfig.voice === name) {
-      const remaining = cloneProfiles.filter((p) => p.name !== name);
-      const next = firstUsableCloneProfile(remaining);
-      if (next) applyCloneProfile(next.name);
-      else {
-        store.updateTTSConfig({
-          voice: '',
-          vinaReferenceAudio: '',
-          vinaReferenceText: '',
-        });
-      }
-    }
-  };
-
-  const handleDeleteAllUserClones = async () => {
-    const wasUser =
-      /^USER/i.test(store.ttsConfig.voice || '') ||
-      cloneProfiles.some(
-        (p) => p.name === store.ttsConfig.voice && (p.isUser || /^USER/i.test(p.name)),
-      );
-    const ok = await deleteAllUserClones();
-    if (!ok) return;
-    if (wasUser) {
-      const catalogFirst = cloneProfiles.find(
-        (p) => !p.isUser && !/^USER/i.test(p.name) && p.hasSample !== false,
-      );
-      if (catalogFirst) applyCloneProfile(catalogFirst.name);
-      else {
-        store.updateTTSConfig({
-          voice: '',
-          vinaReferenceAudio: '',
-          vinaReferenceText: '',
-        });
-      }
-    }
-  };
-
-  /** Khi đổi bộ lọc: ẩn option rỗng + coerce tổ hợp còn giọng; auto-pick profile đầu. */
-  const onCloneFilterChange = (partial: Partial<typeof config>) => {
-    const next = { ...config, ...partial, platform: 'vina_voice' as const };
-    const coerced = coerceCloneFilterToAvailable(cloneProfiles, {
-      gender: next.vinaGender || 'male',
-      group: next.vinaGroup || 'story',
-      emotion: next.vinaEmotion || 'neutral',
-    });
-    const patch: Partial<typeof config> = {
-      ...partial,
-      vinaGender: (coerced.gender as 'male' | 'female') || 'male',
-      vinaGroup: coerced.group || 'story',
-      vinaEmotion: coerced.emotion || 'neutral',
-      platform: 'vina_voice',
-    };
-    store.updateTTSConfig(patch);
-    const filtered = filterCloneProfilesByFields(cloneProfiles, coerced);
-    if (filtered.length && !filtered.some((p) => p.name === next.voice)) {
-      const first = firstUsableCloneProfile(filtered);
-      if (first) applyCloneProfile(first.name);
-    }
-  };
-
-  const previewAbortRef = useRef<AbortController | null>(null);
-  useEffect(() => {
-    return () => {
-      previewAbortRef.current?.abort();
-      if (audioRef.current) {
-        try {
-          audioRef.current.pause();
-          audioRef.current.src = '';
-        } catch {
-          /* ignore */
-        }
-        audioRef.current = null;
-      }
-      if (testAudioRef.current) {
-        testAudioRef.current.pause();
-        testAudioRef.current = null;
-      }
-    };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, config.platform, config.voice, catalogForUi]);
 
   const stopPreviewAudio = () => {
-    if (audioRef.current) {
-      try {
+    try {
+      if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = '';
-      } catch {
-        /* ignore */
+        audioRef.current = null;
       }
-      audioRef.current = null;
+    } catch {
+      /* ignore */
     }
   };
 
@@ -346,27 +195,59 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     previewAbortRef.current = null;
     stopPreviewAudio();
     setIsPreviewing(false);
-    setPreviewingCloneName(null);
   };
 
-  const playPreviewUrl = async (url: string) => {
-    stopPreviewAudio();
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.onended = () => {
-      if (audioRef.current === audio) audioRef.current = null;
-    };
-    audio.onerror = () => {
-      if (audioRef.current === audio) audioRef.current = null;
+  useEffect(() => {
+    const sig = [
+      config.platform,
+      config.voice,
+      String(config.speed),
+      String(config.pitch),
+    ].join('|');
+    if (lastPreviewSigRef.current === null) {
+      lastPreviewSigRef.current = sig;
+      return;
+    }
+    if (lastPreviewSigRef.current === sig) return;
+    lastPreviewSigRef.current = sig;
+    if (suppressPreviewCancelRef.current) return;
+    const timer = window.setTimeout(cancelPreview, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.platform, config.voice, config.speed, config.pitch]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      const timer = window.setTimeout(cancelPreview, 0);
+      return () => window.clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const resolvePlayableUrl = (url: string) => {
+    if (!url) return url;
+    if (url.startsWith('blob:') || url.startsWith('http')) return url;
+    if (typeof window !== 'undefined') {
+      return new URL(url, window.location.origin).href;
+    }
+    return url;
+  };
+
+  const playPreviewUrl = async (primary: string, fallback?: string) => {
+    const playOneUrl = async (url: string) => {
+      stopPreviewAudio();
+      const audio = new Audio(resolvePlayableUrl(url));
+      audioRef.current = audio;
+      await audio.play();
     };
     try {
-      await audio.play();
-    } catch (playErr) {
-      throw new Error(
-        playErr instanceof Error
-          ? `Không phát được audio: ${playErr.message}`
-          : 'Không phát được audio nghe thử',
-      );
+      await playOneUrl(primary);
+    } catch (firstErr) {
+      if (fallback && fallback !== primary) {
+        await playOneUrl(fallback);
+        return;
+      }
+      throw firstErr;
     }
   };
 
@@ -377,8 +258,7 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     apiKeys: string[],
     signal: AbortSignal,
   ): Promise<string> => {
-    // Text ngắn cố định → cache HIT khi nghe thử lại (vector/sample đã có, không re-synth)
-    const sceneText = 'Xin chào, đây là giọng đọc thử.';
+    const sceneText = TTS_PREVIEW_SCENE_TEXT;
     const speedN = Number(ttsCfg.speed);
     const pitchN = Number(ttsCfg.pitch);
     const speed = Number.isFinite(speedN) && speedN > 0 ? speedN : 1;
@@ -396,27 +276,27 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       text: sceneText,
       speed,
       pitch,
-      speakerSeed: ttsCfg.vinaSpeakerSeed,
-      styleSeed: ttsCfg.vinaStyleSeed,
-      // Keep in sync with server resolveNfeStep(isPreview) — avoid replaying NFE=4 noise cache
-      nfeStep: ttsCfg.platform === 'vina_voice' ? 16 : undefined,
-      vinaGender: ttsCfg.vinaGender,
-      vinaArea: ttsCfg.vinaArea,
-      vinaGroup: ttsCfg.vinaGroup,
-      vinaEmotion: ttsCfg.vinaEmotion,
-      vinaReferenceAudio: ttsCfg.vinaReferenceAudio,
-      vinaReferenceAudioB64: ttsCfg.vinaReferenceAudioB64,
-      vinaReferenceText: ttsCfg.vinaReferenceText,
     });
 
-    // 1) Session / Cache API — có MP3 rồi thì phát ngay, không gọi API
     const localHit = await readBrowserPreviewCache(clientKey);
     if (localHit) {
-      toast.info('Notice', `Phát lại bản nghe thử «${voiceLabel}» (đã lưu — không gen lại).`);
-      return localHit;
+      try {
+        const probe = await fetch(localHit, { signal });
+        if (probe.ok) {
+          const b = await probe.blob();
+          if (b.size >= 800) {
+            toast.info(
+              'Notice',
+              `Phát lại bản nghe thử «${voiceLabel}» (đã lưu — không gen lại).`,
+            );
+            return localHit;
+          }
+        }
+      } catch {
+        /* server */
+      }
     }
 
-    // Free + premium platform → hard-fail trước API
     if (
       !store.is_pro &&
       !store.is_trial &&
@@ -426,7 +306,6 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       throw new Error(freeTtsBlockedMessage(ttsCfg.platform));
     }
 
-    // 2) Server durable/legacy cache → synth only on miss
     const response = await fetch(API.generateTts, {
       method: 'POST',
       headers: {
@@ -456,38 +335,43 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.success || !data?.audioPath) {
-      throw new Error(data?.error || `Lỗi tạo bản nghe thử (HTTP ${response.status})`);
+      throw new Error(
+        `Lỗi nghe thử «${voiceLabel}» · ${ttsCfg.platform}: ${data?.error || `HTTP ${response.status}`}`,
+      );
     }
 
     const url = String(data.audioPath || '');
     const fetchUrl = data.cached
       ? url
       : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    const absoluteServer = resolvePlayableUrl(fetchUrl);
 
     try {
-      const audioRes = await fetch(fetchUrl, { signal });
+      const audioRes = await fetch(absoluteServer, { signal });
       if (audioRes.ok) {
         const blob = await audioRes.blob();
+        if (blob.size < 800) {
+          throw new Error(`File nghe thử quá nhỏ (${blob.size}B).`);
+        }
         const ct =
           audioRes.headers.get('Content-Type') ||
           (url.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
         const blobUrl = await writeBrowserPreviewCache(clientKey, blob, ct);
-        if (data.cached) {
-          toast.info(
-            'Notice',
-            `Đã có file nghe thử «${voiceLabel}» trên máy — phát ngay (không gen lại).`,
-          );
+        try {
+          const w = window as unknown as {
+            __ttsPreviewFallback?: Map<string, string>;
+          };
+          if (!w.__ttsPreviewFallback) w.__ttsPreviewFallback = new Map();
+          w.__ttsPreviewFallback.set(blobUrl, absoluteServer);
+        } catch {
+          /* ignore */
         }
         return blobUrl;
       }
-    } catch {
-      /* fall through to raw URL */
+    } catch (e) {
+      if (signal.aborted) throw e;
     }
-
-    if (data.cached) {
-      toast.info('Notice', `Đã có bản nghe thử lưu sẵn cho «${voiceLabel}» — phát ngay.`);
-    }
-    return data.cached ? url : fetchUrl;
+    return absoluteServer;
   };
 
   const getPreviewApiKeys = (platform: string) => {
@@ -499,39 +383,35 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     return creds.apiKeys;
   };
 
-  /** Chặn khi chưa chọn giọng — thiếu key/session/engine → hard-fail (không Edge ngầm). */
-  const assertPreviewReady = (platform: string, voiceId: string) => {
-    if (!voiceId?.trim()) throw new Error('Chưa chọn giọng để nghe thử.');
-    // Free: chặn premium trước API (tránh 403 tts_premium mơ hồ)
-    if (
-      (!store.is_pro && !store.is_trial && !store.is_vip) &&
-      !isFreeTtsPlatform(platform)
-    ) {
-      throw new Error(freeTtsBlockedMessage(platform));
+  const assertPreviewReady = (
+    platform: string,
+    voiceId: string,
+    ttsCfg: typeof config = config,
+  ) => {
+    if (!voiceId?.trim()) {
+      throw new Error(
+        platform === 'la_studio'
+          ? 'Chưa chọn giọng LA Studio. Chọn trong Voice library rồi Nghe thử.'
+          : `Chưa chọn giọng cho «${platform}».`,
+      );
     }
+    return assertPreviewPreflight({
+      platform,
+      voiceId,
+      ttsConfig: ttsCfg,
+      apiKeys: getPreviewApiKeys(platform),
+      isPro: !!store.is_pro,
+      isTrial: !!store.is_trial,
+      isVip: !!store.is_vip,
+      tiktokSessionIds: tiktokSessions,
+    });
   };
 
-  /** Free mở modal đang Vina → gợi ý chuyển Edge (không silent swap platform khi user chọn tay). */
-  useEffect(() => {
-    if (!isOpen || !isFreeTier) return;
-    if (isFreeTtsPlatform(config.platform)) return;
-    toast.warn(
-      'Gói Free — TTS',
-      freeTtsBlockedMessage(config.platform) +
-        ' Bấm «Engine chọn tay» để dùng Edge/Piper.',
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, isFreeTier]);
-
-  // Hủy preview khi đổi platform/voice/tốc độ/pitch — tránh phát bản cũ hoặc kẹt UI
-  useEffect(() => {
-    const timer = window.setTimeout(cancelPreview, 0);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.platform, config.voice, config.speed, config.pitch]);
-
-  const handlePreviewVoice = async () => {
-    // Đang chạy → bấm lại = hủy (không kẹt disabled vĩnh viễn)
+  /**
+   * Nghe thử giọng. Có thể truyền voiceId tường minh (nút Play từng hàng Voice library).
+   * Không truyền → dùng giọng đang chọn trong store/catalog.
+   */
+  const handlePreviewVoice = async (overrideVoiceId?: string) => {
     if (isPreviewing) {
       cancelPreview();
       return;
@@ -541,58 +421,115 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
     const ac = new AbortController();
     previewAbortRef.current = ac;
 
-    // Snapshot platform/voice tại lúc bấm — tránh race khi store đổi giữa chừng
-    let platform = config.platform;
-    let voiceId = (activeVoiceId || config.voice || '').trim();
-    let language = config.language || 'vi';
-
-    // Clone tab = luôn Vina Zero-Shot
-    if (voiceUiTab === 'clone') {
-      platform = 'vina_voice';
+    // LA Studio tab owns la_studio + omnivoice_local (Omni family stays in this env)
+    const liveFamilyPeek =
+      String(
+        useNovelStore.getState().ttsConfig?.laStudioFamily ||
+          config.laStudioFamily ||
+          'kokoro-vietnamese',
+      ).trim() || 'kokoro-vietnamese';
+    const isOmniEnv =
+      liveFamilyPeek === 'omnivoice' || config.platform === 'omnivoice_local';
+    const platform: typeof config.platform =
+      voiceUiTab === 'la_studio'
+        ? isOmniEnv
+          ? 'omnivoice_local'
+          : 'la_studio'
+        : config.platform;
+    let voiceId = (
+      (typeof overrideVoiceId === 'string' && overrideVoiceId.trim()) ||
+      activeVoiceId ||
+      config.voice ||
+      ''
+    ).trim();
+    // LA Studio Kokoro: "default"/placeholder → real Kokoro id (CLI gen offline)
+    if (
+      platform === 'la_studio' &&
+      (!voiceId ||
+        voiceId === 'default' ||
+        /model dang load|model đang load/i.test(voiceId))
+    ) {
+      voiceId = 'diem_trinh';
     }
+    if (platform === 'omnivoice_local' && !voiceId) {
+      voiceId = 'alloy';
+    }
+    const language = config.language || 'vi';
+    const voiceLabel =
+      getVoiceList(catalogForUi, platform, language).find((v) => v.id === voiceId)
+        ?.name ||
+      (voiceId === selectedVoice?.id ? selectedVoice?.name : undefined) ||
+      voiceId ||
+      '(chưa chọn)';
 
-    // Engine: nếu voice stale (còn id platform cũ) → resolve lại trước khi gọi API
-    if (voiceUiTab === 'engine' && platform !== 'vina_voice') {
+    if (voiceUiTab === 'engine' && platform && voiceId) {
       const valid = isVoiceValidForPlatform(
-        dynamicVoices,
+        catalogForUi,
         platform,
         language,
         voiceId,
       );
-      if (!valid) {
-        const fixed = resolveVoiceForPlatform(
-          dynamicVoices,
-          platform,
-          language,
-          '',
-          { keepPreferred: false },
+      if (!valid && !isLaStudioEnvPlatform(platform)) {
+        toast.error(
+          'Nghe thử — sai giọng',
+          `Giọng «${voiceId}» không thuộc nền tảng «${platform}». Chọn lại trong Voice library.`,
         );
-        voiceId = fixed.voice;
-        language = fixed.language;
-        if (voiceId) {
-          store.updateTTSConfig({
-            platform,
-            language,
-            voice: voiceId,
-            vinaUseClone: false,
-          });
-        }
+        previewAbortRef.current = null;
+        return;
+      }
+    }
+
+    if (voiceUiTab === 'la_studio') {
+      // Keep latest family from store (selectVoice may have just set it).
+      const liveFamily = liveFamilyPeek;
+      const targetPlatform =
+        liveFamily === 'omnivoice' ? 'omnivoice_local' : 'la_studio';
+      if (
+        config.platform !== targetPlatform ||
+        config.voice !== voiceId ||
+        config.laStudioFamily !== liveFamily
+      ) {
+        suppressPreviewCancelRef.current = true;
+        store.updateTTSConfig({
+          platform: targetPlatform,
+          voice: voiceId,
+          laStudioFamily: liveFamily,
+          vinaUseClone: false,
+        });
+        lastPreviewSigRef.current = [
+          targetPlatform,
+          voiceId,
+          String(config.speed),
+          String(config.pitch),
+        ].join('|');
+        window.setTimeout(() => {
+          suppressPreviewCancelRef.current = false;
+        }, 0);
+      }
+      if (targetPlatform === 'omnivoice_local') {
+        void fetch(API.omnivoiceStatus, {
+          method: 'POST',
+          cache: 'no-store',
+        }).catch(() => undefined);
+      } else {
+        // Do NOT await spawn/poll — Kokoro CLI gen works without GUI model.
+        // Fire-and-forget: keep API warm in background only.
+        void fetch(API.laStudioStatus, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spawnApp: true, hidden: true, pollMs: 4_000 }),
+        }).catch(() => undefined);
       }
     }
 
     const timeoutMs = ttsPreviewTimeoutMs(platform);
     const timeoutId = window.setTimeout(() => ac.abort(), timeoutMs);
-
     setIsPreviewing(true);
     stopPreviewAudio();
 
     try {
-      assertPreviewReady(platform, voiceId);
-      const selectedVoiceObj =
-        getVoiceList(dynamicVoices, platform, language).find((v) => v.id === voiceId) ||
-        selectedVoice;
+      const { ttsConfigPatch } = assertPreviewReady(platform, voiceId);
 
-      // OmniVoice: warm-start engine trước (không cần SuperAudioTools mở tay)
       if (platform === 'omnivoice_local') {
         try {
           await fetch(API.omnivoiceStatus, {
@@ -601,290 +538,120 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
             cache: 'no-store',
           });
         } catch {
-          /* synthesize path will ensure + surface error */
+          /* ignore */
         }
       }
 
-      // Luôn gen thật qua API (không phát file sample tĩnh — kể cả OmniVoice)
-      const speedN = Number(config.speed);
-      const pitchN = Number(config.pitch);
+      // Fresh store after selectVoice / family switch — avoid stale laStudioFamily
+      const liveCfg = useNovelStore.getState().ttsConfig || config;
+      const speedN = Number(liveCfg.speed ?? config.speed);
+      const pitchN = Number(liveCfg.pitch ?? config.pitch);
       const speed = Number.isFinite(speedN) && speedN > 0 ? speedN : 1;
       const pitch = Number.isFinite(pitchN) ? pitchN : 0;
       const previewCfg = {
         ...config,
+        ...liveCfg,
+        ...ttsConfigPatch,
         platform,
         language,
         voice: voiceId,
         speed,
         pitch,
-        vinaUseClone: platform === 'vina_voice' ? true : false,
+        laStudioFamily:
+          String(liveCfg.laStudioFamily || config.laStudioFamily || '').trim() ||
+          'kokoro-vietnamese',
+        vinaUseClone: false,
       };
+      toast.info(
+        'Nghe thử',
+        platform === 'la_studio'
+          ? `Đang gen LA Studio «${voiceLabel}»…`
+          : `Đang gen «${voiceLabel}» · ${platform}…`,
+      );
       const previewAudioUrl = await fetchPreviewAudio(
         voiceId,
-        selectedVoiceObj?.name || voiceId,
+        voiceLabel,
         previewCfg,
         getPreviewApiKeys(platform),
         ac.signal,
       );
-
       if (ac.signal.aborted) return;
-      await playPreviewUrl(previewAudioUrl);
-    } catch (error) {
-      if (ac.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
-        console.info('[TTS Preview] đã hủy / timeout');
-        if (!ac.signal.aborted) {
-          // timeout path — ac aborted by timer
+      const fallbackUrl = (() => {
+        try {
+          const w = window as unknown as {
+            __ttsPreviewFallback?: Map<string, string>;
+          };
+          return w.__ttsPreviewFallback?.get(previewAudioUrl);
+        } catch {
+          return undefined;
         }
-        // Nếu abort do timeout → thông báo rõ
+      })();
+      await playPreviewUrl(previewAudioUrl, fallbackUrl);
+      toast.info('Notice', `Đang phát «${voiceLabel}».`);
+    } catch (error) {
+      if (
+        ac.signal.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError')
+      ) {
         const timedOut =
           (error instanceof DOMException && error.name === 'AbortError') ||
           (error instanceof Error && /abort/i.test(error.message));
-        if (timedOut && previewAbortRef.current === null) {
-          // cancelled by user via cancelPreview
-        } else if (timedOut) {
-          toast.info(
-            'Notice',
-            `Nghe thử quá ${Math.round(timeoutMs / 1000)}s (timeout).\n` +
-              (platform === 'omnivoice_local'
-                ? 'OmniVoice đang load model hoặc engine offline — bấm «Bật engine» / đợi ~1 phút rồi thử lại.'
-                : 'Engine chậm hoặc offline — kiểm tra API/engine đã chọn.'),
+        if (timedOut && previewAbortRef.current !== null) {
+          toast.error(
+            'Nghe thử — timeout',
+            `Giọng «${voiceLabel}» · ${platform}: quá ${Math.round(timeoutMs / 1000)}s. ` +
+              (platform === 'la_studio'
+                ? 'Chọn giọng Kokoro-VI thật (Diễm Trinh / Mai Linh…), không chờ load GUI. Bấm Nghe thử lại — CLI gen thường <10s.'
+                : 'Kiểm tra engine đã chọn (không đổi engine ngầm).'),
           );
         }
         return;
       }
-      console.error('[TTS Preview]', error);
-      // Platform/engine are explicit — surface error only (API key rotation stays server-side).
       const msg = error instanceof Error ? error.message : String(error);
       if (!ac.signal.aborted) {
-        toast.info('Notice', 'Không thể nghe thử: ' + msg);
+        toast.error(
+          'Nghe thử thất bại',
+          `Giọng «${voiceLabel}» · ${platform}: ${msg}`,
+        );
       }
     } finally {
       window.clearTimeout(timeoutId);
       if (previewAbortRef.current === ac) previewAbortRef.current = null;
-      // Luôn nhả UI — chống đơ "không click được"
       setIsPreviewing(false);
     }
   };
 
-  /** Nghe thử 1 profile clone — không ghi đè form tạo mẫu */
-  const handlePreviewCloneProfile = async (profileName: string) => {
-    if (isPreviewing && previewingCloneName === profileName) {
-      cancelPreview();
-      setPreviewingCloneName(null);
-      return;
-    }
-    if (isPreviewing) {
-      cancelPreview();
-    }
-
-    const p =
-      cloneProfiles.find((x) => nfc(x.name) === nfc(profileName)) || null;
-    if (!p) {
-      toast.info('Notice', `Không tìm thấy giọng «${profileName}».`);
-      return;
-    }
-    if (p.hasSample === false) {
-      toast.info('Notice', `Giọng «${p.name}» thiếu file mẫu WAV — không nghe thử được.`);
-      return;
-    }
-
-    previewAbortRef.current?.abort();
-    const ac = new AbortController();
-    previewAbortRef.current = ac;
-    const platform = 'vina_voice';
-    const timeoutMs = ttsPreviewTimeoutMs(platform);
-    const timeoutId = window.setTimeout(() => ac.abort(), timeoutMs);
-
-    setPreviewingCloneName(p.name);
-    setIsPreviewing(true);
-    stopPreviewAudio();
-
-    try {
-      const previewCfg = {
-        ...config,
-        platform: 'vina_voice' as const,
-        language: 'vi' as const,
-        voice: p.name,
-        vinaUseClone: true as const,
-        vinaReferenceAudio: p.samplePath || '',
-        vinaReferenceText: p.text || '',
-        vinaSpeakerSeed: p.speaker_seed ?? 2336,
-        vinaStyleSeed: p.style_seed ?? 4125,
-        pitch:
-          typeof p.pitch_shift === 'number' ? p.pitch_shift : config.pitch ?? 0,
-      };
-      const url = await fetchPreviewAudio(
-        p.name,
-        p.name,
-        previewCfg,
-        getPreviewApiKeys(platform),
-        ac.signal,
-      );
-      if (ac.signal.aborted) return;
-      await playPreviewUrl(url);
-    } catch (error) {
-      if (ac.signal.aborted) return;
-      const msg = error instanceof Error ? error.message : String(error);
-      toast.info('Notice', 'Không thể nghe thử: ' + msg);
-    } finally {
-      window.clearTimeout(timeoutId);
-      if (previewAbortRef.current === ac) previewAbortRef.current = null;
-      setIsPreviewing(false);
-      setPreviewingCloneName(null);
-    }
-  };
-
-  /**
-   * TẠO GIỌNG ĐỌC = Clone + tự tối ưu:
-   * 1) Auto-start engine nếu offline
-   * 2) Server trim/loudnorm/cap mẫu + seed ổn định + gender/prosody auto
-   * 3) Gán mặc định Người kể; user gán NV ở mục 4
-   */
-  const handleTestGeneration = async () => {
-    if (!testText.trim()) {
-      toast.info('Notice', 'Nhập nội dung cần đọc bằng giọng clone.');
-      return;
-    }
-    if (!cloneSampleFile) {
-      toast.info('Notice', 
-        'Clone Voice cần file mẫu MP3/WAV.\nBấm «Chọn file mẫu» và tải lên giọng người thật (như tab Clone của Vina).',
-      );
-      cloneFileInputRef.current?.click();
-      return;
-    }
-    if (!cloneRefText.trim()) {
-      toast.info(
-        'Thiếu transcript mẫu',
-        'Nhập đúng câu đang được nói trong file mẫu. Transcript này bắt buộc để vector giọng bám đúng người nói.',
-      );
-      return;
-    }
-    try {
-      setIsTestGenerating(true);
-      setTestAudioUrl(null);
-      if (testAudioRef.current) {
-        testAudioRef.current.pause();
-        testAudioRef.current = null;
-      }
-
-      // Tự bật engine nếu offline (best-effort)
-      if (!engineHealth.online) {
-        try {
-          await startCloneEngine();
-        } catch {
-          /* synth path will surface the selected engine/profile error */
-        }
-      }
-
-      // Sau clone: gán mặc định Người kể; user đổi phân vai NV ở mục 4
-      const target = 'global';
-
-      const fd = new FormData();
-      fd.append('audio', cloneSampleFile);
-      fd.append('text', testText.trim());
-      fd.append('ref_text', cloneRefText.trim());
-      fd.append('gender', 'auto'); // server tự suy
-      fd.append('speed', String(config.speed ?? 1));
-      fd.append('pitch', String(config.pitch ?? 0));
-      fd.append('auto_optimize', '1');
-      fd.append('assign_target', target);
-      // seed 0 → server stableSeed
-      fd.append('speaker_seed', '0');
-      fd.append('style_seed', '0');
-      if (config.vinaEngineUrl) fd.append('engine_url', config.vinaEngineUrl);
-
-      const response = await fetch(API.vinaVoiceClone, {
-        method: 'POST',
-        body: fd,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Lỗi clone giọng đọc');
-      }
-
-      const profileName = String(data.profileName || '').trim() || config.voice;
-      const refPath = data.refPath ? String(data.refPath) : undefined;
-      const refText = cloneRefText.trim();
-      const opt = data.optimized || {};
-      const finalSpeed =
-        typeof opt.speed === 'number' ? opt.speed : config.speed ?? 1;
-      const finalPitch =
-        typeof opt.pitch === 'number' ? opt.pitch : config.pitch ?? 0;
-
-      // Đồng bộ slider UI theo kết quả auto
-      if (typeof opt.speed === 'number' || typeof opt.pitch === 'number') {
-        store.updateTTSConfig({
-          speed: finalSpeed,
-          pitch: finalPitch,
-          ...(opt.gender
-            ? { vinaGender: opt.gender as 'male' | 'female' }
-            : {}),
-          vinaSpeakerSeed: opt.speakerSeed ?? config.vinaSpeakerSeed,
-          vinaStyleSeed: opt.styleSeed ?? config.vinaStyleSeed,
-        });
-      }
-
-      store.assignCloneProfile({
-        profileName,
-        refPath,
-        refText,
-        target,
-        speed: finalSpeed,
-        pitch: finalPitch,
-      });
-
-      setLastCloneResult({
-        profileName,
-        refPath,
-        method: [
-          data.method,
-          opt.steps ? `opt:${(opt.steps as string[]).slice(0, 6).join('+')}` : '',
-        ]
-          .filter(Boolean)
-          .join(' · '),
-      });
-
-      const url = `${data.audioPath}?t=${Date.now()}`;
-      setTestAudioUrl(url);
-      const audio = new Audio(url);
-      testAudioRef.current = audio;
-      void audio.play().catch(() => undefined);
-
-      void refreshCloneStack();
-      void runVoicePrep(true);
-
-      console.info(
-        `[Clone AutoOK] ${profileName} → ${target} · spd=${finalSpeed} pitch=${finalPitch} · ${data.method || ''}`,
-        opt.steps,
-      );
-    } catch (error) {
-      console.error('Clone generation error:', error);
-      toast.info('Notice', 
-        'Không clone được giọng: ' +
-          (error instanceof Error ? error.message : String(error)) +
-          '\n\nGợi ý: bấm «Khởi động Engine Clone» hoặc chạy tools/vina_voice_engine/RUN_ENGINE.bat',
-      );
-    } finally {
-      setIsTestGenerating(false);
-    }
-  };
-
-  // Reset preview state khi đóng modal
+  // Esc + body scroll lock while open
   useEffect(() => {
-    if (!isOpen) {
-      const timer = window.setTimeout(cancelPreview, 0);
-      return () => window.clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelPreview();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prevOverflow;
+    };
+    // cancelPreview is stable enough for close path; avoid re-bind thrash
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open/close only
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 font-sans animate-in fade-in duration-200"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cấu hình giọng đọc TTS"
       onMouseDown={(e) => {
-        // Click backdrop → đóng (không dùng blur nặng gây đơ GPU)
         if (e.target === e.currentTarget) {
           cancelPreview();
           onClose();
@@ -892,16 +659,16 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
       }}
     >
       <div
-        className="w-full max-w-2xl rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col max-h-[90vh] relative z-[61] pointer-events-auto"
+        className="w-full max-w-3xl rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col max-h-[92vh] relative z-[61] pointer-events-auto"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 p-4 bg-zinc-900/50 shrink-0">
           <div className="flex flex-col gap-0.5 min-w-0">
             <div className="flex items-center gap-2 text-zinc-100">
-              <Volume2 className="h-5 w-5 text-amber-500 shrink-0" />
-              <h2 className="text-sm font-bold uppercase tracking-wider">Cấu Hình Giọng Đọc Toàn Cục</h2>
+              <Volume2 className="h-5 w-5 text-violet-400 shrink-0" />
+              <h2 className="text-sm font-bold uppercase tracking-wider">
+                Cấu Hình Giọng Đọc Toàn Cục
+              </h2>
               {isPreviewing ? (
                 <span className="text-[9px] font-bold uppercase text-amber-400 animate-pulse">
                   Đang nghe thử… (bấm Hủy)
@@ -916,7 +683,6 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   setCastStudioOpen(true);
                 }}
                 className="inline-flex items-center gap-1 rounded border border-emerald-800/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/20"
-                title="Phân vai giọng theo nhân vật (Role Casting Studio)"
               >
                 🎭 Phân vai giọng
                 {isCastActive(normalizeVoiceCast(store.voiceCast)) ? (
@@ -932,79 +698,85 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
               onClose();
             }}
             className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors shrink-0"
-            title="Đóng (thoát nghe thử nếu đang chạy)"
+            aria-label="Đóng"
+            title="Đóng (Esc)"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Hàng tab: Não Zero-Shot (chính) | Engine chọn tay | Tạo giọng clone */}
+          {isFreeTier ? (
+            <div className="rounded-lg border border-amber-800/40 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100/90 leading-relaxed">
+              <span className="font-bold text-amber-300">Gói Free · TTS: </span>
+              chỉ tab <strong>Engine chọn tay</strong> →{' '}
+              <strong>Edge TTS</strong> hoặc <strong>Piper</strong> (3 lượt/ngày).
+              LA Studio / multi-cast cần Trial hoặc Pro (nhấp logo).
+            </div>
+          ) : null}
           <div className="flex rounded-lg border border-zinc-800 overflow-hidden">
             <button
               type="button"
               onClick={() => {
                 if (isFreeTier) {
                   toast.error(
-                    'Gói Free',
-                    freeTtsBlockedMessage('vina_voice') +
-                      ' Dùng tab «Engine chọn tay».',
+                    'LA Studio · Trial/Pro',
+                    'LA Studio (Kokoro multi-family) chỉ dành cho gói Trial hoặc Pro. Nhấp logo → kích hoạt Trial/Pro.',
                   );
-                  setVoiceUiTab('engine');
-                  store.updateTTSConfig({
-                    platform: 'edge_tts',
-                    language: 'vi',
-                    voice: 'vi-VN-NamMinhNeural',
-                    vinaUseClone: false,
-                  });
                   return;
                 }
-                setVoiceUiTab('clone');
-                store.updateTTSConfig({ platform: 'vina_voice', vinaUseClone: true });
-                const first = firstUsableCloneProfile(cloneProfiles);
-                if (first && !cloneProfiles.some((p) => p.name === config.voice)) {
-                  applyCloneProfile(first.name);
-                }
+                setVoiceUiTab('la_studio');
+                const v =
+                  config.platform === 'la_studio' &&
+                  config.voice &&
+                  config.voice !== 'default'
+                    ? config.voice
+                    : 'diem_trinh';
+                store.updateTTSConfig({
+                  platform: 'la_studio',
+                  language: config.language || 'vi',
+                  voice: v,
+                  laStudioFamily: config.laStudioFamily || 'kokoro-vietnamese',
+                  vinaUseClone: false,
+                });
               }}
               className={`flex-1 px-2 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${
-                voiceUiTab === 'clone'
-                  ? 'bg-amber-500 text-black'
+                voiceUiTab === 'la_studio'
+                  ? 'bg-violet-500 text-white'
                   : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
               } ${isFreeTier ? 'opacity-60' : ''}`}
               title={
                 isFreeTier
-                  ? 'Free: Vina Zero-Shot cần Trial/Pro — dùng Edge/Piper'
-                  : 'Engine chính: catalog + zero-shot ONNX brain — lỗi thì báo lỗi, không Edge ngầm'
+                  ? 'LA Studio — Trial/Pro only'
+                  : 'LA Studio local — Kokoro-VI + family tải on-demand (Trial/Pro)'
               }
             >
-              Não Zero-Shot{isFreeTier ? ' · Pro' : ''}
+              LA Studio{isFreeTier ? ' · Pro' : ''}
             </button>
             <button
               type="button"
               onClick={() => {
                 setVoiceUiTab('engine');
-                // Không wipe voice="" — state rỗng → preview/gen fail toàn cục.
-                // Free: chỉ Edge/Piper. Pro: rời vina → Edge.
                 let plat = config.platform;
+                // Leave LA Studio env (la_studio / omnivoice) when entering Engine tab
                 if (isFreeTier) {
                   plat = isFreeTtsPlatform(plat) ? plat : 'edge_tts';
-                } else if (plat === 'vina_voice') {
+                } else if (
+                  isLaStudioEnvPlatform(plat) ||
+                  plat === 'vina_voice' ||
+                  !isEngineManualTtsPlatform(plat)
+                ) {
                   plat = 'edge_tts';
                 }
-                const catalog =
-                  Object.keys(dynamicVoices).length > 0
-                    ? dynamicVoices
-                    : STATIC_VOICE_CATALOG;
                 const next = getDefaultVoiceConfig(
-                  catalog,
+                  catalogForUi,
                   plat,
                   config.language || 'vi',
                 );
                 const keepVoice =
                   plat === config.platform &&
                   !!String(config.voice || '').trim() &&
-                  getVoiceList(catalog, plat, next.language).some(
+                  getVoiceList(catalogForUi, plat, next.language).some(
                     (v) => v.id === config.voice,
                   );
                 store.updateTTSConfig({
@@ -1023,95 +795,27 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
                   ? 'bg-sky-500 text-black'
                   : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
               }`}
-              title={
-                isFreeTier
-                  ? 'Free: Edge TTS hoặc Piper (3 lượt/ngày)'
-                  : 'Chọn tay Edge / Gemini / Piper… — không phải giọng dự phòng tự động'
-              }
             >
               Engine chọn tay
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (isFreeTier) {
-                  toast.error(
-                    'Gói Free',
-                    freeTtsBlockedMessage('vina_voice') +
-                      ' Clone giọng cần Trial/Pro.',
-                  );
-                  setVoiceUiTab('engine');
-                  store.updateTTSConfig({
-                    platform: 'edge_tts',
-                    language: 'vi',
-                    voice: 'vi-VN-NamMinhNeural',
-                    vinaUseClone: false,
-                  });
-                  return;
-                }
-                setVoiceUiTab('create');
-                store.updateTTSConfig({ platform: 'vina_voice', vinaUseClone: true });
-              }}
-              title={
-                isFreeTier
-                  ? 'Free: clone giọng cần Trial/Pro'
-                  : 'Tạo giọng đọc: tải MP3/WAV mẫu → nhập text → clone (kiểu Vina)'
-              }
-              className={`flex items-center justify-center gap-1.5 flex-1 min-w-0 px-2 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-800 ${
-                isFreeTier ? 'opacity-60 ' : ''
-              }${
-                voiceUiTab === 'create'
-                  ? 'bg-emerald-500 text-black'
-                  : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <span className="truncate">Tạo giọng đọc</span>
-            </button>
           </div>
 
-          {voiceUiTab === 'create' ? (
-            <CreateVoiceTab
+          {voiceUiTab === 'la_studio' ? (
+            <LaStudioStudioTab
               config={config}
               updateTTSConfig={store.updateTTSConfig}
-              cloneFileInputRef={cloneFileInputRef}
-              cloneSampleLabel={cloneSampleLabel}
-              setCloneSampleLabel={setCloneSampleLabel}
-              setCloneSampleFile={setCloneSampleFile}
-              cloneRefText={cloneRefText}
-              setCloneRefText={setCloneRefText}
-              testText={testText}
-              setTestText={setTestText}
-              isTestGenerating={isTestGenerating}
-              testAudioUrl={testAudioUrl}
-              lastCloneResult={lastCloneResult}
-              handleTestGeneration={handleTestGeneration}
+              dynamicVoices={catalogForUi}
+              isFreeTier={isFreeTier}
+              isPreviewing={isPreviewing}
+              onPreviewVoice={handlePreviewVoice}
               setCastStudioOpen={setCastStudioOpen}
-              setVoiceUiTab={setVoiceUiTab}
               ensureVoiceCastSeeded={() => store.ensureVoiceCastSeeded()}
-              userCloneProfiles={userCloneProfiles}
-              onPreviewCloneProfile={handlePreviewCloneProfile}
-              previewingCloneName={previewingCloneName}
-              isPreviewing={isPreviewing}
-            />
-          ) : voiceUiTab === 'clone' ? (
-            <CloneVoiceTab
-              config={config}
-              updateTTSConfig={store.updateTTSConfig}
-              filteredCloneProfiles={filteredCloneProfiles}
-              cloneProfiles={cloneProfiles}
-              onCloneFilterChange={onCloneFilterChange}
-              applyCloneProfile={applyCloneProfile}
-              isPreviewing={isPreviewing}
-              handlePreviewVoice={handlePreviewVoice}
-              onDeleteCloneProfile={handleDeleteCloneProfile}
-              onDeleteAllUserClones={handleDeleteAllUserClones}
-              deletingCloneName={deletingCloneName}
             />
           ) : (
             <EngineVoiceTab
               config={config}
               updateTTSConfig={store.updateTTSConfig}
-              dynamicVoices={dynamicVoices}
+              dynamicVoices={catalogForUi}
               currentVoices={currentVoices}
               activeVoiceId={activeVoiceId}
               isPreviewing={isPreviewing}
@@ -1127,25 +831,34 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
               handleCopyTikTokSession={handleCopyTikTokSession}
               handleRemoveTikTokRow={handleRemoveTikTokRow}
               handleAddTikTokSessionsFromInput={handleAddTikTokSessionsFromInput}
+              capcutDiag={capcutDiag}
             />
           )}
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-zinc-800 p-4 bg-zinc-900/50 flex justify-end">
+        <div className="border-t border-zinc-800 p-4 bg-zinc-900/50 flex justify-end gap-2">
+          {isPreviewing ? (
+            <button
+              type="button"
+              onClick={cancelPreview}
+              className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
+            >
+              Hủy nghe thử
+            </button>
+          ) : null}
           <button
+            type="button"
             onClick={() => {
               if (activeVoiceId && activeVoiceId !== config.voice) {
                 store.updateTTSConfig({ voice: activeVoiceId });
               }
               onClose();
             }}
-            className="rounded-lg bg-amber-500 px-6 py-2 text-xs font-bold text-black hover:bg-amber-400 transition-colors"
+            className="rounded-lg bg-violet-500 px-6 py-2 text-xs font-bold text-white hover:bg-violet-400 transition-colors"
           >
             Lưu Cấu Hình
           </button>
         </div>
-
       </div>
 
       <RoleCastStudioModal

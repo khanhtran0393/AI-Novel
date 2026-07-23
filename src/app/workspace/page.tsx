@@ -16,8 +16,10 @@ import { SetupPhase, YoutubeSetupPhase, Sidebar, ContentTab } from './features/s
 import AINovelDashboard from './features/ainovel/AINovelDashboard';
 import { ToastHost, ConfirmHost } from './shared';
 import OnboardingBanner from './features/onboarding/OnboardingBanner';
+import UpdateSuccessModal from './features/onboarding/UpdateSuccessModal';
 import MediaDnaBanner from './features/media/MediaDnaBanner';
 import FlowAutoBootstrap from './features/media/FlowAutoBootstrap';
+import LaStudioAutoBootstrap from './features/tts/LaStudioAutoBootstrap';
 
 import { useSetupActions } from './hooks/useSetupActions';
 import { useWriteChapter } from './hooks/useWriteChapter';
@@ -32,6 +34,11 @@ import { useEntitlementSync } from './hooks/useEntitlementSync';
 import { parseScenes, getWordCount } from './utils/stringUtils';
 import { imageAssetKey, sceneAssetKey, videoAssetKey } from '@/contracts';
 import { YOUTUBE_HOOK_SCENE_INDEX } from '@/lib/youtubeSafe';
+import {
+  bodySceneIndicesForWorkspace,
+  groupScenesIntoPhan,
+  isBodyColdOpenScene,
+} from '@/lib/sceneWorkspaceGroups';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
 
@@ -279,10 +286,12 @@ export default function Workspace() {
   return (
     <AppShell>
     <FlowAutoBootstrap />
+    <LaStudioAutoBootstrap />
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
       {/* 1. HEADER CHUNG CAO CẤP */}
       <Header />
       <OnboardingBanner />
+      <UpdateSuccessModal />
 
       {/* Workspace 2 cột — trục chính luôn hiện; Setup = modal giữa màn hình */}
       <main className="flex min-h-0 flex-1 overflow-hidden">
@@ -443,25 +452,68 @@ export default function Workspace() {
                         expandedScene={expandedScene}
                         setExpandedScene={setExpandedScene}
                       />
-                      {scenesList.map((sc, idx) => {
-                        let shortTitle = `C${idx + 1}`;
-                        if (sc.title.toUpperCase().includes('CẢNH')) {
-                          const match = sc.title.match(/CẢNH\s+(\d+)/i);
-                          if (match) shortTitle = `C${match[1]}`;
-                        } else if (sc.title.toUpperCase() === 'MỞ ĐẦU') {
-                          shortTitle = 'Mở';
+                      {(() => {
+                        // Compact nav: skip body CẢNH 0 (merged into Hook) · Phần chips when many scenes
+                        const bodyIdx = bodySceneIndicesForWorkspace(scenesList);
+                        const groups = groupScenesIntoPhan(bodyIdx, scenesList, 3);
+                        // Prefer Phần chips when many scenes; else per-scene C1 C2…
+                        if (bodyIdx.length > 4) {
+                          return groups.map((g) => {
+                            const first = g.sceneIndices[0];
+                            const active = g.sceneIndices.some(
+                              (i) => Number(expandedScene) === i,
+                            );
+                            return (
+                              <button
+                                key={`nav-phan-${g.phan}`}
+                                type="button"
+                                title={g.label}
+                                onClick={() => {
+                                  setExpandedScene(first);
+                                  requestAnimationFrame(() => {
+                                    setTimeout(() => {
+                                      document
+                                        .getElementById(
+                                          `scene-card-container-${first}`,
+                                        )
+                                        ?.scrollIntoView({
+                                          behavior: 'smooth',
+                                          block: 'start',
+                                        });
+                                    }, 80);
+                                  });
+                                }}
+                                className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer border ${
+                                  active
+                                    ? 'bg-amber-500/15 text-amber-300 border-amber-700/50 ring-1 ring-amber-500/40'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                                }`}
+                              >
+                                P{g.phan}
+                              </button>
+                            );
+                          });
                         }
-                        return (
-                          <SceneNavButton 
-                            key={idx}
-                            sceneIndex={idx}
-                            shortTitle={shortTitle}
-                            chapterNum={chuongDangChon}
-                            expandedScene={expandedScene}
-                            setExpandedScene={setExpandedScene}
-                          />
-                        );
-                      })}
+                        return bodyIdx.map((idx) => {
+                          const sc = scenesList[idx];
+                          if (!sc || isBodyColdOpenScene(sc)) return null;
+                          let shortTitle = `C${idx + 1}`;
+                          if (sc.title.toUpperCase().includes('CẢNH')) {
+                            const match = sc.title.match(/CẢNH\s+(\d+)/i);
+                            if (match) shortTitle = `C${match[1]}`;
+                          }
+                          return (
+                            <SceneNavButton
+                              key={idx}
+                              sceneIndex={idx}
+                              shortTitle={shortTitle}
+                              chapterNum={chuongDangChon}
+                              expandedScene={expandedScene}
+                              setExpandedScene={setExpandedScene}
+                            />
+                          );
+                        });
+                      })()}
                     </div>
                     {/* TTS chương + Mem + Viết lại — sticky hàng 2 (không cuộn mất) */}
                     <div className="ml-auto shrink-0 flex items-center gap-1.5 min-w-0">

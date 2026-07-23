@@ -111,6 +111,8 @@ async function main() {
   assert.equal(canAccessFeature('free', 'toolbox_labs'), false);
   assert.ok(FREE_TTS_PLATFORMS.has('edge_tts'));
   assert.ok(FREE_TTS_PLATFORMS.has('piper'));
+  // LA Studio is Trial/Pro (tts_premium) — not free
+  assert.equal(FREE_TTS_PLATFORMS.has('la_studio'), false);
   assert.ok(SERVER_GATED_FEATURES.includes('toolbox_labs'));
   assert.ok(SERVER_GATED_FEATURES.includes('tts_premium'));
 

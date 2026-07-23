@@ -35,7 +35,7 @@ export function resolveTtsBatchConcurrency(
     const hardCap =
       plat === 'vina_voice'
         ? resolveVinaParallelSlotsClientSafe()
-        : plat === 'omnivoice_local'
+        : plat === 'omnivoice_local' || plat === 'la_studio'
           ? 2
           : plat === 'piper'
             ? 16
@@ -59,6 +59,9 @@ export function resolveTtsBatchConcurrency(
       // = số worker daemon nóng = số request song song cùng 1 ref
       return resolveVinaParallelSlotsClientSafe();
     case 'omnivoice_local':
+      return 1;
+    case 'la_studio':
+      // Single desktop API instance — keep serial to avoid 409 busy
       return 1;
     case 'piper':
       // Same model multi-process — default 8 (CPU); override PIPER_BATCH_CONCURRENCY

@@ -44,41 +44,43 @@ export const FEATURE_MATRIX: FeatureAccess[] = [
     label: 'Viết / sửa / đánh giá chương',
     minTier: 'free',
     serverGated: false,
-    freeNote: 'Free: ≤600 từ/chương · ≤2 chương · 3 lượt/ngày',
+    freeNote:
+      'Free: ≤600 từ · ≤2 chương · 3 lượt/ngày · Trial: ≤3000 từ · ≤10 chương · 5 lượt/ngày',
   },
   {
     id: 'outline_ideas',
     label: 'Outline / Ideas / Setup genre',
     minTier: 'free',
     serverGated: false,
-    freeNote: 'Free: 3 lượt/ngày · outline ≤2 chương',
+    freeNote: 'Free: 3 lượt/ngày · Trial: 5 lượt/ngày · outline ≤10 chương (Trial)',
   },
   {
     id: 'gen_prompt',
     label: 'Gen Prompt Studio (storyboard)',
     minTier: 'free',
     serverGated: false,
-    freeNote: 'Free: 3 lượt/ngày',
+    freeNote: 'Free: 3 lượt/ngày · Trial: 5 lượt/ngày',
   },
   {
     id: 'gen_image',
     label: 'Gen ảnh (BYOK / Flow)',
     minTier: 'free',
     serverGated: false,
-    freeNote: 'BYOK · Free: 3 lượt/ngày',
+    freeNote: 'BYOK · Free: 3/ngày · Trial: 5/ngày',
   },
   {
     id: 'tts_edge',
     label: 'TTS Edge / Piper cơ bản',
     minTier: 'free',
     serverGated: false,
-    freeNote: 'Free: 3 lượt/ngày (Edge/Piper)',
+    freeNote: 'Free: 3 lượt/ngày · Trial: 5 lượt/ngày (Edge/Piper)',
   },
   {
     id: 'tts_premium',
-    label: 'TTS Vina / multi-voice cast',
+    label: 'TTS premium (LA Studio · CapCut · TikTok · Gemini · multi-cast)',
     minTier: 'trial',
     serverGated: true,
+    freeNote: 'Trial/Pro: LA Studio multi-family, cast đa giọng, engine premium',
   },
   {
     id: 'gen_video',
@@ -130,7 +132,10 @@ export const FEATURE_MATRIX: FeatureAccess[] = [
   },
 ];
 
-/** Free TTS platforms — no trial/pro token required on /api/generate-tts */
+/**
+ * Free TTS platforms — no trial/pro token required on /api/generate-tts.
+ * LA Studio (Kokoro multi-family) = Trial/Pro only via tts_premium gate.
+ */
 export const FREE_TTS_PLATFORMS = new Set(['edge_tts', 'piper']);
 
 /** Features that must have a server assert when a matching API exists */
@@ -207,14 +212,14 @@ export const PRICING_PLANS = [
     id: 'trial' as const,
     name: 'Trial',
     priceLabel: 'Miễn phí',
-    period: '3 ngày / 1 máy',
-    blurb: 'Mở Pro tạm để đánh giá video + CapCut + ship',
+    period: '7 ngày / 1 máy',
+    blurb:
+      'Dùng như Pro (video · CapCut · ship · TTS premium) — 5 lượt/ngày mỗi mục cơ bản · ≤3000 từ/chương · ≤10 chương',
     highlights: [
-      'Mọi quyền Free',
-      'Gen video',
-      'Xuất CapCut',
-      'Ship pack',
-      'TTS premium / multi-voice',
+      'Quyền như Pro (video, CapCut, ship, TTS premium…)',
+      '5 lượt/ngày mỗi mục: viết · outline · prompt · ảnh · TTS Edge/Piper',
+      'Viết kịch bản: ≤3000 từ/chương · tối đa 10 chương',
+      '1 máy · 7 ngày',
     ],
   },
   {

@@ -109,9 +109,10 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
   const storeYt = store.youtubeSafe;
   const chu_de = String(store.setup?.chu_de || '').trim();
   const phong_cach = String(store.setup?.phong_cach || '').trim();
+  const mo_ta = String(store.setup?.mo_ta || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi viet chuong.',
+      'Chưa chọn Setup Chủ đề + Phong cách. Mở nút Setup (sidebar) chọn cả hai trước khi viết chương. App không tự gán thể loại mặc định.',
     );
   }
   // Preflight fingerprint (speech) — clear toast, no unhandledRejection / silent invent
@@ -147,14 +148,19 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
       humanize_script: storeYt?.humanizeScript !== false,
       chu_de,
       phong_cach,
+      mo_ta,
       genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+      scriptMode: store.scriptMode,
+      wpm: store.wpm,
     },
     { signal },
   );
 
   const noi_dung = String(data.noi_dung || '').trim();
   if (!noi_dung) {
-    throw new Error('WRITE_CHAPTER tra noi_dung rong. Khong dung fill cuc bo.');
+    throw new Error(
+      'WRITE_CHAPTER trả nội dung rỗng. Không dùng fill cục bộ — thử lại hoặc kiểm tra API key.',
+    );
   }
   return {
     noi_dung: noi_dung.normalize('NFC'),
@@ -190,9 +196,10 @@ export async function reviseChapterAction(params: {
   const storeYt = store.youtubeSafe;
   const chu_de = String(store.setup?.chu_de || '').trim();
   const phong_cach = String(store.setup?.phong_cach || '').trim();
+  const mo_ta = String(store.setup?.mo_ta || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi sua chuong.',
+      'Chưa chọn Setup Chủ đề + Phong cách. Mở nút Setup (sidebar) chọn cả hai trước khi sửa chương. App không tự gán thể loại mặc định.',
     );
   }
   {
@@ -220,14 +227,19 @@ export async function reviseChapterAction(params: {
       humanize_script: storeYt?.humanizeScript !== false,
       chu_de,
       phong_cach,
+      mo_ta,
       genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+      scriptMode: store.scriptMode,
+      wpm: store.wpm,
     },
     { signal: params.signal },
   );
 
   const noi_dung = String(data.noi_dung || '').trim();
   if (!noi_dung) {
-    throw new Error('REVISE_CHAPTER tra noi_dung rong. Khong dung fill cuc bo.');
+    throw new Error(
+      'REVISE_CHAPTER trả nội dung rỗng. Không dùng fill cục bộ — thử lại hoặc kiểm tra API key.',
+    );
   }
   return {
     noi_dung: noi_dung.normalize('NFC'),
@@ -253,7 +265,7 @@ export async function evaluateChapterAction(params: {
   const phong_cach = String(store.setup?.phong_cach || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi cham chuong.',
+      'Chưa chọn Setup Chủ đề + Phong cách. Mở nút Setup (sidebar) chọn cả hai trước khi chấm chương. App không tự gán thể loại mặc định.',
     );
   }
   return postGenerate(
@@ -265,6 +277,7 @@ export async function evaluateChapterAction(params: {
       chu_de,
       phong_cach,
       genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+      scriptMode: store.scriptMode,
     },
     { signal: params.signal },
   );
@@ -288,7 +301,7 @@ export async function planArcAction(params: {
   const phong_cach = String(setup?.phong_cach || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi plan arc.',
+      'Chưa chọn Setup Chủ đề + Phong cách. Mở nút Setup (sidebar) chọn cả hai trước khi plan arc. App không tự gán thể loại mặc định.',
     );
   }
   const result = await postGenerate(
@@ -298,6 +311,7 @@ export async function planArcAction(params: {
       chu_de,
       phong_cach,
       genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+      scriptMode: useNovelStore.getState().scriptMode,
     },
     { signal },
   );
@@ -357,6 +371,7 @@ export async function commitMemoryAction(params: {
       chu_de,
       phong_cach,
       genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+      scriptMode: useNovelStore.getState().scriptMode,
       lorebook: params.lorebook,
       world_state: params.world_state,
       da_dien_ra_entities: params.da_dien_ra_entities,

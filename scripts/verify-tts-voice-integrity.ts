@@ -45,6 +45,14 @@ assert(
   ttsPreviewTimeoutMs('vina_voice') >= 250_000,
   'Vina UI timeout must exceed the 240s daemon budget',
 );
+assert(
+  ttsPreviewTimeoutMs('edge_tts') >= 100_000,
+  'Edge UI timeout must cover cold WS (server first try 55s + retries)',
+);
+assert(
+  ttsPreviewTimeoutMs('omnivoice_local') >= 300_000,
+  'OmniVoice UI timeout must cover cold model load',
+);
 
 const cacheInput: PreviewCacheKeyInput = {
   platform: 'vina_voice',
@@ -54,7 +62,7 @@ const cacheInput: PreviewCacheKeyInput = {
   text: 'Kiểm tra phiên bản cache.',
   speakerSeed: 2336,
   styleSeed: 4125,
-  nfeStep: 16,
+  nfeStep: 20,
 };
 const normalized = normalizePreviewCacheInput(cacheInput);
 const oldPayload = [

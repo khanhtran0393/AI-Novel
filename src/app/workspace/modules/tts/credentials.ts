@@ -2,8 +2,8 @@ import { useNovelStore, type TTSConfig } from '@/store/useNovelStore';
 
 /**
  * Resolve API keys for a TTS platform from live store + caller overrides.
- * openai_tts → OpenAI keys; gemini_tts / default → master Gemini keys.
- * edge / piper / vina often need no key — empty keys are allowed.
+ * Active engines: gemini_tts needs Gemini keys; edge/piper/vina/omni/capcut often empty.
+ * Removed platforms (openai/google/…) are rejected earlier by activePlatforms gate.
  */
 export function getTTSCredentialsForConfig(
   activeConfig: TTSConfig | undefined,
@@ -13,20 +13,7 @@ export function getTTSCredentialsForConfig(
   const store = useNovelStore.getState();
   const platform = String(activeConfig?.platform || store.ttsConfig?.platform || '');
 
-  if (platform === 'openai_tts') {
-    const keys = store.openaiApiKeys?.length
-      ? store.openaiApiKeys
-      : store.openaiApiKey
-        ? [store.openaiApiKey]
-        : apiKeys?.length
-          ? apiKeys
-          : apiKey
-            ? [apiKey]
-            : [];
-    return { apiKey: keys[0] || '', apiKeys: keys };
-  }
-
-  if (platform === 'gemini_tts' || platform === 'google_tts') {
+  if (platform === 'gemini_tts') {
     const keys = store.apiKeys?.length
       ? store.apiKeys
       : store.apiKey

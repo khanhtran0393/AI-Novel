@@ -1,0 +1,72 @@
+{
+  "MainWindow": {
+    "gender_cb": "Chọn giới tính của giọng đọc (Nam/Nữ).",
+    "area_cb": "Chọn chất giọng vùng miền (Bắc/Trung/Nam).",
+    "group_cb": "Chọn phong cách đọc (Kể chuyện, Tin tức, Sách nói...).",
+    "emotion_cb": "Chọn cảm xúc của giọng đọc (Vui, Buồn, Giận dữ...).",
+    "speed_slider": "Tốc độ đọc.\n- 100%: Tốc độ chuẩn.\n- Cao hơn: Đọc nhanh.\n- Thấp hơn: Đọc chậm rãi.",
+    "pitch_slider": "Độ cao (Pitch).\n- Kéo sang phải: Giọng thanh hơn, trẻ hơn.\n- Kéo sang trái: Giọng trầm hơn, già hơn.",
+    "treble_slider": "Độ vang/sáng (Treble).\n- Tăng lên để giọng rõ và sắc nét hơn.\n- Giảm xuống để giọng ấm và đục hơn.",
+    "speaker_seed_spin": "Mã số giọng (Seed).\nThay đổi số này để tạo ra một biến thể giọng khác (ví dụ: cùng là Nam miền Bắc nhưng giọng người khác).",
+    "style_seed_spin": "Mã số điệu bộ.\nThay đổi số này để thay đổi cách ngắt nghỉ và ngữ điệu của câu.",
+    "text_edit_main": "Nhập văn bản cần đọc vào đây.\nHỗ trợ gõ trực tiếp hoặc dán từ file khác.",
+    "synth_btn": "Bắt đầu quá trình chuyển đổi văn bản thành giọng nói.",
+    "cancel_btn": "Dừng ngay lập tức quá trình đang chạy.",
+    "insert_pause_btn": "Chèn một khoảng lặng (nghỉ) vào vị trí con trỏ chuột.",
+    "use_clone_checkbox": "Bật/Tắt chế độ Clone Voice (Sử dụng giọng mẫu bên ngoài).",
+    "profile_cb": "Chọn một giọng mẫu đã lưu trước đó.",
+    "btn_save_profile": "Lưu các cài đặt hiện tại (Giọng mẫu, Tốc độ, Pitch...) thành một Profile mới.",
+    "ref_audio_btn": "Chọn file âm thanh mẫu từ máy tính (WAV, MP3...) để bắt chước giọng.",
+    "record_toggle_btn": "Mở công cụ ghi âm để thu giọng trực tiếp.",
+    "btn_visual_cut": "Mở công cụ cắt Audio trực quan (có sóng âm) để chọn đoạn giọng mẫu tốt nhất.",
+    "btn_filter_vocal": "Tách bỏ nhạc nền, chỉ giữ lại giọng nói từ file mẫu (Giúp Clone sạch hơn).",
+    "max_chars_spin": "Số ký tự tối đa trong một đoạn xử lý.\nGiảm xuống nếu máy yếu hoặc muốn xử lý nhanh hơn.",
+    "list_markers_edit": "Các ký tự được coi là đầu dòng (gạch đầu dòng). Hệ thống sẽ ngắt câu tại đây.",
+    "silence_thresh_slider": "Ngưỡng lọc ồn (dB).\nÂm thanh nhỏ hơn mức này sẽ bị coi là khoảng lặng và bị cắt bỏ.",
+    "cool_down_interval_spin": "Nghỉ làm mát máy sau mỗi N đoạn.\nĐặt 0 để tắt. Dùng khi chạy số lượng lớn để bảo vệ GPU/CPU.",
+    "pause_dot_spin": "Thời gian nghỉ khi gặp dấu chấm (.).",
+    "pause_comma_spin": "Thời gian nghỉ khi gặp dấu phẩy (,).",
+    "btn_manage_rules": "Mở bảng quản lý từ điển thay thế (Ví dụ: 'vn' -> 'việt nam').",
+    "chunk_table": "Danh sách các đoạn văn bản đã được chia nhỏ.\nBạn có thể nhấp đúp vào nội dung để sửa lại trước khi đọc."
+  },
+  "SRTTab": {
+    "srt_path_edit": "Đường dẫn file phụ đề (.srt) cần lồng tiếng.",
+    "btn_browse_srt": "Chọn file phụ đề từ máy tính.",
+    "srt_video_path_edit": "Đường dẫn file Video gốc (nếu muốn ghép tiếng vào video).",
+    "btn_browse_video": "Chọn file Video.",
+    "srt_native_speed_spin": "Tốc độ đọc cơ bản cho các câu bình thường.",
+    "srt_native_short_speed_spin": "Tốc độ đọc nhanh hơn cho các câu ngắn (để kịp thời gian hiển thị).",
+    "srt_fix_overlap_chk": "Tự động sửa lỗi các dòng phụ đề bị chồng chéo thời gian.",
+    "srt_remove_vocal_chk": "Tự động tách bỏ tiếng nói gốc trong Video, giữ lại nhạc nền.",
+    "srt_bg_volume_spin": "Âm lượng của nhạc nền Video sau khi lồng tiếng.",
+    "btn_srt_analyze": "Kiểm tra lỗi file SRT (Chồng lấn, quá dài, quá nhanh...).",
+    "btn_srt_stream": "Nghe thử trực tiếp (Vừa đọc vừa phát) để kiểm tra khớp hình.",
+    "btn_srt_start": "Bắt đầu lồng tiếng và xuất ra file kết quả.",
+    "srt_table": "Bảng nội dung phụ đề.\n- Cột 'Vai Diễn': Chọn giọng đọc cho dòng đó.\n- Nhấp đúp vào 'Nội dung' để sửa chữ."
+  },
+  "RoleTab": {
+    "role_id_spin": "Chọn số thứ tự cho vai diễn (Ví dụ: #1, #2).",
+    "role_name_edit": "Đặt tên gợi nhớ cho vai (Ví dụ: Người dẫn chuyện, Harry Potter...).",
+    "btn_save_role": "Lưu cấu hình giọng đọc hiện tại (ở cột trái) vào số thứ tự này.",
+    "roles_table": "Danh sách các vai diễn đã tạo.",
+    "role_rules_edit": "Nhập quy tắc gán vai hàng loạt.\nVí dụ: #1-#2-#1 (Dòng 1 vai 1, dòng 2 vai 2...)",
+    "btn_auto_tag": "Mở công cụ Phân vai tự động bằng AI (Dựa vào ngữ cảnh 'anh ấy nói', 'cô ấy bảo'...)."
+  },
+  "AutoRoleDialog": {
+    "verb_edit": "Danh sách các động từ dùng để nhận biết hội thoại (ví dụ: nói, bảo, hỏi...).",
+    "map_table": "Bảng gán tên nhân vật vào vai diễn.\nVí dụ: Gán tên 'Harry' vào vai '#1'.",
+    "preview_edit": "Xem trước kết quả phân vai.\n- Màu xanh: Đã gán vai.\n- Màu vàng: Hội thoại chưa rõ vai.\n- Nhấp đúp vào dòng để sửa thủ công.",
+    "btn_apply": "Áp dụng kết quả phân vai này vào văn bản chính bên ngoài."
+  },
+  "RecordingDialog": {
+    "btn_cancel": "Hủy bỏ ghi âm.",
+    "btn_stop": "Dừng ghi âm sớm (trước khi hết giờ).",
+    "btn_retry": "Ghi âm lại từ đầu.",
+    "btn_save": "Lưu file ghi âm này để sử dụng."
+  },
+  "AudioCutterDialog": {
+    "waveform": "Biểu đồ sóng âm. Kéo chuột trái để chọn vùng cần cắt.",
+    "btn_play": "Nghe thử đoạn đã chọn (Lặp lại).",
+    "btn_save": "Lưu đoạn cắt này và sử dụng."
+  }
+}

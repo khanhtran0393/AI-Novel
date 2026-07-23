@@ -23,14 +23,14 @@ export async function handleIdeas(
       return NextResponse.json(
         {
           error:
-            'Thieu Setup Chu de va Phong cach. Chon ca hai truoc khi sinh y tuong. App khong tu gan mat the.',
+            'Thiếu Setup Chủ đề và Phong cách. Chọn cả hai trước khi sinh ý tưởng. App không tự gán thể loại mặc định.',
         },
         { status: 400 },
       );
     }
     const prompt = `Bạn là Trợ lý Biên kịch sáng tạo chuyên nghiệp bậc nhất.
   Với Khối Chủ đề: "${de}" và Khối Phong cách: "${pc}".
-  Hãy sáng tạo ra một ý tưởng cốt truyện/bối cảnh (khoảng 4-6 câu) thật độc đáo, chi tiết, có chiều sâu, mô tả nghịch cảnh mà nhân vật chính đang phải đối mặt — BẮT BUỘC bám đúng Chủ đề + Phong cách trên, KHÔNG ép mạt thế/sinh tồn nếu Setup khác.
+  Hãy sáng tạo ra một ý tưởng cốt truyện/bối cảnh (khoảng 4-6 câu) thật độc đáo, chi tiết, có chiều sâu, mô tả nghịch cảnh mà nhân vật chính đang phải đối mặt — BẮT BUỘC bám đúng Chủ đề + Phong cách trên, không tự đổi thể loại ngoài Setup.
   Hãy để trí tưởng tượng bay bổng trong khung Setup. Không trả về Markdown, chỉ trả về văn bản thuần túy.`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
     const text = String(aiResponse || '').trim();

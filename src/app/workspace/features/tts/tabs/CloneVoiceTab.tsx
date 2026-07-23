@@ -62,10 +62,8 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
   const [confirmAll, setConfirmAll] = useState(false);
 
   const userCount = cloneProfiles.filter((p) => isDeletableClone(p)).length;
-  const selectedName =
-    filteredCloneProfiles.some((p) => p.name === (config.voice || ''))
-      ? config.voice
-      : filteredCloneProfiles.find((p) => p.hasSample !== false)?.name || '';
+  // Highlight đúng giọng store — không giả định profile đầu list (tránh nhầm khi nghe thử)
+  const selectedName = (config.voice || '').trim();
 
   /** Ẩn option không còn giọng (vd. Tin tức + Vui = 0). */
   const filterOptions = useMemo(
@@ -221,6 +219,17 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
           </span>
         </label>
 
+        {filteredCloneProfiles.length > 0 &&
+          filteredCloneProfiles.every((p) => p.hasSample === false) && (
+            <div className="rounded-lg border border-amber-900/50 bg-amber-950/25 px-3 py-2 text-[10px] text-amber-200/95 leading-snug">
+              Danh sách đang hiện {filteredCloneProfiles.length} profile nhưng{' '}
+              <strong>không có file WAV mẫu</strong> (thư mục{' '}
+              <span className="font-mono text-amber-100/90">data/vina-voices/samples</span>
+              ). Profile ⚠ không chọn/nghe được — khôi phục samples, tab «Tạo giọng đọc», hoặc
+              «Engine chọn tay».
+            </div>
+          )}
+
         <div className="max-h-56 overflow-y-auto rounded-lg border border-zinc-800 bg-black/40 divide-y divide-zinc-800/80">
           {filteredCloneProfiles.length === 0 && (
             <div className="px-3 py-4 space-y-2 text-center">
@@ -228,7 +237,11 @@ export default function CloneVoiceTab(props: CloneVoiceTabProps) {
                 <>
                   <p className="text-[11px] text-zinc-500">
                     Chưa nạp được catalog Zero-Shot (0 profile). Kiểm tra server / thư mục{' '}
-                    <span className="font-mono text-zinc-400">data/vina-voices</span>.
+                    <span className="font-mono text-zinc-400">data/vina-voices</span>
+                    {' '}(cần <span className="font-mono text-zinc-400">profiles_goc.json</span>).
+                  </p>
+                  <p className="text-[10px] text-zinc-600">
+                    Tạm dùng tab «Engine chọn tay» (Edge/Piper) hoặc «Tạo giọng đọc» upload mẫu.
                   </p>
                 </>
               ) : (

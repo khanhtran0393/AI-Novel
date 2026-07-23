@@ -179,18 +179,46 @@ export function buildContinueContext(
 /**
  * Prose craft (anti-stiff) — does NOT relax forbidden/fatigue word lists (IRON CẤM stays elsewhere).
  * Injected into WRITE/REVISE/expand so narration feels novelistic, not production checklist.
+ * short_manhua: Printfilm short-drama / manhua shot-thinking inside AI Novel [CẢNH] DNA.
  */
-export function buildProseCraftBlock(): string {
+export function buildProseCraftBlock(
+  scriptMode?: import('@/lib/scriptMode').ScriptMode | string,
+): string {
+  if (scriptMode === 'sang_van') {
+    return `
+--- NGHỆ THUẬT SẢNG VĂN (FAST-PACED DOPAMINE HIT — BẮT BUỘC) ---
+1) TIẾT TẤU CỰC NHANH: Lược bỏ các miêu tả nội tâm rườm rà. Đi thẳng vào mâu thuẫn, giải quyết ân oán dứt khoát. Nhịp điệu dồn dập, liên tục có biến cố mới.
+2) DOPAMINE HIT (THỎA MÃN TỨC THÌ): Bố trí các sự kiện nhận thưởng, thăng cấp, nhặt vật phẩm, hoặc bộc lộ sức mạnh một cách sảng khoái. Đừng để nhân vật chính chịu ủy khuất quá lâu.
+3) VẢ MẶT (FACE-SLAPPING) & PHẢN SAI LỆCH: Kẻ thù/đám đông thường coi thường nhân vật chính lúc đầu, nhưng ngay sau đó bị sốc/khiếp sợ tột độ khi sức mạnh thật sự (Hệ thống/Ngón tay vàng) được bộc lộ.
+4) BOUNDED OP (BÁ ĐẠO CÓ LOGIC): Nhân vật chính rất mạnh hoặc thăng tiến cực nhanh, nhưng sức mạnh đó phải đi kèm quy tắc/giới hạn rõ ràng (Ví dụ: cần thu thập đủ năng lượng, hệ thống có luật lệ riêng). Kẻ địch cũng phải có động cơ hợp lý chứ không ngu ngốc vô lý.
+5) NGÔN TỪ HÀO SẢNG, CỰC NGẦU: Câu văn ngắn gọn, sắc bén. Nhấn mạnh vào hiệu ứng sức mạnh và sự ngỡ ngàng của quần chúng.`;
+  }
+
+  if (scriptMode === 'short_manhua') {
+    return `
+--- NGHỆ THUẬT SHORT / MANHUA (Printfilm-inspired — BẮT BUỘC, VẪN DNA AI NOVEL) ---
+Mục tiêu: short drama / manhua / motion comic — sẵn storyboard, TTS, gen ảnh/video. KHÔNG viết tiểu thuyết dài thrift.
+1) SHOT-THINKING: Mỗi [CẢNH] = 1–2 beat hình ảnh rõ (ai làm gì, máy/không gian gợi ý qua hành động). Hành động **nhìn được** — CẤM monologue nội tâm dài >3 câu.
+2) THOẠI LÀ XƯƠNG: Ưu tiên hội thoại + phản ứng; narration tối giản (1–2 câu bối cảnh/cảnh). Thoại ngắn, dứt, fingerprint NV.
+3) TAG CẢNH (giữ format AI Novel):
+   [CẢNH N: NỘI/NGOẠI CẢNH. ĐỊA ĐIỂM CỤ THỂ - THỜI GIAN]
+   Có thể thêm không khí ngắn trong title: "... - ĐÊM MƯA, CĂNG".
+4) NHỊP SHORT: vào việc ngay 1–2 câu; cuối cảnh open loop/hệ quả (hook tập). CẤM time-skip tuần/tháng; real-time.
+5) VISUAL ANCHOR: khi NV xuất hiện — 1 chi tiết trang phục/nhận dạng (wardrobe) để identity lock sau này.
+6) PHÂN CẢNH: tối thiểu 3, có thể 5–8 cảnh ngắn (nhiều cut, ít tường thuật). Mỗi cảnh 1 xung đột/micro-goal.
+7) CẤM: note đạo diễn thô [zoom in], (Cười), checklist A.B.C.; CẤM slogan SEO. Văn vẫn có tính người, subtext nhẹ.
+8) ĐỦ TỪ BẰNG CỐT: đạt cổng từ bằng beat + thoại + stakes — KHÔNG đệm tính từ / lặp mô tả.`;
+  }
+
   return `
---- NGHỆ THUẬT VĂN XUÔI (CHỐNG THÔ CỨNG — BẮT BUỘC) ---
-1) NHỊP CÂU: Xen câu ngắn (đấm) và câu vừa/dài vừa (thở). CẤM cả đoạn toàn câu đều 8–12 từ; CẤM checklist hành động “A. B. C.”.
-2) ĐOẠN VĂN: Mỗi đoạn 1 ý cảm xúc/tình huống. Đổi đoạn khi đổi focus (nhân vật / không gian / nội tâm) — không tường thuật dàn đều một nhịp.
-3) SUBTEXT: Thoại để lại khoảng trống; nhân vật che giấu, nói tránh, nói dối nhẹ. CẤM giải thích hết cảm xúc bằng lời kể (“hắn sợ vì…”, “cô ấy buồn vì…”).
-4) NỘI TÂM TỰ NHIÊN: 1–3 câu nghĩ/cảm xen hành động — cụ thể, lệch, có tính cách; không monologue giảng giải.
-5) CHI TIẾT ĐẮT: 1–2 chi tiết cụ thể/cảnh (vật, âm thanh, mùi, cử chỉ) thay vì liệt kê 5 giác quan.
-6) CHUYỂN CẢNH: Mở cảnh mới bằng hệ quả hoặc đối lập với open loop cảnh trước — không reset “sáng hôm sau mọi thứ yên” (vẫn cấm time-skip tuần/tháng).
-7) THOẠI ĐỜI: Ngắt quãng, lặp, nói dở, im lặng 1 nhịp. Mỗi NV giữ fingerprint riêng — không thoại “AI lịch sự”.
-8) ĐỦ DÀI BẰNG CỐT: Thêm xung đột, lựa chọn, hậu quả, hội thoại có stakes — KHÔNG đệm tính từ / lặp mô tả.`;
+--- NGHỆ THUẬT VĂN XUÔI SỐNG ĐỘNG (CHỐNG KHÔ KHAN, CÓ HỒN — BẮT BUỘC) ---
+1) SHOW, DON'T TELL (CHI TIẾT ĐẮT): CẤM dùng các tính từ khái niệm sáo rỗng ("u ám, hoảng sợ, tuyệt vọng, nguy hiểm"). BẮT BUỘC dùng 1-2 chi tiết cụ thể nhìn thấy/nghe thấy/cảm thấy (Cử chỉ tay run, giọt mồ hôi lạnh, tiếng rít cửa mục, vệt khói ngột ngạt) để truyền tải cảm xúc.
+2) SUBTEXT TRONG THOẠI (2 TẦNG NGHĨA): CẤM nhân vật thoại bộc lộ 100% mục đích trực diện kiểu AI lịch sự. Nhân vật phải nói mỉa, nói tránh, giấu ý định, hoặc ngập ngừng. Lời nói một đằng, hành động/ánh mắt một nẻo.
+3) FINGERPRINT NHÂN VẬT & THOẠI ĐỜI: Mỗi nhân vật có cách xưng hô và nhịp thoại riêng (Main ngông/lạnh, Phản diện kiêu ngạo, Nữ chính sắc sảo). Thoại có ngắt quãng, im lặng một nhịp, mỉa mai, không thoại chuẩn mực như sách giáo khoa.
+4) TIẾT TẤU ĐẤM & THỞ (PUNCH & BREATHE): Đan xen câu cực ngắn (1–4 từ: "Tối đen.", "Im lặng.", "Một tiếng nổ!") để đấm vào cảm xúc, sau đó dùng câu vừa (12–18 từ) để miêu tả nhịp thở. CẤM các câu dài đều đều 10-15 từ gây ru ngủ.
+5) NỘI TÂM LỆCH TÍNH CÁCH: 1–2 câu suy nghĩ/nội tâm ngầm sắc bén, có tính người, không monologue giảng giải đạo lý hay tóm tắt lại cốt truyện.
+6) CHUYỂN CẢNH CÓ HỆ QUẢ: Mở cảnh mới bằng hệ quả trực tiếp từ open loop cảnh trước. CẤM time-skip tuần/tháng hoặc tóm tắt dạng "sáng hôm sau mọi thứ bình yên".
+7) BÁM SETUP & BẮT BÁO THÙ/VẢ MẶT KỊCH TÍNH: Giữ không khí kịch tính, tôn trọng bối cảnh thể loại Setup, dệt mâu thuẫn thành các stakes chạm vào cảm xúc người đọc.`;
 }
 
 export function truncateOutline(text: string, maxChars = 1800): string {
@@ -273,7 +301,7 @@ export function filterOutChapterKeys<T>(
   return next;
 }
 
-// ── Setup genre (chu_de + phong_cach) — B10: no silent "mạt thế" defaults ──
+// ── Setup genre (chu_de + phong_cach) — B10: no silent genre defaults ──
 
 export type SetupGenreInput = {
   genre?: string;
@@ -299,14 +327,14 @@ export function requireGenreLabelFromSetup(input: SetupGenreInput): string {
   const label = buildGenreLabelFromSetup(input);
   if (!label) {
     throw new Error(
-      'Thieu Setup Chu de + Phong cach. Mo Setup chon truoc khi viet/gen. App khong tu gan mat the.',
+      'Thieu Setup Chu de + Phong cach. Mo Setup chon truoc khi viet/gen. App khong tu gan the loai mac dinh.',
     );
   }
   return label;
 }
 
 /**
- * Lorebook for system prompts — never invent "Luật thế giới mạt thế…".
+ * Lorebook for system prompts — never invent "luật thế giới ngoài Setup…".
  * Empty lore is allowed (blank project); AI must not fabricate a default world.
  */
 export function lorebookForPrompt(lorebook?: string | null): string {
@@ -314,11 +342,11 @@ export function lorebookForPrompt(lorebook?: string | null): string {
   if (lb) return lb;
   return (
     'Chưa có lorebook. Chỉ bám dàn ý + Setup (chủ đề/phong cách) đã cho — ' +
-    'TUYỆT ĐỐI KHÔNG tự bịa luật thế giới mặc định (không ép mạt thế/sinh tồn nếu Setup khác).'
+    'TUYỆT ĐỐI KHÔNG tự bịa luật thế giới mặc định (không tự đổi thể loại ngoài Setup).'
   );
 }
 
-/** Role line for LLM system prompts — genre-aware, no hard-coded mat-the. */
+/** Role line for LLM system prompts — genre-aware, no hard-coded genre. */
 export function writeEngineRoleLine(
   genreLabel: string,
   kind:

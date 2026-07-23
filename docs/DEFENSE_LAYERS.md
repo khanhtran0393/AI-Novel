@@ -74,7 +74,9 @@ Skip harden: `AINOVEL_RE_HARDEN=0`.
 | Heartbeat on **all** paid `assertFeatureAccess` | `src/lib/entitlement.ts` |
 | Stricter online window (expanded mesh) | `onlineRevalidate.ts` + `STRICT_ONLINE_FEATURES` |
 | Strict features | `tts_premium`, `gen_video`, `export_capcut`, `ship_pack`, `integrations_pipeline`, `toolbox_labs`, `multi_channel`, `flow_multi_account` |
-| Grace | Offline **48h** after OK; first-run **12h**; strict **6h**; kill-switch `AINOVEL_STRICT_ONLINE=0` |
+| Grace | Offline **24h** after OK; first-run **6h**; strict **3h**; seat window **10m**; kill-switch `AINOVEL_STRICT_ONLINE=0` |
+| Deny log | `%USER%/.ainovel-license/deny-events.jsonl` (reason + hwid8 only, no token) |
+| ASAR integrity fuse | Default **ON** at pack (fuse last after rcedit); fallback OFF if flip fails; `AINOVEL_ASAR_INTEGRITY=0` escape |
 | **Seedance IP on Vercel** | `POST /api/cloud/ip/seedance` + `seedanceCloudBridge.ts` |
 | **Psych IP on Vercel** | `POST /api/cloud/ip/psych` + `psychCloudBridge.ts` |
 | Shared cloud auth | `cloudIpAuth.ts` — Ed25519 + claim HWID (not Vercel host) |

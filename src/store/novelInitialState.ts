@@ -3,7 +3,7 @@ import { EMPTY_VOICE_CAST } from '@/lib/voiceCast';
 import type { NovelState, SetupData } from './novelTypes';
 
 const INITIAL_SETUP: SetupData = {
-  // Empty — user must pick Setup (B10: no silent mat-the default)
+  // Empty — user must pick Setup (B10: no silent genre default)
   chu_de: '',
   phong_cach: '',
   mo_ta: '',
@@ -12,16 +12,16 @@ const INITIAL_SETUP: SetupData = {
   ngon_ngu: 'Tiếng Việt',
 };
 
-/** Production + prose craft frame — world laws come from Setup + user lore (B10: no mat-the world seed). */
+/** Production + prose craft frame — world laws come from Setup + user lore (B10: no silent world-genre seed). */
 const INITIAL_LOREBOOK = `# LOREBOOK — Lõi Bất Biến (khung kể chuyện)
 
 ## 1. Quy luật thế giới
 - (Chưa nạp) Điền theo Setup Chủ đề + Phong cách, hoặc dán lore khi Kế thừa di sản / Sinh dàn ý.
-- Mọi quy luật siêu nhiên/công nghệ (nếu có) phải có giới hạn và cái giá đi kèm — do user/Setup quyết, không ép mạt thế.
+- Mọi quy luật siêu nhiên/công nghệ (nếu có) phải có giới hạn và cái giá đi kèm — do user/Setup quyết, không ép thể loại ngoài Setup.
 
 ## 2. Nguyên tắc kể chuyện
 - Real-time pacing: cấm time-skip tóm tắt tuần/tháng.
-- Nhân vật PHẢI có khuyết điểm (điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế xã hội/tâm lý — không bắt buộc "khuyết tật mạt thế").
+- Nhân vật PHẢI có khuyết điểm (điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế xã hội/tâm lý — không ép trope khuyết tật).
 - Tên nhân vật: Hán Việt sắc sảo, tránh tên mòn (Lâm Khuyết, …).
 - Văn xuôi có nhịp thở: xen câu ngắn/vừa/dài; subtext trong thoại; 1–2 chi tiết đắt/cảnh — không tường thuật checklist.
 
@@ -101,6 +101,7 @@ export const INITIAL_STATE: NovelState = {
   tri_nho_ngan_han: [],
   pipeline_step: 'outline',
   nhan_vat_prompts: {},
+  scene_location_assets: [],
   imageModel: 'GEM_PIX_2',
   /** FlowAgent parity: model key resolves to abra_t2v_{4|6|8}s by duration. */
   videoModel: 'OMNI_FLASH',
@@ -128,15 +129,17 @@ export const INITIAL_STATE: NovelState = {
   is_trial: false,
   credits: 100,
   ttsConfig: {
-    platform: 'vina_voice',
+    /** Free default: Edge. LA Studio = Trial/Pro (tts_premium). */
+    platform: 'edge_tts',
     language: 'vi',
-    voice: '',
+    voice: 'vi-VN-HoaiMyNeural',
+    laStudioFamily: 'kokoro-vietnamese',
     speed: 1.0,
     pitch: 0,
     tiktokSessionId: '',
     api_url_vieneu: 'https://api.vieneu.com/tts',
     syncMode: 'default',
-    vinaUseClone: true,
+    vinaUseClone: false,
     vinaGender: 'male',
     vinaArea: 'southern',
     vinaGroup: 'story',
@@ -168,6 +171,8 @@ export const INITIAL_STATE: NovelState = {
   youtubeSourceTitle: '',
   youtubeSourceText: '',
   youtubeSimilarityTarget: 80,
+  scriptMode: 'chuyen_sau',
+  activeStyleEngineId: null,
   userRules: {
     forbidden_words:
       'đáng chú ý là, nhìn chung, có thể nói rằng, không thể phủ nhận, trong bối cảnh hiện nay, nói một cách dễ hiểu, tóm lại là, nói tóm lại',
@@ -233,6 +238,7 @@ export function cloneFreshProjectState(): NovelState {
     tri_nho_ngan_han: [],
     pipeline_step: 'outline',
     nhan_vat_prompts: {},
+  scene_location_assets: [],
     generatedAudioPaths: {},
     generatedPrompts: {},
     generatedPromptsAnalysis: {},
@@ -249,6 +255,8 @@ export function cloneFreshProjectState(): NovelState {
     youtubeSourceTitle: '',
     youtubeSourceText: '',
     youtubeSimilarityTarget: 80,
+    scriptMode: 'chuyen_sau',
+    activeStyleEngineId: null,
     // Placeholders — overwrite by resetStore with live settings
     userRules: {
       forbidden_words: INITIAL_STATE.userRules.forbidden_words,
@@ -305,12 +313,15 @@ export function cloneFactoryAppState(): NovelState {
     generatedAssetDna: {},
     projectUrls: {},
     nhan_vat_prompts: {},
+  scene_location_assets: [],
     tri_nho_ngan_han: [],
     humanEditFlags: {},
     chapterHooks: {},
     editorReviews: {},
     ttsConfig: { ...INITIAL_STATE.ttsConfig },
     youtubeSafe: { ...INITIAL_STATE.youtubeSafe },
+    scriptMode: 'chuyen_sau',
+    activeStyleEngineId: null,
     userRules: {
       forbidden_words: INITIAL_STATE.userRules.forbidden_words,
       fatigue_words: INITIAL_STATE.userRules.fatigue_words,

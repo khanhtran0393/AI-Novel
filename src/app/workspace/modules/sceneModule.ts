@@ -64,7 +64,7 @@ export async function expandSceneAction(params: ExpandSceneParams): Promise<stri
   const phong_cach = String(store.setup?.phong_cach || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi mo rong canh.',
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan the loai mac dinh khi mo rong canh.',
     );
   }
   const data = await postGenerate('EXPAND_SCENE', {
@@ -82,6 +82,7 @@ export async function expandSceneAction(params: ExpandSceneParams): Promise<stri
     chu_de,
     phong_cach,
     genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+    scriptMode: store.scriptMode,
   });
   const expanded = String(data.expanded_content || '').trim();
   if (!expanded) {
@@ -127,7 +128,7 @@ export async function rewriteSceneAction(params: RewriteSceneParams): Promise<st
   const phong_cach = String(store.setup?.phong_cach || '').trim();
   if (!chu_de && !phong_cach) {
     throw new Error(
-      'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the khi viet lai canh.',
+      'Chua chon Setup Chu de + Phong cach. App khong tu gan the loai mac dinh khi viet lai canh.',
     );
   }
   const data = await postGenerate('REWRITE_SCENE', {
@@ -146,6 +147,7 @@ export async function rewriteSceneAction(params: RewriteSceneParams): Promise<st
     chu_de,
     phong_cach,
     genre: [chu_de, phong_cach].filter(Boolean).join(' / '),
+    scriptMode: store.scriptMode,
   });
   const rewritten = String(data.rewritten_content || '').trim();
   if (!rewritten) {

@@ -104,7 +104,9 @@ export function useImagePromptActions() {
     const st = useNovelStore.getState();
     const style = (st.visualDnaPrompt?.trim() || st.mediaStylePreset?.trim() || '').trim();
     if (!style) {
-      throw new Error('Chua cau hinh Visual DNA / Media Style. App khong tu gan style.');
+      throw new Error(
+        'Chưa cấu hình Visual DNA / Media Style. Mở Ảnh/Video (Media Config). App không tự gán style.',
+      );
     }
     return style;
   };
@@ -134,7 +136,7 @@ export function useImagePromptActions() {
     const configured = Number(st.videoDuration);
     if (Number.isFinite(configured) && configured > 0) return configured;
     throw new Error(
-      'Khong doc duoc duration tu timestamp prompt va chua cau hinh videoDuration. App khong tu gan thoi luong.',
+      'Không đọc được duration từ timestamp prompt và chưa cấu hình videoDuration. App không tự gán thời lượng.',
     );
   };
 
@@ -164,6 +166,7 @@ export function useImagePromptActions() {
           wordGoal: st0.setup?.so_tu_chuong || 4250,
           userRules: st0.userRules,
           editorVerdict: st0.editorReviews?.[st0.chuong_dang_chon]?.verdict,
+          scriptMode: st0.scriptMode,
         });
       }
       const pf = evaluateMediaPreflight({
@@ -231,7 +234,7 @@ export function useImagePromptActions() {
       const phong_cach = String(st0.setup?.phong_cach || '').trim();
       if (!chu_de && !phong_cach) {
         throw new Error(
-          'Chua chon Setup Chu de + Phong cach. App khong tu gan mat the.',
+          'Chưa chọn Setup Chủ đề + Phong cách. App không tự gán thể loại mặc định.',
         );
       }
       const newPromptStr = await regenPromptAction({
@@ -265,7 +268,7 @@ export function useImagePromptActions() {
         }
         const videoPrompt = String(seedData?.result?.prompt || '').trim();
         if (!videoPrompt) {
-          throw new Error('Seedance khong tra video_prompt.');
+          throw new Error('Seedance không trả video_prompt.');
         }
 
         const live = useNovelStore.getState();
@@ -333,6 +336,7 @@ export function useImagePromptActions() {
           wordGoal: st.setup?.so_tu_chuong || 4250,
           userRules: st.userRules,
           editorVerdict: st.editorReviews?.[st.chuong_dang_chon]?.verdict,
+          scriptMode: st.scriptMode,
         });
         const chu_de = String(st.setup?.chu_de || '').trim();
         const phong_cach = String(st.setup?.phong_cach || '').trim();
@@ -350,19 +354,19 @@ export function useImagePromptActions() {
         assertMediaPreflight(pf);
       }
       if (!st.imageProvider?.trim()) {
-        throw new Error('Chua chon imageProvider. App khong tu gan provider.');
+        throw new Error('Chưa chọn imageProvider. App không tự gán provider.');
       }
       if (!st.imageModel?.trim()) {
-        throw new Error('Chua chon imageModel. App khong tu gan model.');
+        throw new Error('Chưa chọn imageModel. App không tự gán model.');
       }
       if (!st.ten_tac_pham?.trim()) {
-        throw new Error('Chua nhap ten_tac_pham. App khong tu gan ten truyen.');
+        throw new Error('Chưa nhập tên tác phẩm. App không tự gán tên truyện.');
       }
       if (!st.imageAspectRatio?.trim()) {
-        throw new Error('Chua chon imageAspectRatio. App khong tu gan ty le anh.');
+        throw new Error('Chưa chọn imageAspectRatio. App không tự gán tỷ lệ ảnh.');
       }
       if (!Number.isFinite(Number(st.imageCount)) || Number(st.imageCount) <= 0) {
-        throw new Error('Chua chon imageCount hop le. App khong tu gan so luong anh.');
+        throw new Error('Chưa chọn imageCount hợp lệ. App không tự gán số lượng ảnh.');
       }
       if (st.imageProvider === 'flow') {
         await ensureFlowSessionReady({ kind: 'image', notify: true });
@@ -495,6 +499,7 @@ export function useImagePromptActions() {
       wordGoal: st0.setup?.so_tu_chuong || 4250,
       userRules: st0.userRules,
       editorVerdict: st0.editorReviews?.[ch]?.verdict,
+      scriptMode: st0.scriptMode,
     });
     const job = createStageBatchJob({
       stage: 'image',
@@ -538,6 +543,12 @@ export function useImagePromptActions() {
       toast.warn('Gen ảnh xong (có lỗi)', `${p.done}/${p.total} · ${p.failed} fail`);
     } else {
       toast.success('Gen ảnh hoàn tất', p ? `${p.done}/${p.total}` : undefined);
+      try {
+        const { markOnboardingStep } = await import('@/lib/onboarding');
+        markOnboardingStep('image');
+      } catch {
+        /* ignore */
+      }
     }
     scheduleSilentChapterTimeline({ chapterNum: useNovelStore.getState().chuong_dang_chon });
   };
@@ -590,6 +601,7 @@ export function useImagePromptActions() {
           wordGoal: st.setup?.so_tu_chuong || 4250,
           userRules: st.userRules,
           editorVerdict: st.editorReviews?.[st.chuong_dang_chon]?.verdict,
+          scriptMode: st.scriptMode,
         });
         const prompts = st.generatedPrompts[assetKey] || [];
         const vp = String(
@@ -615,13 +627,13 @@ export function useImagePromptActions() {
         assertMediaPreflight(pf);
       }
       if (!st.videoProvider?.trim()) {
-        throw new Error('Chua chon videoProvider. App khong tu gan provider.');
+        throw new Error('Chưa chọn videoProvider. App không tự gán provider.');
       }
       if (!st.videoModel?.trim()) {
-        throw new Error('Chua chon videoModel. App khong tu gan model.');
+        throw new Error('Chưa chọn videoModel. App không tự gán model.');
       }
       if (!st.videoAspectRatio?.trim()) {
-        throw new Error('Chua chon videoAspectRatio. App khong tu gan ty le video.');
+        throw new Error('Chưa chọn videoAspectRatio. App không tự gán tỷ lệ video.');
       }
       if (st.videoProvider === 'flow') {
         beginMediaGenProgress(key, {
@@ -638,10 +650,26 @@ export function useImagePromptActions() {
 
       const promptsAsset = st.generatedPrompts[assetKey] || [];
       const endPromptItem = promptsAsset[endPromptIndex];
+      const startPromptItem = promptsAsset[startPromptIndex];
       const finalPrompt = (endPromptItem?.video_prompt || '').trim();
+      const wantsEndFrame = Boolean(
+        endPromptItem?.use_end_frame ||
+          startPromptItem?.use_end_frame ||
+          (startPromptIndex !== endPromptIndex),
+      );
+      const hasDualStills = Boolean(
+        startImage &&
+          endImage &&
+          String(startImage).split('?')[0] !== String(endImage).split('?')[0],
+      );
 
       // Flow: T2V (text only) or I2V (1+ images). Legacy providers need 2 frames.
       const isFlow = st.videoProvider === 'flow';
+      if (wantsEndFrame && !hasDualStills) {
+        throw new Error(
+          'Keyframe Start+End: cần 2 ảnh khác nhau (start + end). Gen đủ 2 still rồi thử lại — app không fallback 1 frame.',
+        );
+      }
       if (!isFlow && (!startImage || !endImage)) {
         throw new Error(
           'Cần sinh ảnh cho cả 2 Prompt trước khi tạo Video nội suy (provider legacy)!',
@@ -649,6 +677,20 @@ export function useImagePromptActions() {
       }
       if (!finalPrompt) {
         throw new Error('Thieu video_prompt. App khong dung image prompt thay the.');
+      }
+
+      // Sibling first+last model when dual stills (not provider swap — B10-safe FL variant)
+      let videoModelResolved = String(st.videoModel || '').trim();
+      if (isFlow && hasDualStills && videoModelResolved) {
+        try {
+          const { resolveFirstLastModel } = await import(
+            '@/lib/flow-bridge/modelCatalog'
+          );
+          videoModelResolved =
+            resolveFirstLastModel(videoModelResolved, true) || videoModelResolved;
+        } catch {
+          /* keep UI model */
+        }
       }
 
       const promptDuration = parsePromptDuration(endPromptItem?.timestamp);
@@ -687,8 +729,8 @@ export function useImagePromptActions() {
           prompt: finalPrompt,
           duration: promptDuration,
           startImage: startImage || undefined,
-          endImage: endImage || undefined,
-          model: st.videoModel,
+          endImage: hasDualStills ? endImage || undefined : undefined,
+          model: videoModelResolved || st.videoModel,
           videoProvider: st.videoProvider,
           videoApiKey: resolveVideoApiKey(st),
           videoAspectRatio: st.videoAspectRatio,
@@ -928,6 +970,7 @@ export function useImagePromptActions() {
       wordGoal: st0.setup?.so_tu_chuong || 4250,
       userRules: st0.userRules,
       editorVerdict: st0.editorReviews?.[chV]?.verdict,
+      scriptMode: st0.scriptMode,
     });
     const job = createStageBatchJob({
       stage: 'video',

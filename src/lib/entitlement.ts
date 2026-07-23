@@ -682,10 +682,14 @@ export function resolveRequestAccess(req: Request, body?: unknown): {
 }
 
 /**
- * Resolve plan with **Supabase as source of truth** when SERVICE_ROLE configured.
- * - Active row for machine HWID → that plan (trial/pro)
- * - No row / deleted / revoked → Free (local token alone does NOT grant)
- * - Supabase not configured → fall back to local Ed25519 token + trial vault
+ * Resolve plan — **Supabase `licenses` (HWID) is sole truth** when SERVICE_ROLE configured.
+ *
+ * Rules (LOCKED):
+ * - Active row for machine HWID → trial/pro from ledger (not from token body alone)
+ * - **No row / deleted / revoked / expired → Free** even if AINOVEL2 token still verifies
+ * - Packaged customer without local SERVICE_ROLE: local ticket + remote heartbeat
+ *   (LICENSE_API has Supabase); deleted cloud id → Free on next online probe
+ * - open mode only: unrestricted Pro for local dev
  */
 export async function resolveRequestAccessAsync(
   req: Request,
@@ -736,15 +740,54 @@ export async function resolveRequestAccessAsync(
     const { isSupabaseAdminConfigured } = await import('@/lib/supabase/env');
     if (isSupabaseAdminConfigured()) {
       const { createServiceSupabase } = await import('@/lib/supabase/server');
-      const { verifyLicenseCloud } = await import('@/lib/cloud/licenseBridge');
-      const token = extractEntitlementToken(req, body);
-      if (!token) {
-        return { tier: 'free', claims: freeClaims(), authority: 'supabase' };
-      }
+      const { resolveLicenseByHwid, verifyLicenseCloud } = await import(
+        '@/lib/cloud/licenseBridge'
+      );
       const service = createServiceSupabase();
-      const cloud = await verifyLicenseCloud({ service, token });
-      if (cloud.valid && cloud.claims) {
-        const c = cloud.claims;
+      // Machine HWID only — body-supplied HWID is never authorization.
+      const machineHwid = getHwid().toLowerCase();
+      const token = extractEntitlementToken(req, body);
+
+      /**
+       * Align with GET /api/commercial/status (LICENSE_ONE_PATH ledger):
+       * - Active `licenses` row for this HWID ⇒ Pro/Trial on UI **and** API gates
+       * - Token is optional client cache; missing token must NOT demote Pro→Free
+       *   when ledger still has active row (bug: badge PRO nhưng TTS 403 tts_premium)
+       * - **Deleted** ledger row ⇒ Free even if token crypto still OK
+       */
+      if (token) {
+        const cloud = await verifyLicenseCloud({
+          service,
+          token,
+          hwid: machineHwid,
+        });
+        if (cloud.valid && cloud.claims) {
+          const c = cloud.claims;
+          const tier: PlanTier = claimsIsTrial(c)
+            ? 'trial'
+            : c.is_pro || c.is_vip
+              ? 'pro'
+              : 'free';
+          if (tier !== 'free') {
+            return { tier, claims: c, authority: 'supabase' };
+          }
+        }
+        // Explicit revoke / deleted / none on token path → Free
+        if (
+          cloud.cloud?.revoked ||
+          cloud.cloud?.status === 'none' ||
+          cloud.cloud?.status === 'expired' ||
+          cloud.cloud?.status === 'revoked' ||
+          cloud.valid === false
+        ) {
+          return { tier: 'free', claims: freeClaims(), authority: 'supabase' };
+        }
+      }
+
+      // Primary authority: same as commercial/status — HWID ledger (no token required)
+      const byHwid = await resolveLicenseByHwid(service, machineHwid);
+      if (byHwid.found && byHwid.claims) {
+        const c = byHwid.claims;
         const tier: PlanTier = claimsIsTrial(c)
           ? 'trial'
           : c.is_pro || c.is_vip
@@ -752,8 +795,9 @@ export async function resolveRequestAccessAsync(
             : 'free';
         return { tier, claims: c, authority: 'supabase' };
       }
-      // Missing/invalid/revoked signed token → Free. A body-supplied HWID is
-      // customer-controlled input and is never authorization.
+
+      // LICENSE_ONE_PATH: Supabase licenses(HWID) is SOLE truth.
+      // No active row → Free. Local trial vault is NOT authority (ghost TRIAL badge ban).
       return { tier: 'free', claims: freeClaims(), authority: 'supabase' };
     }
   } catch (e) {
@@ -766,6 +810,10 @@ export async function resolveRequestAccessAsync(
     }
   }
 
+  // No SERVICE_ROLE on this process:
+  // Packaged: local ticket + heartbeat (remote LICENSE_API has Supabase).
+  // Dev/seller: resolveRequestAccess = Ed25519 ticket + local trial vault
+  // (do NOT force Free here — that blocked Trial gates after "bật Trial").
   const local = resolveRequestAccess(req, body);
   return { ...local, authority: 'local' };
 }

@@ -1,6 +1,6 @@
 /**
  * Hậu trường chuẩn bị catalog giọng TTS.
- * GET /api/tts/voices → static + Piper (disk) + OmniVoice (public JSON) + Vina profiles
+ * GET /api/tts/voices → static + Piper (disk) + OmniVoice (library SuperAudioTools/public) + Vina profiles
  */
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
@@ -13,6 +13,14 @@ import {
   type VoiceOption,
 } from '@/lib/voiceCatalog';
 import { loadVinaProfiles, resolveSamplePath } from '@/lib/vinaVoice/profiles';
+import { loadOmniLibrary } from '@/lib/omnivoiceLocal';
+import {
+  listLaStudioVoices,
+  loadLocalKokoroViVoices,
+  probeLaStudioHealth,
+  resolveLaStudioApiKey,
+  resolveLaStudioBaseUrl,
+} from '@/lib/laStudioLocal';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,94 +53,81 @@ function loadPiperModels(cwd: string): VoiceOption[] {
   }
 }
 
+/** Build Omni catalog from loadOmniLibrary (public + SuperAudioTools). */
 function loadOmnivoiceLibrary(cwd: string): VoiceOption[] & { _byLang?: Record<string, VoiceOption[]> } {
-  const candidates = [
-    path.join(cwd, 'public', 'omnivoice-library.json'),
-    path.join(cwd, 'omnivoice-library.json'),
-  ];
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!Array.isArray(raw)) continue;
-      const byLang: Record<string, VoiceOption[]> = {};
-      for (const voice of raw) {
-        if (!voice?.id) continue;
-        let lang = 'vi';
-        const l = String(voice.language || '').toLowerCase();
-        if (l.includes('english')) lang = 'en';
-        else if (l.includes('japan')) lang = 'ja';
-        else if (l.includes('korea')) lang = 'ko';
-        else if (l.includes('thai')) lang = 'th';
-        else if (l.includes('chinese')) lang = 'zh';
-        else if (l.includes('french')) lang = 'fr';
-        else if (l.includes('german')) lang = 'de';
-        else if (l.includes('spanish')) lang = 'es';
-        else if (l.includes('portug')) lang = 'pt';
-        else if (l.includes('indonesia')) lang = 'id';
+  const raw = loadOmniLibrary(cwd);
+  if (!raw.length) {
+    return Object.assign([], { _byLang: {} });
+  }
+  const byLang: Record<string, VoiceOption[]> = {};
+  for (const voice of raw) {
+    if (!voice?.id) continue;
+    let lang = 'vi';
+    const l = String(voice.language || '').toLowerCase();
+    if (l.includes('english') || l === 'en') lang = 'en';
+    else if (l.includes('japan') || l === 'ja') lang = 'ja';
+    else if (l.includes('korea') || l === 'ko') lang = 'ko';
+    else if (l.includes('thai') || l === 'th') lang = 'th';
+    else if (l.includes('chinese') || l === 'zh') lang = 'zh';
+    else if (l.includes('french') || l === 'fr') lang = 'fr';
+    else if (l.includes('german') || l === 'de') lang = 'de';
+    else if (l.includes('spanish') || l === 'es') lang = 'es';
+    else if (l.includes('portug') || l === 'pt') lang = 'pt';
+    else if (l.includes('indonesia') || l === 'id') lang = 'id';
 
-        const gender =
-          voice.gender === 'male' || voice.gender === 'female'
-            ? voice.gender
-            : undefined;
-        const name = `${voice.name || voice.id}${
-          gender ? ` - ${gender === 'male' ? 'Nam' : 'Nữ'}` : ''
-        }${
-          voice.location || voice.style
-            ? ` (${voice.location || voice.style || ''})`
-            : ''
-        }`;
-        // Resolve preview: library previewUrl OR /omnivoice-refs/<basename of voiceId>
-        let previewUrl: string | undefined =
-          typeof voice.previewUrl === 'string' && voice.previewUrl.trim()
-            ? voice.previewUrl.trim()
-            : undefined;
-        if (!previewUrl && voice.voiceId) {
-          const base = path.basename(String(voice.voiceId));
-          const localRef = path.join(cwd, 'public', 'omnivoice-refs', base);
-          if (fs.existsSync(localRef)) {
-            previewUrl = `/omnivoice-refs/${base}`;
-          }
-        }
-        if (!previewUrl && voice.id) {
-          // omnivoice_preset_ref_nhat_narrative → ref_nhat_narrative.wav
-          const stem = String(voice.id).replace(/^omnivoice_preset_/, '');
-          for (const ext of ['.wav', '.mp3']) {
-            const localRef = path.join(cwd, 'public', 'omnivoice-refs', `${stem}${ext}`);
-            if (fs.existsSync(localRef)) {
-              previewUrl = `/omnivoice-refs/${stem}${ext}`;
-              break;
-            }
-          }
-        }
-
-        if (!byLang[lang]) byLang[lang] = [];
-        const entry: VoiceOption = {
-          id: String(voice.id),
-          name,
-          gender,
-          previewUrl,
-        };
-        // Library JSON có thể lặp id (vd. omnivoice_preset_ref_vn_trang ×2) → React key warning
-        const existIdx = byLang[lang].findIndex((x) => x.id === entry.id);
-        if (existIdx >= 0) {
-          // Giữ bản name/style dài hơn (thường mô tả đầy đủ hơn)
-          const prev = byLang[lang][existIdx];
-          if ((entry.name || '').length >= (prev.name || '').length) {
-            byLang[lang][existIdx] = entry;
-          }
-        } else {
-          byLang[lang].push(entry);
+    const gender =
+      voice.gender === 'male' || voice.gender === 'female'
+        ? voice.gender
+        : undefined;
+    const name = `${voice.name || voice.id}${
+      gender ? ` - ${gender === 'male' ? 'Nam' : 'Nữ'}` : ''
+    }${
+      voice.location || voice.style
+        ? ` (${voice.location || voice.style || ''})`
+        : ''
+    }`;
+    // Static ref preview only if file is under public/ (browser-fetchable)
+    let previewUrl: string | undefined =
+      typeof voice.previewUrl === 'string' && voice.previewUrl.trim()
+        ? voice.previewUrl.trim()
+        : undefined;
+    if (!previewUrl && voice.voiceId) {
+      const base = path.basename(String(voice.voiceId));
+      const publicRef = path.join(cwd, 'public', 'omnivoice-refs', base);
+      if (fs.existsSync(publicRef)) {
+        previewUrl = `/omnivoice-refs/${base}`;
+      }
+    }
+    if (!previewUrl && voice.id) {
+      const stem = String(voice.id).replace(/^omnivoice_preset_/, '');
+      for (const ext of ['.wav', '.mp3']) {
+        const publicRef = path.join(cwd, 'public', 'omnivoice-refs', `${stem}${ext}`);
+        if (fs.existsSync(publicRef)) {
+          previewUrl = `/omnivoice-refs/${stem}${ext}`;
+          break;
         }
       }
-      return Object.assign([], { _byLang: byLang }) as VoiceOption[] & {
-        _byLang?: Record<string, VoiceOption[]>;
-      };
-    } catch {
-      /* try next */
+    }
+    if (!byLang[lang]) byLang[lang] = [];
+    const entry: VoiceOption = {
+      id: String(voice.id),
+      name,
+      gender,
+      previewUrl,
+    };
+    const existIdx = byLang[lang].findIndex((x) => x.id === entry.id);
+    if (existIdx >= 0) {
+      const prev = byLang[lang][existIdx];
+      if ((entry.name || '').length >= (prev.name || '').length) {
+        byLang[lang][existIdx] = entry;
+      }
+    } else {
+      byLang[lang].push(entry);
     }
   }
-  return Object.assign([], { _byLang: {} });
+  return Object.assign([], { _byLang: byLang }) as VoiceOption[] & {
+    _byLang?: Record<string, VoiceOption[]>;
+  };
 }
 
 function loadVinaAsVoices(cwd: string): VoiceOption[] {
@@ -249,6 +244,55 @@ export async function GET(req: NextRequest) {
           : vina.slice(0, 4),
       );
       sources.push('vina-profiles');
+    }
+
+    // LA Studio — local Kokoro pack + live API voices when online
+    {
+      const staticLa = cloneVoiceCatalog(STATIC_VOICE_CATALOG).la_studio || {};
+      const baseList: VoiceOption[] = [...(staticLa.vi || [])];
+      const seen = new Set(baseList.map((x) => x.id));
+      for (const kv of loadLocalKokoroViVoices()) {
+        if (!kv.id || seen.has(kv.id)) continue;
+        seen.add(kv.id);
+        const gender: VoiceOption['gender'] = /mai_|my_|ngoc_|diem_|thuc_/i.test(kv.id)
+          ? 'female'
+          : /hung_|manh_|phat_|thanh_|tuan_|duc_/i.test(kv.id)
+            ? 'male'
+            : 'neutral';
+        baseList.push({ id: kv.id, name: kv.name || kv.id, gender });
+      }
+      try {
+        const base = resolveLaStudioBaseUrl();
+        const health = await probeLaStudioHealth(base, 1200);
+        if (health.online) {
+          const live = await listLaStudioVoices(base, resolveLaStudioApiKey(), 3000);
+          for (const v of live) {
+            if (!v.id || seen.has(v.id)) continue;
+            seen.add(v.id);
+            baseList.push({
+              id: v.id,
+              name: `${v.name || v.id} (LA Studio)`,
+              gender: 'neutral',
+            });
+          }
+          sources.push('la-studio-api');
+        } else {
+          sources.push('la-studio-local-pack');
+        }
+      } catch {
+        sources.push('la-studio-local-pack');
+      }
+      if (baseList.length) {
+        setLangList(catalog, 'la_studio', 'vi', baseList);
+        setLangList(
+          catalog,
+          'la_studio',
+          'en',
+          baseList.filter((x) => x.id === 'default').length
+            ? baseList.filter((x) => x.id === 'default')
+            : [{ id: 'default', name: 'Default (LA Studio)', gender: 'neutral' }],
+        );
+      }
     }
 
     const counts = countCatalogVoices(catalog);

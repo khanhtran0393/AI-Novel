@@ -1,4 +1,272 @@
+﻿
+## Workflow UX deep audit + fix (2026-07-23)
+
+- **Empirical:** Playwright free-mock walk — `Cổng từ 2327/600 · 388%`; outline path ép `so_tu>=500 else 4250` (phá Free); ch.3 Free không khóa UI; empty hint không hướng API key / Setup genre
+- **Fix:** `normalizeSetupScaleForTier` trong freeLimitsPolicy + wire `setupModule`/`useSetupActions`; WordGate over-cap đỏ; ChapterList 🔒 Free≤2/Trial≤10; EmptyWorkspaceHint bước 1–4; Gen Prompt empty-scene + thứ tự TTS→Prompt; CapCut 🔒; lỗi media VN có dấu
+- **Proof:** free 10/4250→2/600 · `smoke-free-limits` PASS · `typecheck` 0 · `test:e2e:ui` 3/3 · `smoke:core` PASS
+
+## UX user-path fix pack (2026-07-23)
+
+- **Scope:** License tier 1 nguồn · paid-notify success banner · ẩn Trial khi Pro · TTS modal Đóng/Esc/Free copy · onboarding wire + live banner · soft-gate Setup · Free clamp 600 từ · lỗi VN có dấu · e2e/smoke user-path
+- **Proof:** `tsc --noEmit` exit 0 · `test:e2e:ui` 3/3 PASS · `smoke-license-user-path` VERDICT PASS · `smoke:core` PASS · `smoke:commercial` PASS
+- **Key files:** `LicenseModal.tsx` · `TTSConfigModal.tsx` · `onboarding.ts` · `useWriteChapter.ts` · `e2e/ui-license-user-path.spec.ts`
+
+## Dynamic Matrix Engine 900 + Retention (2026-07-23)
+
+- **Scope:** V_topic⊗V_style compositional (30×30) · Fluid 3-layer (L3 mo_ta override) · Wave-Rhythm · Cliffhanger · End-screen prompt · mild shot tension chuyen_sau · Matrix CTR motifs · TTS cast hints (no SFX tags)
+- **Code:** `src/lib/matrixEngine/*` · wire `chapter` WRITE+REVISE / `outline` / `scene` / `imagePrompt` · `writeModule` WRITE+REVISE sends `mo_ta` · SetupPhase catalog DRY · `endScreenPrompt` on ChapterHookAsset
+- **Smoke:** `npm run smoke:matrix` · `npm run smoke:matrix:integration` · regression style-engine + high-ctr
+- **Re-verify:** typecheck 0 · matrix PASS · integration PASS · style-engine OK · high-ctr USABILITY PATH PASS
+- **Out:** Module 3 SFX/BGM tags (IRON cấm FX prose)
+- **Note:** StyleEngine vẫn match phong_cach mạnh (vd Gothic → kinh_di); Matrix luôn inject song song (Topic không bị nuốt)
+
+## High-CTR YouTube packaging MVP (2026-07-23)
+
+- **Scope:** 4 thumb composition presets · 5 title formulas · mobile ≤70 · overlay 2–4 words · pack checklist (no fake CTR%)
+- **Code:** `src/lib/youtube-safe/highCtr.ts` + wire `seoMeta` / `YoutubeSafeChecklist` / `YoutubeThumbPanel` / `writeChapterFinish`
+- **Store:** `thumbCompositionId`, `seoTitleVariants` on `ChapterHookAsset` (persist via full `chapterHooks`)
+- **UI mount:** `ContentTab` → `YoutubeSafeChecklist` → `YoutubeThumbPanel`
+- **Usability smoke:** `scripts/smoke-high-ctr-packaging.mts` (Meta→5 formulas→4 composition→overlay→pack 7/7→checklist)
+- **Proof (re-verify):** `smoke-high-ctr-packaging` PASS; `smoke-psych-seo` PASS; `verify-youtube-safe` PASS; `tsc --noEmit` exit 0
+
+## Workspace: one Hook + Phần groups (2026-07-23)
+
+- **User:** 2 hook · gate chặn media · quá nhiều cảnh · Phần phải thu gọn như cảnh.
+- **Design:** Hook 990 = TTS/media YouTube; CẢNH 0 = cold open body.
+- **UX:** 1 Hook card; body «Phần» 3 cảnh; **Phần collapse độc lập** (Mở/Thu gọn + chevron, default đóng; đóng Phần clear scene select); nav P1/P2.
+- **Proof:** `smoke-scene-workspace-groups.mts` PASS; `tsc` 0.
+
+## YouTube rewrite flow verify + fix (2026-07-23)
+
+- **User report:** Link YouTube · viết lại tương tự lỗi trên ver 1.0.5.
+- **Re-verify suite (all exit 0):**
+  - `smoke-youtube-rewrite-unit.mts` PASS (offline id+error builder)
+  - `smoke-youtube-rewrite-flow.mts` PASS (SKIP-NET if YouTube RATE_LIMITED)
+  - `smoke-youtube-timedtext-fallback.mts` PASS (skip-net ok)
+  - `smoke-youtube-outline-only.mts` PASS (2 ch, live Gemini)
+  - `tsc --noEmit` exit 0
+- **Fix:** PATH python first then resolvePythonExe; timedtext fallback; 429→RATE_LIMITED; outline auto-retry RPM; plot-only still allowed.
+- **Honest limit:** YouTube can still RATE_LIMIT/IP_BLOCK — app returns clear fix UI, not silent fail.
+
+## LA Studio Voice Clone save + preview (2026-07-23)
+
+- **Bug:** Tab Voice Clone không lưu giọng / không list / không nghe thử dùng lại (API session-only).
+- **Fix:** `laStudioClones.ts` disk `data/la-studio/user-clones`; POST always save; GET `userClones`; sample-audio serve `lsc_*`; UI list ▶/TTS/xóa; Omni + la_studio re-register on synth; preview Omni fail → ref sample (full gen hard-fail B10).
+- **Proof (live HTTP :3000):**
+  - `smoke-la-studio-clone-http.mts` PASS — POST save + GET list + sample 99404B + TTS preview 182652B + DELETE
+  - `smoke-la-studio-clone-omni-tts.mts` PASS — Omni inference fail → `OmniVoice-UserCloneSample` preview file on disk
+  - `smoke-la-studio-clone-e2e.mts` PASS; `tsc --noEmit` exit 0
+- **Note env:** LA Studio desktop API offline; Omni clone synth 500 libtorchcodec — Nghe mẫu/preview vẫn OK.
+
+## Gen Prompt empty array 502 (2026-07-23)
+
+- **Toast:** «AI trả về mảng prompt rỗng… kiểm tra API key / model master»
+- **Root chính:** `capSentences` return cùng ref khi N≤max → caller `raw.length=0; push(...capped)` xóa hết → AI gen 0 câu (log `cap shots 5 → 0`).
+- **Root phụ:** Gemini `parts[0]` only; JSON prefer `{` trong array; empty `[]` không retry; RPM mislabeled empty.
+- **Fix:** `capSentences` luôn `.slice()`; join Gemini parts; prefer `[`; normalize sâu + rate-limit stop; 429 rõ.
+- **Proof:** `smoke-prompt-json-parse` PASS; `smoke-gen-prompt-handler` → status 200 · **5 prompts** (img/vid >600ch); `tsc` exit 0.
+
+## Trial WRITE max_chapters false positive (2026-07-23)
+
+- **Bug:** Trial gen «Sinh Chi Tiết Chương 1» fail toast «tối đa 10 chương» dù chỉ 1–2 chương.
+- **Root:** `assertFreeWriteConstraints` dùng `p.chuong_hien_tai ?? p.so_chuong` — client gửi object chương → `Number(object)=NaN` → `isTrialChapterOutOfRange` luôn true.
+- **Fix:** `resolveWriteChapterNum` trong `freeLimitsPolicy.ts` (đọc `chuong_hien_tai.so_chuong`; cấm fallback `so_chuong` planned).
+- **Proof:** `npx tsx scripts/smoke-free-limits.mts` → exit 0 (section resolveWriteChapterNum).
+
+## PACK_NOTES rewrite — 4 bước (2026-07-22)
+
+- **Doc:** `docs/PACK_NOTES.md` — §0 thép · §1 lệnh · **§2 quy trình 4 bước** · **§3 phiếu tick** · §4 copy-paste · §5–10 ref (license/defense/store/pipeline/update)
+- **Banner:** `scripts/preflight-pack.mjs` in 4 bước + 5 gate sau pack
+- **Cross-ref:** SHIP_GUIDE §3b · PACKAGING_STANDARD · post-pack checklist · AGENTS table
+- **Ý:** sửa main nhỏ → pack:ship full → test artifact MỚI đúng chỗ sửa + 5 gate; pack ≠ publish feed
+
+## White-machine verify 1.0.5 (2026-07-22)
+
+- **Pack:** `dist-qa-unsigned/AI-Novel-1.0.5-x64.exe` + win-unpacked; audit + postpack PASS
+- **P0 fix:** `main.js` `tryServeRuntimePublic` — TTS `GET /audio/*` 200 on clean AppData (1.0.4 was 404)
+- **Proof:** white boot Edge TTS len=24621 + AUDIO_PLAY_PATH PASS; `npm run verify:agent-done` PASS; go-live SOFTWARE READY (Authenticode residual only)
+- **Report:** `scratch/white-machine-sim-report.md`
 # Project memory (AI Novel)
+
+## Telegram bot: menu + nút hoạt động (2026-07-22)
+
+- **UX:** `setMyCommands` Menu góc trái; reply keyboard; inline `menu:*`; answerCallback ngay khi Cấp Key
+- **Admin:** multi-id `CHAT_ID` (phẩy); `isAdminActor(chat|from)` — sửa nút chết do id không khớp
+- **Pending:** Cấp key/Tra cứu/Thu hồi → tin tiếp theo
+- **Proof:** `npx tsx scripts/smoke-telegram-admin.mts` → PASS
+- **Deploy:** `npm run telegram:deploy-bridge` rồi `/start` trên bot
+
+## Telegram bot: kích hoạt tay + lệnh quản lý (2026-07-22)
+
+- **Feature:** Dán HWID → wizard gói; `/activate|/gen|/cap`; `/lookup` `/list` `/revoke` `/plans` `/status` `/help`
+- **App:** `telegramAdminCommands.ts` + `telegramWebhookHandler.ts` + callback `pick:` / `revoke_confirm:`
+- **Bridge parity:** `deploy/telegram-bridge/lib/bridge.ts`
+- **Docs:** `COMMERCIAL_ADMIN.md` · `COMMERCIAL_OPS.md`
+- **Proof:** `npx tsx scripts/smoke-telegram-admin.mts` → PASS; `tsc --noEmit` exit 0
+- **Deploy live:** `npm run telegram:deploy-bridge` (seller)
+
+## Payment-notify messageId + customer bot forward (2026-07-22)
+
+- **User:** bấm thanh toán nhưng bot admin không nhận ticket.
+- **Root:** mở bot trống ≠ ticket; bridge nuốt tin non-admin; soft success không siết messageId.
+- **Fix:** UI success chỉ `ok+messageId`; fail mới deep-link `start=pay_plan_hwid`; fan-out admin ids; bridge `handleCustomerPaymentMessage`.
+- **Proof:** probe messageId 59/60/61 PASS; playwright license UI PASS; `telegram:deploy-bridge` webhook live.
+
+## LicenseModal trial 3s + báo Admin (2026-07-22)
+
+- **Feedback:** Dùng thử im lặng (không báo chờ 3s); «Đã thanh toán» auto-open Zalo, không mở Tele.
+- **Fix trial:** countdown 3s. **Paid:** xem mục messageId phía trên (không mở bot trống khi OK).
+- **Files:** `LicenseModal.tsx`, `pricingPlans.ts` (telegramBot*), `payment-notify/route.ts` (telegramUrl).
+- **User-path verify:** `npx tsx scripts/smoke-license-user-path.mts` PASS (live API `telegramUrl=t.me`); Playwright `e2e/ui-license-user-path.spec.ts` PASS (logo→trial chờ 3s→paid open t.me only).
+- **Electron:** `window.open(https://t.me/…)` → `setWindowOpenHandler` → `shell.openExternal` (user OS mở Telegram).
+- **Cooldown 429:** không re-open Tele (tránh spam) — đúng.
+
+## Trial limits (2026-07-22)
+
+- **Free unchanged:** 600 từ · 2 chương · 3 lượt/ngày
+- **Trial:** như Pro · **7 ngày** · **5 lượt/ngày**/mục · **≤3000 từ**/chương · **≤10 chương**
+- Code: `FREE_LIMITS` / `TRIAL_LIMITS` · `freeQuota` meters free+trial · UI LicenseModal + Setup
+
+## Sole truth Supabase only — no ghost TRIAL (2026-07-22)
+
+- **Bug:** vault local → badge TRIAL while licenses table empty (user screenshot)
+- **Cause:** vaultTrial + resolve vault grant after empty ledger; insert user_id=HWID failed on uuid column silently before
+- **Fix:** authority=supabase → vault NEVER grants; `insertLicenseRow` retries user_id=null if uuid; LicenseModal requires token + refresh from ledger
+- **Seed:** `npx tsx scripts/seed-cloud-trial.mts` → row trial active + status fromSupabase
+- **Proof:** after seed: found trial, tier=trial, fromVault=false, fromSupabase=true
+
+## licenses.user_id = device HWID (2026-07-22)
+
+- **Policy:** `licenses.user_id` stores app device code (HWID lowercase), not auth.users uuid
+- **Code:** `licenseDeviceUserId()` · trial/issue/telegram/activate/promote all set `user_id=hwid`
+- **SQL:** `supabase/migrations/003_licenses_user_id_device.sql` (drop FK + text + backfill)
+- **Backfill:** `npx tsx scripts/backfill-license-user-id-device.mts` (after migration)
+- **Note:** Live DB still uuid until 003 run in Supabase SQL Editor (no ACCESS_TOKEN on machine)
+
+## Trial unlock Pro-equivalent gates (2026-07-22)
+
+- **Bug:** enforce + Supabase no-row → Free; local trial vault ignored; force Free block killed trial without SERVICE_ROLE
+- **Fix:** `resolveRequestAccessAsync` honors active trial vault after empty ledger; status `vaultTrial` + synthetic claims; local `startTrial` mints AINOVEL2 token; startCloudTrial ilike + already-Pro short-circuit
+- **UI:** LicenseModal always set trial flags + keep if refresh demotes; copy lists Trial vs Pro-only
+- **Matrix:** Trial = video/CapCut/ship/tts_premium; toolbox/multi_channel/flow_multi = Pro only
+- **Proof:** `npx tsx scripts/smoke-trial-unlock.mts` PASS; diag-trial assertProAccess OK on real ledger
+
+## Machine store survives portable wipe (2026-07-22)
+
+- **Problem:** free-usage + local trial lived under `data/licenses/` in app folder → xóa app + giải nén lại = reset
+- **Fix:** `licenseMachineStore.ts` → `%USER_DATA%/.ainovel-license/` (Electron) hoặc `~/.ainovel-license/` + migrate legacy; Windows HKCU secondary (`Software\AiNovel\MachineStore`)
+- **Wire:** `freeQuota.ts`, `trial.ts`; seller vaults (activation-codes) vẫn app root
+- **Pack notes:** `docs/PACK_NOTES.md` §2b + **§4 auto-update** + banner `preflight-pack.mjs` + `PACKAGING_STANDARD.md` §5 update
+- **GUI fix:** freeQuota `existing`/`wordGoal` renamed trial/free scopes (Next “defined multiple times” → commercial/status fail)
+- **Proof:** `npx tsx scripts/smoke-machine-store-wipe.mts` → PASS; `smoke-free-limits` PASS; freeQuota import OK; preflight banner prints machine store
+
+## Pack notes anti-skip (2026-07-22)
+
+- **Doc:** `docs/PACK_NOTES.md` — sole truth Supabase, pack:ship vs commercial, grace, checklist
+- **Preflight:** banner full mỗi `npm run preflight:pack` / `pack:ship`
+- **Standard:** PACKAGING_STANDARD.md §5b–5c + JSON v1.0.2 `packNotesDoc`
+- **SHIP_GUIDE** §3b trỏ PACK_NOTES
+
+## Defense pack wave (2026-07-22)
+
+- **Grace:** offline 24h · first-run 6h · strict 3h · seat 10m
+- **ASAR integrity:** default ON afterPack (fuse last); auto fallback OFF
+- **Deny log:** `deny-events.jsonl` (hwid8 + reason)
+- **Preflight:** LICENSE_API probe + TLS pin reminder + CSC note
+- **Smoke:** `npm run smoke:defense-pack` · `postpack:checklist`
+- **Still external:** Authenticode CSC cert; Vercel SERVICE_ROLE live; white-box revoke test by hand
+- **Deferred (honest):** full asarmor encrypt; whole-src obfuscate
+
+## License sole truth = Supabase HWID (2026-07-22)
+
+- **Policy:** `licenses` row active by HWID = Pro/Trial; **delete/revoke/expired = Free** even if AINOVEL2 crypto still verifies
+- **Bugfix:** `probeOnlineVerify` treated `valid:false`/missing row as online-OK → stale PRO after Supabase delete
+- **Fix:** missing/none/revoked/expired → `revoked`; `useEntitlementSync` Free-first + clear token on cloudStatus none; enforce without SERVICE_ROLE (non-packaged) → Free
+- **Pack notes:** preflight-pack banner + `PACKAGING_STANDARD.md` §5b + `SHIP_GUIDE` §3b + `LICENSE_ONE_PATH`
+- **Proof:** typecheck; source assert probe no longer returns valid on valid:false
+
+## LA Studio ship sample + pitch + global TTS (2026-07-22)
+
+- **Ship:** sau tải family → `prepareFamilySamplesForShip` bake WAV vào `userData|data/la-studio-family-samples` (không phụ thuộc public/ asar); URL = `/api/la-studio/sample-audio?familyId&voiceId` (+ `bake=1` lần đầu); UI `ensureSamples=1`
+- **Pitch:** slider Cao độ dưới Tốc độ LA Studio (−12…+12); gen FFmpeg khi `nativePitchApplied=false`
+- **Global:** gen TTS dùng `store.ttsConfig` (platform·voice·speed·pitch·laStudioFamily) — `ttsModule` + `/api/generate-tts`
+- **Proof:** discover withUrl full; sample URL starts with `/api/la-studio/sample-audio`; typecheck 0
+
+## LA Studio family giọng mẫu (2026-07-22)
+
+- **Root:** Family tỉa (VieNeu/Vibe/Vox/Omni/Kokoro82) thiếu WAV ▶; GET `/voices` await bake treo UI; `ensureFamilySamplePack` đè `voices.json` (mất VieNeu presets); Omni 0 WAV.
+- **Fix:** discover scan `voices_v3_*.json` · không đè catalog thật · bake nền · gắn `samplePublicUrl` · UI badge ▶ mẫu + phát WAV instant · bake preset VieNeu + Omni.
+- **Proof:** every family withUrl=full (Kokoro-VI 14, VieNeu 15, Omni 4, Vibe 5, Vox 5, K82 4); `typecheck` exit 0.
+
+## Engine Voice library (2026-07-22)
+
+- **Why “không có giọng mẫu”:** Engine tab chỉ có dropdown + 1 nút Nghe thử; LA Studio có list + ▶ từng hàng. Hầu hết engine **không** ship file WAV tĩnh (`previewUrl` hiếm) — nghe = **gen live** cùng pipeline TTS.
+- **Fix:** `EngineVoiceTab` = Voice library scrollable + filter + ▶ per-row (`handlePreviewVoice(voiceId)` đã có sẵn).
+- **Proof:** `npm run typecheck` exit 0; `verify:tts-integrity` ok; `smoke:vina` 76/76.
+
+## LA Studio portable ship (2026-07-22)
+
+- **Ship TTS:** `bin/la-studio-kokoro/` (~356MB) — Kokoro-VI CLI + onnx + voicepacks; **không** cần cài LA Studio trên máy khách
+- **Pack:** `extraResources` → `resources/bin/la-studio-kokoro`; `beforePack` + `pack:commercial` / `pack:unsigned:qa` / `build:desktop` gọi `npm run prepare:la-studio-kokoro`
+- **Resolve:** `AI_NOVEL_ROOT/bin/la-studio-kokoro` → cwd → `~/.lastudio/...` fallback; first-run download zip nếu thiếu (`laStudioKokoroEnsure.ts`)
+- **Platform:** `la_studio` UI + synth CLI; optional desktop API ẩn nếu user có LA Studio.exe
+- **Proof:** `npm run smoke:la-studio-tts` → source=bundled · RIFF WAV · `error_count=0`
+
+## LA Studio «kết nối nhưng không nghe thử» (2026-07-22)
+
+- **Root:** GET `/api/la-studio/voices` chờ `ensureLaStudioApiReady` poll **20s** (API offline); UI chọn giọng fake `default` («model đang load»)
+- **Fix:** voices GET = probe 1.5s only + catalog Kokoro offline; preview không await spawn; default voice `diem_trinh`
+- **Proof:** voices **1428ms** (was ~21s); preview `diem_trinh` **5158ms** `LAStudio-KokoroCLI` success; typecheck 0
+
+## Style Engine Profiles — 5 niche hot (2026-07-23)
+
+- Module: `src/lib/styleEngineProfiles.ts` — `tu_tien` | `do_thi_va_mat` | `mat_the_sinh_ton` | `kinh_di_huyen_nghi` | `cung_dau_ngon_tinh`
+- Setup match (`chu_de`+`phong_cach`) → soft WPM/beat/visual; store `activeStyleEngineId`; chip SetupPhase
+- WRITE/outline/scene + Gen Prompt shot intersect; SEO CTR title/thumb boost via youtube-meta path
+- Format DNA (`scriptMode`) vẫn master cold-open policy / short WPM; niche = content DNA
+- **Fix:** `allocateShotDurationsByMode` — when even duration outside style∩mode band, even-split + force exact sum (tránh lệch tổng TTS)
+- Setup labels: `matrixEngine/catalog` (`MATRIX_THEMES`/`STYLES`) — chip + soft patch vẫn khớp 5 niche; coexists with `buildMatrixWriteBlock`
+- Proof (re-verify): unit + integration + **hardened** (NFC, false+, sum 5×3×6×4, SEO×5, wiring) · pacing 28 · typecheck 0
+
+## Short/Manhua pipeline logic (2026-07-22)
+
+- **Quy trình app** + **logic short** xuyên: outline/write/revise/scene expand-rewrite/gen prompt/quality/media soft
+- `scriptMode` pacing (Phong Cách Kịch Bản): `SCRIPT_MODE_PACING` — chuyen_sau coldOpen=off ~130WPM/7s; sang_van soft ~155/4.5s; short_manhua on ~170/3.5s + CẢNH 0 cold open
+- `setScriptMode` → `scriptModeMediaSoftPatch` (wpm/beat/video/so_tu) mọi mode; WRITE inject pacing+coldOpen; Gen Prompt `allocateShotDurationsByMode` (tension weight short/sang)
+- min scenes short=4; quality hint thiếu CẢNH 0; modules pass `scriptMode`
+- Proof: `npx tsx scripts/smoke-printfilm-adoptions.mts` + `npm run typecheck` → exit 0 (2026-07-23)
+
+## Purge mạt thế / forced-genre hardcode (2026-07-22)
+
+- Removed genre pack `mat_the`; Setup chips Mạt Thế / Post-Apocalypse / Hậu Tận Thế / Tận Thế-Di cư
+- Neutralized all runtime messages/prompts: no silent genre default (B10 kept)
+- SEO default tags + psych lexicon no longer seed mạt thế; fixtures/scripts cleaned
+- Legacy channel id `mat_the` → getGenrePack returns null (no crash)
+
+## Printfilm adoptions locked (2026-07-22)
+
+- **Doc:** `docs/PRINTFILM_ADOPTIONS.md` — P1 wardrobe · P2 optional start+end frame · P3 soft checklist · P4 media status · **P5 short_manhua scriptMode**; reject Phase wizard / Docker SPA / GitCC-only
+- **P1:** wardrobe variants + gen still · scene location library
+- **P2:** use_end_frame · dual-still hard-fail · Flow `*_fl` sibling
+- **P3–P4:** progress strip · media provider chip
+- **P5:** `scriptMode: short_manhua` · craft/outline/evaluate · Setup UI teal · gợi ý 1200 từ/chương
+- **Smoke:** `npx tsx scripts/smoke-printfilm-adoptions.mts`
+
+## OmniVoice Local engine + nghe thử (2026-07-22)
+
+- **Root cause:** `resolveOmniPython` rơi về `python` hệ thống (C:\\Python314) → `No module named omnivoice_server` → Bật engine / Nghe thử fail
+- **Fix:** ưu tiên `D:\\SuperAudioTools\\omnivoice-python` + `gpu_profile.json` + `omnivoice-server.exe`; cấm generic PYTHON_PATH không có omnivoice
+- **Library:** `loadOmniLibrary` + `/api/tts/voices` đọc `D:\\SuperAudioTools\\omnivoice-library.json` (410) + refs/profiles SuperAudioTools; remap `E:\\SuperFreeVoice\\...`
+- **Proof:** POST `/api/omnivoice/status` started online; preview alloy + clone (nhat/thanh-ngoc) RIFF WAV qua `/api/generate-tts` isPreview; catalog omni vi≈68; python path SuperAudioTools
+
+## Agent Done Gate — chống ảo giác khi báo xong (2026-07-22)
+
+- **Spec:** `docs/AGENT_DONE_GATE.md` · AGENTS §12b · status ladder `IMPLEMENTED`→`TYPECHECK_OK`→`SMOKE_OK`→`MEDIA_OK`→`DONE`
+- **Scripts:** `npm run smoke:vina` · `verify:tts-integrity` · `verify:agent-done` (auto domain từ git diff; cấm false-positive `package.json`→ship)
+- **Gatekeeper map Grok:** `invoke_subagent`→`spawn_subagent` · `run_command`→`run_terminal_command` · skill `~/.grok/skills/empirical-qa-auditor/SKILL.md` + check-work
+- **Global:** `~/.grok/Agents.md` + `Claude.md` Final Gatekeeper rewritten
+- **Proof:** `npm run verify:agent-done` → exit 0 · `VERDICT: PASS` · domains=core,tts,commercial,code · typecheck + smoke:vina 76/76 + verify:tts-integrity + smoke:license-one-path + smoke:core · report `scratch/agent-done-gate-report.json`
+- **MEMORY rule:** mọi dòng PASS sau này phải `Proof: \`cmd\` → exit 0; note: …` — cấm “smoke PASS” không log
 
 ## Boot fail ASAR + main harden (2026-07-21)
 
@@ -18,6 +286,8 @@
 
 - **Name:** Ai Novel · **Logo:** gold plane mark (`build/icon-source-logo.jpg`)
 - Splash: logo only (no spinner) · Taskbar icon = logo · `npm run brand:icons`
+- **Icon alpha (2026-07-22):** `generate-brand-icons.mjs` flood-fill + **circular soft-mask** + **PNG-in-ICO** (7 frames). Splash/UI prefer `splash-logo.png` / `icon.png`. Proof: `brand:icons` hasAlpha true, transparentPct ~65, blackishOpaque ~113, icoPngFrames 7. Packaged: patch `app.asar` electron/icon.* + rcedit exe; Windows icon cache may need unpin/reopen.
+- **Pack 1.0.4 ship (2026-07-22):** `npm run pack:ship` → `dist-qa-unsigned/AI-Novel-1.0.4-x64.exe` (~461MB). Preflight PASS; brand alpha in asar icon.png tPct 65.2; audit:package PASS; anti-tamper/labyrinth/crown PASS. `smoke:re-harden` aligned: main.js NOT in SHELL_FILES (boot-critical). main.js workspace not stuck minify.
 - **Unsigned install allowed** (`forceCodeSigning: false`, `ALLOW_UNSIGNED=1`)
 - Standard files: `resources/commercial/PACKAGING_STANDARD.{json,md}`
 - Pack: `npm run pack:ship` / `pack:unsigned:qa` (icons auto-regen)
@@ -30,6 +300,16 @@
 - Manual: attach `AI-Novel-*.exe` + `latest.yml` to Release tag `vX.Y.Z`
 - Policy: download stage → install next launch; `AINOVEL_UPDATE_ALLOW_UNSIGNED=1`
 - Docs: `docs/APP_UPDATE.md` · `release-repo/README.md`
+
+## Updater fix — user tự update 100% path (2026-07-22)
+
+- **Root causes:** (1) updater chỉ FEED_URL trong khi public.env=github; (2) `verifyUpdateCodeSignature=false` no-op; (3) re-harden **stale backup** ship updater cũ; (4) release thiếu `latest.yml`; (5) portable kém NSIS.
+- **Fix code:** dual-feed github→Supabase; `async () => null`; re-harden always snapshot workspace; pack:ship = **NSIS**; FEED_URL bật trong public.env.
+- **Ship 1.0.5:** `dist-qa-unsigned/AI-Novel-1.0.5-x64.exe` + GitHub `v1.0.5` có exe+latest.yml+blockmap. Proof: `release:github:verify` PASS; HEAD latest.yml/exe 200; asar has `listFeedCandidates`+`async ()=>null`.
+- **Publish:** `npm run release:github:cred` (git credential) / `release:ship-update`. Supabase full exe có thể 413 (limit 50MB) — dual-feed fallback khi limit ≥500MB.
+- **User bản <1.0.5:** cài tay 1 lần từ https://github.com/khanhtran0393/AI-Novel-release-/releases/tag/v1.0.5 — sau đó tự update.
+- **Empirical proof (2026-07-22):** `npm run smoke:auto-update` — client 1.0.4 → feed 1.0.5; Phase A download 509552392B + sha512 match; Phase B electron-updater `Found version 1.0.5` + full download to `%LOCALAPPDATA%/ainovel-update-smoke/pending/`. VERDICT PASS.
+- **latest.yml canonical (2026-07-22):** `scripts/lib/latestYml.mjs` — always `version:` + path match exe; `generate-update-manifest --strict`; pack/publish overwrite builder yml; fail if missing version.
 
 ## Xóa tất cả / factory reset (2026-07-21)
 
@@ -326,14 +606,14 @@
 - **Default:** `imageProvider=flow`, `videoProvider=flow`
 - **4 blocks:** queue multi-worker · WS 9223 · face-lock inject · retry 5×/30s + slide account + token 45′
 - **Face-lock:** `promptInjector.ts` (nguyên văn FlowAgent English system prompt)
-- **Gen Prompt (2026-07-15):** Cấm hardcode genre/style mạt thế trong director/Seedance. Style = Visual DNA/Media Style; genre = Setup `chu_de`+`phong_cach`. B10: không local-fill prompt; thiếu config/AI fail → toast/API error rõ. Timestamp unified `start-end s`. Shot graph chỉ server.
-- **Write engine (2026-07-15):** `storyWriting.requireGenreLabelFromSetup` + `lorebookForPrompt` + `writeEngineRoleLine`. WRITE/REVISE/EVALUATE/EXPAND/REWRITE/OUTLINE/IDEAS bám Setup; không fallback “Luật thế giới mạt thế”. Initial setup `chu_de`/`phong_cach` rỗng — user phải chọn.
+- **Gen Prompt (2026-07-15):** Cấm hardcode genre/style ngoài Setup trong director/Seedance. Style = Visual DNA/Media Style; genre = Setup `chu_de`+`phong_cach`. B10: không local-fill prompt; thiếu config/AI fail → toast/API error rõ. Timestamp unified `start-end s`. Shot graph chỉ server.
+- **Write engine (2026-07-15):** `storyWriting.requireGenreLabelFromSetup` + `lorebookForPrompt` + `writeEngineRoleLine`. WRITE/REVISE/EVALUATE/EXPAND/REWRITE/OUTLINE/IDEAS bám Setup; không fallback “luật thế giới ngoài Setup”. Initial setup `chu_de`/`phong_cach` rỗng — user phải chọn.
 - **Prose anti-stiff (2026-07-21):** Giữ nguyên TỪ CẤM + TỪ SÁO + time-skip/FX cấm. Cải thiện: role “nhà văn/biên kịch kể chuyện”; `buildProseCraftBlock` (nhịp câu, subtext, chi tiết đắt); humanize cho phép xen câu dài; open loop không máy; word-gate bù “chất lượng không nhồi”; `CONTINUE_TAIL_WORDS=1600` + craft nối giọng; joke 1–2 ở nhịp thở; EVALUATE trừ thô cứng; scene expand/rewrite mượt hơn.
 - **Desktop brand icon/splash (2026-07-21):** Taskbar không đổi vì (1) BrowserWindow thiếu `icon`, (2) boot splash là data-URL spinner không load `electron/splash-logo.jpg`, (3) `pack:unsigned:qa` từng `signAndEditExecutable=false` → .exe không nhúng icon. Fix: `setAppUserModelId` + window icon; loadFile `electron/splash.html`; afterPack rcedit `build/icon.ico`; bỏ flag tắt edit exe; NSIS installer icons.
 - **Boot logo 5s (2026-07-21):** `electron/splashBrand.js` — embed logo base64 + `createSplashGate` min 5000ms (`AINOVEL_SPLASH_MS`). `main.js` không nhảy `/workspace` cho đến server ready **và** đủ 5s. Pack: `brand:icons` + `brand:sync` + beforePack `syncBrandAssets` hard-fail thiếu logo; afterPack verify asar brand files. Lưu ý: re-harden minify có thể ghi đè main.js — afterPack restore; nếu kẹt hardened → `restoreShellFromBackup`.
 - **Brand pack LOCKED (2026-07-21):** Spec `docs/BRAND_SPLASH.md`; chuẩn `PACKAGING_STANDARD.md` §1–2 + JSON splash.transparentWindow; ship-check/audit required brand files; beforePack gate transparent+splashBrand; `npm run smoke:brand-splash`. Splash = logo nổi trong suốt, không panel.
-- **Pass 3 (2026-07-15):** novel-engine `setupGenrePayload`; OUTLINE/PLAN_ARC/COMMIT hard-require Setup; INITIAL_LOREBOOK production-only; NV **khuyết điểm** bắt buộc (không “khuyết tật mạt thế”); seedance duration hard-fail; soft idea/noi_dung fallback removed.
-- **AGENTS.md (2026-07-15):** viết lại toàn bộ theo runtime hiện tại — native engine, B10, Setup genre, khuyết điểm, Gen Prompt pipeline, domain tree, checklist 30s; gỡ nội dung cũ (CapCut→Edge, path hooks sai, mạt thế hardcode).
+- **Pass 3 (2026-07-15):** novel-engine `setupGenrePayload`; OUTLINE/PLAN_ARC/COMMIT hard-require Setup; INITIAL_LOREBOOK production-only; NV **khuyết điểm** bắt buộc (không “trope khuyết tật cứng”); seedance duration hard-fail; soft idea/noi_dung fallback removed.
+- **AGENTS.md (2026-07-15):** viết lại toàn bộ theo runtime hiện tại — native engine, B10, Setup genre, khuyết điểm, Gen Prompt pipeline, domain tree, checklist 30s; gỡ nội dung cũ (CapCut→Edge, path hooks sai, genre hardcode).
 - **UI lag (2026-07-15):** full `useNovelStore()` trên YoutubeSafeChecklist / SceneTtsBar / EditorPanel / CharacterProfileForm gây re-render toàn cây; fix selectors/shallow. Persist debounce 450ms cho localStorage+durable (flush on leave). SceneCard memo so sánh regen theo scene.
 - **GUI đứng / crash (2026-07-17):** (1) page.tsx full store → selector-only. Lazy-mount Media/TTS. (2) **YoutubeSafeChecklist** `useShallow` + object literal `{}` trong selector → React 19 `getSnapshot` infinite loop / Maximum update depth. Fix: primitive selectors + `EMPTY_CHAPTER_HOOK` stable. SettingsPanel JSX bad split rolled back.
 - **Upscale:** 2K/4K image + FHD/4K video · output `public/*` + `image_output` / `veo_output`
@@ -346,6 +626,9 @@
 - **API key rotate:** `src/lib/apiKeyRotate.ts` RR mỗi request + cooldown RPM(~70s)/RPD(~45m); wire `modelClients` Gemini/OpenAI/Grok/Groq (B10: chỉ xoay key cùng provider)
 - **Edge voice catalog (2026-07-15):** purge 94 dead ShortNames vs MS list; remain 116; live probe 115/116 OK (Dmitry flaky timeout). Scripts: `scripts/fix-edge-catalog.mjs`, `scripts/probe-edge-voices.mjs`, `scripts/audit-global-tts-voices.mjs`. Vina 76/76 samples OK.
 - **TTS Engine preview audit (2026-07-16):** Edge/Gemini/Piper/VieNeu/Vina 100% nghe thử OK. Omni: trim ref >450KB→12s clip + `request_timeout_s` 360 (server default 120→504); Vina prefer CPU on GTX 1050 Ti 4GB (`data/cache/vina_ort_ep.json`). CapCut: thiếu sscronet.dll (cài CapCut PC Apps). TikTok: cần SessionID. Probe: `scripts/probe-voices-resume.mjs` → `scratch/voice-probe-progress.json`.
+- **Global TTS Config bug (2026-07-21):** (1) data/vina-voices wiped + commit bbd24d5b deleted profiles_goc → Zero-Shot 0 profile; restored JSON from 24c710ba. (2) samples WAV still 0. (3) Free hid premium option while persist capcut/vina → blank select. Fix: keep current option + free→Edge heal; CapCut banner; prep fail→STATIC; clean-workspace no longer emptyDir vina catalog. Edge proof scratch/edge-preview-test.mp3 18576B. | **Pro TTS 403 (2026-07-22):** resolveRequestAccessAsync (Supabase) yêu cầu token → demote Free dù ledger HWID Pro; commercial/status vẫn PRO. Fix: HWID ledger primary (token optional), aligned status. Proof: access_no_token tier=pro, requireTts vina OK, freeLimitsApply=false. | Samples: NOT deleted by agent build — already empty; clean-workspace(bbd24d5b) wiped data/vina-voices; package.json !data/** excluded samples from exe. Fix: extraResources data/vina-voices + getVinaRoot AI_NOVEL_ROOT. Still need restore 76 WAVs (SAMPLES_REQUIRED.txt). | **Restored 2026-07-22:** 76/76 WAV via scripts/vina-voice/restore-samples-from-catalog.mjs (Edge VI/EN + ffmpeg). VERIFY withSample=76.
+- **Nghe thử preflight (2026-07-22):** (1) Free quota: `isPreview` **không** `assertAndConsumeFreeQuota` (tránh 3 lần nghe thử = 429). (2) Client preflight chung `previewPreflight.ts` — chặn Free+premium, thiếu Gemini/OpenAI/TikTok/VBee/CapCut key-session trước API. (3) MIME seal hard-fail file <400B / HTTP≥400 (không nuốt lỗi rồi play URL rác). (4) TikTok multi-session backfill. Verify: `npx tsx scripts/verify-tts-preview-preflight.ts` + live Edge preview cache HIT 200.
+- **Nghe thử chuẩn + chống rè (2026-07-22):** (1) Client/server NFE lockstep `VINA_PREVIEW_NFE_DEFAULT=20` (`previewDefaults.ts`). (2) Peak limiter ~−1 dBFS (engine + applyAudioEffects + Python ONNX). (3) MIME magic-byte seal cache v8. (4) Cache version `v3-peak-headroom-nfe20`. Live proof: Edge max−4.1dB, Vina max−1.0dB, Piper max−0.9dB; durable cache 19/19 speech-like. `npm run verify:tts-preview`.
 - **Flow video upload (2026-07-15):** API reject `imageInput` on `/v1/flow/uploadImage`. Schema = FlowAgent `upload_image`: `{ clientContext:{tool,projectId}, imageBytes, fileName, isHidden:false, isUserUploaded:true, mimeType }` → media.name. Purge `.next` legacy-imageInput chunks when fixing.
 - **Stuck spinner:** Chrome 120+ chặn --load-extension → dùng Ungoogled/Brave/portable (FlowAgent), không CDP
 - **Engine:** auto|ungoogled|brave|chrome|mullvad · `browserResolver.ts` · `tools/browsers/README.md`
@@ -372,3 +655,6 @@
 - **Code:** `resetStore()` + `projectResetEpoch` + `allowIntentionalStoreReset` + `commitIntentionalProjectResetFromLocal`
 - **Bug đã fix:** durable `pickRichest` từng khôi phục lore/chương/tên từ backup cũ → hydrate ưu tiên `projectResetEpoch`
 - **Cấm:** restore default lore, «Dự án mới», Ch.1/Ch.2 sau Làm Mới
+
+- **2026-07-23:** Splash logo black void on transparent GPU — plate disc + box-shadow under PNG (no filter:drop-shadow); header logo circular zinc plate + cache v=alpha3. Proof: `npm run smoke:brand-splash` ok; splash HTML hasPlate+hasImg.
+- **2026-07-23:** Taskbar Electron atom icon (dev): Windows uses electron.exe PE icon — `brand:patch-dev-icon` / brand:icons rcedit `build/icon.ico` into node_modules electron.exe; splashBrand prefers icon.ico on win32; main setIcon ICO + re-apply on show. Proof: electron.exe 235740672 (=packaged); resolve icon→electron/icon.ico; smoke:brand-splash ok.

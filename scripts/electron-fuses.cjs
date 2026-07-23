@@ -59,14 +59,13 @@ exports.default = async function flipElectronFuses(context) {
 };
 
 async function applyFuses(flipFuses, FuseVersion, FuseV1Options, exePath) {
-  // ASAR integrity validation MUST stay off unless the integrity hash is
-  // re-stamped *after* every afterPack mutation (rcedit icon, portable wrap).
-  // Enabling it after rcedit → "ASAR Integrity Violation" → app exits on boot
-  // (Next SWC then fails with ENOTDIR when native load breaks).
-  // Opt-in for fully signed CI pipelines: AINOVEL_ASAR_INTEGRITY=1
-  const asarIntegrity =
-    process.env.AINOVEL_ASAR_INTEGRITY === '1' ||
-    process.env.AINOVEL_ASAR_INTEGRITY === 'true';
+  // ASAR integrity: afterPack runs rcedit icon FIRST, then this fuse flip LAST.
+  // Default ON for ship hardening. Boot-fail escape: AINOVEL_ASAR_INTEGRITY=0
+  // (portable wrap / some Electron builds may still need OFF — auto-fallback below).
+  const envAsar = String(process.env.AINOVEL_ASAR_INTEGRITY || '1')
+    .trim()
+    .toLowerCase();
+  let asarIntegrity = !(envAsar === '0' || envAsar === 'false' || envAsar === 'off');
 
   const options = {
     version: FuseVersion.V1,
@@ -85,9 +84,25 @@ async function applyFuses(flipFuses, FuseVersion, FuseV1Options, exePath) {
     console.log(
       '[fuses] flipped OK:',
       exePath,
-      asarIntegrity ? '(asar integrity ON)' : '(asar integrity OFF — boot-safe)',
+      asarIntegrity ? '(asar integrity ON)' : '(asar integrity OFF)',
     );
   } catch (err) {
+    // Retry without ASAR integrity if ON failed (boot-safe fallback)
+    if (asarIntegrity) {
+      console.warn(
+        '[fuses] integrity ON failed, retry OFF:',
+        err?.message || err,
+      );
+      asarIntegrity = false;
+      options[FuseV1Options.EnableEmbeddedAsarIntegrityValidation] = false;
+      try {
+        await flipFuses(exePath, options);
+        console.log('[fuses] flipped OK (asar integrity OFF fallback):', exePath);
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
     // Some Electron versions reject individual fuses — retry without OnlyLoadAppFromAsar
     console.warn(
       '[fuses] full set failed, retry without OnlyLoadAppFromAsar:',

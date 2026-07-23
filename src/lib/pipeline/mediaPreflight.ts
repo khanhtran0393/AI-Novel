@@ -50,7 +50,7 @@ export function evaluateMediaPreflight(input: MediaPreflightInput): MediaPreflig
       level: stage === 'tts' ? 'warn' : 'block',
       code: 'setup_genre',
       message:
-        'Thiếu Setup Chủ đề + Phong cách. Mở Setup chọn trước. App không tự gán mạt thế.',
+        'Thiếu Setup Chủ đề + Phong cách. Mở Setup chọn trước. App không tự gán thể loại mặc định.',
     });
   }
 

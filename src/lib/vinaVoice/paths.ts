@@ -17,8 +17,32 @@
 import fs from 'fs';
 import path from 'path';
 
+/**
+ * Resolve data/vina-voices root.
+ * Prefer AI_NOVEL_ROOT (Electron packaged = process.resourcesPath) so samples
+ * shipped via extraResources are found — not only process.cwd() when Next
+ * worker cwd drifts.
+ */
 export function getVinaRoot(cwd = process.cwd()): string {
-  return path.join(cwd, 'data', 'vina-voices');
+  const candidates = [
+    process.env.AI_NOVEL_ROOT
+      ? path.join(process.env.AI_NOVEL_ROOT, 'data', 'vina-voices')
+      : '',
+    process.env.AINOVEL_DATA_ROOT
+      ? path.join(process.env.AINOVEL_DATA_ROOT, 'vina-voices')
+      : '',
+    path.join(cwd, 'data', 'vina-voices'),
+    path.join(process.cwd(), 'data', 'vina-voices'),
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(path.join(dir, 'profiles_goc.json'))) return dir;
+      if (fs.existsSync(path.join(dir, 'samples'))) return dir;
+    } catch {
+      /* try next */
+    }
+  }
+  return path.join(cwd || process.cwd(), 'data', 'vina-voices');
 }
 
 /** Locked ONNX brain filenames (must live under src/python_core/models/vina_voice/). */

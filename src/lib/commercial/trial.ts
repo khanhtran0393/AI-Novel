@@ -1,11 +1,19 @@
 /**
- * One-time trial per HWID — file-backed vault under data/licenses/trials.json
- * Server is source of truth; client only displays.
+ * One-time trial per HWID — machine-local vault outside portable app folder.
+ * Packaged builds prefer cloud trial; local vault is for dev / ALLOW_LOCAL_TRIAL.
+ * Survives delete-app + re-extract via machine store + Windows HKCU secondary stamp.
  */
 
 import fs from 'fs';
-import path from 'path';
-import { getHwid } from '@/lib/entitlement';
+import { getHwid, issueEntitlementToken } from '@/lib/entitlement';
+import {
+  ensureParentDir,
+  legacyInAppLicenseFile,
+  licenseMachineStoreFile,
+  migrateLegacyJsonVault,
+  readTrialRegStamp,
+  writeTrialRegStamp,
+} from '@/lib/commercial/licenseMachineStore';
 
 export type TrialRecord = {
   hwid: string;
@@ -19,9 +27,12 @@ type TrialVault = {
   trials: Record<string, TrialRecord>;
 };
 
+const VAULT_FILE = 'trials.json';
+
 function trialDays(): number {
-  const n = Number(process.env.AINOVEL_TRIAL_DAYS || 3);
-  if (!Number.isFinite(n) || n <= 0) return 3;
+  // Product default 7 days (was 3). Override: AINOVEL_TRIAL_DAYS
+  const n = Number(process.env.AINOVEL_TRIAL_DAYS || 7);
+  if (!Number.isFinite(n) || n <= 0) return 7;
   return Math.min(30, Math.floor(n));
 }
 
@@ -37,35 +48,84 @@ export function isTrialEnabled(): boolean {
 }
 
 function vaultPath(): string {
-  const root =
-    process.env.AI_NOVEL_ROOT ||
-    process.env.AINOVEL_DATA_ROOT ||
-    process.cwd();
-  return path.join(root, 'data', 'licenses', 'trials.json');
+  return licenseMachineStoreFile(VAULT_FILE);
 }
 
-function ensureDir(file: string) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+function isTrialVault(raw: unknown): raw is TrialVault {
+  if (!raw || typeof raw !== 'object') return false;
+  const v = raw as TrialVault;
+  return v.version === 1 && typeof v.trials === 'object' && v.trials != null;
+}
+
+/** First-use wins (earlier startedAt); never drop a used HWID. */
+function mergeTrialVaults(a: TrialVault, b: TrialVault): TrialVault {
+  const trials: Record<string, TrialRecord> = { ...a.trials };
+  for (const [id, rec] of Object.entries(b.trials || {})) {
+    const cur = trials[id];
+    if (!cur) {
+      trials[id] = rec;
+      continue;
+    }
+    // Prefer earlier start (true first trial); keep later endsAt if still active longer
+    const startedAt = Math.min(cur.startedAt, rec.startedAt);
+    const endsAt = Math.max(cur.endsAt, rec.endsAt);
+    trials[id] = {
+      hwid: id,
+      startedAt,
+      endsAt,
+      plan: 'trial',
+    };
+  }
+  return { version: 1, trials };
 }
 
 function loadVault(): TrialVault {
-  const p = vaultPath();
-  try {
-    if (!fs.existsSync(p)) return { version: 1, trials: {} };
-    const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as TrialVault;
-    if (!raw || raw.version !== 1 || typeof raw.trials !== 'object') {
-      return { version: 1, trials: {} };
-    }
-    return raw;
-  } catch {
-    return { version: 1, trials: {} };
-  }
+  const vault = migrateLegacyJsonVault<TrialVault>({
+    durablePath: vaultPath(),
+    legacyPath: legacyInAppLicenseFile(VAULT_FILE),
+    isValid: isTrialVault,
+    merge: mergeTrialVaults,
+    empty: { version: 1, trials: {} },
+  });
+  return vault;
 }
 
 function saveVault(v: TrialVault) {
   const p = vaultPath();
-  ensureDir(p);
+  ensureParentDir(p);
   fs.writeFileSync(p, JSON.stringify(v, null, 2), 'utf8');
+}
+
+function resolveRecord(id: string, vault: TrialVault): TrialRecord | null {
+  const fromFile = vault.trials[id] || null;
+  const fromReg = readTrialRegStamp(id);
+  if (!fromFile && !fromReg) return null;
+  if (fromFile && !fromReg) return fromFile;
+  if (!fromFile && fromReg) {
+    // Heal file from registry after portable wipe
+    const rec: TrialRecord = {
+      hwid: id,
+      startedAt: fromReg.startedAt,
+      endsAt: fromReg.endsAt,
+      plan: 'trial',
+    };
+    vault.trials[id] = rec;
+    try {
+      saveVault(vault);
+    } catch {
+      /* ignore */
+    }
+    return rec;
+  }
+  // both: first-use wins
+  const startedAt = Math.min(fromFile!.startedAt, fromReg!.startedAt);
+  const endsAt = Math.max(fromFile!.endsAt, fromReg!.endsAt);
+  return {
+    hwid: id,
+    startedAt,
+    endsAt,
+    plan: 'trial',
+  };
 }
 
 export function getTrialStatus(hwid?: string): {
@@ -83,7 +143,7 @@ export function getTrialStatus(hwid?: string): {
     return { enabled: false, active: false, used: false, record: null, days, hwid: id };
   }
   const vault = loadVault();
-  const rec = vault.trials[id] || null;
+  const rec = resolveRecord(id, vault);
   const now = Math.floor(Date.now() / 1000);
   if (!rec) {
     return { enabled: true, active: false, used: false, record: null, days, hwid: id };
@@ -99,12 +159,35 @@ export function getTrialStatus(hwid?: string): {
   };
 }
 
+/** Issue Ed25519 trial ticket when seller/dev signer is available (gates + UI). */
+export function mintTrialTokenIfPossible(
+  hwid: string,
+  endsAtUnix: number,
+): string | null {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const expSeconds = Math.max(60, endsAtUnix - now);
+    return issueEntitlementToken({
+      is_pro: true,
+      is_vip: false,
+      is_trial: true,
+      plan: 'trial',
+      hwid: hwid.toLowerCase(),
+      expSeconds,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Start trial once per HWID. Second call returns existing (or expired used). */
 export function startTrial(hwid?: string): {
   ok: boolean;
   created: boolean;
   status: ReturnType<typeof getTrialStatus>;
   error?: string;
+  /** AINOVEL2 trial ticket when private signer available */
+  token?: string | null;
 } {
   if (!isTrialEnabled()) {
     return {
@@ -116,16 +199,21 @@ export function startTrial(hwid?: string): {
   }
   const id = (hwid || getHwid()).toLowerCase();
   const vault = loadVault();
-  const existing = vault.trials[id];
+  const existing = resolveRecord(id, vault);
   if (existing) {
+    // Ensure both durable file + reg still hold the stamp after wipe recovery
+    vault.trials[id] = existing;
+    saveVault(vault);
+    writeTrialRegStamp(id, existing.startedAt, existing.endsAt);
+    const active = existing.endsAt > Math.floor(Date.now() / 1000);
     return {
       ok: true,
       created: false,
       status: getTrialStatus(id),
-      error:
-        existing.endsAt > Math.floor(Date.now() / 1000)
-          ? undefined
-          : 'Máy này đã dùng trial (hết hạn). Mua Pro để tiếp tục.',
+      token: active ? mintTrialTokenIfPossible(id, existing.endsAt) : null,
+      error: active
+        ? undefined
+        : 'Máy này đã dùng trial (hết hạn). Mua Pro để tiếp tục.',
     };
   }
   const now = Math.floor(Date.now() / 1000);
@@ -137,7 +225,13 @@ export function startTrial(hwid?: string): {
   };
   vault.trials[id] = rec;
   saveVault(vault);
-  return { ok: true, created: true, status: getTrialStatus(id) };
+  writeTrialRegStamp(id, rec.startedAt, rec.endsAt);
+  return {
+    ok: true,
+    created: true,
+    status: getTrialStatus(id),
+    token: mintTrialTokenIfPossible(id, rec.endsAt),
+  };
 }
 
 /**

@@ -4,8 +4,9 @@ const { parse } = require('url');
 const next = require('next');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const http = require('http');
+const os = require('os');
 
 const durable = require('./electron/durableStore');
 const credentialVault = require('./electron/credentialVault');
@@ -47,10 +48,28 @@ if (process.platform === 'win32') {
   }
 }
 
-// ─── Single-instance (triêt để: cấm 2 Electron → kill cổng / exit 1) ───
+// ─── Single-instance (cấm 2 Electron → focus cửa sổ cũ) ───
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
+  // Second click often looks like "exe không mở" if user doesn't see the first window.
+  // Notify + exit; first instance handles 'second-instance' and raises the UI.
   console.log('[Startup] Instance khác đang chạy — thoát 0 (focus cửa sổ cũ).');
+  try {
+    const { execFileSync } = require('child_process');
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        "Add-Type -AssemblyName PresentationFramework; [void][System.Windows.MessageBox]::Show('Ai Novel đang chạy rồi. Cửa sổ hiện có sẽ được đưa lên trên. Nếu không thấy, kiểm tra taskbar hoặc Alt+Tab.','Ai Novel', 'OK', 'Information')",
+      ],
+      { timeout: 12000, windowsHide: true, stdio: 'ignore' },
+    );
+  } catch {
+    /* ignore dialog failures */
+  }
   app.quit();
   process.exit(0);
 }
@@ -222,6 +241,8 @@ function ensureEnv() {
       'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
       'AINOVEL_UPDATE_ALLOW_PRERELEASE',
     ]);
+    // Seller-controlled: provider/github/unsigned + public endpoints.
+    // Customer must NOT set PROVIDER / GITHUB_* / ALLOW_UNSIGNED (bundle only).
     const bundledPinKeys = new Set([
       'AINOVEL_LICENSE_API_URL',
       'AINOVEL_LICENSE_API_HOSTS',
@@ -229,10 +250,14 @@ function ensureEnv() {
       'AINOVEL_TRIAL_ENABLED',
       'AINOVEL_TRIAL_DAYS',
       'AINOVEL_UPDATE_CHANNEL',
+      'AINOVEL_UPDATE_PROVIDER',
+      'AINOVEL_UPDATE_GITHUB_OWNER',
+      'AINOVEL_UPDATE_GITHUB_REPO',
       'AINOVEL_UPDATE_FEED_URL',
       'AINOVEL_UPDATE_FEED_HOSTS',
       'AINOVEL_UPDATE_CHECK_ON_LAUNCH',
       'AINOVEL_UPDATE_ALLOW_PRERELEASE',
+      'AINOVEL_UPDATE_ALLOW_UNSIGNED',
     ]);
     try {
       const commercialEnv = path.join(app.getPath('userData'), '.env.commercial');
@@ -270,17 +295,25 @@ function ensureEnv() {
     ]) {
       delete process.env[key];
     }
-    // Customer must not expand pin allowlist via inherited env
+    // Customer must not expand pin allowlist / hijack update source via inherited env
     delete process.env.AINOVEL_LICENSE_API_HOSTS;
     delete process.env.AINOVEL_LICENSE_TLS_PINS;
     delete process.env.AINOVEL_UPDATE_FEED_HOSTS;
-    // Re-load ONLY pin keys from bundle so allowlist is seller-controlled
+    delete process.env.AINOVEL_UPDATE_PROVIDER;
+    delete process.env.AINOVEL_UPDATE_GITHUB_OWNER;
+    delete process.env.AINOVEL_UPDATE_GITHUB_REPO;
+    delete process.env.AINOVEL_UPDATE_ALLOW_UNSIGNED;
+    // Re-load seller-only keys from bundle (overwrite any inherited values)
     loadEnvFile(
       path.join(runtimeRoot, 'commercial', 'public.env'),
       new Set([
         'AINOVEL_LICENSE_API_HOSTS',
         'AINOVEL_LICENSE_TLS_PINS',
         'AINOVEL_UPDATE_FEED_HOSTS',
+        'AINOVEL_UPDATE_PROVIDER',
+        'AINOVEL_UPDATE_GITHUB_OWNER',
+        'AINOVEL_UPDATE_GITHUB_REPO',
+        'AINOVEL_UPDATE_ALLOW_UNSIGNED',
       ]),
     );
     // If customer set a rogue LICENSE_API_URL, host pin rejects at runtime.
@@ -796,6 +829,79 @@ const nextApp = next({ dev, dir: appDir });
 const handle = nextApp.getRequestHandler();
 
 /**
+ * Serve runtime-written assets under AI_NOVEL_ROOT/public/* (TTS audio, gen media).
+ * Next production only ships build-time public/ inside asar — files created after boot
+ * (e.g. public/audio/*.mp3) would 404 without this bridge (white-machine TTS play path).
+ */
+const RUNTIME_PUBLIC_PREFIXES = [
+  '/audio/',
+  '/images/',
+  '/video/',
+  '/renders/',
+  '/downloads/',
+  '/watermarked/',
+  '/scene-cache/',
+  '/studio/',
+];
+
+function contentTypeForPublicFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const map = {
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg',
+    '.m4a': 'audio/mp4',
+    '.webm': 'video/webm',
+    '.mp4': 'video/mp4',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.json': 'application/json',
+    '.txt': 'text/plain; charset=utf-8',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+function tryServeRuntimePublic(req, res, pathname) {
+  if (!pathname || req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(pathname);
+    } catch {
+      return pathname;
+    }
+  })();
+  if (!RUNTIME_PUBLIC_PREFIXES.some((p) => decoded.startsWith(p))) return false;
+  if (decoded.includes('..') || decoded.includes('\0')) return false;
+
+  const root = process.env.AI_NOVEL_ROOT || process.cwd();
+  const rel = decoded.replace(/^\/+/, '');
+  const filePath = path.resolve(root, 'public', rel);
+  const publicRoot = path.resolve(root, 'public');
+  if (filePath !== publicRoot && !filePath.startsWith(publicRoot + path.sep)) {
+    return false;
+  }
+  try {
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
+    const data = fs.readFileSync(filePath);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', contentTypeForPublicFile(filePath));
+    res.setHeader('Content-Length', String(data.length));
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method === 'HEAD') {
+      res.end();
+    } else {
+      res.end(data);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True if window is usable on a display: ≥40% of area intersects that workArea
  * (catches ghost bounds on disconnected secondary monitors — classic "app không lên").
  */
@@ -954,12 +1060,20 @@ function createMainWindow(opts = {}) {
     return mainWindow;
   }
 
-  const iconPath = brandPaths.icon;
+  // Taskbar: Windows wants multi-size .ico (not just PNG). Prefer ICO path.
+  const iconPath =
+    brandPaths.iconIco || brandPaths.icon || brandPaths.iconPng || brandPaths.logo || null;
   let iconImage;
   if (iconPath) {
     try {
       iconImage = nativeImage.createFromPath(iconPath);
-      if (iconImage.isEmpty()) iconImage = undefined;
+      if (iconImage.isEmpty() && brandPaths.iconPng) {
+        iconImage = nativeImage.createFromPath(brandPaths.iconPng);
+      }
+      if ((!iconImage || iconImage.isEmpty()) && brandPaths.logo) {
+        iconImage = nativeImage.createFromPath(brandPaths.logo);
+      }
+      if (iconImage && iconImage.isEmpty()) iconImage = undefined;
     } catch {
       iconImage = undefined;
     }
@@ -971,7 +1085,7 @@ function createMainWindow(opts = {}) {
     minWidth: 1024,
     minHeight: 768,
     title: 'AI Novel & Script Generator',
-    ...(iconPath ? { icon: iconPath } : {}),
+    ...(iconImage || iconPath ? { icon: iconImage || iconPath } : {}),
     frame: false,
     // Transparent shell: boot splash = logo only floating on desktop
     transparent: true,
@@ -994,13 +1108,18 @@ function createMainWindow(opts = {}) {
     },
   });
 
-  if (iconPath) {
+  const applyWindowIcon = () => {
+    if (!mainWindow || mainWindow.isDestroyed() || (!iconImage && !iconPath)) return;
     try {
       mainWindow.setIcon(iconImage || iconPath);
     } catch (e) {
       console.warn('[Window] setIcon failed:', e?.message || e);
     }
-  }
+  };
+  applyWindowIcon();
+  // Re-apply after show — some Windows builds ignore icon set before first paint
+  mainWindow.once('ready-to-show', () => applyWindowIcon());
+  mainWindow.once('show', () => applyWindowIcon());
   console.log(
     `[Window] transparent-splash icon=${iconPath || '(none)'} logo=${brandPaths.logo || '(none)'} splashMinMs=${SPLASH_MIN_MS}`,
   );
@@ -1042,11 +1161,24 @@ function createMainWindow(opts = {}) {
   // Boot only: force onto primary (multi-monitor ghost bounds)
   placeWindowOnPrimary(mainWindow, { force: true });
 
-  mainWindow.once('ready-to-show', () => {
-    focusMainWindow({ forcePlace: false, flashTop: false });
-  });
-  // Fallback if ready-to-show never fires — soft (no setBounds thrash)
-  setTimeout(() => focusMainWindow({ forcePlace: false, flashTop: false }), 800);
+  // Show ASAP — transparent splash must not wait forever for ready-to-show
+  // (some GPUs/Windows builds never fire ready-to-show → "exe không mở").
+  const revealSplash = () => {
+    try {
+      focusMainWindow({ forcePlace: false, flashTop: false });
+    } catch {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+  mainWindow.once('ready-to-show', revealSplash);
+  // Immediate + fallback reveals (portable cold boot / slow next.prepare)
+  setTimeout(revealSplash, 50);
+  setTimeout(revealSplash, 800);
+  setTimeout(revealSplash, 2500);
 
   if (!createMainWindow._ipcBound) {
     createMainWindow._ipcBound = true;
@@ -1080,6 +1212,13 @@ function createMainWindow(opts = {}) {
     ipcMain.handle('ainovel-update-install', async (event) => {
       assertTrustedIpc(event);
       return appUpdater.quitAndInstall();
+    });
+    ipcMain.handle('ainovel-update-ack-changelog', async (event) => {
+      assertTrustedIpc(event);
+      if (typeof appUpdater.acknowledgeJustUpdated === 'function') {
+        return appUpdater.acknowledgeJustUpdated();
+      }
+      return appUpdater.getStatus();
     });
   }
 
@@ -1177,12 +1316,155 @@ function loadWorkspaceUrl() {
 app.on('second-instance', () => {
   console.log('[Startup] second-instance → focus existing window');
   if (mainWindow && !mainWindow.isDestroyed()) {
-    // User double-launched bat: bring to front + ensure visible
+    // User double-launched: bring to front + ensure visible (not behind / off-screen)
+    try {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+    } catch {
+      /* ignore */
+    }
     focusMainWindow({ forcePlace: true, flashTop: true });
   } else {
     createMainWindow({ loadApp: true });
   }
 });
+
+/**
+ * Start LA Studio desktop engine hidden (API :3900 + Kokoro pack).
+ * Best-effort — does not block boot if missing.
+ */
+function ensureLaStudioBackgroundEngine() {
+  try {
+    if (process.env.AINOVEL_LA_STUDIO_AUTOSTART === '0') {
+      console.log('[LA Studio] autostart disabled (AINOVEL_LA_STUDIO_AUTOSTART=0)');
+      return;
+    }
+    const settingsPath = path.join(os.homedir(), '.lastudio', 'settings.ini');
+    try {
+      let raw = fs.existsSync(settingsPath)
+        ? fs.readFileSync(settingsPath, 'utf8')
+        : '';
+      const setKey = (key, value) => {
+        const re = new RegExp(`^${key}=.*$`, 'mi');
+        if (re.test(raw)) raw = raw.replace(re, `${key}=${value}`);
+        else if (/^\[api\]/mi.test(raw)) {
+          raw = raw.replace(/^\[api\][ \t]*\r?\n/mi, `[api]\n${key}=${value}\n`);
+        } else {
+          raw = `${raw.trimEnd()}\n\n[api]\n${key}=${value}\n`;
+        }
+      };
+      setKey('serverEnabled', 'true');
+      setKey('serverAllowLan', 'false');
+      setKey('serverPort', '3900');
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(settingsPath, raw.endsWith('\n') ? raw : `${raw}\n`, 'utf8');
+    } catch (e) {
+      console.warn('[LA Studio] settings write failed', e?.message || e);
+    }
+
+    const candidates = [
+      process.env.LA_STUDIO_EXE,
+      process.env.AINOVEL_LA_STUDIO_EXE,
+      'D:\\LA Studio\\bin\\LA Studio.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'LA Studio', 'bin', 'LA Studio.exe'),
+      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'LA Studio', 'bin', 'LA Studio.exe'),
+    ].filter(Boolean);
+
+    const exe = candidates.find((p) => p && fs.existsSync(p));
+    if (!exe) {
+      console.warn('[LA Studio] exe not found — skip background spawn');
+      return;
+    }
+
+    /** Hide LA Studio HWND (never CloseMainWindow — that can quit the engine). */
+    const hideLaStudioUi = () => {
+      if (process.platform !== 'win32') return;
+      try {
+        const hidePs1 = path.join(os.tmpdir(), 'ainovel-la-studio', 'hide-la-studio.ps1');
+        // Prefer script written by laStudioLocal; fallback write minimal once
+        if (!fs.existsSync(hidePs1)) {
+          fs.mkdirSync(path.dirname(hidePs1), { recursive: true });
+          fs.writeFileSync(
+            hidePs1,
+            [
+              "$ErrorActionPreference='SilentlyContinue'",
+              "if(-not('Ainovel.LaHideWin'-as[type])){Add-Type -TypeDefinition @'",
+              'using System;using System.Runtime.InteropServices;namespace Ainovel{public class LaHideWin{',
+              'public delegate bool EnumProc(IntPtr h,IntPtr l);',
+              '[DllImport("user32.dll")]public static extern bool EnumWindows(EnumProc c,IntPtr l);',
+              '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int n);',
+              '[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);',
+              'public const int SW_HIDE=0;public const int SW_MINIMIZE=6;}}',
+              "'@}",
+              "$t=@(Get-Process|?{$n=[string]$_.ProcessName;$p='';try{$p=[string]$_.Path}catch{};($n -eq 'LA Studio')-or($n -eq 'LAStudio')-or($p -like '*\\LA Studio\\bin\\LA Studio.exe')})",
+              '$ids=@($t|%{[int]$_.Id}|Select -Unique);if($ids.Count-lt1){exit 0}',
+              '[Ainovel.LaHideWin]::EnumWindows({param($h,$l)$o=[uint32]0;[void][Ainovel.LaHideWin]::GetWindowThreadProcessId($h,[ref]$o);if($ids -contains [int]$o){[void][Ainovel.LaHideWin]::ShowWindow($h,[Ainovel.LaHideWin]::SW_MINIMIZE);[void][Ainovel.LaHideWin]::ShowWindow($h,[Ainovel.LaHideWin]::SW_HIDE)};return $true},[IntPtr]::Zero)|Out-Null',
+            ].join('\n'),
+            'utf8',
+          );
+        }
+        spawn(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', hidePs1],
+          { detached: true, stdio: 'ignore', windowsHide: true },
+        ).unref();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    // Probe health first — if already online, just hide the GUI
+    const probe = http.get('http://127.0.0.1:3900/health', { timeout: 1500 }, (res) => {
+      res.resume();
+      if (res.statusCode === 200) {
+        console.log('[LA Studio] API already online :3900 — hide UI');
+        hideLaStudioUi();
+        // Re-hide for a bit in case Qt redraws
+        let n = 0;
+        const t = setInterval(() => {
+          hideLaStudioUi();
+          if (++n >= 25) clearInterval(t);
+        }, 800);
+      }
+    });
+    probe.on('error', () => {
+      try {
+        const escaped = String(exe).replace(/'/g, "''");
+        const workDir = path.dirname(exe).replace(/'/g, "''");
+        spawn(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-WindowStyle',
+            'Hidden',
+            '-Command',
+            `Start-Process -FilePath '${escaped}' -WorkingDirectory '${workDir}' -WindowStyle Minimized`,
+          ],
+          { detached: true, stdio: 'ignore', windowsHide: true },
+        ).unref();
+        console.log(`[LA Studio] spawned minimized+hidden: ${exe}`);
+        hideLaStudioUi();
+        let n = 0;
+        const t = setInterval(() => {
+          hideLaStudioUi();
+          if (++n >= 90) clearInterval(t); // ~72s while cold-start / model load
+        }, 800);
+      } catch (e) {
+        console.warn('[LA Studio] spawn failed', e?.message || e);
+      }
+    });
+    probe.setTimeout(1500, () => {
+      try {
+        probe.destroy();
+      } catch {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    console.warn('[LA Studio] ensure background failed', e?.message || e);
+  }
+}
 
 app.whenReady().then(async () => {
   ensureEnv();
@@ -1192,7 +1474,10 @@ app.whenReady().then(async () => {
     callback(false);
   });
 
-  // Auto-update: only when packaged + AINOVEL_UPDATE_FEED_URL set
+  // LA Studio TTS engine — run hidden as soon as Electron is ready
+  ensureLaStudioBackgroundEngine();
+
+  // Auto-update: packaged + github (public.env) or generic FEED_URL
   try {
     appUpdater.initAutoUpdater({
       log: (s) => console.log(`[Updater] ${s}`),
@@ -1237,6 +1522,8 @@ app.whenReady().then(async () => {
 
     const server = createServer((req, res) => {
       const parsedUrl = parse(req.url, true);
+      // Runtime media (TTS/image writes under resources/public) — not in asar static map
+      if (tryServeRuntimePublic(req, res, parsedUrl.pathname || '')) return;
       handle(req, res, parsedUrl);
     });
     httpServer = server;

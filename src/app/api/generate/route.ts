@@ -8,6 +8,7 @@ import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import {
   FREE_LIMITS,
+  TRIAL_LIMITS,
   generateRequestToFreeBucket,
 } from '@/lib/commercial/freeLimitsPolicy';
 import {
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Free tier: daily 3/bucket + write ≤600 từ + ≤2 chương (server authority)
+    // Free: 3/day + ≤600 từ + ≤2 ch. Trial: 5/day + ≤3000 từ + ≤10 ch.
     const freeBucket = generateRequestToFreeBucket(requestType);
     const payloadObj =
       payload && typeof payload === 'object' && !Array.isArray(payload)
@@ -96,20 +97,34 @@ export async function POST(req: Request) {
         : {};
     if (freeBucket === 'write_chapter') {
       const constrained = await assertFreeWriteConstraints(req, payloadObj, body);
-      if (constrained) applyFreeWordGoalToPayload(payloadObj, constrained.wordGoal);
+      if (constrained) {
+        applyFreeWordGoalToPayload(payloadObj, constrained.wordGoal);
+      }
     } else if (freeBucket === 'outline_ideas') {
       await assertFreeOutlineConstraints(req, payloadObj, body);
-      // Clamp outline chapter count on payload when present
+      // Soft-clamp outline chapter count (Free 2 / Trial 10) when client overshoots
+      const maxChCandidates = [
+        FREE_LIMITS.maxChapters,
+        TRIAL_LIMITS.maxChapters,
+      ];
+      // Prefer larger clamp only if value exceeds Free — trial assert already hard-fails >10
       if (payloadObj.so_chuong != null) {
         const n = Number(payloadObj.so_chuong);
-        if (Number.isFinite(n) && n > FREE_LIMITS.maxChapters) {
-          payloadObj.so_chuong = FREE_LIMITS.maxChapters;
+        if (Number.isFinite(n) && n > TRIAL_LIMITS.maxChapters) {
+          payloadObj.so_chuong = TRIAL_LIMITS.maxChapters;
+        } else if (
+          Number.isFinite(n) &&
+          n > FREE_LIMITS.maxChapters &&
+          n <= TRIAL_LIMITS.maxChapters
+        ) {
+          // leave as-is for trial; free path already threw in assertFreeOutlineConstraints
+          void maxChCandidates;
         }
       }
       if (payloadObj.chapterCount != null) {
         const n = Number(payloadObj.chapterCount);
-        if (Number.isFinite(n) && n > FREE_LIMITS.maxChapters) {
-          payloadObj.chapterCount = FREE_LIMITS.maxChapters;
+        if (Number.isFinite(n) && n > TRIAL_LIMITS.maxChapters) {
+          payloadObj.chapterCount = TRIAL_LIMITS.maxChapters;
         }
       }
     }

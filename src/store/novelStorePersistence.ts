@@ -228,6 +228,20 @@ export function createNovelStorePersistOptions(storeAccess: {
           );
           return Number.isFinite(n) ? Math.max(10, Math.min(100, Math.round(n))) : 80;
         })(),
+        activeStyleEngineId: (() => {
+          const raw = (p as { activeStyleEngineId?: string | null }).activeStyleEngineId;
+          if (raw == null || raw === '') return null;
+          const allowed = [
+            'tu_tien',
+            'do_thi_va_mat',
+            'mat_the_sinh_ton',
+            'kinh_di_huyen_nghi',
+            'cung_dau_ngon_tinh',
+          ] as const;
+          return (allowed as readonly string[]).includes(raw)
+            ? (raw as (typeof allowed)[number])
+            : current.activeStyleEngineId ?? null;
+        })(),
         userRules: {
           forbidden_words:
             (p.userRules?.forbidden_words || '').trim() || current.userRules.forbidden_words,
@@ -259,6 +273,13 @@ export function createNovelStorePersistOptions(storeAccess: {
         },
         projectUrls: { ...current.projectUrls, ...(p.projectUrls || {}) },
         nhan_vat_prompts: { ...current.nhan_vat_prompts, ...(p.nhan_vat_prompts || {}) },
+        scene_location_assets:
+          Array.isArray(
+            (p as { scene_location_assets?: unknown }).scene_location_assets,
+          )
+            ? (p as { scene_location_assets: NovelState['scene_location_assets'] })
+                .scene_location_assets
+            : current.scene_location_assets || [],
         voiceCast: normalizeVoiceCast(
           (p as { voiceCast?: ProjectVoiceCast }).voiceCast ?? current.voiceCast,
         ),
@@ -329,6 +350,7 @@ export function createNovelStorePersistOptions(storeAccess: {
       tri_nho_ngan_han: state.tri_nho_ngan_han,
       pipeline_step: state.pipeline_step,
       nhan_vat_prompts: state.nhan_vat_prompts,
+      scene_location_assets: state.scene_location_assets || [],
       imageModel: state.imageModel,
       videoModel: state.videoModel,
       imageProvider: state.imageProvider,
@@ -355,6 +377,8 @@ export function createNovelStorePersistOptions(storeAccess: {
         typeof state.youtubeSimilarityTarget === 'number'
           ? Math.max(10, Math.min(100, Math.round(state.youtubeSimilarityTarget)))
           : 80,
+      scriptMode: state.scriptMode,
+      activeStyleEngineId: state.activeStyleEngineId ?? null,
       useGpuAcceleration: state.useGpuAcceleration,
 
       aiMasterModel: state.aiMasterModel,

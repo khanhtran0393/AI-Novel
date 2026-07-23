@@ -44,7 +44,7 @@ function findFfprobe(): string {
   return 'ffprobe';
 }
 
-function probeDuration(file: string): number {
+export function probeDuration(file: string): number {
   try {
     const out = execFileSync(
       findFfprobe(),
@@ -93,11 +93,13 @@ export function optimizeCloneSample(
     );
     steps.push('mono_44k');
 
-    // 2) trim silence + highpass + soft lowpass + loudnorm
-    // silenceremove: cut leading/trailing quiet
+    // 2) trim silence + gentle EQ + loudnorm
+    // Keep more low-end than before (highpass 50, not 80) so male/deep F0 is not
+    // thinned; keep more air (lowpass 12k) for timbre. Avoid aggressive band-cut
+    // that makes clones sound thin/different from the raw sample.
     const af = [
-      'highpass=f=80',
-      'lowpass=f=10000',
+      'highpass=f=50',
+      'lowpass=f=12000',
       'silenceremove=start_periods=1:start_duration=0.15:start_threshold=-40dB:detection=peak',
       'areverse',
       'silenceremove=start_periods=1:start_duration=0.15:start_threshold=-40dB:detection=peak',
@@ -175,4 +177,64 @@ export function stableSeedFromString(s: string, salt = 0): number {
   }
   const n = (h >>> 0) % 9000;
   return 1000 + n;
+}
+
+/**
+ * Heuristic: ref_text must match the *kept* sample duration.
+ * Vietnamese narration ≈ 8–14 chars/s (with spaces). Far outside → Model A
+ * mis-aligns mel vs transcript → pitch/timbre drift (the usual "tần số lệch" complaint).
+ */
+export function assessRefTextAlignment(
+  refText: string,
+  durationSec: number,
+): { ok: boolean; charsPerSec: number; warning?: string; error?: string } {
+  const text = (refText || '').normalize('NFC').trim();
+  const dur = Number(durationSec) || 0;
+  if (!text) {
+    return {
+      ok: false,
+      charsPerSec: 0,
+      error:
+        'Thiếu transcript mẫu (ref_text). Phải gõ đúng lời đang nói trong đoạn WAV đã giữ.',
+    };
+  }
+  if (dur < 0.8) {
+    return {
+      ok: false,
+      charsPerSec: 0,
+      error: 'Mẫu quá ngắn (<0.8s). Cần đoạn nói rõ 3–12 giây.',
+    };
+  }
+  const chars = text.replace(/\s+/g, ' ').length;
+  const cps = chars / dur;
+  // Too much text for short audio (common after cap_12s with full-chapter transcript)
+  if (cps > 18) {
+    return {
+      ok: false,
+      charsPerSec: cps,
+      error:
+        `Transcript quá dài so với file mẫu (≈${cps.toFixed(1)} ký tự/giây, mẫu ${dur.toFixed(1)}s). ` +
+        `Model align sai → giọng/tần số lệch gốc. ` +
+        `Chỉ gõ đúng câu đang nói trong đoạn đã cắt (thường ≤12s), không dán cả đoạn dài.`,
+    };
+  }
+  if (cps < 2.5 && chars > 12) {
+    return {
+      ok: false,
+      charsPerSec: cps,
+      error:
+        `Transcript quá ngắn so với độ dài mẫu (≈${cps.toFixed(1)} ký tự/giây). ` +
+        `Hãy gõ đủ lời trong file — thiếu chữ cũng làm lệch pitch/timbre.`,
+    };
+  }
+  if (cps > 14 || cps < 4) {
+    return {
+      ok: true,
+      charsPerSec: cps,
+      warning:
+        `Transcript/mẫu hơi lệch nhịp (≈${cps.toFixed(1)} ký tự/giây). ` +
+        `Nếu clone vẫn lệch tần số, rút gọn sample + gõ đúng lời đoạn đó.`,
+    };
+  }
+  return { ok: true, charsPerSec: cps };
 }

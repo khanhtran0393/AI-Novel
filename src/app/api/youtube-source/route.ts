@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchYoutubeSource } from '@/lib/youtubeSource';
+import { buildYoutubeTranscriptUserError, fetchYoutubeSource } from '@/lib/youtubeSource';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -17,7 +17,14 @@ export async function POST(req: NextRequest) {
     const url = typeof body.url === 'string' ? body.url.trim() : '';
     if (!url) {
       return NextResponse.json(
-        { success: false, error: 'Thiếu url YouTube' },
+        {
+          success: false,
+          errorCode: 'INVALID_URL',
+          error: buildYoutubeTranscriptUserError({
+            code: 'INVALID_URL',
+            detail: 'Body thiếu field url',
+          }),
+        },
         { status: 400 },
       );
     }
@@ -29,7 +36,15 @@ export async function POST(req: NextRequest) {
     const result = await fetchYoutubeSource(url, { preferredLangs });
     if (!result.ok) {
       return NextResponse.json(
-        { success: false, error: result.error || 'Fetch failed', ...result },
+        {
+          success: false,
+          error: result.error || 'Fetch failed',
+          errorCode: result.errorCode,
+          videoId: result.videoId,
+          url: result.url,
+          title: result.title,
+          channel: result.channel,
+        },
         { status: 422 },
       );
     }
@@ -38,7 +53,13 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const err = e as Error;
     return NextResponse.json(
-      { success: false, error: err.message || 'youtube-source failed' },
+      {
+        success: false,
+        errorCode: 'FETCH_FAILED',
+        error:
+          err.message ||
+          'youtube-source failed — kiểm tra mạng và python_core/fetch_youtube_transcript.py',
+      },
       { status: 500 },
     );
   }

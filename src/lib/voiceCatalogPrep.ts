@@ -4,11 +4,20 @@ import { API } from '@/contracts';
  * Gọi /api/tts/voices để merge: static + Piper scan + OmniVoice library + Vina profiles.
  */
 import {
+  STATIC_VOICE_CATALOG,
   cloneVoiceCatalog,
   countCatalogVoices,
   type VoiceCatalog,
   type VoiceOption,
 } from './voiceCatalog';
+
+export type CapCutPrepDiag = {
+  ok: boolean;
+  dllPath: string | null;
+  version: string | null;
+  voiceCount: number;
+  message: string;
+};
 
 export type VoiceCatalogPrepResult = {
   ok: boolean;
@@ -17,6 +26,8 @@ export type VoiceCatalogPrepResult = {
   sources: string[];
   preparedAt: string;
   error?: string;
+  /** CapCut sscronet diagnose from /api/tts/voices (null if route omitted) */
+  capcut?: CapCutPrepDiag | null;
 };
 
 let cachedPrep: VoiceCatalogPrepResult | null = null;
@@ -115,18 +126,24 @@ export async function prepareVoiceCatalog(options?: {
         counts: data.counts || countCatalogVoices(catalog),
         sources: Array.isArray(data.sources) ? data.sources : ['static'],
         preparedAt: data.preparedAt || new Date().toISOString(),
+        capcut:
+          data.capcut && typeof data.capcut === 'object'
+            ? (data.capcut as CapCutPrepDiag)
+            : null,
       };
       cachedPrep = result;
       return result;
     } catch (err) {
-      const catalog: VoiceCatalog = {};
+      // Không để catalog rỗng — dropdown «Không có giọng» khi API fail
+      const catalog = cloneVoiceCatalog(STATIC_VOICE_CATALOG);
       const result: VoiceCatalogPrepResult = {
         ok: false,
         catalog,
-        counts: {},
-        sources: [],
+        counts: countCatalogVoices(catalog),
+        sources: ['static-error-fallback'],
         preparedAt: new Date().toISOString(),
         error: err instanceof Error ? err.message : String(err),
+        capcut: null,
       };
       cachedPrep = result;
       return result;

@@ -63,6 +63,32 @@ export function characterExprImageKey(
   return `${characterImageKey(characterName)}_expr_${emotion}`;
 }
 
+/**
+ * Wardrobe / costume variant still for a character.
+ * Example: char_Hàn Dực_wardrobe_battle
+ */
+export function characterWardrobeImageKey(
+  characterName: string,
+  wardrobeId: string,
+): string {
+  const id = String(wardrobeId || '')
+    .normalize('NFC')
+    .trim()
+    .replace(/[^\w\-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+  return `${characterImageKey(characterName)}_wardrobe_${id || 'default'}`;
+}
+
+/**
+ * Scene location / environment concept still (reusable location library).
+ * Example: loc_Phố đêm mưa
+ */
+export function sceneLocationImageKey(locationName: string): string {
+  const name = String(locationName || '').normalize('NFC').trim();
+  return `loc_${name}`;
+}
+
 /** Parse "chapter_scene" scene keys; returns null if not that shape */
 export function parseSceneAssetKey(
   key: string,

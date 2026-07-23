@@ -25,7 +25,9 @@ export const provider_capcut_tts: TTSProvider = {
     return {
       buffer,
       method: `CapCut TTS (${resolved.displayName} · ${resolved.resourceId})`,
-      nativeSpeedApplied: speed !== '1.0',
+      // CapCut always receives VOICE_RATE (including 1.0) — do not double-apply via FFmpeg.
+      // Pitch is not supported natively → FFmpeg post when pitch ≠ 0.
+      nativeSpeedApplied: true,
       nativePitchApplied: false,
     };
   },

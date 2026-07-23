@@ -178,13 +178,14 @@ contextBridge.exposeInMainWorld('ainovelTools', {
   }
 });
 
-/** Desktop auto-update (electron-updater) — no-op when feed URL unset */
+/** Desktop auto-update (electron-updater) — github + generic dual-feed when packaged */
 contextBridge.exposeInMainWorld('ainovelUpdater', {
   isElectron: true,
   getStatus: () => ipcRenderer.invoke('ainovel-update-status'),
   check: () => ipcRenderer.invoke('ainovel-update-check'),
   download: () => ipcRenderer.invoke('ainovel-update-download'),
   install: () => ipcRenderer.invoke('ainovel-update-install'),
+  ackChangelog: () => ipcRenderer.invoke('ainovel-update-ack-changelog'),
   onStatus: (handler) => {
     if (typeof handler !== 'function') return () => {};
     const fn = (_e, payload) => {

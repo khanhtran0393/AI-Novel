@@ -65,17 +65,33 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (!result.status.active && !result.created) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: result.error || 'Máy này đã dùng trial (hết hạn).',
+          status: result.status,
+        },
+        { status: 400 },
+      );
+    }
     return NextResponse.json({
       ok: true,
       created: result.created,
+      cloud: false,
+      token: result.token || null,
       message: result.created
-        ? `Trial ${result.status.days} ngày đã bật cho máy này.`
-        : result.error || 'Trial đã tồn tại trên máy này.',
+        ? `Trial ${result.status.days} ngày đã bật — quyền như Pro (video · CapCut · ship · TTS premium). Toolbox/multi-channel cần Pro trả phí.`
+        : result.error ||
+          'Trial đang active trên máy này — đã cấp lại token phiên.',
       status: result.status,
       endsIso: result.status.record
         ? new Date(result.status.record.endsAt * 1000).toISOString()
         : null,
       hwid: result.status.hwid,
+      storeHint: result.token
+        ? 'localStorage.ainovel.entitlementToken'
+        : undefined,
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {

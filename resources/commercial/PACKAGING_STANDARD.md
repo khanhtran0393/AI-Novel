@@ -71,14 +71,23 @@ Vercel env bắt buộc: `AINOVEL_TELEGRAM_BOT_TOKEN` + `AINOVEL_TELEGRAM_CHAT_I
 
 ---
 
-## 5. Update (LOCKED)
+## 5. Update / auto-update (LOCKED)
 
 | | |
 |--|--|
-| Provider | GitHub Releases |
+| Provider | GitHub Releases (**preferred**) + Supabase generic **fallback** (dual-feed) |
 | Repo public | `khanhtran0393/AI-Novel-release-` |
-| Policy | Check → tự tải → cài **lần mở sau** |
-| Token | **Cấm** GH_TOKEN trong package |
+| Policy | Check → **tự tải** → **không** cài lúc đóng → cài **lần mở sau** (không hỏi) |
+| Pack target | **NSIS** (`pack:ship`) — portable không ưu tiên cho auto-update |
+| `public.env` | `PROVIDER=github` · owner/repo · `FEED_URL` bật · `CHECK_ON_LAUNCH=1` · `ALLOW_UNSIGNED=1` |
+| Release assets | **Bắt buộc** `AI-Novel-*-x64.exe` + **`latest.yml`** (+ blockmap) |
+| **`latest.yml`** | **Một khuôn** (`scripts/lib/latestYml.mjs`): luôn `version: X.Y.Z` + path = `AI-Novel-X.Y.Z-x64.exe` + sha512 + size. Pack/publish **ghi đè** yml builder (`--strict`). **Cấm** ship yml thiếu version |
+| Sau pack | `npm run release:ship-update` hoặc `release:github:cred` → `release:github:verify` **PASS** |
+| Token | **Cấm** GH_TOKEN trong package; publish bằng env / git credential |
+| Bump version | Trước mỗi ship update — trùng version feed = không có gì để update |
+| User bản updater hỏng | Cài tay **1 lần** installer mới; sau đó mới auto |
+
+Chi tiết: `docs/PACK_NOTES.md` **§2–§3 (quy trình)** · **§9 (latest.yml)** · `docs/APP_UPDATE.md`.
 
 ---
 
@@ -95,9 +104,55 @@ Vercel env bắt buộc: `AINOVEL_TELEGRAM_BOT_TOKEN` + `AINOVEL_TELEGRAM_CHAT_I
 | `npm run audit:package` | **PASS** |
 | Shell re-harden (main/preload/electron) | **On** khi pack |
 | Electron fuses (RunAsNode off, inspect off) | **On** |
-| ASAR integrity fuse | **Off mặc định** (tránh boot fail sau rcedit icon). Bật: `AINOVEL_ASAR_INTEGRITY=1` |
+| ASAR integrity fuse | **On mặc định** (fuse **sau** rcedit icon). Boot fail → `AINOVEL_ASAR_INTEGRITY=0` |
+| Offline grace | **24h** / first-run **6h** / strict IP **3h** / seat **10m** |
+| Deny telemetry local | `deny-events.jsonl` (reason only, no token) |
+| Free/trial machine store | **Outside** portable folder (`%USER_DATA%/.ainovel-license` + HKCU secondary) — wipe+re-extract must **not** reset free quota / local trial; packaged trial = cloud HWID only |
 | Crown IP seal (toolbox formulas) | **On** (with-crown-sealed-build) |
 | Source maps browser production | **Off** |
+| Post-pack | `npm run postpack:checklist` + smoke:defense-pack |
+
+### 5b. License ledger = Supabase only (LOCKED — đọc trước mọi pack)
+
+**Nguồn sự thật duy nhất:** bảng Supabase `licenses` theo **HWID máy** (sổ cái), không phải chữ ký token trên máy khách.
+
+| Tình huống | App khách |
+|------------|-----------|
+| Seller cấp row `active` + user dán token | Pro / Trial |
+| **Xóa id / row** trên Supabase (hoặc revoke / hết hạn) | **Free** — kể cả token `AINOVEL2…` vẫn verify crypto |
+| Token local còn trong `localStorage` | Bị clear khi status/heartbeat thấy ledger = none |
+| Offline sau khi đã verify online OK | Grace heartbeat (mặc định **24h**) — **không** grant mới nếu ledger đã xóa khi online |
+
+**Trước pack bắt buộc kiểm tra:**
+
+1. Vercel / LICENSE_API có `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (ledger online).
+2. `AINOVEL_LICENSE_API_URL` trỏ host pin (`ai-novel-flax.vercel.app` hoặc allowlist).
+3. Customer package: `AINOVEL_ENTITLEMENT_MODE=enforce`, **không** `SERVICE_ROLE` trong installer.
+4. Smoke: xóa/revoke row HWID test → app online → badge **FREE** + API Pro 403.
+
+**Ghi chú chống sót/nhầm (bắt buộc đọc):** [`docs/PACK_NOTES.md`](../../docs/PACK_NOTES.md) — quy trình 4 bước §2 + phiếu tick §3  
+Preflight in full banner mỗi lần: `npm run preflight:pack`.
+
+Docs: `docs/LICENSE_ONE_PATH.md` · code: `licenseHeartbeat.probeOnlineVerify` · `resolveRequestAccessAsync`.
+
+### 5c. Đừng nhầm lệnh / đừng sót bước
+
+| Đúng | Sai / hay nhầm |
+|------|----------------|
+| `npm run pack:ship` = portable QA unsigned | Coi portable = bản bán signed |
+| `npm run pack:commercial` = signed retail (cần CSC) | Bỏ cert rồi force unsigned “cho nhanh” khi bán |
+| Preflight → crown → brand → builder → audit → smokes | `electron-builder` tay bỏ gate |
+| `public.env` chỉ public | Nhét SERVICE_ROLE / private vào package |
+| Ledger Supabase = Pro/Free | Tin token crypto local = Pro vĩnh viễn |
+| Grace 24h/6h/3h · seat 10m | Nới grace “cho dễ test” trên bản khách |
+| Fuse ASAR sau rcedit | Bật integrity rồi rcedit lại (boot fail) |
+
+Sau pack:
+
+```powershell
+npm run postpack:checklist -- dist-qa-unsigned
+npm run smoke:defense-pack
+```
 
 ---
 
@@ -113,6 +168,7 @@ Docs: `docs/DEFENSE_LAYERS.md` · `docs/LABYRINTH.md` · `docs/LICENSE_ONE_PATH.
 | L3 Packaged enforce | Multi-signal force enforce |
 | L4 Electron sandbox | DevTools **off** packaged; contextIsolation; no nodeIntegration |
 | L5 HWID | Multi-version dual-accept |
+| L5b Machine store | Free/trial vault ngoài portable + HKCU — cấm reset bằng xóa app |
 | L6 Heartbeat | Online revoke khi packaged + mạng |
 | L7 Audit / smokes | audit package + anti-tamper + labyrinth smokes xanh trước ship rộng |
 | L8 RE friction | Shell minify pack-time; crown seal; gateway compile best-effort |
@@ -120,13 +176,15 @@ Docs: `docs/DEFENSE_LAYERS.md` · `docs/LABYRINTH.md` · `docs/LICENSE_ONE_PATH.
 
 **Không hứa “không crack được”** — bắt buộc giữ stack trên; cấm gỡ labyrinth/anti-tamper khi pack.
 
-Smoke khuyến nghị trước ship:
+Smoke khuyến nghị / đã wire trong `pack:ship`:
 
 ```powershell
 npm run smoke:anti-tamper
 npm run smoke:labyrinth
 npm run smoke:re-harden
 npm run smoke:crown-ip
+npm run smoke:defense-pack
+npm run postpack:checklist -- dist-qa-unsigned
 ```
 
 ---
@@ -134,24 +192,31 @@ npm run smoke:crown-ip
 ## 7. Lệnh đóng gói đầy đủ
 
 ```powershell
+# 0) Đọc ghi chú chống sót
+#    docs/PACK_NOTES.md  ·  npm run preflight:pack
+
 # Ship chuẩn (brand + harden + crown + portable, không cert)
 npm run pack:ship
 
-# Sau pack: audit
-npm run audit:package -- dist-qa-unsigned/win-unpacked
+# Sau pack (đã gồm trong pack:ship; chạy lại nếu cần)
+npm run postpack:checklist -- dist-qa-unsigned
 
-# Có cert (optional)
+# Có cert (bán rộng)
 # set CSC_* … rồi: npm run pack:commercial
+# npm run postpack:checklist -- dist
 ```
 
-Output: `dist-qa-unsigned/AI-Novel-<version>-x64.exe`
+Output ship unsigned (NSIS): `dist-qa-unsigned/AI-Novel-<version>-x64.exe` + `latest.yml`  
+Output signed: `dist/` (NSIS) — **không** nhầm với `dist-qa-unsigned`.
 
-Publish update:
+Publish update (**bắt buộc** nếu muốn user tự cập nhật):
 
 ```powershell
-npm run release:manifest
-# Upload exe + latest.yml → GitHub AI-Novel-release- tag vX.Y.Z
-# hoặc: $env:GH_TOKEN=...; npm run release:github
+# Bump package.json version trước pack
+npm run pack:ship
+npm run release:ship-update
+# hoặc: npm run release:github:cred
+npm run release:github:verify   # PASS = latest.yml + exe public 200
 ```
 
 ---
@@ -162,13 +227,15 @@ npm run release:manifest
 - [ ] Logo + `brand:icons`
 - [ ] Splash logo, không spinner
 - [ ] Taskbar icon = logo
-- [ ] Version `package.json` đúng
+- [ ] Version `package.json` đúng (**bump** nếu ship update)
 - [ ] `ALLOW_UNSIGNED=1` (hoặc 0 nếu chỉ ship signed)
-- [ ] Update GitHub owner/repo đúng
+- [ ] Update: GitHub owner/repo + `FEED_URL` dual-feed + `CHECK_ON_LAUNCH=1`
+- [ ] **`latest.yml`:** sau pack có `version:` = package.json; path = `AI-Novel-{ver}-x64.exe`
 - [ ] Không secret trong package
 - [ ] Crown seal + re-harden trong pipeline pack
 - [ ] `audit:package` PASS
 - [ ] (Khuyến nghị) anti-tamper + labyrinth smoke PASS
+- [ ] Sau pack: publish feed (`release:ship-update`) + `release:github:verify` PASS
 
 ---
 

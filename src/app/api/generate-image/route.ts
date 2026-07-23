@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       provider: imageProvider,
     });
 
-    // Free: gen_image 3 lượt/ngày (server vault by HWID)
+    // Free: gen_image 3/day · Trial: 5/day (server vault by HWID)
     const { assertAndConsumeFreeQuota } = await import(
       '@/lib/commercial/freeQuota'
     );

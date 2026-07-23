@@ -1,13 +1,14 @@
 /**
- * Telegram Bot webhook — admin inline buttons + /gen command.
+ * Telegram Bot webhook — admin ops: issue key, bare-HWID wizard, lookup/list/revoke.
+ *
+ * Commands: /help /status /plans /activate|/gen|/cap /lookup /list /revoke
+ * Payment: inline ✅ Cấp Key / ❌ Từ chối
  *
  * Modes:
- * - Vercel/public HTTPS: setWebhook → this POST
- * - Desktop/local (no webhook): long-poll getUpdates via telegramPoller
- *   (auto-started from payment-notify + GET status)
+ * - Vercel bridge (prod): deploy/telegram-bridge + setWebhook
+ * - Desktop/local seller: long-poll getUpdates via telegramPoller
  *
- * Setup Vercel:
- *   GET /api/entitlement/telegram-webhook?setup=true&url=https://your-app.vercel.app
+ * Setup: GET ?setup=true&url=https://… · poll: GET ?poll=1
  */
 import { NextResponse } from 'next/server';
 import { isSupabaseAdminConfigured } from '@/lib/supabase/env';

@@ -94,7 +94,8 @@ export default function CreateVoiceTab(props: CreateVoiceTabProps) {
           Tạo giọng đọc từ mẫu
         </h3>
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 max-w-lg">
-          Tải mẫu → Tạo giọng đọc. Phân vai người nói gán ở kịch bản hoặc{' '}
+          Tải mẫu 3–12s (một người, không nhạc nền) → gõ đúng lời trong đoạn đó → Tạo
+          giọng. Pitch = 0 để bám tần số gốc. Phân vai ở kịch bản hoặc{' '}
           <button
             type="button"
             onClick={() => {
@@ -171,9 +172,13 @@ export default function CreateVoiceTab(props: CreateVoiceTabProps) {
             setCloneRefText(e.target.value);
             updateTTSConfig({ vinaReferenceText: e.target.value });
           }}
-          placeholder="Nhập chính xác câu đang được nói trong file mẫu"
+          placeholder="Chỉ gõ đúng lời trong đoạn mẫu (không dán cả đoạn dài hơn audio)"
           className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-emerald-500"
         />
+        <p className="text-[10px] text-zinc-600">
+          Sai transcript hoặc text dài hơn file (mẫu bị cắt 12s) → model lệch pitch/tần số so
+          với giọng gốc.
+        </p>
       </div>
 
       <div className="space-y-1.5">

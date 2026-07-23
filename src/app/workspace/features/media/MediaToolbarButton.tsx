@@ -3,13 +3,18 @@
 import React, { useEffect, useState } from 'react';
 import { Image } from 'lucide-react';
 import { API } from '@/contracts';
+import { useNovelStore } from '@/store/useNovelStore';
 import MediaConfigModal from './MediaConfigModal';
 
-/** Nút Ảnh/Video + modal — chấm trạng thái Flow (token / login) */
+/** Nút Ảnh/Video + modal — chấm trạng thái Flow + provider/model (P4 media status) */
 export default function MediaToolbarButton() {
   const [open, setOpen] = useState(false);
   const [flowReady, setFlowReady] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const imageProvider = useNovelStore((s) => s.imageProvider || '');
+  const videoProvider = useNovelStore((s) => s.videoProvider || '');
+  const imageModel = useNovelStore((s) => s.imageModel || '');
+  const videoModel = useNovelStore((s) => s.videoModel || '');
 
   useEffect(() => {
     let dead = false;
@@ -78,11 +83,12 @@ export default function MediaToolbarButton() {
     };
   }, []);
 
+  const statusLine = `Ảnh: ${imageProvider || '—'} / ${imageModel || '—'} · Video: ${videoProvider || '—'} / ${videoModel || '—'}`;
   const title = flowReady
-    ? 'Flow sẵn sàng (token OK)'
+    ? `Flow sẵn sàng · ${statusLine}`
     : loginOpen
-      ? 'Đang chờ đăng nhập Google…'
-      : 'Ảnh / Video — cấu hình Flow';
+      ? `Đang chờ đăng nhập Google… · ${statusLine}`
+      : `Ảnh / Video — cấu hình · ${statusLine}`;
 
   return (
     <>

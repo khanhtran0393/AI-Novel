@@ -2,8 +2,8 @@
   "schema": 3,
   "id": "ainovel-packaging-standard",
   "title": "Ai Novel — Packaging standard",
-  "version": "1.0.1",
-  "updated": "2026-07-21",
+  "version": "1.0.2",
+  "updated": "2026-07-22",
   "brand": {
     "appName": "Ai Novel",
     "productName": "Ai Novel",
@@ -61,11 +61,21 @@
     "electronFuses": true,
     "crownIpSeal": true,
     "productionBrowserSourceMaps": false,
-    "auditPackageRequired": true
+    "auditPackageRequired": true,
+    "licenseSoleTruth": "supabase_licenses_hwid",
+    "deleteLedgerRowMeansFree": true,
+    "heartbeatGraceSecDefault": 86400,
+    "heartbeatFirstRunSecDefault": 21600,
+    "strictOnlineGraceSecDefault": 10800,
+    "seatPresenceWindowSecDefault": 600,
+    "asarIntegrityDefault": true,
+    "asarIntegrityFuseAfterRcedit": true,
+    "packNotesDoc": "docs/PACK_NOTES.md"
   },
   "antiCrack": {
     "required": true,
     "docs": [
+      "docs/PACK_NOTES.md",
       "docs/DEFENSE_LAYERS.md",
       "docs/LABYRINTH.md",
       "docs/LICENSE_ONE_PATH.md"
@@ -86,7 +96,9 @@
       "npm run smoke:anti-tamper",
       "npm run smoke:labyrinth",
       "npm run smoke:re-harden",
-      "npm run smoke:crown-ip"
+      "npm run smoke:crown-ip",
+      "npm run smoke:defense-pack",
+      "npm run postpack:checklist -- dist-qa-unsigned"
     ],
     "noUncrackablePromise": true
   },
@@ -103,11 +115,18 @@
     "GH_TOKEN_in_package",
     "owner_unlimited_in_package",
     "entitlement_mode_open_in_package",
-    "strip_labyrinth_or_antitamper_on_pack"
+    "strip_labyrinth_or_antitamper_on_pack",
+    "treat_local_token_crypto_as_pro_without_supabase_row",
+    "pack_commercial_without_authenticode_when_claiming_signed",
+    "confuse_pack_ship_portable_with_signed_retail"
   ],
   "commands": {
     "brandIcons": "npm run brand:icons",
+    "preflight": "npm run preflight:pack",
     "packShip": "npm run pack:ship",
+    "packCommercial": "npm run pack:commercial",
+    "packNotes": "docs/PACK_NOTES.md",
+    "postpackChecklist": "npm run postpack:checklist -- dist-qa-unsigned",
     "audit": "npm run audit:package -- dist-qa-unsigned/win-unpacked",
     "publishGithub": "npm run release:github"
   }

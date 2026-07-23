@@ -86,6 +86,12 @@ export default function YoutubeSetupPhase({
   const analyzeBusy = isAnalyzingPlot;
   const outlineBusy = isGeneratingOutline;
   const busy = analyzeBusy || outlineBusy || isGeneratingIdea;
+  const rawYtUrl = (store.youtubeRewriteUrl || '').trim();
+  const ytIdOk = !!extractYoutubeVideoId(rawYtUrl);
+  const ytUrlHint =
+    rawYtUrl.length > 0 && !ytIdOk
+      ? 'Link chưa hợp lệ — cần watch / youtu.be / shorts (không dán playlist hay trang kênh).'
+      : '';
   const captionCached = (store.youtubeSourceText || '').trim().length >= 40;
   const captionWords = captionCached
     ? (store.youtubeSourceText || '').trim().split(/\s+/).filter(Boolean).length
@@ -181,25 +187,32 @@ export default function YoutubeSetupPhase({
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       const u = (store.youtubeRewriteUrl || '').trim();
-                      if (u && extractYoutubeVideoId(u) && !busy) {
-                        void handlePhanTichYoutube(u);
+                      if (!u || busy) return;
+                      if (!extractYoutubeVideoId(u)) {
+                        // fail-soft: user sees inline hint (button also disabled)
+                        return;
                       }
+                      void handlePhanTichYoutube(u);
                     }
                   }}
                   disabled={busy}
-                  className="w-full rounded-lg border border-zinc-800 bg-black py-2.5 pl-8 pr-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-red-500 disabled:opacity-50"
+                  className={`w-full rounded-lg border bg-black py-2.5 pl-8 pr-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 disabled:opacity-50 ${
+                    ytUrlHint
+                      ? 'border-red-500/60 focus:border-red-400'
+                      : 'border-zinc-800 focus:border-red-500'
+                  }`}
                 />
               </div>
               <button
                 type="button"
-                disabled={
-                  busy ||
-                  !(store.youtubeRewriteUrl || '').trim() ||
-                  !extractYoutubeVideoId(store.youtubeRewriteUrl || '')
-                }
+                disabled={busy || !rawYtUrl || !ytIdOk}
                 onClick={() => void handlePhanTichYoutube(store.youtubeRewriteUrl || '')}
                 className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-700/50 bg-sky-500/20 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/30 disabled:opacity-40"
-                title="Lấy captions (cache) + phân tích cốt truyện → ô 3"
+                title={
+                  ytUrlHint
+                    ? ytUrlHint
+                    : 'Lấy captions (cache) + phân tích cốt truyện → ô 3'
+                }
               >
                 {isAnalyzingPlot ? (
                   <>
@@ -214,6 +227,27 @@ export default function YoutubeSetupPhase({
                 )}
               </button>
             </div>
+
+            {ytUrlHint ? (
+              <p
+                role="status"
+                className="mt-1.5 flex items-start gap-1 text-[11px] text-amber-400/95 leading-snug"
+              >
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                {ytUrlHint}
+              </p>
+            ) : null}
+
+            {/* Lỗi Phân tích ngay cạnh bước 1 — user thấy đúng chỗ vừa bấm */}
+            {promptError ? (
+              <p
+                role="alert"
+                className="mt-2 flex items-start gap-1.5 text-xs text-red-400 leading-snug max-h-40 overflow-y-auto rounded-md border border-red-500/25 bg-red-950/40 px-2.5 py-2"
+              >
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span className="whitespace-pre-wrap">{promptError}</span>
+              </p>
+            ) : null}
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {captionCached ? (
@@ -332,12 +366,7 @@ export default function YoutubeSetupPhase({
               onChange={(e) => store.setSetup({ mo_ta: e.target.value })}
               className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-amber-500 focus:bg-zinc-950 font-sans"
             />
-            {promptError ? (
-              <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                {promptError}
-              </p>
-            ) : null}
+            {/* Lỗi full nằm ở bước 1 + footer sticky — không nhét dưới cốt truyện (gây nhầm chỗ lỗi) */}
           </div>
 
           {/* 4. Quy mô */}
@@ -501,76 +530,111 @@ export default function YoutubeSetupPhase({
             );
           })()}
 
-          {/* 5. YT-Safe */}
-          <div className="rounded-lg border border-red-900/50 bg-red-950/10 p-3">
-            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-500">
-              <AlertCircle className="h-3.5 w-3.5" />
-              5. Chống AI & YT-Safe
+          {/* 5. Phong Cách Kịch Bản */}
+          <div className="rounded-lg border border-purple-900/50 bg-purple-950/10 p-3">
+            <label className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-purple-400">
+              <Sparkles className="h-3.5 w-3.5" />
+              5. Phong Cách Kịch Bản
             </label>
-            <div className="space-y-2.5">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-[9px] font-bold uppercase text-red-400">
-                    Từ cấm
-                  </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label
+                className={`relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  store.scriptMode === 'chuyen_sau'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-zinc-800 bg-black/50 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
                   <input
-                    type="text"
-                    placeholder="đáng chú ý là, nhìn chung..."
-                    value={store.userRules.forbidden_words}
-                    onChange={(e) =>
-                      store.updateUserRules({ forbidden_words: e.target.value })
-                    }
-                    className="w-full rounded border border-red-900/50 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-red-500"
+                    type="radio"
+                    name="scriptMode"
+                    value="chuyen_sau"
+                    checked={store.scriptMode === 'chuyen_sau'}
+                    onChange={() => store.setScriptMode('chuyen_sau')}
+                    className="accent-purple-500"
                   />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[9px] font-bold uppercase text-orange-400">
-                    Từ sáo
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="không khỏi, dường như..."
-                    value={store.userRules.fatigue_words}
-                    onChange={(e) =>
-                      store.updateUserRules({ fatigue_words: e.target.value })
-                    }
-                    className="w-full rounded border border-orange-900/50 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-orange-500"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
-                {(
-                  [
-                    ['enforceEditorGate', 'Chặn TTS Editor'],
-                    ['requireHumanEdit', 'Human Pass'],
-                    ['humanizeScript', 'Humanize'],
-                    ['autoAudioReadability', 'Nhịp audio'],
-                    ['injectBreathPauses', 'Nghỉ thở'],
-                    ['roomTone', 'Room tone'],
-                    ['bgmMix', 'BGM bed'],
-                    ['emotionTts', 'Pitch emotion'],
-                    ['applyLoudnorm', 'Loudnorm'],
-                    ['lockSeriesVoice', 'Voice DNA'],
-                    ['enforceShotGraph', 'Shot graph'],
-                    ['enforceAntiReuse', 'Anti-reuse'],
-                  ] as const
-                ).map(([key, label]) => (
-                  <label
-                    key={key}
-                    className="flex items-center gap-1.5 rounded border border-zinc-800 bg-black/50 px-2 py-1.5 cursor-pointer hover:border-zinc-700"
+                  <span
+                    className={`text-[11px] font-bold uppercase ${
+                      store.scriptMode === 'chuyen_sau'
+                        ? 'text-purple-300'
+                        : 'text-zinc-400'
+                    }`}
                   >
-                    <input
-                      type="checkbox"
-                      className="accent-emerald-500 shrink-0"
-                      checked={!!(store.youtubeSafe || {})[key as keyof typeof store.youtubeSafe]}
-                      onChange={(e) =>
-                        store.updateYoutubeSafe({ [key]: e.target.checked })
-                      }
-                    />
-                    <span className="text-[10px] text-zinc-300 leading-tight">{label}</span>
-                  </label>
-                ))}
-              </div>
+                    Kịch Bản Chuyên Sâu
+                  </span>
+                </div>
+                <p className="ml-5 text-[10px] text-zinc-500 leading-snug">
+                  Audio dài: ~130 WPM, beat ~7s, không cold-open trailer; nhân
+                  vật sâu (mặc định).
+                </p>
+              </label>
+
+              <label
+                className={`relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  store.scriptMode === 'sang_van'
+                    ? 'border-rose-500 bg-rose-500/10'
+                    : 'border-zinc-800 bg-black/50 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="scriptMode"
+                    value="sang_van"
+                    checked={store.scriptMode === 'sang_van'}
+                    onChange={() => store.setScriptMode('sang_van')}
+                    className="accent-rose-500"
+                  />
+                  <span
+                    className={`text-[11px] font-bold uppercase ${
+                      store.scriptMode === 'sang_van'
+                        ? 'text-rose-300'
+                        : 'text-zinc-400'
+                    }`}
+                  >
+                    Sảng Văn (Dopamine Hit)
+                  </span>
+                </div>
+                <p className="ml-5 text-[10px] text-zinc-500 leading-snug">
+                  Recap dồn: ~155 WPM, beat ~4.5s, cold-open gợi ý; vả mặt,
+                  dopamine hit.
+                </p>
+              </label>
+
+              <label
+                className={`relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  store.scriptMode === 'short_manhua'
+                    ? 'border-teal-500 bg-teal-500/10'
+                    : 'border-zinc-800 bg-black/50 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="scriptMode"
+                    value="short_manhua"
+                    checked={store.scriptMode === 'short_manhua'}
+                    onChange={() => {
+                      // Soft WPM/beat/word + cold-open on — setScriptMode
+                      store.setScriptMode('short_manhua');
+                    }}
+                    className="accent-teal-500"
+                  />
+                  <span
+                    className={`text-[11px] font-bold uppercase ${
+                      store.scriptMode === 'short_manhua'
+                        ? 'text-teal-300'
+                        : 'text-zinc-400'
+                    }`}
+                  >
+                    Short / Manhua
+                  </span>
+                </div>
+                <p className="ml-5 text-[10px] text-zinc-500 leading-snug">
+                  Shorts/Reels: ~170 WPM, beat ~3.5s, cold-open bắt buộc, shot
+                  2.5–4s; ~1200 từ/tập.
+                </p>
+              </label>
             </div>
           </div>
         </div>
@@ -580,7 +644,10 @@ export default function YoutubeSetupPhase({
           style={setupModalNoDragStyle}
         >
           {promptError ? (
-            <p className="flex items-start gap-1.5 text-xs text-red-400 leading-snug">
+            <p
+              role="alert"
+              className="flex items-start gap-1.5 text-xs text-red-400 leading-snug max-h-40 overflow-y-auto rounded-md border border-red-500/20 bg-red-950/30 px-2 py-1.5"
+            >
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span className="whitespace-pre-wrap">{promptError}</span>
             </p>

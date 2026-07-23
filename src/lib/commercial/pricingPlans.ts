@@ -25,9 +25,18 @@ export const SELLER_BANK = {
   bin: '970407',
   accountNo: '19032706354018',
   accountName: 'TRAN HUU KHANH',
-  /** Zalo admin support */
+  /** Zalo admin support (fallback bill / hỗ trợ — không auto-open khi báo Admin) */
   zalo: '0868715114',
   zaloDisplay: '0868.715.114',
+  /** Nhóm Zalo hỗ trợ kỹ thuật (header Support) */
+  zaloSupportGroupUrl: 'https://zalo.me/g/rpv0fhdphtqtqv7w96py',
+  /**
+   * Bot Telegram nhận «Đã thanh toán» + Cấp Key.
+   * Nút báo Admin mở link này (không mở Zalo).
+   */
+  telegramBotUsername: 'AINovel_license_bot',
+  telegramBotUrl: 'https://t.me/AINovel_license_bot',
+  telegramBotDisplay: '@AINovel_license_bot',
 } as const;
 
 export const PAID_PLANS: PaidPlan[] = [

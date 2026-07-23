@@ -49,6 +49,46 @@ npm run license:issue -- --plan pro --count 1 --seats 3 --note "team-3"
 
 Chuyển/thu hồi seat: `npm run license:transfer`. Bridge Telegram chạy trên seller backend và nhận private key dạng base64; desktop không nhận Telegram bot token hay private signer.
 
+## 3b. Ghi chú TRƯỚC KHI PACK (LOCKED — chống sót/nhầm)
+
+**Đọc một file đủ:** [`docs/PACK_NOTES.md`](PACK_NOTES.md) — **§2 quy trình 4 bước** + **§3 phiếu tick**  
+(chuẩn máy: `resources/commercial/PACKAGING_STANDARD.md` · preflight in banner mỗi lần pack)
+
+### Sole truth license
+
+1. **Sổ cái:** Pro/Trial chỉ khi Supabase `licenses` còn row **`active`** cho **HWID máy đó**.
+2. **Xóa id trên Supabase** (hoặc revoke / expired) → app **Free**, dù token Ed25519 crypto còn OK.
+3. Token `localStorage.ainovel.entitlementToken` chỉ là **vé** — không self-heal Pro.
+4. LICENSE_API (Vercel) **phải** có `SUPABASE_SERVICE_ROLE_KEY`.
+5. Package khách: `enforce` + public keys; **cấm** service_role / private / open / owner.
+6. Sau pack: Pro → xóa row → online → badge **FREE** + API 403.
+
+### Đừng nhầm lệnh
+
+| Lệnh | Dùng khi |
+|------|----------|
+| `npm run pack:ship` | NSIS unsigned ship (auto-update) → `dist-qa-unsigned/` · sau pack: `release:ship-update` |
+| `npm run pack:commercial` | Bán signed — **cần** `CSC_*` → `dist/` |
+| `npm run preflight:pack` | Chỉ in ghi chú + gate (không build) |
+
+**Cấm:** coi `dev`/`MODE=open` = gói khách; chạy `electron-builder` tay bỏ preflight/crown/brand.
+
+### Defense defaults (đã siết)
+
+Offline **24h** · first-run **6h** · strict IP **3h** · seat **10m** · ASAR integrity **ON** (fuse sau rcedit).
+
+### Free/Trial machine store (chống xóa portable)
+
+Free quota + local trial vault **ngoài** folder app (`%APPDATA%\Ai Novel\.ainovel-license\` + HKCU). Xóa portable + giải nén lại **không** reset lượt Free / trial (cùng HWID). Chi tiết: `PACK_NOTES.md` **§7**. Packaged: **cấm** `ALLOW_LOCAL_TRIAL`; trial cloud = Supabase HWID.
+
+### Lệnh
+
+```powershell
+npm run preflight:pack          # đọc banner PACK NOTES
+npm run pack:ship               # build + audit + smokes + checklist
+npm run postpack:checklist -- dist-qa-unsigned
+```
+
 ## 4. Kiểm tra và build ký số
 
 ### Brand splash (LOCKED — mọi pack)

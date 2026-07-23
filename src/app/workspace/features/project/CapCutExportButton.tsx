@@ -98,7 +98,9 @@ export default function CapCutExportButton() {
             throw new Error('Chua chon imageProvider. App khong tu gan provider.');
           }
           if (!store.videoProvider?.trim()) {
-            throw new Error('Chua chon videoProvider. App khong tu gan provider.');
+            throw new Error(
+              'Chưa chọn videoProvider. App không tự gán provider.',
+            );
           }
           const capCutAspect =
             criteria?.capCutAspect || toCapCutAspect(videoAspect);
@@ -223,6 +225,12 @@ export default function CapCutExportButton() {
             'Notice',
             `🎉 Xuất CapCut xong!\n${data.projectPath}${media}${fc}${crit}`,
           );
+          try {
+            const { markOnboardingStep } = await import('@/lib/onboarding');
+            markOnboardingStep('export');
+          } catch {
+            /* ignore */
+          }
         } catch (error: unknown) {
           toast.info(
             'Notice',
@@ -234,6 +242,9 @@ export default function CapCutExportButton() {
       }}
       className="flex items-center justify-center gap-1 rounded-2xl border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-sky-400 shadow-lg transition-all duration-300 hover:bg-sky-500 hover:text-black cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
     >
+      {!isProEquivalent ? (
+        <span className="text-[8px] font-black text-amber-400/90">🔒</span>
+      ) : null}
       {exporting ? (
         <>
           <RefreshCw className="h-3.5 w-3.5 animate-spin" />

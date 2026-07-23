@@ -22,9 +22,21 @@ import {
   scoreYoutubeMetaFields,
   YOUTUBE_META_PASS_SCORE,
   YOUTUBE_THUMB_SCENE_INDEX,
+  YOUTUBE_MOBILE_TITLE_MAX,
+  YOUTUBE_TITLE_HARD_MAX,
+  buildFiveTitleFormulas,
+  enforceMobileTitle,
+  isValidThumbOverlay,
+  scoreTitleMobileDiscipline,
+  suggestThumbOverlayTexts,
+  type ThumbCompositionId,
   type YoutubeExportPack,
 } from '@/lib/youtubeSafe';
 import { countSceneTags, evaluateWordGate, parseScenes } from '@/lib/storyWriting';
+import {
+  composeMatrix,
+  matrixThumbOverlaySuggestions,
+} from '@/lib/matrixEngine';
 import {
   generateImageAction,
   regenPromptAction,
@@ -54,6 +66,8 @@ const EMPTY_CHAPTER_HOOK = Object.freeze({
   seoTags: '',
   thumbnailPrompt: '',
   thumbnailImagePath: '',
+  thumbCompositionId: '',
+  seoTitleVariants: [] as Array<{ id: string; labelVi: string; title: string }>,
 });
 
 export default function YoutubeSafeChecklist() {
@@ -131,6 +145,38 @@ export default function YoutubeSafeChecklist() {
   const hasSeoDescription = (asset.seoDescription || '').trim().length > 40;
   const hasThumbPrompt = (asset.thumbnailPrompt || '').trim().length > 20;
   const titleLen = (asset.seoTitle || '').length;
+  const mobileTitle = useMemo(
+    () => scoreTitleMobileDiscipline(asset.seoTitle || ''),
+    [asset.seoTitle],
+  );
+  const overlaySuggestions = useMemo(() => {
+    const base = suggestThumbOverlayTexts({
+      seoTitle: asset.seoTitle || '',
+      hook: asset.hook || script.slice(0, 400),
+      thumbnailLine: asset.thumbnailLine || '',
+      max: 4,
+    });
+    const st = store();
+    const extra = matrixThumbOverlaySuggestions(
+      composeMatrix({
+        chu_de: st.setup?.chu_de,
+        phong_cach: st.setup?.phong_cach,
+        mo_ta: st.setup?.mo_ta,
+      }),
+    );
+    return Array.from(new Set([...extra, ...base])).slice(0, 6);
+  }, [asset.seoTitle, asset.hook, asset.thumbnailLine, script, store]);
+  const titleVariants = useMemo(() => {
+    const stored = asset.seoTitleVariants || [];
+    if (stored.length >= 3) return stored;
+    const hook = (asset.hook || script.slice(0, 600) || '').trim();
+    if (hook.length < 20) return stored;
+    return buildFiveTitleFormulas({
+      hook,
+      novelTitle: store().ten_tac_pham,
+      seed: ch * 97,
+    });
+  }, [asset.seoTitleVariants, asset.hook, script, ch, store]);
 
   // Tự chấm psych SEO — lọc pass/fail checklist khi điểm thấp
   const metaScores = useMemo(() => {
@@ -149,6 +195,10 @@ export default function YoutubeSafeChecklist() {
     hasSeoTitle,
     hasSeoDescription,
   ]);
+
+  const overlayOk =
+    !(asset.thumbnailLine || '').trim() ||
+    isValidThumbOverlay(asset.thumbnailLine || '', asset.seoTitle || '');
 
   const items = buildYoutubeChecklist({
     hasScript: script.trim().length > 0,
@@ -171,6 +221,9 @@ export default function YoutubeSafeChecklist() {
     hasSeoDescription,
     hasThumbnailPrompt: hasThumbPrompt,
     metaScores,
+    seoTitleText: asset.seoTitle || '',
+    hasThumbComposition: !!(asset.thumbCompositionId || '').trim(),
+    overlayDisciplineOk: overlayOk && !!(asset.thumbnailLine || '').trim(),
   });
 
   const summary = summarizeChecklist(items);
@@ -302,6 +355,53 @@ export default function YoutubeSafeChecklist() {
     return [primary, look].filter(Boolean).join(' — ').slice(0, 220);
   };
 
+  const styleEngineSeo = () => {
+    const s = store();
+    return {
+      chu_de: s.setup?.chu_de,
+      phong_cach: s.setup?.phong_cach,
+      styleEngineId: s.activeStyleEngineId,
+    };
+  };
+
+  /** Apply High-CTR composition preset + rebuild formula thumb prompt */
+  const handleSelectComposition = (id: ThumbCompositionId) => {
+    try {
+      const base = buildThumbnailPrompt({
+        hook: asset.hook || script.slice(0, 400),
+        thumbnailLine: asset.thumbnailLine || '',
+        visualDna: resolveMediaStyle(),
+        characterHint: characterHint(),
+        compositionId: id,
+        competitorThumbDna: undefined, // keep stored prompt clean; DNA blends at gen
+        styleEngine: styleEngineSeo(),
+      });
+      patch({ thumbCompositionId: id, thumbnailPrompt: base });
+      toast.info('Notice', `Đã khóa bố cục: ${id.replace(/_/g, ' ')}`);
+    } catch (err: unknown) {
+      // Still save selection if formula fails (e.g. missing DNA) — user can Meta later
+      patch({ thumbCompositionId: id });
+      toast.info(
+        'Notice',
+        err instanceof Error
+          ? err.message
+          : 'Đã chọn bố cục — cần Visual DNA để rebuild prompt.',
+      );
+    }
+  };
+
+  const applyTitleVariant = (title: string) => {
+    const t = enforceMobileTitle(title.normalize('NFC').trim(), YOUTUBE_MOBILE_TITLE_MAX);
+    if (!t) return;
+    patch({ seoTitle: t.slice(0, YOUTUBE_TITLE_HARD_MAX) });
+  };
+
+  const applyOverlaySuggestion = (line: string) => {
+    const t = line.normalize('NFC').trim().slice(0, 30);
+    if (!t) return;
+    patch({ thumbnailLine: t });
+  };
+
   /** Viết lại không Thumbnail line — AI đổi wording, không bám text overlay */
   const handleRewriteThumbPrompt = async () => {
     const current = (asset.thumbnailPrompt || '').trim();
@@ -313,6 +413,8 @@ export default function YoutubeSafeChecklist() {
         thumbnailLine: '',
         visualDna: resolveMediaStyle(),
         characterHint: characterHint(),
+        compositionId: asset.thumbCompositionId || undefined,
+        styleEngine: styleEngineSeo(),
       });
     setThumbRegenLoading(true);
     try {
@@ -358,6 +460,8 @@ export default function YoutubeSafeChecklist() {
         thumbnailLine: line,
         visualDna: resolveMediaStyle(),
         characterHint: characterHint(),
+        compositionId: asset.thumbCompositionId || undefined,
+        styleEngine: styleEngineSeo(),
       });
       let next = base;
       try {
@@ -366,7 +470,7 @@ export default function YoutubeSafeChecklist() {
           apiKeys: store().apiKeys || [],
           sceneIndex: YOUTUBE_THUMB_SCENE_INDEX,
           promptIndex: 0,
-          sentence: `YouTube thumbnail text overlay mood: "${line}". Build a cinematic EN still prompt; leave clean space for bold overlay text "${line}".`,
+          sentence: `YouTube thumbnail text overlay mood: "${line}". Build a cinematic EN still prompt; leave clean space for bold overlay text "${line}" (2-4 words only, not full video title).`,
           currentPrompt: base,
           style: resolveThumbStyle(),
           nhan_vat_prompts: store().nhan_vat_prompts || {},
@@ -528,15 +632,48 @@ export default function YoutubeSafeChecklist() {
         usedThumbLines,
         maxRounds: 5,
         outerRetries: 2,
+        ...styleEngineSeo(),
       });
+
+      const variants = buildFiveTitleFormulas({
+        hook: result.hook || result.seoTitle,
+        novelTitle: store().ten_tac_pham,
+        seed: (ch || 1) * 97 + result.rounds,
+      });
+      // Prefer mobile title: if meta title >70, try best formula ≤70 with solid length
+      let seoTitle = (result.seoTitle || '').normalize('NFC').trim();
+      if (seoTitle.length > YOUTUBE_MOBILE_TITLE_MAX) {
+        const clipped = enforceMobileTitle(seoTitle, YOUTUBE_MOBILE_TITLE_MAX);
+        if (clipped.length >= 28) seoTitle = clipped;
+      }
+      // Rebuild thumb prompt with saved composition when present
+      let thumbPrompt = result.thumbnailPrompt || '';
+      const compositionId = (asset.thumbCompositionId || '').trim();
+      if (compositionId && (result.hook || result.thumbnailLine)) {
+        try {
+          thumbPrompt = buildThumbnailPrompt({
+            hook: result.hook || result.seoTitle,
+            thumbnailLine: result.thumbnailLine,
+            visualDna,
+            characterHint:
+              (store().nhan_vat || []).slice(0, 2).join(' and ') || undefined,
+            compositionId,
+            styleEngine: styleEngineSeo(),
+          });
+        } catch {
+          /* keep server prompt */
+        }
+      }
 
       store().setChapterHook(ch, {
         hook: result.hook,
         thumbnailLine: result.thumbnailLine,
-        seoTitle: result.seoTitle,
+        seoTitle,
+        seoTitleVariants: variants,
         seoDescription: result.seoDescription,
         seoTags: normalizeHashtagField(result.seoTags),
-        thumbnailPrompt: result.thumbnailPrompt,
+        thumbnailPrompt: thumbPrompt,
+        thumbCompositionId: compositionId || asset.thumbCompositionId,
       });
 
       try {
@@ -612,9 +749,14 @@ export default function YoutubeSafeChecklist() {
       });
     });
 
+    const st = store();
     const seoTitle =
       asset.seoTitle ||
-      buildSeoTitleFromHook(asset.hook, asset.thumbnailLine, store().ten_tac_pham);
+      buildSeoTitleFromHook(asset.hook, asset.thumbnailLine, st.ten_tac_pham, {
+        chu_de: st.setup?.chu_de,
+        phong_cach: st.setup?.phong_cach,
+        styleEngineId: st.activeStyleEngineId,
+      });
     const seoTags = normalizeHashtagField(asset.seoTags || '');
     const seoDescription =
       asset.seoDescription ||
@@ -809,32 +951,98 @@ export default function YoutubeSafeChecklist() {
       {!collapsed && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <SeoField
-              label={`SEO Title (${titleLen}/100)`}
-              value={asset.seoTitle || ''}
-              onChange={(v) => {
-                patch({ seoTitle: v.slice(0, 100) });
-              }}
-              onBlur={() => {
-                const raw = (asset.seoTitle || '').trim().slice(0, 100);
-                if (raw !== (asset.seoTitle || '')) patch({ seoTitle: raw });
-              }}
-              rows={3}
-              placeholder="CTR tâm lý · tò mò + đe dọa · KHÔNG thoại · ≤100"
-            />
-            <SeoField
-              label={`Thumbnail line (${(asset.thumbnailLine || '').length}/30)`}
-              value={asset.thumbnailLine || ''}
-              onChange={(v) => {
-                patch({ thumbnailLine: v.slice(0, 30) });
-              }}
-              onBlur={() => {
-                const raw = (asset.thumbnailLine || '').trim().slice(0, 30);
-                if (raw !== (asset.thumbnailLine || '')) patch({ thumbnailLine: raw });
-              }}
-              rows={2}
-              placeholder="≤30 ký tự — chữ trên ảnh, gợi tò mò"
-            />
+            <div className="min-w-0 flex flex-col gap-2">
+              <SeoField
+                label={`SEO Title (${titleLen}/${YOUTUBE_TITLE_HARD_MAX} · mobile ≤${YOUTUBE_MOBILE_TITLE_MAX}${
+                  mobileTitle.mobileOk ? ' ✓' : ' ⚠ cắt app'
+                })`}
+                value={asset.seoTitle || ''}
+                onChange={(v) => {
+                  patch({ seoTitle: v.slice(0, YOUTUBE_TITLE_HARD_MAX) });
+                }}
+                onBlur={() => {
+                  const raw = (asset.seoTitle || '').trim().slice(0, YOUTUBE_TITLE_HARD_MAX);
+                  if (raw !== (asset.seoTitle || '')) patch({ seoTitle: raw });
+                }}
+                rows={3}
+                placeholder="5 công thức tâm lý · tò mò · KHÔNG thoại · ưu tiên ≤70 ký tự mobile"
+              />
+              {titleVariants.length > 0 ? (
+                <div className="rounded-lg border border-sky-900/40 bg-sky-950/15 p-2.5 flex flex-col gap-1.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-sky-300">
+                    5 công thức title
+                  </div>
+                  <div className="flex flex-col gap-1 max-h-44 overflow-y-auto pr-0.5">
+                    {titleVariants.map((v) => {
+                      const active =
+                        (asset.seoTitle || '').trim() === v.title.trim();
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => applyTitleVariant(v.title)}
+                          className={`text-left rounded-md border px-2 py-1.5 transition-colors cursor-pointer ${
+                            active
+                              ? 'border-sky-500/60 bg-sky-500/15'
+                              : 'border-zinc-800 bg-black/30 hover:border-sky-800/50'
+                          }`}
+                          title={v.labelVi}
+                        >
+                          <div className="text-[8px] font-bold uppercase tracking-wide text-sky-400/90">
+                            {v.labelVi}
+                            <span className="text-zinc-600 font-mono ml-1.5 normal-case">
+                              {v.title.length} ký tự
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-zinc-200 leading-snug mt-0.5">
+                            {v.title}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="min-w-0 flex flex-col gap-2">
+              <SeoField
+                label={`Thumbnail line / chữ đè (${(asset.thumbnailLine || '').length}/30 · 2–4 từ)`}
+                value={asset.thumbnailLine || ''}
+                onChange={(v) => {
+                  patch({ thumbnailLine: v.slice(0, 30) });
+                }}
+                onBlur={() => {
+                  const raw = (asset.thumbnailLine || '').trim().slice(0, 30);
+                  if (raw !== (asset.thumbnailLine || '')) patch({ thumbnailLine: raw });
+                }}
+                rows={2}
+                placeholder="2–4 từ · KHÔNG lặp title · vd. CHÊ TÔI YẾU?"
+              />
+              {overlaySuggestions.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="text-[9px] font-bold uppercase text-zinc-500 self-center">
+                    Gợi ý đè:
+                  </span>
+                  {overlaySuggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => applyOverlaySuggestion(s)}
+                      className="text-[10px] font-bold uppercase tracking-wide rounded-full border border-amber-900/40 bg-amber-950/30 text-amber-200 px-2 py-0.5 hover:bg-amber-500/20 cursor-pointer"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {!overlayOk && (asset.thumbnailLine || '').trim() ? (
+                <p className="text-[10px] text-rose-400/90">
+                  Chữ đè đang trùng title hoặc quá dài — chọn gợi ý 2–4 từ.
+                </p>
+              ) : null}
+            </div>
+
             <div className="sm:col-span-2">
               <SeoField
                 label="Description (lead = Thumbnail)"
@@ -854,6 +1062,7 @@ export default function YoutubeSafeChecklist() {
               thumbImageUrl={thumbImageUrl}
               competitorThumbDna={asset.competitorThumbDna || ''}
               competitorThumbPreview={asset.competitorThumbPreview || ''}
+              compositionId={asset.thumbCompositionId || ''}
               thumbRegenLoading={thumbRegenLoading}
               thumbFromLineLoading={thumbFromLineLoading}
               thumbImageLoading={thumbImageLoading}
@@ -866,6 +1075,7 @@ export default function YoutubeSafeChecklist() {
               onGenImage={() => void handleGenThumbImage()}
               onUploadCompetitor={(files) => void handleUploadCompetitorThumb(files)}
               onClearCompetitor={() => handleClearCompetitor()}
+              onSelectComposition={handleSelectComposition}
               onPickVariant={(src) => {
                 store().addGeneratedImage(thumbAssetKey, src);
                 patch({ thumbnailImagePath: src });

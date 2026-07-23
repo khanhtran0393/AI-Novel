@@ -27,6 +27,21 @@ import {
   requireGenreFromSetup,
 } from '@/lib/integrations/seedance';
 import {
+  allocateShotDurationsByMode,
+  buildScriptModeShotRhythmBlock,
+  buildShortManhuaImagePromptBlock,
+  isShortManhuaMode,
+  normalizeScriptMode,
+} from '@/lib/scriptMode';
+import {
+  buildStyleEngineShotHintBlock,
+  resolveStyleEngineFromSetupPayload,
+} from '@/lib/styleEngineProfiles';
+import {
+  buildMatrixShotBlock,
+  composeMatrixFromPayload,
+} from '@/lib/matrixEngine';
+import {
   resolveApplyDirectorFormulasToPromptPair,
   resolveApplySequenceToVideoPrompts,
 } from '@/lib/commercial/ip/seedanceCloudBridge';
@@ -61,14 +76,14 @@ function resolveMaxPromptShots(opts: {
   const beatRaw = Number(opts.secondsPerBeat);
   if (!Number.isFinite(beatRaw) || beatRaw <= 0) {
     throw new Error(
-      'Thieu secondsPerBeat hop le khi cap shot. App khong tu gan 6s.',
+      'Thiếu secondsPerBeat hợp lệ khi cap shot. App không tự gán 6s.',
     );
   }
   const beat = Math.max(1, beatRaw);
   const durRaw = Number(opts.totalDurationSec);
   if (!Number.isFinite(durRaw) || durRaw <= 0) {
     throw new Error(
-      'Thieu totalDurationSec hop le khi cap shot. App khong tu gan duration.',
+      'Thiếu totalDurationSec hợp lệ khi cap shot. App không tự gán duration.',
     );
   }
   const dur = Math.max(beat, durRaw);
@@ -85,9 +100,11 @@ function resolveMaxPromptShots(opts: {
 /**
  * AI sometimes wraps the array: { prompts: [...] } / { data: [...] }
  * or returns a single object / numeric-key map — normalize to array.
+ * Dig one level for nested wrappers ({ result: { shots: [...] } }).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizePromptArray(raw: any): any[] {
+function normalizePromptArray(raw: any, depth = 0): any[] {
+  if (depth > 3) return [];
   if (Array.isArray(raw)) return raw.filter((x) => x != null);
   if (raw && typeof raw === 'object') {
     for (const k of [
@@ -95,13 +112,24 @@ function normalizePromptArray(raw: any): any[] {
       'items',
       'data',
       'results',
+      'result',
       'shots',
       'list',
       'output',
       'scenes',
       'beats',
+      'storyboard',
+      'prompt_list',
+      'promptList',
+      'image_prompts',
+      'imagePrompts',
     ]) {
       if (Array.isArray(raw[k])) return raw[k].filter((x: unknown) => x != null);
+      // Nested object wrapper: { data: { prompts: [...] } }
+      if (raw[k] && typeof raw[k] === 'object' && !Array.isArray(raw[k])) {
+        const nested = normalizePromptArray(raw[k], depth + 1);
+        if (nested.length) return nested;
+      }
     }
     // Single prompt object with image/video fields
     if (
@@ -141,9 +169,26 @@ function normalizePromptArray(raw: any): any[] {
   return [];
 }
 
-/** Merge overflow sentences so N ≤ maxN (preserve order, join with space). */
+/** Short diagnostic for empty-normalize path (no secrets). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function describePromptRawShape(raw: any): string {
+  if (raw == null) return 'null';
+  if (Array.isArray(raw)) return `array(len=${raw.length})`;
+  if (typeof raw !== 'object') return typeof raw;
+  const keys = Object.keys(raw).slice(0, 12);
+  return `object{${keys.join(',')}}`;
+}
+
+/**
+ * Merge overflow sentences so N ≤ maxN (preserve order, join with space).
+ * ALWAYS return a new array — callers often do:
+ *   raw.length = 0; raw.push(...capped)
+ * If we return the same reference when N ≤ maxN, clearing raw also empties capped
+ * → 0 sentences → AI empty prompt array (regression: cap shots 5 → 0).
+ */
 function capSentences(sentences: string[], maxN: number): string[] {
-  if (sentences.length <= maxN) return sentences;
+  if (!Array.isArray(sentences) || sentences.length === 0) return [];
+  if (sentences.length <= maxN) return sentences.slice();
   const out: string[] = [];
   const bucketSize = Math.ceil(sentences.length / maxN);
   for (let i = 0; i < sentences.length; i += bucketSize) {
@@ -165,7 +210,7 @@ function capSentences(sentences: string[], maxN: number): string[] {
 /**
  * Owner: generate/imagePrompt.ts
  * Only handles requestTypes assigned in contracts/apiMap GENERATE_REQUEST_OWNERS → imagePrompt
- * B10: no local heuristic fill, no mat-the genre default — hard-fail with clear error.
+ * B10: no local heuristic fill, no silent genre default — hard-fail with clear error.
  */
 export async function handleImagePrompt(
   ctx: GenerateHandlerContext,
@@ -185,7 +230,7 @@ export async function handleImagePrompt(
       return NextResponse.json(
         {
           error:
-            'Thieu Visual DNA / Media Style. Mo Media Config dat style truoc khi Gen Prompt. App khong tu gan style.',
+            'Thiếu Visual DNA / Media Style. Mở Media Config đặt style trước khi Gen Prompt. App không tự gán style.',
         },
         { status: 400 },
       );
@@ -211,7 +256,7 @@ export async function handleImagePrompt(
       return NextResponse.json(
         {
           error:
-            'Thieu WPM hop le (Media Config). App khong tu gan WPM.',
+            'Thiếu WPM hợp lệ (Media Config). App không tự gán WPM.',
         },
         { status: 400 },
       );
@@ -221,7 +266,7 @@ export async function handleImagePrompt(
       return NextResponse.json(
         {
           error:
-            'Thieu secondsPerBeat hop le (Media Config). App khong tu gan beat.',
+            'Thiếu secondsPerBeat hợp lệ (Media Config). App không tự gán beat.',
         },
         { status: 400 },
       );
@@ -337,6 +382,25 @@ export async function handleImagePrompt(
   --- THỂ LOẠI / SETUP (CHỦ ĐỀ + PHONG CÁCH TRUYỆN) ---
   ${genreLabel}
   ${characterInstructions}
+  ${
+    isShortManhuaMode(
+      normalizeScriptMode(
+        (payload as { scriptMode?: string }).scriptMode,
+      ),
+    )
+      ? buildShortManhuaImagePromptBlock()
+      : ''
+  }
+  ${buildScriptModeShotRhythmBlock(
+    normalizeScriptMode(
+      (payload as { scriptMode?: string }).scriptMode,
+    ),
+  )}
+  ${buildStyleEngineShotHintBlock(
+    resolveStyleEngineFromSetupPayload(payload || {}),
+    normalizeScriptMode((payload as { scriptMode?: string }).scriptMode),
+  )}
+  ${buildMatrixShotBlock(composeMatrixFromPayload(payload || {}))}
   
   YÊU CẦU BẮT BUỘC VỀ BẢN DỊCH & NGÔN NGỮ (BẮT BUỘC TUÂN THỦ):
   1. "script_prompt" (Kịch bản sinh prompt): BẮT BUỘC phải giữ nguyên CÂU GỐC TIẾNG VIỆT 100% từ danh sách trên, TUYỆT ĐỐI KHÔNG DỊCH câu gốc này sang Tiếng Anh hay ngôn ngữ khác!
@@ -375,36 +439,99 @@ export async function handleImagePrompt(
     } catch {
       /* ignore */
     }
-    // Prefer retry-capable JSON path — B10: no local heuristic fill on failure
+    // Prefer retry-capable JSON path — B10: no local heuristic fill on failure.
+    // Empty [] / unrecognizable shape is NOT success — retry (generateJsonWithRetry only
+    // retries parse errors, not empty arrays).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsedPrompts: any[] = [];
     let aiParseError: string | null = null;
-    try {
-      const rawJson = await generateJsonWithRetry(prompt, keysToUse, 2, model);
-      parsedPrompts = normalizePromptArray(rawJson);
-    } catch (err) {
-      aiParseError = err instanceof Error ? err.message : String(err);
+    let lastRawShape = 'unknown';
+    const strictPrompt =
+      prompt +
+      `\n\nCRITICAL: Return a non-empty JSON array only. Each element must include image_prompt and video_prompt (English). Do not wrap in markdown. Do not return {}.`;
+
+    const isRateLimitMsg = (msg: string) =>
+      /RPM|RPD|chạm trần|cham tran|CHỜ \d|CHO \d|giữ nhịp|giu nhip|rate.?limit|quota exceeded|Status:\s*429/i.test(
+        msg,
+      );
+
+    for (let attempt = 0; attempt < 3 && !parsedPrompts.length; attempt++) {
       try {
-        const aiResponse = await callActiveModel(prompt, keysToUse, model);
-        parsedPrompts = normalizePromptArray(cleanAndParseJson(aiResponse));
-        aiParseError = null;
-      } catch (err2) {
-        aiParseError =
-          (err2 instanceof Error ? err2.message : String(err2)) || aiParseError;
-        return NextResponse.json(
-          {
-            error: `Sinh prompt AI that bai (JSON). Khong dung fill cuc bo. Chi tiet: ${aiParseError}`,
-          },
-          { status: 502 },
+        const rawJson = await generateJsonWithRetry(
+          attempt === 0 ? prompt : strictPrompt,
+          keysToUse,
+          1,
+          model,
         );
+        lastRawShape = describePromptRawShape(rawJson);
+        parsedPrompts = normalizePromptArray(rawJson);
+        if (!parsedPrompts.length) {
+          aiParseError = `AI tra JSON nhung khong phai mang prompt (shape=${lastRawShape}).`;
+          console.warn(
+            `[Prompt Generator] empty normalize attempt=${attempt + 1} shape=${lastRawShape}`,
+          );
+        }
+      } catch (err) {
+        aiParseError = err instanceof Error ? err.message : String(err);
+        // RPM/RPD: stop immediately — extra retries burn the whole key pool
+        if (isRateLimitMsg(aiParseError)) {
+          console.warn(
+            `[Prompt Generator] rate-limit on attempt=${attempt + 1}: ${aiParseError.slice(0, 160)}`,
+          );
+          break;
+        }
+        try {
+          const aiResponse = await callActiveModel(
+            attempt === 0 ? prompt : strictPrompt,
+            keysToUse,
+            model,
+          );
+          const rawJson = cleanAndParseJson(aiResponse);
+          lastRawShape = describePromptRawShape(rawJson);
+          parsedPrompts = normalizePromptArray(rawJson);
+          if (parsedPrompts.length) aiParseError = null;
+          else {
+            aiParseError = `AI tra JSON nhung mang prompt rong (shape=${lastRawShape}).`;
+          }
+        } catch (err2) {
+          aiParseError =
+            (err2 instanceof Error ? err2.message : String(err2)) || aiParseError;
+          if (aiParseError && isRateLimitMsg(aiParseError)) break;
+        }
       }
     }
 
     if (!parsedPrompts.length) {
+      const detail = (aiParseError || lastRawShape).slice(0, 320);
+      // Do not mislabel RPM/RPD/auth as "empty prompt array"
+      const rateLimited =
+        /RPM|RPD|chạm trần|cham tran|CHỜ|CHO |giữ nhịp|giu nhip|rate.?limit|quota|429/i.test(
+          detail,
+        );
+      if (rateLimited) {
+        return NextResponse.json(
+          {
+            error: `Gen Prompt tam dung do gioi han API key (RPM/RPD). ${detail}`,
+          },
+          { status: 429 },
+        );
+      }
+      const noKey = /Không có API Key|Khong co API Key|no api key|hợp lệ để sử dụng/i.test(
+        detail,
+      );
+      if (noKey) {
+        return NextResponse.json(
+          {
+            error: `Gen Prompt that bai: thieu hoac het API key hop le. ${detail}`,
+          },
+          { status: 400 },
+        );
+      }
       return NextResponse.json(
         {
           error:
-            'AI tra ve mang prompt rong. Khong dung fill cuc bo — kiem tra API key / model master.',
+            `AI tra ve mang prompt rong. Khong dung fill cuc bo — kiem tra API key / model master. ` +
+            `Chi tiet: ${detail}`,
         },
         { status: 502 },
       );
@@ -412,15 +539,6 @@ export async function handleImagePrompt(
 
     // Tái lập danh sách prompt khớp 100% với danh sách câu
     const N = rawSentences.length;
-    const durations = new Array(N);
-    let remainingDuration = totalDuration;
-    for (let i = 0; i < N; i++) {
-      const remainingSegments = N - i;
-      let dur = Math.round(remainingDuration / remainingSegments);
-      if (dur < 1) dur = 1;
-      durations[i] = dur;
-      remainingDuration -= dur;
-    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const coercePromptText = (val: any): string => {
@@ -618,6 +736,23 @@ ${repairList}
       );
     }
 
+    // Duration per shot: even for chuyen_sau; tension-weighted for sang_van / short_manhua
+    // (sum = totalDuration from TTS/WPM — B10 không tự bịa tổng)
+    const scriptModeForDur = normalizeScriptMode(
+      (payload as { scriptMode?: string }).scriptMode,
+    );
+    const styleProf = resolveStyleEngineFromSetupPayload(payload || {});
+    const durations = allocateShotDurationsByMode({
+      mode: scriptModeForDur,
+      totalDurationSec: totalDuration,
+      count: N,
+      emotions: drafts.map((d) => d.emotion),
+      sentences: drafts.map((d) => d.sentence),
+      styleShot: styleProf
+        ? { min: styleProf.shotSecMin, max: styleProf.shotSecMax }
+        : null,
+    });
+
     // Timestamp unified: start-end (matches TTS resync) e.g. "0-8.5s"
     let cumulativeSum = 0;
     const formattedPrompts = drafts.map((d) => {
@@ -646,7 +781,7 @@ ${repairList}
       formattedPrompts[i].prompt = img;
     }
   
-    // Director formula layer — style from Visual DNA, genre from Setup (no mat-the default)
+    // Director formula layer — style from Visual DNA, genre from Setup (no silent genre default)
     const charHints = charHintsEarly;
     const perShotSec = Math.max(
       Math.min(beatSec, 3),
@@ -804,7 +939,7 @@ ${repairList}
       return NextResponse.json(
         {
           error:
-            'Thieu Visual DNA / Media Style khi viet lai prompt. App khong tu gan style.',
+            'Thiếu Visual DNA / Media Style khi viết lại prompt. App không tự gán style.',
         },
         { status: 400 },
       );

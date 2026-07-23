@@ -19,12 +19,18 @@ import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
 import {
   FREE_LIMITS,
+  TRIAL_LIMITS,
   freeChapterCapMessage,
+  trialChapterCapMessage,
 } from '@/lib/commercial/freeLimitsPolicy';
-import { storeIsFreeTier } from '@/app/workspace/hooks/useFreeLimits';
+import {
+  storeIsFreeTier,
+  storeIsTrialTier,
+} from '@/app/workspace/hooks/useFreeLimits';
 import ChapterList from './ChapterList';
 import OutlineAccordions from './OutlineAccordions';
 import CharacterRoster from './CharacterRoster';
+import SceneLocationLibrary from './SceneLocationLibrary';
 import ContinueScriptPhase from './ContinueScriptPhase';
 
 interface SidebarProps {
@@ -65,6 +71,11 @@ export default function Sidebar({
           toast.error('Gói Free', freeChapterCapMessage());
           return false;
         }
+      } else if (storeIsTrialTier(store)) {
+        if (store.danh_sach_chuong.length >= TRIAL_LIMITS.maxChapters) {
+          toast.error('Gói Trial', trialChapterCapMessage());
+          return false;
+        }
       }
       const so_chuong_moi_cung = storeIsFreeTier(store)
         ? Math.min(
@@ -74,13 +85,25 @@ export default function Sidebar({
               FREE_LIMITS.maxChapters - store.danh_sach_chuong.length,
             ),
           )
-        : store.setup.so_chuong || 10;
+        : storeIsTrialTier(store)
+          ? Math.min(
+              TRIAL_LIMITS.maxChapters,
+              Math.max(
+                1,
+                TRIAL_LIMITS.maxChapters - store.danh_sach_chuong.length,
+              ),
+            )
+          : store.setup.so_chuong || 10;
       const chuong_bat_dau =
         store.danh_sach_chuong.length > 0
           ? store.danh_sach_chuong[store.danh_sach_chuong.length - 1].so_chuong + 1
           : 1;
       if (storeIsFreeTier(store) && chuong_bat_dau > FREE_LIMITS.maxChapters) {
         toast.error('Gói Free', freeChapterCapMessage());
+        return false;
+      }
+      if (storeIsTrialTier(store) && chuong_bat_dau > TRIAL_LIMITS.maxChapters) {
+        toast.error('Gói Trial', trialChapterCapMessage());
         return false;
       }
 
@@ -225,6 +248,7 @@ export default function Sidebar({
       <ChapterList />
       <OutlineAccordions />
       <CharacterRoster onImageZoom={onImageZoom} />
+      <SceneLocationLibrary onImageZoom={onImageZoom} />
 
       <div className="mt-auto space-y-3 pt-4 border-t border-zinc-900">
         <button

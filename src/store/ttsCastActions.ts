@@ -238,10 +238,13 @@ export function createTtsCastActions(
           const profileName = (params.profileName || '').trim();
           if (!profileName) return state;
           const target = (params.target || 'global').trim().normalize('NFC');
-          const platform = 'vina_voice' as const;
+          // vina_voice removed — clone/profile assign targets LA Studio (premium)
+          const platform = 'la_studio' as const;
           const ttsConfig = {
             ...state.ttsConfig,
             platform,
+            laStudioFamily:
+              state.ttsConfig.laStudioFamily || 'kokoro-vietnamese',
             vinaUseClone: true as const,
             voice: profileName,
             ...(params.refPath

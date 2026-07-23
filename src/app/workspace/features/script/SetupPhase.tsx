@@ -23,7 +23,12 @@ import {
 } from './setupScaleDuration';
 import { closeSetupModal, setupModalNoDragStyle } from './closeSetupModal';
 import { useFreeLimits } from '@/app/workspace/hooks/useFreeLimits';
-import { FREE_LIMITS } from '@/lib/commercial/freeLimitsPolicy';
+import { FREE_LIMITS, TRIAL_LIMITS } from '@/lib/commercial/freeLimitsPolicy';
+import {
+  getStyleEngineProfile,
+  resolveStyleEngineProfile,
+} from '@/lib/styleEngineProfiles';
+import { MATRIX_THEMES, MATRIX_STYLES } from '@/lib/matrixEngine';
 
 interface SetupPhaseProps {
   promptError: string;
@@ -34,73 +39,11 @@ interface SetupPhaseProps {
   onClose?: () => void;
 }
 
-/** 30 chủ đề (Theme) */
-const THEMES = [
-  { name: 'Xuyên Không', desc: 'Vượt không gian & thời gian' },
-  { name: 'Trùng Sinh', desc: 'Bắt đầu lại, báo thù' },
-  { name: 'Hệ Thống', desc: 'Nhiệm vụ & thăng cấp' },
-  { name: 'Sinh Tồn', desc: 'Sống sót khắc nghiệt' },
-  { name: 'Võ Hiệp', desc: 'Ân oán giang hồ' },
-  { name: 'Trinh Thám', desc: 'Phá án bí ẩn' },
-  { name: 'Dị Năng', desc: 'Siêu năng lực đột biến' },
-  { name: 'Linh Khí Khôi Phục', desc: 'Linh khí trỗi dậy' },
-  { name: 'Kinh Dị', desc: 'Tâm linh rùng rợn' },
-  { name: 'Hài Hước', desc: 'Tấu hài giải trí' },
-  { name: 'Cơ Giáp / Mecha', desc: 'Robot chiến đấu' },
-  { name: 'Ngôn Tình', desc: 'Tình cảm lãng mạn' },
-  { name: 'Báo Thù', desc: 'Trả nợ máu, lật bàn' },
-  { name: 'Phản Công', desc: 'Từ đáy vực trỗi dậy' },
-  { name: 'Nông Trường', desc: 'Xây dựng, tích lũy' },
-  { name: 'Thương Chiến', desc: 'Kinh doanh thôn tính' },
-  { name: 'Quân Sự', desc: 'Chiến trường, binh pháp' },
-  { name: 'Cung Đấu', desc: 'Hậu cung, mưu kế' },
-  { name: 'Học Đường', desc: 'Thanh xuân, cạnh tranh' },
-  { name: 'Thể Thao', desc: 'Đấu trường, kỷ lục' },
-  { name: 'Ẩm Thực', desc: 'Nấu nướng, vị giác' },
-  { name: 'Y Học', desc: 'Cứu người, y đạo' },
-  { name: 'Game / Vô Hạn Lưu', desc: 'Sảnh game, ải chết' },
-  { name: 'Kỳ Ảo Mạo Hiểm', desc: 'Bí cảnh, bảo vật' },
-  { name: 'Thần Thoại', desc: 'Thần linh, tận thế' },
-  { name: 'Đồng Nhân', desc: 'Phóng tác IP khác' },
-  { name: 'Đạo Tặc / Heist', desc: 'Cướp bóc, kế hoạch' },
-  { name: 'Chính Trị', desc: 'Quyền lực, mưu sâu' },
-  { name: 'Tình Báo', desc: 'Gián điệp, bí mật' },
-  { name: 'Tận Thế / Di Cư', desc: 'Sụp đổ, tìm đất sống' },
-] as const;
+/** 30 chủ đề (Theme) — single source: matrixEngine/catalog */
+const THEMES = MATRIX_THEMES;
 
-/** 30 phong cách (Style) */
-const STYLES = [
-  { name: 'Tu Tiên / Tiên Hiệp', desc: 'Đạo quả, tiên môn' },
-  { name: 'Huyền Huyễn', desc: 'Thần thú, huyết mạch' },
-  { name: 'Đô Thị', desc: 'Chiến ngầm phố thị' },
-  { name: 'Viễn Tưởng', desc: 'Khoa học siêu tưởng' },
-  { name: 'Mạt Thế', desc: 'Dị chủng, ngày tàn' },
-  { name: 'Cổ Đại', desc: 'Lịch sử, cổ kính' },
-  { name: 'Cyberpunk', desc: 'Công nghệ cao' },
-  { name: 'Steampunk', desc: 'Máy móc hơi nước' },
-  { name: 'Hắc Ám', desc: 'Đen tối, tàn khốc' },
-  { name: 'Đồng Nhân', desc: 'Phóng tác IP' },
-  { name: 'Kiếm Hiệp', desc: 'Giang hồ, võ lâm' },
-  { name: 'Huyền Nghi', desc: 'Bí ẩn, giải mã' },
-  { name: 'Tâm Lý Tội Phạm', desc: 'Tội ác, bóng tối' },
-  { name: 'Siêu Anh Hùng', desc: 'Anh hùng đô thị' },
-  { name: 'Western', desc: 'Biên giới, súng' },
-  { name: 'Hải Tặc', desc: 'Biển cả, kho báu' },
-  { name: 'Không Gian', desc: 'Hạm đội, hành tinh' },
-  { name: 'Hậu Tận Thế', desc: 'Xây dựng lại' },
-  { name: 'Đông Phương Kỳ Ảo', desc: 'Yêu ma, sơn hải' },
-  { name: 'Phương Tây Kỳ Ảo', desc: 'Phù thủy, rồng' },
-  { name: 'LitRPG', desc: 'Level, skill, dungeon' },
-  { name: 'Isekai', desc: 'Dị giới chuyển sinh' },
-  { name: 'Noir', desc: 'Thám tử, u ám' },
-  { name: 'Slice of Life', desc: 'Đời thường nhẹ' },
-  { name: 'Epic / Sử Thi', desc: 'Vận mệnh thế giới' },
-  { name: 'Gothic', desc: 'Lâu đài, u sầu' },
-  { name: 'Post-Apocalypse', desc: 'Hoang tàn, sinh tồn' },
-  { name: 'Military Sci-Fi', desc: 'Quân sự tương lai' },
-  { name: 'Romantasy', desc: 'Lãng mạn kỳ ảo' },
-  { name: 'Hard Sci-Fi', desc: 'Khoa học nghiêm' },
-] as const;
+/** 30 phong cách (Style) — single source: matrixEngine/catalog */
+const STYLES = MATRIX_STYLES;
 
 export default function SetupPhase({
   promptError,
@@ -111,9 +54,18 @@ export default function SetupPhase({
   onClose,
 }: SetupPhaseProps) {
   const store = useNovelStore();
-  const { free, FREE_LIMITS: freeCaps } = useFreeLimits();
-  const maxChapters = free ? freeCaps.maxChapters : 1000;
-  const maxWords = free ? freeCaps.maxWordsPerChapter : 10000;
+  const { free, trial, FREE_LIMITS: freeCaps, TRIAL_LIMITS: trialCaps } =
+    useFreeLimits();
+  const maxChapters = free
+    ? freeCaps.maxChapters
+    : trial
+      ? trialCaps.maxChapters
+      : 1000;
+  const maxWords = free
+    ? freeCaps.maxWordsPerChapter
+    : trial
+      ? trialCaps.maxWordsPerChapter
+      : 50_000;
   const minWords = free ? 100 : 500;
 
   const handleClose = (e?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
@@ -129,21 +81,47 @@ export default function SetupPhase({
     store.setSetup({ so_chuong: nextVal });
   };
 
-  // Free: ép quy mô về cap (2 chương · 600 từ)
+  // Free: 2 chương · 600 từ. Trial: ≤10 chương · ≤3000 từ.
   useEffect(() => {
-    if (!free) return;
-    const ch = Number(store.setup.so_chuong) || 1;
-    const words = Number(store.setup.so_tu_chuong) || FREE_LIMITS.maxWordsPerChapter;
-    const nextCh = Math.min(FREE_LIMITS.maxChapters, Math.max(1, ch));
-    const nextWords = Math.min(
-      FREE_LIMITS.maxWordsPerChapter,
-      Math.max(minWords, words),
-    );
-    if (ch !== nextCh || words !== nextWords) {
-      store.setSetup({ so_chuong: nextCh, so_tu_chuong: nextWords });
+    if (free) {
+      const ch = Number(store.setup.so_chuong) || 1;
+      const words =
+        Number(store.setup.so_tu_chuong) || FREE_LIMITS.maxWordsPerChapter;
+      const nextCh = Math.min(FREE_LIMITS.maxChapters, Math.max(1, ch));
+      const nextWords = Math.min(
+        FREE_LIMITS.maxWordsPerChapter,
+        Math.max(minWords, words),
+      );
+      if (ch !== nextCh || words !== nextWords) {
+        store.setSetup({ so_chuong: nextCh, so_tu_chuong: nextWords });
+      }
+      return;
+    }
+    if (trial) {
+      const ch = Number(store.setup.so_chuong) || 1;
+      const words =
+        Number(store.setup.so_tu_chuong) || TRIAL_LIMITS.maxWordsPerChapter;
+      const nextCh = Math.min(TRIAL_LIMITS.maxChapters, Math.max(1, ch));
+      const nextWords = Math.min(
+        TRIAL_LIMITS.maxWordsPerChapter,
+        Math.max(minWords, words),
+      );
+      if (ch !== nextCh || words !== nextWords) {
+        store.setSetup({ so_chuong: nextCh, so_tu_chuong: nextWords });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [free]);
+  }, [free, trial]);
+
+  // Core-loop step: Setup đủ Chủ đề + Phong cách
+  useEffect(() => {
+    const cd = String(store.setup.chu_de || '').trim();
+    const pc = String(store.setup.phong_cach || '').trim();
+    if (!cd || !pc) return;
+    void import('@/lib/onboarding').then(({ markOnboardingStep }) => {
+      markOnboardingStep('setup');
+    });
+  }, [store.setup.chu_de, store.setup.phong_cach]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -276,6 +254,42 @@ export default function SetupPhase({
                 </button>
               ))}
             </div>
+            {(() => {
+              const eng =
+                getStyleEngineProfile(store.activeStyleEngineId) ||
+                resolveStyleEngineProfile(
+                  store.setup.chu_de,
+                  store.setup.phong_cach,
+                );
+              if (!eng) return null;
+              return (
+                <div
+                  className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5"
+                  title={eng.audienceCraving}
+                  data-testid="style-engine-chip"
+                  data-style-engine={eng.id}
+                >
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+                    Engine
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-100">
+                    {eng.labelVi}
+                  </span>
+                  <span className="text-[9px] text-zinc-400">·</span>
+                  <span className="text-[9px] text-zinc-300">
+                    {eng.wpm} WPM
+                  </span>
+                  <span className="text-[9px] text-zinc-400">·</span>
+                  <span className="text-[9px] text-zinc-300">
+                    shot {eng.shotSecMin}–{eng.shotSecMax}s
+                  </span>
+                  <span className="text-[9px] text-zinc-400">·</span>
+                  <span className="text-[9px] text-amber-300/90">
+                    CTR: {eng.ctr.primaryHookType}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* 3. Cốt truyện */}
@@ -306,9 +320,12 @@ export default function SetupPhase({
               className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-amber-500 focus:bg-zinc-950 font-sans"
             />
             {promptError ? (
-              <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
-                <AlertCircle className="h-3.5 w-3.5" />
-                {promptError}
+              <p
+                role="alert"
+                className="mt-1.5 flex items-start gap-1.5 text-xs text-red-400 leading-snug max-h-36 overflow-y-auto rounded-md border border-red-500/20 bg-red-950/30 px-2 py-1.5"
+              >
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span className="whitespace-pre-wrap">{promptError}</span>
               </p>
             ) : null}
           </div>
@@ -383,6 +400,12 @@ export default function SetupPhase({
                     Free: tối đa {FREE_LIMITS.maxChapters} chương
                   </p>
                 ) : null}
+                {trial ? (
+                  <p className="mt-1 text-center text-[9px] font-semibold text-cyan-500/90">
+                    Trial: tối đa {TRIAL_LIMITS.maxChapters} chương · 5 lượt
+                    viết/ngày
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500">
@@ -410,14 +433,28 @@ export default function SetupPhase({
                   onBlur={() => {
                     const fallback = free
                       ? FREE_LIMITS.maxWordsPerChapter
-                      : 4250;
+                      : trial
+                        ? TRIAL_LIMITS.maxWordsPerChapter
+                        : 4250;
                     if (
                       !store.setup.so_tu_chuong ||
                       store.setup.so_tu_chuong < minWords
                     ) {
                       store.setSetup({ so_tu_chuong: fallback });
-                    } else if (store.setup.so_tu_chuong > maxWords) {
-                      store.setSetup({ so_tu_chuong: maxWords });
+                    } else if (
+                      free &&
+                      store.setup.so_tu_chuong > FREE_LIMITS.maxWordsPerChapter
+                    ) {
+                      store.setSetup({
+                        so_tu_chuong: FREE_LIMITS.maxWordsPerChapter,
+                      });
+                    } else if (
+                      trial &&
+                      store.setup.so_tu_chuong > TRIAL_LIMITS.maxWordsPerChapter
+                    ) {
+                      store.setSetup({
+                        so_tu_chuong: TRIAL_LIMITS.maxWordsPerChapter,
+                      });
                     }
                   }}
                   className="w-full rounded border border-zinc-800 bg-black p-2.5 text-center text-xl font-extrabold text-zinc-100 outline-none focus:border-emerald-500"
@@ -425,6 +462,12 @@ export default function SetupPhase({
                 {free ? (
                   <p className="mt-1 text-center text-[9px] font-semibold text-emerald-500/90">
                     Free: tối đa {FREE_LIMITS.maxWordsPerChapter} từ · 3 lượt viết/ngày
+                  </p>
+                ) : null}
+                {trial ? (
+                  <p className="mt-1 text-center text-[9px] font-semibold text-cyan-500/90">
+                    Trial: tối đa {TRIAL_LIMITS.maxWordsPerChapter} từ · 5 lượt
+                    viết/ngày
                   </p>
                 ) : null}
                 <p
@@ -471,84 +514,111 @@ export default function SetupPhase({
             );
           })()}
 
-          {/* 5. YouTube-safe — tên gọn */}
-          <div className="rounded-lg border border-red-900/50 bg-red-950/10 p-3">
-            <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-500">
-              <AlertCircle className="h-3.5 w-3.5" />
-              5. Chống AI & YT-Safe
+          {/* 5. Phong Cách Kịch Bản */}
+          <div className="rounded-lg border border-purple-900/50 bg-purple-950/10 p-3">
+            <label className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-purple-400">
+              <Sparkles className="h-3.5 w-3.5" />
+              5. Phong Cách Kịch Bản
             </label>
-            <div className="space-y-2.5">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-[9px] font-bold uppercase text-red-400">
-                    Từ cấm
-                  </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label
+                className={`relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  store.scriptMode === 'chuyen_sau'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-zinc-800 bg-black/50 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
                   <input
-                    type="text"
-                    placeholder="đáng chú ý là, nhìn chung..."
-                    value={store.userRules.forbidden_words}
-                    onChange={(e) => store.updateUserRules({ forbidden_words: e.target.value })}
-                    className="w-full rounded border border-red-900/50 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-red-500"
+                    type="radio"
+                    name="scriptMode"
+                    value="chuyen_sau"
+                    checked={store.scriptMode === 'chuyen_sau'}
+                    onChange={() => store.setScriptMode('chuyen_sau')}
+                    className="accent-purple-500"
                   />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[9px] font-bold uppercase text-orange-400">
-                    Từ sáo
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="không khỏi, dường như..."
-                    value={store.userRules.fatigue_words}
-                    onChange={(e) => store.updateUserRules({ fatigue_words: e.target.value })}
-                    className="w-full rounded border border-orange-900/50 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-orange-500"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
-                {(
-                  [
-                    ['enforceEditorGate', 'Chặn TTS Editor'],
-                    ['requireHumanEdit', 'Human Pass'],
-                    ['humanizeScript', 'Humanize'],
-                    ['autoAudioReadability', 'Nhịp audio'],
-                    ['injectBreathPauses', 'Nghỉ thở'],
-                    ['roomTone', 'Room tone'],
-                    ['bgmMix', 'BGM bed'],
-                    ['emotionTts', 'Pitch emotion'],
-                    ['applyLoudnorm', 'Loudnorm'],
-                    ['lockSeriesVoice', 'Voice DNA'],
-                    ['enforceShotGraph', 'Shot graph'],
-                    ['enforceAntiReuse', 'Anti-reuse'],
-                  ] as const
-                ).map(([key, label]) => (
-                  <label
-                    key={key}
-                    className="flex items-center gap-1.5 rounded border border-zinc-800 bg-black/50 px-2 py-1.5 cursor-pointer hover:border-zinc-700"
+                  <span
+                    className={`text-[11px] font-bold uppercase ${
+                      store.scriptMode === 'chuyen_sau'
+                        ? 'text-purple-300'
+                        : 'text-zinc-400'
+                    }`}
                   >
-                    <input
-                      type="checkbox"
-                      className="accent-emerald-500 shrink-0"
-                      checked={!!(store.youtubeSafe || {})[key as keyof typeof store.youtubeSafe]}
-                      onChange={(e) => store.updateYoutubeSafe({ [key]: e.target.checked })}
-                    />
-                    <span className="text-[10px] text-zinc-300 leading-tight">{label}</span>
-                  </label>
-                ))}
-              </div>
-              {store.youtubeSafe?.bgmMix ? (
-                <div>
-                  <label className="mb-1 block text-[9px] font-bold uppercase text-zinc-400">
-                    BGM path
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="D:\music\ambient_bed.mp3"
-                    value={store.youtubeSafe?.bgmPath || ''}
-                    onChange={(e) => store.updateYoutubeSafe({ bgmPath: e.target.value })}
-                    className="w-full rounded border border-zinc-800 bg-black p-2 text-[12px] text-zinc-200 outline-none focus:border-amber-500"
-                  />
+                    Kịch Bản Chuyên Sâu
+                  </span>
                 </div>
-              ) : null}
+                <p className="ml-5 text-[10px] text-zinc-500 leading-snug">
+                  Audio dài: ~130 WPM, beat ~7s, không cold-open trailer; logic
+                  hiện thực, nhân vật sâu (mặc định).
+                </p>
+              </label>
+
+              <label
+                className={`relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  store.scriptMode === 'sang_van'
+                    ? 'border-rose-500 bg-rose-500/10'
+                    : 'border-zinc-800 bg-black/50 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="scriptMode"
+                    value="sang_van"
+                    checked={store.scriptMode === 'sang_van'}
+                    onChange={() => store.setScriptMode('sang_van')}
+                    className="accent-rose-500"
+                  />
+                  <span
+                    className={`text-[11px] font-bold uppercase ${
+                      store.scriptMode === 'sang_van'
+                        ? 'text-rose-300'
+                        : 'text-zinc-400'
+                    }`}
+                  >
+                    Sảng Văn (Dopamine Hit)
+                  </span>
+                </div>
+                <p className="ml-5 text-[10px] text-zinc-500 leading-snug">
+                  Recap dồn: ~155 WPM, beat ~4.5s, cold-open gợi ý; vả mặt, câu
+                  ngắn, buff có giới hạn logic.
+                </p>
+              </label>
+
+              <label
+                className={`relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  store.scriptMode === 'short_manhua'
+                    ? 'border-teal-500 bg-teal-500/10'
+                    : 'border-zinc-800 bg-black/50 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="scriptMode"
+                    value="short_manhua"
+                    checked={store.scriptMode === 'short_manhua'}
+                    onChange={() => {
+                      // Soft WPM/beat/word + cold-open on — setScriptMode
+                      store.setScriptMode('short_manhua');
+                    }}
+                    className="accent-teal-500"
+                  />
+                  <span
+                    className={`text-[11px] font-bold uppercase ${
+                      store.scriptMode === 'short_manhua'
+                        ? 'text-teal-300'
+                        : 'text-zinc-400'
+                    }`}
+                  >
+                    Short / Manhua
+                  </span>
+                </div>
+                <p className="ml-5 text-[10px] text-zinc-500 leading-snug">
+                  Shorts/Reels: ~170 WPM, beat ~3.5s, cold-open bắt buộc, shot
+                  2.5–4s; ~1200 từ/tập, storyboard sẵn.
+                </p>
+              </label>
             </div>
           </div>
         </div>
@@ -561,7 +631,7 @@ export default function SetupPhase({
           {promptError ? (
             <p
               role="alert"
-              className="flex items-start gap-1.5 text-xs text-red-400 leading-snug max-h-24 overflow-y-auto"
+              className="flex items-start gap-1.5 text-xs text-red-400 leading-snug max-h-40 overflow-y-auto rounded-md border border-red-500/20 bg-red-950/30 px-2 py-1.5"
             >
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span className="whitespace-pre-wrap">{promptError}</span>

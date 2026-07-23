@@ -52,9 +52,9 @@ export const LICENSE_PATH_LAYERS: Record<
   },
   B_ledger: {
     title: 'Sổ cái (ledger)',
-    owner: 'Supabase + licenseHeartbeat + commercial/status',
+    owner: 'Supabase licenses + licenseHeartbeat + commercial/status',
     summary:
-      'active/revoked/plan/seat by HWID · heartbeat — NO daily request quota (product rejected)',
+      'SOLE TRUTH: active row by HWID · deleted/revoked/expired = Free even if AINOVEL2 crypto still valid · heartbeat · NO daily request quota',
   },
   C_crown_ip: {
     title: 'IP đắt (crown)',

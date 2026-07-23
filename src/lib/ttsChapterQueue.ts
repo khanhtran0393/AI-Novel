@@ -9,13 +9,13 @@ export type ChapterQueueJob = {
   title: string;
 };
 
-/** Browser-safe: parallel scene count by TTS platform */
+/** Browser-safe: parallel scene count by TTS platform (active engines only). */
 export function resolveChapterTtsConcurrency(platform: string): number {
   const p = (platform || '').toLowerCase();
   // Omni + Vina share GPU/VRAM (4GB class) — always serial scenes
-  if (p === 'vina_voice' || p === 'omnivoice_local') return 1;
-  if (p === 'edge_tts' || p === 'piper' || p === 'vieneu_tts') return 3;
-  if (p === 'gemini_tts' || p === 'openai_tts' || p === 'tiktok_tts') return 2;
+  if (p === 'vina_voice' || p === 'omnivoice_local' || p === 'la_studio') return 1;
+  if (p === 'edge_tts' || p === 'piper') return 3;
+  if (p === 'gemini_tts' || p === 'tiktok_tts' || p === 'capcut_tts') return 2;
   return 1;
 }
 

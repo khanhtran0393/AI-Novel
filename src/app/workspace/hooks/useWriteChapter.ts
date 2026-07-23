@@ -23,9 +23,13 @@ import { pushToast } from '@/lib/toastBus';
 import { validateSpeechFingerprints } from '@/lib/youtubeSafe';
 import {
   FREE_LIMITS,
+  TRIAL_LIMITS,
   clampFreeWordGoal,
+  clampTrialWordGoal,
   freeChapterCapMessage,
   freeWordCapMessage,
+  trialChapterCapMessage,
+  trialWordCapMessage,
 } from '@/lib/commercial/freeLimitsPolicy';
 import { storeIsFreeTier } from './useFreeLimits';
 
@@ -143,7 +147,7 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       return;
     }
 
-    // Free: ≤2 chương · ≤600 từ (server freeQuota re-check + 3 lượt/ngày)
+    // Free: ≤2 ch · ≤600 từ · 3/day. Trial: ≤10 ch · ≤3000 từ · 5/day.
     if (storeIsFreeTier(startState)) {
       if (chapterNumber > FREE_LIMITS.maxChapters) {
         const msg = freeChapterCapMessage();
@@ -170,6 +174,46 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
         const msg = freeWordCapMessage();
         setPromptError(msg);
         pushToast('error', 'Gói Free — giới hạn từ', msg, 12_000);
+        return;
+      }
+    } else if (startState.is_trial) {
+      if (chapterNumber > TRIAL_LIMITS.maxChapters) {
+        const msg = trialChapterCapMessage();
+        setPromptError(msg);
+        pushToast('error', 'Gói Trial — giới hạn chương', msg, 12_000);
+        return;
+      }
+      if (startState.danh_sach_chuong.length > TRIAL_LIMITS.maxChapters) {
+        const msg = trialChapterCapMessage();
+        setPromptError(msg);
+        pushToast('error', 'Gói Trial — giới hạn chương', msg, 12_000);
+        return;
+      }
+      const goal =
+        Number(startState.setup.so_tu_chuong) || TRIAL_LIMITS.maxWordsPerChapter;
+      if (goal > TRIAL_LIMITS.maxWordsPerChapter) {
+        startState.setSetup({ so_tu_chuong: clampTrialWordGoal(goal) });
+      }
+      const existingWords = getWordCount(
+        overwrite ? '' : currentChapter.noi_dung || '',
+      );
+      if (existingWords >= TRIAL_LIMITS.maxWordsPerChapter) {
+        const msg = trialWordCapMessage();
+        setPromptError(msg);
+        pushToast('error', 'Gói Trial — giới hạn từ', msg, 12_000);
+        return;
+      }
+    }
+
+    // Soft-gate Setup genre — trước khi gọi API (tránh 400/hard-fail muộn)
+    {
+      const chu_de = String(startState.setup?.chu_de || '').trim();
+      const phong_cach = String(startState.setup?.phong_cach || '').trim();
+      if (!chu_de || !phong_cach) {
+        const msg =
+          'Chưa chọn Setup Chủ đề + Phong cách. Mở nút Setup (sidebar) chọn cả hai trước khi viết chương.';
+        setPromptError(msg);
+        pushToast('error', 'Thiếu Setup', msg, 14_000);
         return;
       }
     }

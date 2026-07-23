@@ -159,7 +159,7 @@ export function resolveSpeaker(opts: {
   if (opts.allowDefaultNarrator !== true) {
     throw new SpeakerResolveError(
       'CODE_REF_MISSING',
-      'VinaVoice: chua chon profile Zero-Shot hoac reference_audio hop le. Khong dung DEFAULT_NARRATOR.',
+      'VinaVoice: chưa chọn profile Zero-Shot hoặc reference_audio hợp lệ. Không dùng DEFAULT_NARRATOR.',
     );
   }
 

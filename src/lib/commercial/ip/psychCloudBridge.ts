@@ -181,6 +181,14 @@ export function runPsychLocal(
         typeof input.characterHint === 'string'
           ? input.characterHint
           : undefined,
+      chu_de: typeof input.chu_de === 'string' ? input.chu_de : undefined,
+      phong_cach:
+        typeof input.phong_cach === 'string' ? input.phong_cach : undefined,
+      genre: typeof input.genre === 'string' ? input.genre : undefined,
+      styleEngineId:
+        typeof input.styleEngineId === 'string'
+          ? input.styleEngineId
+          : undefined,
     });
   }
   throw new AppError(`Psych action unknown: ${action}`, {

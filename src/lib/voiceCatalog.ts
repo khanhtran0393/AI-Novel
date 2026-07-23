@@ -29,6 +29,7 @@ export type VoicePlatformId =
   | 'vieneu_tts'
   | 'omnivoice_local'
   | 'vina_voice'
+  | 'la_studio'
   | 'vbee'
   | 'google'
   | 'elevenlabs';
@@ -444,6 +445,27 @@ export const STATIC_VOICE_CATALOG: VoiceCatalog = {
     vi: [],
     en: [],
   },
+  /** LA Studio — default + runtime merge Kokoro/custom from /api/tts/voices */
+  la_studio: {
+    vi: [
+      // Real Kokoro ids only — CLI gen works offline without GUI model load
+      v('diem_trinh', 'Diễm Trinh (mặc định Kokoro-VI)', 'female'),
+      v('mai_linh', 'Mai Linh (Kokoro-VI)', 'female'),
+      v('mai_loan', 'Mai Loan (Kokoro-VI)', 'female'),
+      v('my_yen', 'Mỹ Yến (Kokoro-VI)', 'female'),
+      v('ngoc_huyen', 'Ngọc Huyền (Kokoro-VI)', 'female'),
+      v('thuc_trinh', 'Thục Trinh (Kokoro-VI)', 'female'),
+      v('hung_thinh', 'Hưng Thịnh (Kokoro-VI)', 'male'),
+      v('manh_dung', 'Mạnh Dũng (Kokoro-VI)', 'male'),
+      v('phat_tai', 'Phát Tài (Kokoro-VI)', 'male'),
+      v('thanh_dat', 'Thành Đạt (Kokoro-VI)', 'male'),
+      v('tuan_ngoc', 'Tuấn Ngọc (Kokoro-VI)', 'male'),
+      v('duc_an', 'Đức An (Kokoro-VI)', 'male'),
+      v('duc_duy', 'Đức Duy (Kokoro-VI)', 'male'),
+      v('storyvert', 'storyvert (Kokoro-VI)', 'neutral'),
+    ],
+    en: [v('diem_trinh', 'Diem Trinh (Kokoro-VI default)', 'female')],
+  },
   // Design presets (Omni native) + clone library merge runtime qua /api/tts/voices
   omnivoice_local: {
     vi: [
@@ -616,6 +638,7 @@ export function getDefaultVoiceConfig(
     if (platform === 'edge_tts') voice = 'vi-VN-NamMinhNeural';
     else if (platform === 'piper' || platform === 'vieneu_tts') voice = 'manhdung.onnx';
     else if (platform === 'omnivoice_local') voice = 'alloy';
+    else if (platform === 'la_studio') voice = 'default';
     else if (platform === 'gemini_tts') voice = 'Kore';
     else if (platform === 'openai_tts') voice = 'alloy';
   }

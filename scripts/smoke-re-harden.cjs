@@ -64,11 +64,28 @@ async function main() {
   }
   console.log('PASS re-harden preview', { engine: preview.engine, n: preview.files.length });
 
-  // In-place harden then restore must be bit-identical
+  // In-place harden then restore must be bit-identical.
+  // main.js is intentionally NOT in SHELL_FILES (boot-critical Next+splash —
+  // minify race corrupted ASAR main). Assert harden only on secondary shell.
   const applied = await applyShellHardenInPlace();
-  const mainHard = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
-  assert.ok(mainHard.includes('ainovel-re-harden'));
-  assertShellParses(mainHard);
+  assert.ok(applied.hardened.length >= 4, 'expected secondary shell hardened');
+  assert.ok(
+    !applied.hardened.includes('main.js'),
+    'main.js must stay out of pack-time minify list (brand splash + Next boot)',
+  );
+  for (const rel of applied.hardened) {
+    const code = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.ok(code.includes('ainovel-re-harden'), rel);
+    assertShellParses(code);
+  }
+  // Workspace main.js must remain readable source after pack pipeline restore
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
+  assert.ok(!mainSrc.includes('ainovel-re-harden esbuild'), 'main.js must not stay minified in workspace');
+  assert.ok(
+    mainSrc.includes('splashBrand') && mainSrc.includes('transparent'),
+    'main.js brand splash wiring',
+  );
+  assert.ok(mainSrc.length > 500, 'main.js body present');
 
   const restored = restoreShellFromBackup();
   assert.ok(restored.restored.length >= 4, 'restore count');

@@ -1,33 +1,59 @@
 'use client';
-import { API } from '@/contracts';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import type { TTSConfig } from '@/store/useNovelStore';
-import { Cpu, ChevronDown, Globe, Volume2, Loader2, Play, Power } from 'lucide-react';
+import {
+  Cpu,
+  ChevronDown,
+  Globe,
+  Volume2,
+  Loader2,
+  Play,
+  Search,
+} from 'lucide-react';
 import {
   isVoiceValidForPlatform,
   resolveVoiceForPlatform,
   TTS_LANGUAGES,
   type VoiceCatalog,
+  type VoiceOption,
 } from '@/lib/voiceCatalog';
-import { SELECT_DARK, SELECT_DARK_SM, OPTION_DARK } from '../ttsSelectStyles';
+import { SELECT_DARK, OPTION_DARK } from '../ttsSelectStyles';
 import TikTokSessionsPanel from '../TikTokSessionsPanel';
-import { useOmniVoiceStatus } from '../hooks/useOmniVoiceStatus';
 import { FREE_TTS_PLATFORMS } from '@/lib/commercial/featureMatrix';
+import {
+  TTS_PLATFORM_LABELS,
+  ENGINE_MANUAL_TTS_PLATFORMS,
+  isEngineManualTtsPlatform,
+  isRemovedTtsPlatform,
+  isLaStudioEnvPlatform,
+  suggestMigrateTtsPlatform,
+} from '@/lib/tts/activePlatforms';
 import { useNovelStore } from '@/store/useNovelStore';
 import { toast } from '@/lib/toastBus';
+import type { CapCutPrepDiag } from '@/lib/voiceCatalogPrep';
+
+function genderLabel(g?: string): string {
+  if (g === 'female') return 'Nữ';
+  if (g === 'male') return 'Nam';
+  if (g === 'neutral') return 'Trung';
+  return '';
+}
 
 const LANGUAGES = [...TTS_LANGUAGES];
+
+const PLATFORM_LABELS = TTS_PLATFORM_LABELS;
 
 export type EngineVoiceTabProps = {
   config: TTSConfig;
   updateTTSConfig: (p: Partial<TTSConfig>) => void;
   dynamicVoices: VoiceCatalog;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  currentVoices: any[];
+  currentVoices: VoiceOption[];
   activeVoiceId: string;
   isPreviewing: boolean;
-  handlePreviewVoice: () => void | Promise<void>;
+  /** Optional voiceId — ▶ từng hàng Voice library (giống LA Studio) */
+  handlePreviewVoice: (voiceId?: string) => void | Promise<void>;
   tiktokSessions: string[];
   newTikTokSessionInput: string;
   setNewTikTokSessionInput: (s: string) => void;
@@ -39,6 +65,8 @@ export type EngineVoiceTabProps = {
   handleCopyTikTokSession: (sid: string, idx: number) => void;
   handleRemoveTikTokRow: (sid: string) => void;
   handleAddTikTokSessionsFromInput: () => void;
+  /** CapCut sscronet diagnose (từ /api/tts/voices) */
+  capcutDiag?: CapCutPrepDiag | null;
 };
 
 export default function EngineVoiceTab(props: EngineVoiceTabProps) {
@@ -47,7 +75,7 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
     updateTTSConfig,
     dynamicVoices,
     currentVoices,
-    activeVoiceId,
+    // activeVoiceId kept in props for parent API compat; select binds config.voice
     isPreviewing,
     handlePreviewVoice,
     tiktokSessions,
@@ -61,49 +89,128 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
     handleCopyTikTokSession,
     handleRemoveTikTokRow,
     handleAddTikTokSessionsFromInput,
+    capcutDiag,
   } = props;
   const store = { updateTTSConfig };
   const isFreeTier = useNovelStore(
     (s) => !s.is_pro && !s.is_trial && !s.is_vip,
   );
-  const isOmni = config.platform === 'omnivoice_local';
-  const { status: omniStatus, ensureStart: ensureOmni } = useOmniVoiceStatus(isOmni);
-  const platformSelectValue = config.platform;
+  const isCapCut = config.platform === 'capcut_tts';
+  const [voiceQuery, setVoiceQuery] = useState('');
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
 
-  // Giọng đang chọn không thuộc nền tảng hiện tại (stale sau đổi platform) → sửa ngay
+  // Clear row spinner when parent preview ends
   useEffect(() => {
-    if (!config.platform) return;
-    if (
-      isVoiceValidForPlatform(
-        dynamicVoices,
-        config.platform,
-        config.language || 'vi',
-        config.voice || '',
-      )
-    ) {
+    if (!isPreviewing) setPreviewingId(null);
+  }, [isPreviewing]);
+
+  // Reset search when platform/language changes
+  useEffect(() => {
+    setVoiceQuery('');
+  }, [config.platform, config.language]);
+
+  const filteredVoices = useMemo(() => {
+    const q = voiceQuery.trim().toLowerCase().normalize('NFC');
+    if (!q) return currentVoices as VoiceOption[];
+    return (currentVoices as VoiceOption[]).filter((v) => {
+      const hay = `${v.name || ''} ${v.id || ''} ${v.locale || ''} ${v.gender || ''}`
+        .toLowerCase()
+        .normalize('NFC');
+      return hay.includes(q);
+    });
+  }, [currentVoices, voiceQuery]);
+
+  const selectVoice = useCallback(
+    (id: string) => {
+      store.updateTTSConfig({ voice: id });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  /**
+   * Nghe thử đúng 1 hàng (override voiceId). Bấm lại khi đang phát = hủy.
+   */
+  const previewOneVoice = useCallback(
+    async (id: string) => {
+      if (isPreviewing) {
+        // Cancel current (same or different row) via parent toggle
+        void handlePreviewVoice();
+        setPreviewingId(null);
+        return;
+      }
+      setPreviewingId(id);
+      if (config.voice !== id) {
+        store.updateTTSConfig({ voice: id });
+      }
+      try {
+        await handlePreviewVoice(id);
+      } finally {
+        // parent isPreviewing may still be true until audio ends; effect clears
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isPreviewing, handlePreviewVoice, config.voice],
+  );
+
+  // Engine tab only lists manual engines. LA Studio / Omni → parent switches tab or migrates.
+  const platformSelectValue = isEngineManualTtsPlatform(config.platform)
+    ? config.platform
+    : 'edge_tts';
+  const platformInFreeList = FREE_TTS_PLATFORMS.has(
+    String(platformSelectValue).toLowerCase(),
+  );
+  /** Persist stale / free-locked premium that still belongs in Engine list */
+  const showStalePremiumOption =
+    !!config.platform &&
+    isEngineManualTtsPlatform(config.platform) &&
+    !isRemovedTtsPlatform(config.platform) &&
+    isFreeTier &&
+    !platformInFreeList;
+
+  // Persist cũ platform đã gỡ → auto-migrate (không silent gen bằng engine chết).
+  // Không migrate la_studio/omnivoice ở đây — parent modal đưa sang tab LA Studio.
+  useEffect(() => {
+    const plat = String(config.platform || '').trim();
+    if (!plat || isEngineManualTtsPlatform(plat) || isLaStudioEnvPlatform(plat)) {
       return;
     }
-    if (!currentVoices.length && !config.voice) return;
-    const fixed = resolveVoiceForPlatform(
+    const next = suggestMigrateTtsPlatform(plat);
+    // Prefer an Engine-manual target when user is already on this tab
+    const engineNext =
+      next && isEngineManualTtsPlatform(next) ? next : 'edge_tts';
+    if (engineNext === plat) return;
+    const fromLabel = PLATFORM_LABELS[plat] || plat;
+    const toLabel = PLATFORM_LABELS[engineNext] || engineNext;
+    store.updateTTSConfig({
+      platform: engineNext,
+      language: config.language || 'vi',
+      voice: '',
+      vinaUseClone: false,
+    });
+    toast.info(
+      'Notice',
+      `Nền tảng «${fromLabel}» đã gỡ. Đã chuyển sang «${toLabel}» — chọn lại giọng trong Voice library.`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.platform]);
+
+  // B10: không auto-swap sang giọng default khi stale.
+  // Chỉ map giọng khi user đổi platform/language (onChange). Select phản ánh store.
+  const voiceInList = currentVoices.some(
+    (v: { id: string }) => v.id === (config.voice || ''),
+  );
+  const selectVoiceId = config.voice || '';
+  const voiceStale =
+    !!config.voice &&
+    currentVoices.length > 0 &&
+    !voiceInList &&
+    !isVoiceValidForPlatform(
       dynamicVoices,
       config.platform,
       config.language || 'vi',
-      '',
-      { keepPreferred: false },
+      config.voice || '',
     );
-    if (!fixed.voice || fixed.voice === config.voice) return;
-    store.updateTTSConfig({
-      language: fixed.language,
-      voice: fixed.voice,
-      vinaUseClone: config.platform === 'vina_voice',
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when platform/voice/list drift
-  }, [config.platform, config.language, config.voice, currentVoices, dynamicVoices]);
-
-  const selectVoiceId =
-    currentVoices.some((v: { id: string }) => v.id === activeVoiceId)
-      ? activeVoiceId
-      : currentVoices[0]?.id || '';
 
   return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -113,16 +220,27 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                 </label>
                 <div className="relative w-full">
                   <select
-                    value={platformSelectValue}
+                    value={
+                      showStalePremiumOption
+                        ? config.platform
+                        : platformSelectValue
+                    }
                     onChange={(e) => {
                       const newPlatform = e.target.value as TTSConfig['platform'];
+                      if (!isEngineManualTtsPlatform(newPlatform)) {
+                        toast.error(
+                          'Engine chọn tay',
+                          'LA Studio / OmniVoice chỉ dùng ở tab «LA Studio».',
+                        );
+                        return;
+                      }
                       if (
                         isFreeTier &&
                         !FREE_TTS_PLATFORMS.has(String(newPlatform).toLowerCase())
                       ) {
                         toast.error(
                           'Gói Free',
-                          `«${newPlatform}» cần Trial/Pro. Free chỉ Edge TTS hoặc Piper.`,
+                          `«${PLATFORM_LABELS[newPlatform] || newPlatform}» cần Trial/Pro (CapCut, TikTok, Gemini…). Free chỉ Edge TTS hoặc Piper.`,
                         );
                         return;
                       }
@@ -138,87 +256,87 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                         platform: newPlatform,
                         language: next.language,
                         voice: next.voice,
-                        vinaUseClone: newPlatform === 'vina_voice',
+                        vinaUseClone: false,
                       });
-                      if (newPlatform === 'omnivoice_local') {
-                        // Fire-and-forget warm start — TTS path also ensureOmniServer
-                        void fetch(API.omnivoiceStatus, { method: 'POST' }).catch(() => {});
-                      }
                     }}
                     className={SELECT_DARK}
                   >
-                    <option className={OPTION_DARK} value="edge_tts">Microsoft Edge TTS</option>
-                    <option className={OPTION_DARK} value="piper">Piper VN (.onnx local)</option>
-                    {!isFreeTier ? (
-                      <>
-                        <option className={OPTION_DARK} value="vieneu_tts">VieNeu SDK (local clone)</option>
-                        <option className={OPTION_DARK} value="omnivoice_local">OmniVoice Local</option>
-                        <option className={OPTION_DARK} value="vina_voice">VinaVoice</option>
-                        <option className={OPTION_DARK} value="capcut_tts">CapCut TTS</option>
-                        <option className={OPTION_DARK} value="tiktok_tts">TikTok TTS</option>
-                        <option className={OPTION_DARK} value="gemini_tts">Gemini TTS</option>
-                      </>
+                    <option className={OPTION_DARK} value="edge_tts">
+                      Microsoft Edge TTS
+                    </option>
+                    <option className={OPTION_DARK} value="piper">
+                      Piper VN (.onnx local)
+                    </option>
+                    {!isFreeTier
+                      ? ENGINE_MANUAL_TTS_PLATFORMS.filter(
+                          (p) => p !== 'edge_tts' && p !== 'piper',
+                        ).map((p) => (
+                          <option key={p} className={OPTION_DARK} value={p}>
+                            {PLATFORM_LABELS[p] || p}
+                          </option>
+                        ))
+                      : null}
+                    {showStalePremiumOption ? (
+                      <option className={OPTION_DARK} value={config.platform}>
+                        {PLATFORM_LABELS[config.platform] || config.platform}
+                        {' (cần Trial/Pro)'}
+                      </option>
                     ) : null}
-                    {/* Hotai: API fetch fail trên môi trường này — không liệt kê (B10: không fallback) */}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
                 </div>
-                {isOmni && (
-                  <div className="mt-1.5 rounded border border-sky-900/40 bg-sky-950/20 px-2 py-1.5 space-y-1.5">
-                    <p className="text-[10px] text-sky-300/95 leading-snug">
-                      <strong>OmniVoice</strong> — chỉ gọi engine này (exclusive GPU). Vina sẽ được
-                      unload khi gen Omni. Chọn <strong>clone library</strong> (omnivoice_…) hoặc
-                      preset (alloy/nova). Không tự đổi sang Edge/Piper.
+                <p className="text-[9px] text-zinc-500 leading-snug">
+                  Engine chọn tay: Edge · Piper · CapCut · TikTok · Gemini. LA Studio /
+                  OmniVoice → tab <strong className="text-violet-300">LA Studio</strong>.
+                </p>
+                {isFreeTier &&
+                  isEngineManualTtsPlatform(config.platform) &&
+                  !platformInFreeList && (
+                  <p className="text-[10px] text-amber-400/95 leading-snug">
+                    Gói Free không dùng «{PLATFORM_LABELS[config.platform] || config.platform}».
+                    Chọn <strong>Edge TTS</strong> hoặc <strong>Piper</strong>, hoặc nhấp logo → Trial/Pro.
+                  </p>
+                )}
+                {isCapCut && capcutDiag && !capcutDiag.ok && (
+                  <div className="mt-1.5 rounded border border-rose-900/50 bg-rose-950/30 px-2 py-1.5 space-y-1">
+                    <p className="text-[10px] text-rose-300 leading-snug font-semibold">
+                      CapCut TTS chưa sẵn sàng trên máy này
                     </p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          omniStatus.online
-                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-700/40'
-                            : omniStatus.starting
-                              ? 'bg-amber-500/15 text-amber-300 border border-amber-700/40'
-                              : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                        }`}
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            omniStatus.online
-                              ? 'bg-emerald-400'
-                              : omniStatus.starting
-                                ? 'bg-amber-400 animate-pulse'
-                                : 'bg-zinc-500'
-                          }`}
-                        />
-                        {omniStatus.starting
-                          ? 'Đang khởi động…'
-                          : omniStatus.online
-                            ? omniStatus.modelLoaded === false
-                              ? 'Online · load model…'
-                              : 'Engine sẵn sàng'
-                            : omniStatus.loading
-                              ? 'Đang kiểm tra…'
-                              : 'Engine offline'}
-                      </span>
-                      {!omniStatus.online && (
-                        <button
-                          type="button"
-                          disabled={omniStatus.starting}
-                          onClick={() => void ensureOmni()}
-                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-sky-600/80 hover:bg-sky-500 text-white disabled:opacity-50"
-                        >
-                          {omniStatus.starting ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Power className="h-3 w-3" />
-                          )}
-                          Bật engine
-                        </button>
-                      )}
-                    </div>
-                    {omniStatus.message && !omniStatus.online && (
-                      <p className="text-[9px] text-zinc-500 leading-snug">{omniStatus.message}</p>
-                    )}
+                    <p className="text-[9px] text-zinc-400 leading-snug">
+                      {capcutDiag.message ||
+                        'Thiếu sscronet.dll (cài CapCut PC → %LOCALAPPDATA%/CapCut/Apps). Không tự đổi sang Edge.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = resolveVoiceForPlatform(
+                          dynamicVoices,
+                          'edge_tts',
+                          config.language || 'vi',
+                          '',
+                          { keepPreferred: false },
+                        );
+                        store.updateTTSConfig({
+                          platform: 'edge_tts',
+                          language: next.language,
+                          voice: next.voice || 'vi-VN-NamMinhNeural',
+                          vinaUseClone: false,
+                        });
+                        toast.info(
+                          'Notice',
+                          'Đã chuyển sang Edge TTS (bạn chọn tay — không fallback ngầm khi gen).',
+                        );
+                      }}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-600/80 hover:bg-sky-500 text-white"
+                    >
+                      Chuyển sang Edge TTS
+                    </button>
                   </div>
+                )}
+                {isCapCut && capcutDiag?.ok && (
+                  <p className="text-[9px] text-emerald-400/90 leading-snug">
+                    CapCut OK · {capcutDiag.version || 'sscronet'} · {capcutDiag.voiceCount} giọng
+                  </p>
                 )}
               </div>
 
@@ -258,15 +376,26 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
               <div className="space-y-2 md:col-span-2">
                 <label className="flex items-center justify-between gap-1.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                   <span className="flex items-center gap-1.5">
-                    <Volume2 className="h-3.5 w-3.5 text-amber-400" /> Giọng đọc
+                    <Volume2 className="h-3.5 w-3.5 text-amber-400" /> Voice library
                     <span className="normal-case font-medium text-zinc-600 tracking-normal">
-                      ({currentVoices.length})
+                      ({currentVoices.length}
+                      {voiceQuery.trim() && filteredVoices.length !== currentVoices.length
+                        ? ` · lọc ${filteredVoices.length}`
+                        : ''}
+                      )
                     </span>
                   </span>
                   {config.voice && (
                     <button
                       type="button"
-                      onClick={() => void handlePreviewVoice()}
+                      onClick={() => {
+                        if (isPreviewing) {
+                          void handlePreviewVoice();
+                          setPreviewingId(null);
+                        } else {
+                          void previewOneVoice(config.voice || selectVoiceId);
+                        }
+                      }}
                       title={
                         isPreviewing
                           ? 'Bấm để hủy nghe thử'
@@ -289,33 +418,126 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                     </button>
                   )}
                 </label>
-                <div className="relative w-full">
-                  <select
-                    value={selectVoiceId}
-                    onChange={(e) => store.updateTTSConfig({ voice: e.target.value })}
-                    className={SELECT_DARK}
-                  >
-                    {currentVoices.length === 0 && (
-                      <option className={OPTION_DARK} value="">
-                        Không có giọng
-                      </option>
+
+                {/* Search — useful for Edge EN / CapCut multi-lang catalogs */}
+                {currentVoices.length > 6 && (
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
+                    <input
+                      type="search"
+                      value={voiceQuery}
+                      onChange={(e) => setVoiceQuery(e.target.value)}
+                      placeholder="Lọc theo tên / id / giới tính…"
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-black/60 border border-zinc-800 text-[12px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-sky-700/60"
+                    />
+                  </div>
+                )}
+
+                {/* Scrollable list + per-row ▶ (live gen, không phải file mẫu tĩnh) */}
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 p-2">
+                  <p className="text-[9px] text-zinc-500 mb-1.5 leading-snug px-0.5">
+                    Chọn hàng = gán giọng · ▶ = gen thử live trên engine hiện tại (không
+                    fallback platform khác · B10).
+                  </p>
+                  <div className="max-h-[260px] overflow-y-auto space-y-1 pr-0.5">
+                    {currentVoices.length === 0 ? (
+                      <p className="text-[11px] text-zinc-500 px-2 py-3 text-center">
+                        Không có giọng cho «
+                        {PLATFORM_LABELS[config.platform] || config.platform}» ·{' '}
+                        {config.language || 'vi'}. Đổi ngôn ngữ hoặc nền tảng.
+                      </p>
+                    ) : filteredVoices.length === 0 ? (
+                      <p className="text-[11px] text-zinc-500 px-2 py-3 text-center">
+                        Không khớp «{voiceQuery.trim()}» — xóa bộ lọc.
+                      </p>
+                    ) : (
+                      filteredVoices.map((v, i) => {
+                        const on = selectVoiceId === v.id;
+                        const rowBusy =
+                          isPreviewing &&
+                          (previewingId === v.id ||
+                            (!previewingId && on));
+                        const g = genderLabel(v.gender);
+                        return (
+                          <div
+                            key={`${v.id}__${i}`}
+                            className={`flex items-stretch gap-1 rounded-lg border transition-colors ${
+                              on
+                                ? 'bg-sky-500/15 border-sky-500/45'
+                                : 'bg-zinc-900/60 border-transparent hover:border-zinc-700/80'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => selectVoice(v.id)}
+                              className="min-w-0 flex-1 text-left px-2.5 py-2 text-[12px]"
+                              title={`Chọn giọng ${v.name}`}
+                            >
+                              <div className="font-semibold text-zinc-100 truncate">
+                                {v.name}
+                              </div>
+                              <div className="text-[10px] text-zinc-500 truncate">
+                                {v.id}
+                                {g ? ` · ${g}` : ''}
+                                {v.locale ? ` · ${v.locale}` : ''}
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isPreviewing && !rowBusy}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void previewOneVoice(v.id);
+                              }}
+                              className={`shrink-0 self-center mr-1.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 hover:bg-white/10 disabled:opacity-50 ${
+                                rowBusy
+                                  ? 'bg-sky-500/30 text-sky-200'
+                                  : 'text-sky-400'
+                              }`}
+                              title={
+                                rowBusy
+                                  ? `Đang gen «${v.name}» — bấm lại để hủy`
+                                  : isTikTokWithoutSession
+                                    ? 'Thiếu SessionID TikTok'
+                                    : `Nghe thử «${v.name}»`
+                              }
+                              aria-label={`Nghe thử ${v.name}`}
+                            >
+                              {rowBusy ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5 fill-current" />
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })
                     )}
-                    {currentVoices.map((v: { id: string; name: string }, i: number) => (
-                      <option className={OPTION_DARK} key={`${v.id}__${i}`} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+                    {voiceStale && config.voice ? (
+                      <div className="flex items-stretch gap-1 rounded-lg border border-amber-700/50 bg-amber-950/30">
+                        <div className="min-w-0 flex-1 px-2.5 py-2 text-[12px]">
+                          <div className="font-semibold text-amber-200 truncate">
+                            ⚠ {config.voice}
+                          </div>
+                          <div className="text-[10px] text-amber-400/90">
+                            Không thuộc{' '}
+                            {PLATFORM_LABELS[config.platform] || config.platform} —
+                            chọn lại trong list
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                {config.voice &&
-                  currentVoices.length > 0 &&
-                  !currentVoices.some((v: { id: string }) => v.id === config.voice) && (
-                    <p className="text-[10px] text-amber-400/90 leading-snug">
-                      Giọng «{config.voice}» không thuộc nền tảng đang chọn — đang đồng bộ sang «
-                      {selectVoiceId || '…'}».
-                    </p>
-                  )}
+
+                {voiceStale && (
+                  <p className="text-[10px] text-amber-400/90 leading-snug">
+                    Giọng «{config.voice}» không thuộc nền tảng «
+                    {PLATFORM_LABELS[config.platform] || config.platform}». Chọn lại
+                    trong list — nghe thử sẽ báo lỗi đúng giọng này (không tự đổi sang
+                    giọng khác).
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -375,21 +597,6 @@ export default function EngineVoiceTab(props: EngineVoiceTabProps) {
                   onRemove={handleRemoveTikTokRow}
                   onAddFromInput={handleAddTikTokSessionsFromInput}
                 />
-              )}
-
-              {config.platform === 'vieneu_tts' && (
-                <div className="space-y-2 md:col-span-2 pt-2 border-t border-zinc-800">
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
-                    VieNeu API URL
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="http://localhost:3000/api/v1"
-                    value={config.api_url_vieneu || ''}
-                    onChange={(e) => store.updateTTSConfig({ api_url_vieneu: e.target.value })}
-                    className="w-full rounded-lg border border-zinc-800 bg-black/60 px-3 py-2.5 text-sm font-mono text-zinc-200 outline-none focus:border-emerald-500"
-                  />
-                </div>
               )}
 
             </div>

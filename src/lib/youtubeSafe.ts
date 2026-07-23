@@ -90,4 +90,26 @@ export {
   type YoutubeFieldScores,
 } from './youtube-safe/seoMeta';
 export * from './youtube-safe/seoMeta';
+export {
+  DOPAMINE_HOOK_TOKENS,
+  THUMB_COMPOSITION_PRESETS,
+  YOUTUBE_MOBILE_TITLE_MAX,
+  YOUTUBE_MOBILE_TITLE_SOFT,
+  YOUTUBE_TITLE_HARD_MAX,
+  buildFiveTitleFormulas,
+  compositionPromptBlock,
+  enforceMobileTitle,
+  evaluateHighCtrPack,
+  frontLoadHookKeywords,
+  getThumbCompositionPreset,
+  isValidThumbOverlay,
+  scoreTitleMobileDiscipline,
+  suggestThumbOverlayTexts,
+  type HighCtrCheckItem,
+  type HighCtrPackReport,
+  type ThumbCompositionId,
+  type ThumbCompositionPreset,
+  type TitleFormulaId,
+  type TitleFormulaVariant,
+} from './youtube-safe/highCtr';
 export type { YoutubeExportPack } from './youtube-safe/exportPack';

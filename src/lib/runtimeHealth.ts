@@ -168,6 +168,29 @@ export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
     );
   }
 
+  // LA Studio / Kokoro-VI portable (platform la_studio — ship TTS)
+  const kokoroCli = path.join(root, 'bin', 'la-studio-kokoro', 'bin', 'kokoro-vi-cli.exe');
+  const kokoroOnnx = path.join(root, 'bin', 'la-studio-kokoro', 'models', 'kokoro_vi.onnx');
+  if (fs.existsSync(kokoroCli) && fs.existsSync(kokoroOnnx)) {
+    items.push(
+      item(
+        'la_studio_kokoro',
+        'LA Studio Kokoro-VI',
+        'ok',
+        'bin/la-studio-kokoro (portable ship)',
+      ),
+    );
+  } else {
+    items.push(
+      item(
+        'la_studio_kokoro',
+        'LA Studio Kokoro-VI',
+        'warn',
+        'Thiếu pack — chạy npm run prepare:la-studio-kokoro trước khi pack',
+      ),
+    );
+  }
+
   // Chrome / Puppeteer (Whisk) — existence only
   const chromeCandidates = [
     process.env.CHROME_PATH,

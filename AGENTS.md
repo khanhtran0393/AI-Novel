@@ -4,7 +4,7 @@
 
 Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain, commercial, B10, Setup genre, Gen Prompt, TTS, Flow, engine native, pipeline.
 
-**Mọi agent chỉ được nhận định và thực thi theo đúng thiết kế dưới đây** — không “đoán” lại kiến trúc cũ (`ainovel-gui.exe`, proxy `:8080`, mạt thế hardcode, CapCut→Edge fallback, v.v.).
+**Mọi agent chỉ được nhận định và thực thi theo đúng thiết kế dưới đây** — không “đoán” lại kiến trúc cũ (`ainovel-gui.exe`, proxy `:8080`, genre hardcode, CapCut→Edge fallback, v.v.).
 
 ---
 
@@ -12,10 +12,12 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 >
 > | Tài liệu | Vai trò |
 > |----------|---------|
+> | [`docs/AGENT_DONE_GATE.md`](docs/AGENT_DONE_GATE.md) | **Chống ảo giác khi báo xong** (Done Gate · status ladder · gatekeeper) |
 > | [`docs/IRON_LAWS.md`](docs/IRON_LAWS.md) | **Quy luật thép + sự thật hiển nhiên (LOCKED)** |
 > | [`docs/DOMAIN_MAP.md`](docs/DOMAIN_MAP.md) | Ownership domain logic |
 > | [`docs/COMMERCIAL.md`](docs/COMMERCIAL.md) | Free / Trial / Pro + entitlement |
 > | [`docs/LICENSE_ONE_PATH.md`](docs/LICENSE_ONE_PATH.md) | **One-path license** (ticket · ledger · crown IP) — cấm f(token) |
+> | [`docs/PACK_NOTES.md`](docs/PACK_NOTES.md) | **Ghi chú pack** — quy trình 4 bước · phiếu tick · ledger · update · checklist |
 > | [`docs/RESET_POINT.md`](docs/RESET_POINT.md) | Làm Mới Dự Án (blank canvas + giữ settings) |
 > | [`docs/integrations-hub.md`](docs/integrations-hub.md) | Tích hợp ngầm (không nút 1-click) |
 > | [`docs/flow-bridge.md`](docs/flow-bridge.md) | Google Flow gen ảnh/video |
@@ -34,8 +36,8 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 > 5. **B10 — CẤM FALLBACK nội dung/logic**: không đổi platform/engine/voice/provider ngầm, không gen mẫu, không soft-success.  
 >    **Chỉ** được **xoay API key cùng provider**. Lỗi → **báo thẳng**.
 > 6. **Setup genre** (`setup.chu_de` + `setup.phong_cach`) **bắt buộc** cho write / gen prompt / engine.  
->    **CẤM** hardcode genre/style **mạt thế** khi user chọn thể loại khác.
-> 7. **Nhân vật**: **khuyết điểm** (điểm yếu) bắt buộc — **không** ép “khuyết tật mạt thế”.
+>    **CẤM** hardcode genre/style ngoài Setup khi user chọn thể loại khác.
+> 7. **Nhân vật**: **khuyết điểm** (điểm yếu) bắt buộc — **không** ép “trope khuyết tật cứng”.
 > 8. **Tích hợp**: user bấm từng bước Gen Prompt → Ảnh → Video → TTS → Ship. **Không** nút gộp pipeline 1-click.
 > 9. **TTS multi-voice**: gate chỉ `ttsConfig` — **CẤM** nhét `sceneEmotion` vào multi-gate.
 > 10. **CapCut fail** → báo lỗi CapCut; **CẤM** nhảy Edge TTS / Edge audio ngầm.
@@ -76,7 +78,7 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 | Sync | Zustand durable backup ↔ disk qua `storeBridge` / `diskStore` |
 | Capabilities | `capabilities.ts` → `mode: 'native-ts'`, `dependsOnAinovelGui: false`, `dependsOnPort8080: false` |
 | Tools | `writerTools` (plan/draft/commit/review), `editorTools` (arc/volume/expand) |
-| Setup genre | `projectContext.setupGenrePayload()` — **thiếu chu_de & phong_cach → throw**, không ép mạt thế |
+| Setup genre | `projectContext.setupGenrePayload()` — **thiếu chu_de & phong_cach → throw**, không ép thể loại ngoài Setup |
 | Long-form | `runner` + `pipeline/longformArc` (`buildLayeredRouteExtras`) khi đủ số chương |
 
 **CẤM:** wire lại `ainovel-gui.exe`, proxy `:8080`, hoặc “CapCut TTS thiếu → auto Edge” (vi phạm B10).
@@ -249,7 +251,7 @@ Nguồn: `src/lib/commercial/featureMatrix.ts` · docs: `docs/COMMERCIAL.md`, `d
 | Tier | Ý nghĩa ngắn |
 |------|----------------|
 | `free` | Viết / outline / prompt / gen ảnh BYOK / TTS Edge-Piper cơ bản |
-| `trial` | 3 ngày / 1 HWID — video + CapCut + ship + TTS premium (Pro-equivalent tạm) |
+| `trial` | 7 ngày / 1 HWID — như Pro · 5 lượt/ngày mục cơ bản · ≤3000 từ/chương · ≤10 chương |
 | `pro` | License HWID — thêm integrations pipeline, multi-channel, toolbox, Flow multi-account |
 
 Server gate (`assertProAccess`): **gen video**, **export CapCut**, **ship-pack**, **integrations/pipeline**.
@@ -318,8 +320,8 @@ Docs deploy: `docs/SUPABASE_VERCEL_GUIDE.md`.
 | `setup.phong_cach` | Phong cách |
 | `genre` (payload) | Thường = `"${chu_de} / ${phong_cach}"` |
 | `visualDnaPrompt` | Visual DNA (Media Config) — ưu tiên style ảnh |
-| `mediaStylePreset` | Fallback cinematic **generic** (không mạt thế) |
-| `lorebook` | Luật thế giới user/AI — **không** auto-bịa “luật mạt thế cực lạnh” |
+| `mediaStylePreset` | Fallback cinematic **generic** (không ép thể loại) |
+| `lorebook` | Luật thế giới user/AI — **không** auto-bịa “luật thế giới bịa mặc định” |
 
 Helper: `src/lib/storyWriting.ts`
 
@@ -339,11 +341,11 @@ Helper: `src/lib/storyWriting.ts`
 | Novel-engine draft/plan/commit | throw `setupGenrePayload` |
 | Gen video client | throw nếu thiếu style+genre |
 
-**CẤM** default string: `"dark survival / mạt thế"`, `"Luật thế giới mạt thế cực lạnh"`, `"Cinematic Dark Post-Apocalyptic…"`.
+**CẤM** default string: `"forced genre default"`, `"luật thế giới ngoài Setup cực lạnh"`, `"forced cinematic genre default…"`.
 
 ### 4.3 Genre packs (optional UX)
 
-`src/lib/genrePacks.ts` — pack **tùy chọn** (gồm `mat_the` nếu user **chọn**). Không phải default engine.
+`src/lib/genrePacks.ts` — pack **tùy chọn** (user chọn). Không phải default engine.
 
 ---
 
@@ -367,7 +369,7 @@ Logic **ngầm** sau bước (không nút 1-click): FableCut rebuild, Seedance s
 ### 5.2 Zero-Legacy viết văn học
 
 1. **Tên:** Hán Việt sắc sảo; cấm tên mòn (Lâm Khuyết…).
-2. **Khuyết điểm:** mỗi NV phải có điểm yếu rõ — **không** ép khuyết tật mạt thế.
+2. **Khuyết điểm:** mỗi NV phải có điểm yếu rõ — **không** ép trope khuyết tật cứng.
 3. **Pacing:** cấm time-skip tuần/tháng; ưu tiên real-time, đa giác quan có chọn lọc, thoại đời.
 4. **Phân cảnh:** tối thiểu `MIN_SCENE_COUNT` (3) tag `[CẢNH N: NỘI/NGOẠI…]`.
 5. **Word-gate:** mục tiêu `so_tu_chuong` (~0.92 floor); continue nếu thiếu — `pipeline/wordBand.ts`.
@@ -424,7 +426,7 @@ Client: `modules/writeModule.ts`, `sceneModule.ts`, `setupModule.ts` + hooks tư
 | Hạng mục | Sự thật |
 |----------|---------|
 | Default platform | `vina_voice` |
-| Registry platforms | `piper`, `edge_tts`, `vbee`, `google`, `elevenlabs`, `vieneu_tts`, `capcut_tts`, `tiktok_tts`, `openai_tts`, `hotai_tts`, `omnivoice_local`, `vina_voice`, `gemini_tts` |
+| Registry platforms (UI) | **Active:** `edge_tts`, `piper`, `omnivoice_local`, `vina_voice`, `capcut_tts`, `tiktok_tts`, `gemini_tts` · **Removed (hard-fail):** `vieneu_tts`, `openai_tts`, `google`, `elevenlabs`, `hotai_tts`, `vbee` · source: `src/lib/tts/activePlatforms.ts` |
 | Route | `src/app/api/generate-tts/route.ts` + `ttsRegistry.ts` + `platforms/*` + `engines/*` |
 | Multi-voice | `lib/voiceCast.ts` — gate **chỉ** `ttsConfig` voice/speed/pitch |
 | **CẤM** | `sceneEmotion` trong multi-gate |
@@ -489,7 +491,7 @@ Smoke: `npm run smoke:pipeline`.
 | giong_thoai, tts_voice | Có | TTS per role |
 | ngoai_hinh | Có | Face lock |
 | dac_diem_nhan_dang | Có | Marks nhìn thấy được |
-| **khuet_tat** | **Có** | **Khuyết điểm** (điểm yếu) — **không** = “khuyết tật mạt thế” |
+| **khuet_tat** | **Có** | **Khuyết điểm** (điểm yếu) — **không** = “trope khuyết tật cứng” |
 | prompt | Có | Master EN identity |
 | angle_prompts / expression_prompts | Sheet | 4 góc + 8 biểu cảm |
 | face_ref | Sau gen concept | Path local |
@@ -500,7 +502,7 @@ Validate: `getCharacterProfileSetupStatus` + `CHAR_PROFILE_REQUIRED_FIELDS`.
 
 - `GENERATE_CHARACTER_PROMPT` → full sheet + `applyCharacterSheetFormulas(styleHint, genre)`.
 - `GENERATE_CHARACTER_PROMPT_ONLY` → master only + formula.
-- Style/genre từ Visual DNA + Setup — **không** hardcode dark survival.
+- Style/genre từ Visual DNA + Setup — **không** hardcode cinematic natural realism.
 
 ### 6.3 Consistency khi gen ảnh scene
 
@@ -603,7 +605,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 | Hard-fail + message hành động | Soft-success, toast mơ hồ, fake media |
 | | CapCut fail → Edge; Flow fail → Gemini ngầm |
 | | Local director fill prompt khi AI fail |
-| | `duration \|\| 5` / `beat \|\| 6` / genre mạt thế default |
+| | `duration \|\| 5` / `beat \|\| 6` / genre default ngoài Setup |
 | | Auto browser → Google Chrome khi cần Chromium sạch |
 | | Trial badge gộp nhầm thành PRO trả phí (phải `is_trial`) |
 
@@ -616,8 +618,8 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 1. **Thực thi theo IRON_LAWS + AGENTS này** — không “đoán” kiến trúc legacy.
 2. **Empirical Validation Loop:** sửa code → chạy lệnh thật → đọc log → auto-debug đến pass; **cấm** hallucinate test.
 3. **Zero-Trust Logic Preservation:** không phá module đang chạy; feature mới modular; quét code cũ trước khi sửa.
-4. **Setup / genre / style:** luôn wire từ store; hard-fail khi thiếu — **không** hardcode mạt thế.
-5. **Khuyết điểm NV:** bắt buộc điểm yếu; **không** ép khuyết tật mạt thế.
+4. **Setup / genre / style:** luôn wire từ store; hard-fail khi thiếu — **không** hardcode thể loại mặc định.
+5. **Khuyết điểm NV:** bắt buộc điểm yếu; **không** ép trope khuyết tật cứng.
 6. **Contracts:** key/API/DTO từ `@/contracts`; không invent.
 7. **Hydration:** `isHydrated` mặc định true — không re-introduce spinner chặn boot; rehydrate durable vẫn an toàn.
 8. **TTS multi:** không nhét `sceneEmotion` vào gate multi.
@@ -625,6 +627,36 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 10. **Commercial:** trial ≠ paid Pro trên UI; server gate đúng featureMatrix.
 11. **Next.js 16:** đọc `node_modules/next/dist/docs/` khi API framework khác training data.
 12. **NAV host-binding:** không bẻ guard để chạy CLI toolbox standalone trên máy user production.
+13. **Done Gate (chống ảo giác):** tuân `docs/AGENT_DONE_GATE.md` — cấm báo DONE khi chưa có log domain; xem §12b.
+
+### 12b. AGENT DONE GATE (LOCKED — chống ảo giác khi báo xong)
+
+Spec đầy đủ: [`docs/AGENT_DONE_GATE.md`](docs/AGENT_DONE_GATE.md).
+
+| Nấc | Ý nghĩa | Cấm gọi “hoàn thành” nếu chỉ có nấc này |
+|-----|---------|----------------------------------------|
+| `IMPLEMENTED` | Đã sửa code | Có — chưa xong |
+| `TYPECHECK_OK` | `npm run typecheck` exit 0 | Có — chưa xong feature |
+| `SMOKE_OK` | smoke domain exit 0 | Chỉ được claim smoke, chưa DONE toàn task nếu thiếu media |
+| `MEDIA_OK` | file `.mp3`/`.wav`/`.png`/`.mp4` trên đĩa size>0 | — |
+| `DONE` | User-facing xong | Cần typecheck + smoke domain + gatekeeper PASS + log trích |
+
+**Final Gatekeeper (Grok Build):**
+
+1. Chạy domain verify (tối thiểu `npm run verify:agent-done` khi có diff).
+2. `spawn_subagent` · `subagent_type: general-purpose` · skill **empirical-qa-auditor** (prompt + draft + logs).
+3. Chỉ khi auditor (hoặc self-role Zero-Trust sau log) in **`VERDICT: PASS`** → được gửi DONE cho user.
+4. **`VERDICT: REJECT`** → sửa + re-run; **cấm** đẩy lỗi cho user tự test.
+
+| Legacy (Claude docs) | Grok Build |
+|----------------------|------------|
+| `invoke_subagent` | `spawn_subagent` |
+| `run_command` | `run_terminal_command` |
+| `define_subagent` | không dùng — dùng `subagent_type` có sẵn |
+
+**CẤM từ trong báo cáo xong:** “có vẻ”, “giả sử”, “bạn tự test”, “should work”, chép MEMORY PASS không re-run.
+
+**MEMORY evidence:** `- **YYYY-MM-DD:** claim. Proof: \`cmd\` → exit 0; note: <log>.`
 
 ---
 
@@ -632,7 +664,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 
 - [ ] Có chạm `ainovel-gui` / `:8080`? → rollback
 - [ ] Có import cross-domain lậu? → contracts/API
-- [ ] Có hardcode mạt thế / dark survival / local prompt fill?
+- [ ] Có hardcode thể loại mặc định / cinematic natural realism / local prompt fill?
 - [ ] Setup `chu_de`+`phong_cach` có được truyền vào write/gen/engine?
 - [ ] TTS multi-gate có dính `sceneEmotion`?
 - [ ] Duration/beat thiếu có hard-fail (không `|| 5`)?
@@ -641,6 +673,9 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 - [ ] License: có `f(token)` / private client / quota ngày? → rollback (xem `LICENSE_ONE_PATH.md`)
 - [ ] Worker/temp: `finally` cleanup?
 - [ ] Đã chạy smoke/typecheck/verify liên quan domain vừa sửa?
+- [ ] **Done Gate:** `npm run verify:agent-done` (hoặc domain smokes) exit 0 + log trích trong reply?
+- [ ] **Gatekeeper:** empirical-qa `VERDICT: PASS` (không tự PASS không log)?
+- [ ] Trạng thái đúng nấc (`IMPLEMENTED` ≠ `DONE`)?
 
 ---
 
@@ -653,8 +688,14 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 | `npm run smoke:pipeline` | Pipeline P0–P2 |
 | `npm run smoke:commercial` | Entitlement / trial / codes / one-path |
 | `npm run smoke:license-one-path` | Policy ticket·ledger·crown (cấm f(token), cấm quota ngày) |
+| `npm run smoke:vina` | Vina catalog 76 profile ↔ 76 WAV + JSON |
+| `npm run verify:tts-integrity` | TTS audio quality + preview timeout budgets |
+| `npm run verify:agent-done` | **Machine Done Gate** — auto domain từ git diff |
 | `npm run verify:core` | Channel DNA + ship + publish + youtube-safe + output criteria |
 | `npm run prepare:publish` | typecheck + smokes + verify:core |
+| `npm run preflight:pack` | Gate pack + banner PACK_NOTES (LICENSE sole truth) |
+| `npm run pack:ship` | Portable QA unsigned (+ smokes + postpack checklist) |
+| `npm run postpack:checklist` | Kiểm artifact sau pack |
 
 ---
 
@@ -662,6 +703,7 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 
 | Nhu cầu | Path |
 |---------|------|
+| **Done Gate / chống ảo giác** | `docs/AGENT_DONE_GATE.md` |
 | Quy luật thép | `docs/IRON_LAWS.md` |
 | Domain map | `docs/DOMAIN_MAP.md` |
 | Commercial | `docs/COMMERCIAL.md`, `docs/LICENSE_ONE_PATH.md`, `src/lib/commercial/licenseOnePath.ts`, `src/lib/entitlement.ts` |

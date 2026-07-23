@@ -40,6 +40,11 @@ export type FetchYoutubeMetaInput = {
   /** Extra client outer retries if still below pass (default 2) */
   outerRetries?: number;
   signal?: AbortSignal;
+  /** Style Engine niche (Setup) — CTR title/thumb bias */
+  chu_de?: string;
+  phong_cach?: string;
+  genre?: string;
+  styleEngineId?: string | null;
 };
 
 function asPack(raw: Record<string, unknown>, visualDna: string, characterHint?: string) {
@@ -130,6 +135,10 @@ export async function fetchYoutubeMetaWithQA(
         usedThumbLines,
         visualDna,
         characterHint: input.characterHint,
+        chu_de: input.chu_de,
+        phong_cach: input.phong_cach,
+        genre: input.genre,
+        styleEngineId: input.styleEngineId,
         // diversify outer retry seed on server via chapter+attempt in used titles
         randomSeed: `${Date.now()}-${attempt}`,
       }),

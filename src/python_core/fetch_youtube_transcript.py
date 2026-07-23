@@ -70,9 +70,35 @@ def _fetch_any(ytt, video_id: str, langs: list[str]):
     return ytt.fetch(video_id)
 
 
+def _classify_error(exc: BaseException) -> tuple[str, str]:
+    """Map library exceptions → stable code + short message for the app UI."""
+    name = type(exc).__name__
+    msg = str(exc) or name
+    low = f"{name} {msg}".lower()
+
+    # Order matters: library often wraps VideoUnavailable inside “could not retrieve a transcript”
+    if "videounavailable" in low or "video is no longer available" in low:
+        return "VIDEO_UNAVAILABLE", msg
+    if "age restricted" in low or "agerestricted" in low:
+        return "AGE_RESTRICTED", msg
+    if "transcriptsdisabled" in low or "subtitles are disabled" in low or "transcript is disabled" in low:
+        return "TRANSCRIPTS_DISABLED", msg
+    if "ipblocked" in low or "requestblocked" in low or ("blocked" in low and "ip" in low):
+        return "IP_BLOCKED", msg
+    if "toomanyrequests" in low or "429" in low or "too many requests" in low:
+        return "RATE_LIMITED", msg
+    if "notranscriptfound" in low or "could not retrieve a transcript" in low:
+        if "no longer available" in low or "unavailable" in low:
+            return "VIDEO_UNAVAILABLE", msg
+        return "NO_TRANSCRIPT", msg
+    if "not found" in low and "video" in low:
+        return "VIDEO_UNAVAILABLE", msg
+    return "FETCH_FAILED", f"{name}: {msg}"
+
+
 def main() -> int:
     if len(sys.argv) < 2:
-        print(json.dumps({"ok": False, "error": "missing video_id"}))
+        print(json.dumps({"ok": False, "code": "MISSING_VIDEO_ID", "error": "missing video_id"}))
         return 2
     video_id = sys.argv[1].strip()
     langs = [x.strip() for x in sys.argv[2].split(",") if x.strip()] if len(sys.argv) > 2 else ["vi", "en"]
@@ -84,6 +110,7 @@ def main() -> int:
             json.dumps(
                 {
                     "ok": False,
+                    "code": "PACKAGE_MISSING",
                     "error": "youtube-transcript-api not installed (pip install youtube-transcript-api)",
                 }
             )
@@ -95,7 +122,15 @@ def main() -> int:
         result = _fetch_any(ytt, video_id, langs)
         full, lang, is_gen = _snippets_to_text(result)
         if len(full.strip()) < 10:
-            print(json.dumps({"ok": False, "error": "Transcript empty"}))
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "code": "EMPTY_TRANSCRIPT",
+                        "error": "Transcript empty (API returned no text)",
+                    }
+                )
+            )
             return 1
         print(
             json.dumps(
@@ -112,7 +147,17 @@ def main() -> int:
         )
         return 0
     except Exception as e:
-        print(json.dumps({"ok": False, "error": str(e)}))
+        code, detail = _classify_error(e)
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "code": code,
+                    "error": detail,
+                    "error_type": type(e).__name__,
+                }
+            )
+        )
         return 1
 
 

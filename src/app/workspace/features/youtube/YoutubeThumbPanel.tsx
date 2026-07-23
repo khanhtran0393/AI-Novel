@@ -13,8 +13,13 @@ import {
   Upload,
   X,
   Dna,
+  LayoutTemplate,
 } from 'lucide-react';
 import { useNovelStore } from '@/store/useNovelStore';
+import {
+  THUMB_COMPOSITION_PRESETS,
+  type ThumbCompositionId,
+} from '@/lib/youtubeSafe';
 
 export type YoutubeThumbPanelProps = {
   ch: number;
@@ -26,6 +31,8 @@ export type YoutubeThumbPanelProps = {
   competitorThumbDna: string;
   /** Preview of uploaded competitor thumb (data URL or path) */
   competitorThumbPreview: string;
+  /** High-CTR composition preset id */
+  compositionId?: string;
   thumbRegenLoading: boolean;
   thumbFromLineLoading: boolean;
   thumbImageLoading: boolean;
@@ -39,6 +46,8 @@ export type YoutubeThumbPanelProps = {
   onPickVariant: (src: string) => void;
   onUploadCompetitor: (files: FileList | null) => void;
   onClearCompetitor: () => void;
+  /** Select 1 of 4 CTR composition presets — parent rebuilds prompt */
+  onSelectComposition: (id: ThumbCompositionId) => void;
 };
 
 export default function YoutubeThumbPanel({
@@ -49,6 +58,7 @@ export default function YoutubeThumbPanel({
   thumbImageUrl,
   competitorThumbDna,
   competitorThumbPreview,
+  compositionId = '',
   thumbRegenLoading,
   thumbFromLineLoading,
   thumbImageLoading,
@@ -62,6 +72,7 @@ export default function YoutubeThumbPanel({
   onPickVariant,
   onUploadCompetitor,
   onClearCompetitor,
+  onSelectComposition,
 }: YoutubeThumbPanelProps) {
   const store = useNovelStore();
   const competitorInputRef = useRef<HTMLInputElement | null>(null);
@@ -71,6 +82,44 @@ export default function YoutubeThumbPanel({
   return (
     <>
       <div className="sm:col-span-2 min-w-0 flex flex-col gap-2 rounded-lg border border-zinc-900 bg-zinc-950/30 p-3">
+        {/* 4 High-CTR composition presets */}
+        <div className="rounded-lg border border-amber-900/35 bg-amber-950/15 p-2.5 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <LayoutTemplate className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+              Bố cục thumb CTR
+            </span>
+            <span className="text-[8px] text-zinc-500 font-medium normal-case tracking-normal">
+              4 preset · khóa composition trong prompt (không bake full title)
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {THUMB_COMPOSITION_PRESETS.map((p) => {
+              const on = compositionId === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onSelectComposition(p.id)}
+                  title={p.hintVi}
+                  className={`text-left rounded-lg border px-2 py-1.5 transition-colors cursor-pointer ${
+                    on
+                      ? 'border-amber-500/70 bg-amber-500/15 text-amber-100'
+                      : 'border-zinc-800 bg-black/40 text-zinc-300 hover:border-amber-800/50 hover:bg-zinc-900/60'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wide">
+                    {p.shortLabel}
+                  </div>
+                  <div className="text-[8px] leading-snug text-zinc-500 mt-0.5 line-clamp-2">
+                    {p.hintVi}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
             Thumb prompt (EN)

@@ -1,19 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { characterImageKey } from '@/contracts';
+import { characterImageKey, characterWardrobeImageKey } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
 import {
+  composeCharacterReferenceSheetPrompt,
+  composeWardrobeSheetPrompt,
   emptyNhanVatProfile,
   normalizeNhanVatProfile,
   type NhanVatProfile,
+  type WardrobeVariant,
 } from '@/lib/characterProfile';
 import {
   generateCharPromptAction,
   regenerateCharPromptOnlyAction,
   generateCharImageAction,
 } from '../modules/characterModule';
-import { composeCharacterReferenceSheetPrompt } from '@/lib/characterProfile';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
 import {
@@ -54,6 +56,10 @@ export function useCharacterActions() {
           ...(prev.expression_prompts || {}),
           ...(partial.expression_prompts || {}),
         },
+        wardrobe_variants:
+          partial.wardrobe_variants !== undefined
+            ? partial.wardrobe_variants
+            : prev.wardrobe_variants,
       }),
     );
   };
@@ -355,6 +361,77 @@ export function useCharacterActions() {
   const handleGenerateTurnaround = handleGenerateCharImage;
   const handleGenerateExpressions = handleGenerateCharImage;
 
+  /**
+   * Gen still cho 1 wardrobe variant → key char_Name_wardrobe_id + gán image_key.
+   */
+  const handleGenerateWardrobeImage = async (
+    char: string,
+    wardrobeId: string,
+  ) => {
+    const list = profileDraft.wardrobe_variants || [];
+    const w = list.find((x) => x.id === wardrobeId);
+    if (!w) {
+      toast.warn('Wardrobe', 'Không tìm thấy biến thể trang phục.');
+      return;
+    }
+    if (
+      !profileDraft.prompt?.trim() &&
+      !profileDraft.ngoai_hinh?.trim() &&
+      !profileDraft.dac_diem_nhan_dang?.trim()
+    ) {
+      toast.warn(
+        'Wardrobe',
+        'Cần master prompt / face lock trước. Bấm Gen Prompt AI.',
+      );
+      return;
+    }
+    setGeneratingCharImage(true);
+    const wKey =
+      w.image_key?.trim() || characterWardrobeImageKey(char, wardrobeId);
+    store().addGeneratedImage(wKey, '');
+    try {
+      persistProfile(char, profileDraft);
+      const sheetPrompt = composeWardrobeSheetPrompt(profileDraft, w, char);
+      const data = await generateCharImageAction({
+        char,
+        charPrompt: sheetPrompt,
+        profile: {
+          ...profileDraft,
+          active_wardrobe_id: wardrobeId,
+        },
+        ...imageCtx(),
+      });
+      applyImageResult(wKey, data.imagePath, data.projectUrl);
+      const facePath = String(data.imagePath || '').split('?')[0];
+      const nextList: WardrobeVariant[] = list.map((item) =>
+        item.id === wardrobeId
+          ? { ...item, image_key: wKey }
+          : item,
+      );
+      const next = normalizeNhanVatProfile({
+        ...profileDraft,
+        wardrobe_variants: nextList,
+        active_wardrobe_id: wardrobeId,
+      });
+      setProfileDraft(next);
+      persistProfile(char, next);
+      toast.success(
+        'Wardrobe',
+        facePath
+          ? `Đã gen "${w.name}" → ${wKey}`
+          : `Đã gán key ${wKey}`,
+      );
+    } catch (err: unknown) {
+      toast.error(
+        'Wardrobe',
+        (err instanceof Error ? err.message : String(err)) +
+          ' · Kiểm tra Cookie / API engine ảnh.',
+      );
+    } finally {
+      setGeneratingCharImage(false);
+    }
+  };
+
   const handleSaveChar = (char: string) => {
     persistProfile(char, profileDraft);
     toast.success('Lưu hồ sơ', `Đã lưu tạo hình cho ${char}`);
@@ -396,6 +473,7 @@ export function useCharacterActions() {
     handleGenerateAllCharPrompts,
     handleRegenerateCharPromptOnly,
     handleGenerateCharImage,
+    handleGenerateWardrobeImage,
     handleGenerateTurnaround,
     handleGenerateExpressions,
     handleSaveChar,

@@ -90,7 +90,7 @@ export async function generateChapterTts(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       notice(`❌ ${msg}`);
-      if (!silent) toast.error('TTS chuong', msg);
+      if (!silent) toast.error('TTS chương', msg);
       return { ok: 0, fail: 0, skipped: 0 };
     }
 

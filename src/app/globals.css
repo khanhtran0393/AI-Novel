@@ -309,9 +309,49 @@ body {
   animation: ainovel-pro-badge-pulse 1.35s ease-in-out infinite;
   will-change: opacity, filter;
 }
+
+/* Header Zalo Support: nhấp nháy rõ (icon + chữ support) — mạnh hơn badge up to PRO */
+@keyframes ainovel-zalo-support-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.55;
+    filter: brightness(1.25);
+  }
+}
+@keyframes ainovel-zalo-support-label {
+  0%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.35);
+  }
+  50% {
+    opacity: 0.35;
+    filter: brightness(1.35);
+    box-shadow: 0 2px 14px rgba(56, 189, 248, 0.75);
+  }
+}
+.ainovel-zalo-support-pulse {
+  animation: ainovel-zalo-support-pulse 1.2s ease-in-out infinite;
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+.ainovel-zalo-support-label {
+  animation: ainovel-zalo-support-label 1.2s ease-in-out infinite;
+  will-change: opacity, filter, box-shadow;
+  display: inline-block;
+}
 @media (prefers-reduced-motion: reduce) {
   .ainovel-logo-pulse,
-  .ainovel-pro-badge-pulse {
+  .ainovel-pro-badge-pulse,
+  .ainovel-zalo-support-pulse,
+  .ainovel-zalo-support-label {
     animation: none;
   }
 }

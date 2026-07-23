@@ -1,8 +1,12 @@
 /**
- * electron-builder afterPack chain:
+ * electron-builder afterPack chain (order LOCKED for security):
  * 1) Restore shell sources (undo beforePack harden)
- * 2) Optional ASAR friction pad (Phase B, off by default — avoids fuse integrity fights)
- * 3) Electron fuses (existing)
+ * 2) Embed win icon via rcedit (mutates .exe PE resources only)
+ * 3) Crown Python seal + gateway compile (resources tree)
+ * 4) Optional ASAR friction note (no encrypt by default)
+ * 5) Electron fuses LAST (ASAR integrity hash stamped after all resource mutations)
+ *
+ * Do NOT re-order fuses before rcedit/icon — integrity fuse must be last.
  */
 'use strict';
 

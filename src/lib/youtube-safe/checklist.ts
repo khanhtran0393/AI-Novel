@@ -38,6 +38,12 @@ export function buildYoutubeChecklist(params: {
    * YOUTUBE_META_PASS_SCORE — presence alone is not enough.
    */
   metaScores?: YoutubeFieldScores | null;
+  /** SEO title string for mobile length discipline (≤70) */
+  seoTitleText?: string;
+  /** High-CTR composition preset selected */
+  hasThumbComposition?: boolean;
+  /** Overlay line does not clone title (2–4 words ideal) */
+  overlayDisciplineOk?: boolean;
 }): YoutubeChecklistItem[] {
   const items: YoutubeChecklistItem[] = [];
 
@@ -181,6 +187,46 @@ export function buildYoutubeChecklist(params: {
     ok: !!params.hasThumbnailPrompt,
     level: params.hasThumbnailPrompt ? 'pass' : 'warn',
   });
+
+  // High-CTR packaging (heuristic — not predicted CTR%)
+  const titleText = (params.seoTitleText || '').normalize('NFC').trim();
+  if (titleText) {
+    const mobileOk = titleText.length <= 70;
+    items.push({
+      id: 'title_mobile',
+      label: mobileOk
+        ? `Title mobile ≤70 (${titleText.length})`
+        : `Title dài mobile (${titleText.length}>70)`,
+      ok: mobileOk,
+      level: mobileOk ? 'pass' : 'warn',
+      detail: mobileOk
+        ? undefined
+        : 'Rút tiêu đề ≤70 ký tự để tránh bị cắt trên YouTube app',
+    });
+  }
+
+  if (params.hasThumbComposition !== undefined) {
+    items.push({
+      id: 'thumb_composition',
+      label: params.hasThumbComposition
+        ? 'Đã chọn bố cục thumb (4 preset)'
+        : 'Chưa chọn bố cục thumb',
+      ok: !!params.hasThumbComposition,
+      level: params.hasThumbComposition ? 'pass' : 'warn',
+      detail: 'Vả mặt · Hologram · Áp đảo · Biểu cảm',
+    });
+  }
+
+  if (params.overlayDisciplineOk !== undefined) {
+    items.push({
+      id: 'overlay_discipline',
+      label: params.overlayDisciplineOk
+        ? 'Chữ đè thumb ≠ title (2–4 từ)'
+        : 'Chữ đè thumb lặp title / quá dài',
+      ok: !!params.overlayDisciplineOk,
+      level: params.overlayDisciplineOk ? 'pass' : 'warn',
+    });
+  }
 
   const platform = (params.ttsPlatform || '').toLowerCase();
   const voiceRisk = HIGH_RISK_TTS_PLATFORMS.has(platform);

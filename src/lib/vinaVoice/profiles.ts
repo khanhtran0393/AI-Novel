@@ -5,9 +5,10 @@ import fs from 'fs';
 import path from 'path';
 import type { VinaProfileEntry, VinaVoiceSettings } from './types';
 import { DEFAULT_VINA_SETTINGS } from './types';
+import { getVinaRoot } from './paths';
 
 export function getVinaDataDir(cwd = process.cwd()): string {
-  return path.join(cwd, 'data', 'vina-voices');
+  return getVinaRoot(cwd);
 }
 
 function loadProfilesFile(
@@ -393,34 +394,47 @@ export function applyProfileToSettings(
   };
 }
 
-/** Emotion / area micro-adjust pitch (semitones) */
+/**
+ * Emotion / area micro-adjust pitch (semitones).
+ *
+ * Identity rule (clone fidelity): when emotion is neutral, return ONLY
+ * `pitch_shift` from the UI/profile — do NOT apply area bias or seed jitter.
+ * Those used to drag F0 ~0.3–0.5 st away from the reference sample on every
+ * Zero-Shot clone even when the user left Pitch = 0.
+ */
 export function emotionPitchBias(settings: VinaVoiceSettings): number {
-  let p = settings.pitch_shift || 0;
-  if (settings.area === 'northern') p += 0.3;
-  if (settings.area === 'southern') p -= 0.2;
-  switch (settings.emotion) {
+  const p = Number(settings.pitch_shift) || 0;
+  const emotion = String(settings.emotion || 'neutral')
+    .toLowerCase()
+    .trim();
+  // Pure identity path — matches reference fundamental as closely as the model allows
+  if (!emotion || emotion === 'neutral' || emotion === 'none' || emotion === 'default') {
+    return p;
+  }
+  let out = p;
+  if (settings.area === 'northern') out += 0.3;
+  if (settings.area === 'southern') out -= 0.2;
+  switch (emotion) {
     case 'happy':
-      p += 0.8;
+      out += 0.8;
       break;
     case 'sad':
-      p -= 1.2;
+      out -= 1.2;
       break;
     case 'angry':
-      p += 0.4;
+      out += 0.4;
       break;
     case 'fear':
-      p += 1.0;
+      out += 1.0;
       break;
     case 'gentle':
-      p -= 0.4;
+      out -= 0.4;
       break;
     case 'tired':
-      p -= 0.8;
+      out -= 0.8;
       break;
     default:
       break;
   }
-  // seed-stable tiny jitter (not random each call)
-  const seedJitter = ((settings.speaker_seed % 17) - 8) * 0.05;
-  return p + seedJitter;
+  return out;
 }

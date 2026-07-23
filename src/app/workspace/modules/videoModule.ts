@@ -179,7 +179,7 @@ async function postVideoGeneration(params: GenerateVideoParams) {
   const resolvedGenre = String(genre || setupGenre || '').trim();
   if (!resolvedStyle && !resolvedGenre) {
     throw new Error(
-      'Thieu Visual DNA / Media Style va Setup (Chu de + Phong cach) khi gen video. App khong tu gan mat the.',
+      'Thiếu Visual DNA / Media Style và Setup (Chủ đề + Phong cách) khi gen video. App không tự gán thể loại mặc định.',
     );
   }
   const resolvedBeat =
@@ -190,7 +190,7 @@ async function postVideoGeneration(params: GenerateVideoParams) {
         : 0;
   if (!resolvedBeat) {
     throw new Error(
-      'Thieu secondsPerBeat (Media Config) khi gen video. App khong tu gan beat.',
+      'Thiếu secondsPerBeat (Media Config) khi gen video. App không tự gán beat.',
     );
   }
 
@@ -265,11 +265,11 @@ export async function generateVideoAction(
   const storeState = useNovelStore.getState();
   const routeProvider = (params.videoProvider || storeState.videoProvider || '').trim();
   if (!routeProvider) {
-    throw new Error('Chua chon videoProvider. App khong tu gan provider.');
+    throw new Error('Chưa chọn videoProvider. App không tự gán provider.');
   }
   const routeModel = (params.model || storeState.videoModel || '').trim();
   if (!routeModel) {
-    throw new Error('Chua chon videoModel. App khong tu gan model.');
+    throw new Error('Chưa chọn videoModel. App không tự gán model.');
   }
   const routeKey = params.videoApiKey || storeState.videoApiKey || '';
 

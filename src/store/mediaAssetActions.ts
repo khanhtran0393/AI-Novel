@@ -15,7 +15,7 @@ import type { StoreGet, StoreSet } from './storeSet';
 
 type MediaAssetActions = Pick<
   NovelActions,
-  | 'addGeneratedAudio' | 'addGeneratedPrompts' | 'addGeneratedPromptsAnalysis'
+  | 'addGeneratedAudio' | 'addGeneratedPrompts' | 'patchGeneratedPrompt' | 'addGeneratedPromptsAnalysis'
   | 'addGeneratedImage' | 'addGeneratedImageVariants' | 'addGeneratedVideo'
   | 'updateSavePathTTS' | 'updateSavePathImage' | 'updateSavePathCharacter' | 'updateSavePathVideo'
   | 'addProjectUrl'
@@ -51,6 +51,21 @@ export function createMediaAssetActions(
       set((state) => ({
         generatedPrompts: { ...state.generatedPrompts, [key]: prompts },
       })),
+
+    patchGeneratedPrompt: (sceneKey, promptIndex, patch) =>
+      set((state) => {
+        const list = [...(state.generatedPrompts?.[sceneKey] || [])];
+        const idx = Number(promptIndex);
+        if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return state;
+        const prev = list[idx] || { timestamp: '', prompt: '' };
+        list[idx] = { ...prev, ...patch };
+        return {
+          generatedPrompts: {
+            ...state.generatedPrompts,
+            [sceneKey]: list,
+          },
+        };
+      }),
 
     addGeneratedPromptsAnalysis: (key, analysis) =>
       set((state) => ({

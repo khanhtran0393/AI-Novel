@@ -125,16 +125,23 @@ function detectAudioExt(buf: Buffer): 'wav' | 'mp3' {
   return 'mp3';
 }
 
-/** Pitch / speed / optional broadcast loudnorm (YouTube-friendlier levels). */
+/** Soft ceiling ~-1 dBFS — Piper/Vina raw often peaks at 0.0 dBFS → rè trên DAC. */
+const PEAK_LIMITER_AF = 'alimiter=limit=0.89:level=disabled:attack=5:release=50';
+
+/**
+ * Pitch / speed / optional broadcast loudnorm + peak headroom.
+ * Always runs the peak limiter even when prosody is neutral (preview hot peaks).
+ */
 export async function applyAudioEffects(
   inputBuffer: Buffer,
   pitchSemitones: number,
   speedFactor: number,
   applyLoudnorm = false,
+  opts?: { peakLimiter?: boolean },
 ): Promise<Buffer> {
   const pitch = Number.isFinite(pitchSemitones) ? pitchSemitones : 0;
   const speed = Number.isFinite(speedFactor) && speedFactor > 0 ? speedFactor : 1;
-  if (pitch === 0 && Math.abs(speed - 1.0) < 0.001 && !applyLoudnorm) return inputBuffer;
+  const wantLimiter = opts?.peakLimiter !== false;
 
   const audioDir = path.join(process.cwd(), 'public', 'audio');
   if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
@@ -142,7 +149,8 @@ export async function applyAudioEffects(
   const ext = detectAudioExt(inputBuffer);
   const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const tempIn = path.join(audioDir, `temp_in_${stamp}.${ext}`);
-  const tempOut = path.join(audioDir, `temp_out_${stamp}.mp3`);
+  const outExt = ext === 'wav' ? 'wav' : 'mp3';
+  const tempOut = path.join(audioDir, `temp_out_${stamp}.${outExt}`);
 
   fs.writeFileSync(tempIn, inputBuffer);
 
@@ -184,6 +192,10 @@ export async function applyAudioEffects(
     if (Math.abs(tempo - 1.0) > 0.001) filters.push(`atempo=${tempo.toFixed(4)}`);
   }
 
+  if (wantLimiter) {
+    filters.push(PEAK_LIMITER_AF);
+  }
+
   if (applyLoudnorm) {
     filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   }
@@ -196,7 +208,9 @@ export async function applyAudioEffects(
   try {
     const filterStr = filters.join(',');
     const ffmpegCmd = resolveFfmpegCmd();
-    const command = `${ffmpegCmd} -i "${tempIn}" -af "${filterStr}" -y "${tempOut}"`;
+    const codecArgs =
+      outExt === 'wav' ? '-ac 1 -ar 44100 -sample_fmt s16' : '-c:a libmp3lame -q:a 2';
+    const command = `${ffmpegCmd} -i "${tempIn}" -af "${filterStr}" ${codecArgs} -y "${tempOut}"`;
     execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
 
     const outBuffer = fs.readFileSync(tempOut);
@@ -206,11 +220,11 @@ export async function applyAudioEffects(
   } catch (err: unknown) {
     if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn);
     if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
-    if (applyLoudnorm && (pitch !== 0 || Math.abs(speed - 1.0) > 0.001)) {
+    if (applyLoudnorm && (pitch !== 0 || Math.abs(speed - 1.0) > 0.001 || wantLimiter)) {
       console.warn('[TTS] loudnorm failed, retry without loudnorm');
-      return applyAudioEffects(inputBuffer, pitch, speed, false);
+      return applyAudioEffects(inputBuffer, pitch, speed, false, opts);
     }
-    if (applyLoudnorm && pitch === 0 && Math.abs(speed - 1.0) < 0.001) {
+    if (applyLoudnorm && pitch === 0 && Math.abs(speed - 1.0) < 0.001 && !wantLimiter) {
       console.warn('[TTS] loudnorm failed, returning original buffer');
       return inputBuffer;
     }

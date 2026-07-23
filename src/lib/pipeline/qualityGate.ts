@@ -15,6 +15,12 @@ import {
   evaluateWordGate,
   getWordCount,
 } from '@/lib/storyWriting';
+import {
+  isShortManhuaMode,
+  minScenesForScriptMode,
+  normalizeScriptMode,
+  shortManhuaQualityHints,
+} from '@/lib/scriptMode';
 import { wordBandFromSetupGoal } from './wordBand';
 import type { ChapterQualityReport, GateFinding } from './types';
 
@@ -29,6 +35,8 @@ export type QualityGateInput = {
     fatigue_words?: string;
   };
   editorVerdict?: 'accept' | 'rewrite' | 'polish' | string;
+  /** Phong cách kịch bản — short/manhua dùng min scene + soft hints */
+  scriptMode?: string;
 };
 
 function consistencyFindings(
@@ -108,9 +116,11 @@ export function evaluateChapterQuality(input: QualityGateInput): ChapterQualityR
   const band = wordBandFromSetupGoal(input.wordGoal);
   const wordGoal = band.goal;
   const findings: GateFinding[] = [];
+  const mode = normalizeScriptMode(input.scriptMode);
+  const minScenes = minScenesForScriptMode(mode);
 
-  // 1) Word + scene gate (Setup) — single hard floor
-  const gate = evaluateWordGate(content, wordGoal, MIN_SCENE_COUNT);
+  // 1) Word + scene gate (Setup) — single hard floor; short/manhua may need more scenes
+  const gate = evaluateWordGate(content, wordGoal, minScenes);
   if (!gate.wordsOk) {
     findings.push({
       severity: 'error',
@@ -135,8 +145,19 @@ export function evaluateChapterQuality(input: QualityGateInput): ChapterQualityR
     findings.push({
       severity: 'error',
       code: 'scene_gate',
-      message: `Thiếu tag cảnh: ${gate.sceneCount}/${MIN_SCENE_COUNT} [CẢNH N: …].`,
+      message: `Thiếu tag cảnh: ${gate.sceneCount}/${minScenes} [CẢNH N: …]${
+        isShortManhuaMode(mode) ? ' (Short/Manhua)' : ''
+      }.`,
     });
+  }
+  if (isShortManhuaMode(mode)) {
+    for (const h of shortManhuaQualityHints(content)) {
+      findings.push({
+        severity: h.severity,
+        code: h.code,
+        message: h.message,
+      });
+    }
   }
 
   // 2) Rules (forbidden/fatigue) — word band aligned; skip chapter_words (already gated)

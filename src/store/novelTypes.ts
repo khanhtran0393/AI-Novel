@@ -11,9 +11,11 @@ import type {
   ChannelProfile,
   ShipMode,
 } from '@/lib/channelModel';
+import type { SceneLocationAsset } from '@/lib/sceneLocationLibrary';
 
 export type { NhanVatProfile, NhanVatPromptsMap, ProjectVoiceCast, VoiceRole };
 export type { ChannelProfile, ShipMode };
+export type { SceneLocationAsset };
 
 export interface PromptAsset {
   timestamp: string;
@@ -23,6 +25,15 @@ export interface PromptAsset {
   image_prompt?: string;
   video_prompt?: string;
   emotion?: string;
+  /**
+   * Optional first+last frame mode (Printfilm-style keyframe).
+   * When true, video gen uses start still + end still; duration still from TTS/timestamp.
+   */
+  use_end_frame?: boolean;
+  /**
+   * Image asset key for end frame (e.g. `3_2_1`). Empty → resolve to adjacent prompt still.
+   */
+  end_image_key?: string;
 }
 
 export interface Chuong {
@@ -54,6 +65,7 @@ export interface TTSConfig {
     | 'hotai_tts'
     | 'vieneu_tts'
     | 'vina_voice'
+    | 'la_studio'
     | 'vbee'
     | 'google'
     | 'elevenlabs';
@@ -76,6 +88,12 @@ export interface TTSConfig {
   vinaSpeakerSeed?: number;
   vinaStyleSeed?: number;
   vinaEngineUrl?: string;
+  /** LA Studio local API (http://127.0.0.1:3900) */
+  laStudioBaseUrl?: string;
+  laStudioApiKey?: string;
+  laStudioModel?: string;
+  /** LA Studio family id (kokoro-vietnamese, vieneu-tts-v3-turbo, …) */
+  laStudioFamily?: string;
   /** Google Cloud TTS API key (bắt buộc nếu platform=google — không mẫu Edge ngầm) */
   googleCloudApiKey?: string;
   /** Legacy VBee fields (platform đã gỡ — không dùng) */
@@ -104,16 +122,31 @@ export interface YoutubeSafeConfig {
 export interface ChapterHookAsset {
   /** Spoken cold-open ~30s (narration / VO) */
   hook: string;
-  /** Short line for thumbnail text overlay */
+  /** Short line for thumbnail text overlay (2–4 words preferred) */
   thumbnailLine: string;
   /** YouTube SEO title */
   seoTitle?: string;
+  /**
+   * High-CTR: 5 psychological title formula variants (UI pick).
+   * Stored so Meta/regenerate can re-surface without recomputing seed drift.
+   */
+  seoTitleVariants?: Array<{ id: string; labelVi: string; title: string }>;
   /** YouTube description body */
   seoDescription?: string;
   /** Tags / hashtags comma or space separated */
   seoTags?: string;
+  /**
+   * High-CTR thumbnail composition preset id:
+   * split_before_after | hologram_ui | scale_goliath | emotion_zoom
+   */
+  thumbCompositionId?: string;
   /** English image prompt for thumbnail art */
   thumbnailPrompt?: string;
+  /**
+   * Optional EN prompt for YouTube end-screen still (~5s):
+   * next-ep tease + subscribe/playlist frames (user-triggered gen only).
+   */
+  endScreenPrompt?: string;
   /** Local path (or cache-busted URL) of generated thumbnail still */
   thumbnailImagePath?: string;
   /**
@@ -181,6 +214,11 @@ export interface NovelState {
   tri_nho_ngan_han: string[]; // T?ng 3: T�m t?t c?c ng?n 3 chuong g?n nh?t
   pipeline_step: 'outline' | 'script' | 'commit'; // Stepper di?u hu?ng 3 bu?c
   nhan_vat_prompts: NhanVatPromptsMap;
+  /**
+   * Scene / location concept library (Printfilm P1) — reusable environment refs.
+   * Images under generatedImages[sceneLocationImageKey(name)].
+   */
+  scene_location_assets: SceneLocationAsset[];
   imageModel: string;
   videoModel: string;
   
@@ -204,7 +242,7 @@ export interface NovelState {
   /** Chỉ để đọc snapshot/token cũ; UI và token mới luôn ghi false. */
   is_vip: boolean;
   is_pro: boolean;
-  /** Trial 3 ngày: mở quyền Pro-equivalent; badge UI = TRIAL (không gộp nhầm PRO trả phí) */
+  /** Trial 7 ngày: mở quyền Pro-equivalent; badge UI = TRIAL (không gộp nhầm PRO trả phí) */
   is_trial: boolean;
   credits: number;
   
@@ -235,6 +273,18 @@ export interface NovelState {
    * AI viết lại kịch bản mới nhưng bám cốt truyện mẫu theo mức này.
    */
   youtubeSimilarityTarget: number;
+
+  /**
+   * Phong cách kịch bản:
+   * chuyen_sau | sang_van | short_manhua (Printfilm short/manhua craft)
+   */
+  scriptMode: import('@/lib/scriptMode').ScriptMode;
+
+  /**
+   * Style Engine Profile id khi Setup khớp 1/5 niche hot (Tu Tiên, Đô Thị…).
+   * null = không khớp — không ép genre default.
+   */
+  activeStyleEngineId: import('@/lib/styleEngineProfiles').StyleEngineId | null;
 
   // --- H? TH?NG LU?T L? & CH?NG VAN PHONG AI ---
   userRules: {
@@ -337,6 +387,12 @@ export interface NovelActions {
   setGoogleUser: (user: { name: string; email: string; avatar: string } | null) => void;
   addGeneratedAudio: (key: string, path: string, duration: number) => void;
   addGeneratedPrompts: (key: string, prompts: PromptAsset[]) => void;
+  /** Patch one prompt slot (e.g. use_end_frame / end_image_key) without rewriting list */
+  patchGeneratedPrompt: (
+    sceneKey: string,
+    promptIndex: number,
+    patch: Partial<PromptAsset>,
+  ) => void;
   addGeneratedPromptsAnalysis: (key: string, analysis: string) => void;
   addGeneratedImage: (key: string, path: string) => void;
   addGeneratedImageVariants: (key: string, paths: string[]) => void;
@@ -348,6 +404,11 @@ export interface NovelActions {
   updateTomTatCuonChieu: (summary: string) => void;
   updateTriNhoNganHan: (shortTerm: string[]) => void;
   updateNhanVatPrompt: (charName: string, data: Partial<NhanVatProfile>) => void;
+  /** Replace full scene location library */
+  setSceneLocationAssets: (items: SceneLocationAsset[]) => void;
+  /** Upsert one location by id (or append if new) */
+  upsertSceneLocationAsset: (item: SceneLocationAsset) => void;
+  removeSceneLocationAsset: (id: string) => void;
   setImageModel: (
     model: string,
     opts?: { mirrorChannel?: boolean },
@@ -443,6 +504,7 @@ export interface NovelActions {
     sourceText?: string;
     similarityTarget?: number;
   }) => void;
+  setScriptMode: (mode: import('@/lib/scriptMode').ScriptMode) => void;
   updateUserRules: (rules: Partial<NovelState['userRules']>) => void;
   updateEditorReview: (chapterIndex: number, review: NovelState['editorReviews'][number]) => void;
   setCungHienTai: (arc: number) => void;

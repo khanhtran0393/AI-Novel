@@ -12,6 +12,10 @@ import {
   vinaWorkerRssSoftMb,
   withGpuTtsSlot,
 } from '@/lib/tts/gpuTtsGuard';
+import {
+  VINA_PREVIEW_NFE_DEFAULT,
+  VINA_PREVIEW_NFE_FLOOR,
+} from '@/lib/tts/previewDefaults';
 
 export type DaemonSynthJob = {
   text: string;
@@ -568,13 +572,12 @@ export function resolveNfeStep(opts: {
   const envPreview = Number(process.env.VINA_NFE_PREVIEW);
   const envChapter = Number(process.env.VINA_NFE_CHAPTER);
   if (opts.isPreview) {
-    // Preview NFE floor = 16. NFE≤8 (esp. 4) yields noise-like garbage on CPU/CUDA
-    // (high ZCR / flat energy envelope — not speech). Empirically: nfe=4 NOISY, nfe=16 SPEECH.
-    // Override: VINA_NFE_PREVIEW (must still be ≥12 or quality collapses).
+    // Preview NFE = VINA_PREVIEW_NFE_DEFAULT (shared with client cache key).
+    // NFE≤8 = noise; nfe=16 still harsh. Client MUST use the same default.
     if (Number.isFinite(envPreview) && envPreview > 0) {
-      return Math.max(12, Math.trunc(envPreview));
+      return Math.max(VINA_PREVIEW_NFE_FLOOR, Math.trunc(envPreview));
     }
-    return 16;
+    return VINA_PREVIEW_NFE_DEFAULT;
   }
   if (opts.isChapter) {
     if (Number.isFinite(envChapter) && envChapter > 0) return Math.trunc(envChapter);

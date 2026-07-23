@@ -64,6 +64,25 @@ export async function POST(req: NextRequest) {
           typeof body.characterHint === 'string'
             ? body.characterHint
             : undefined,
+        chu_de:
+          typeof body.chu_de === 'string'
+            ? body.chu_de
+            : typeof body.setup?.chu_de === 'string'
+              ? body.setup.chu_de
+              : undefined,
+        phong_cach:
+          typeof body.phong_cach === 'string'
+            ? body.phong_cach
+            : typeof body.setup?.phong_cach === 'string'
+              ? body.setup.phong_cach
+              : undefined,
+        genre: typeof body.genre === 'string' ? body.genre : undefined,
+        styleEngineId:
+          typeof body.styleEngineId === 'string'
+            ? body.styleEngineId
+            : typeof body.activeStyleEngineId === 'string'
+              ? body.activeStyleEngineId
+              : undefined,
       },
       {
         entitlementToken: token,

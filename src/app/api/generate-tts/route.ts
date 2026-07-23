@@ -35,8 +35,7 @@ import {
   writeSceneCache,
   type SceneCacheKeyInput,
 } from '@/lib/tts/sceneAudioCache';
-import { loadVinaProfiles, resolveSamplePath, mergeSettings } from '@/lib/vinaVoice';
-import { resolveNfeStep } from '@/lib/vinaVoice/warmDaemon';
+
 import {
   findOmniLibraryEntry,
   resolveOmniRefAudioPath,
@@ -113,11 +112,24 @@ export async function POST(req: Request) {
         { code: 'VALIDATION', status: 400 },
       );
     }
-    // Free: edge_tts + piper. Premium engines need trial/pro token (server gate).
+    // Removed platforms (VieNeu/OpenAI/Google/ElevenLabs/Hotai/VBee) — hard-fail, no synth.
+    {
+      const { isRemovedTtsPlatform, isActiveTtsPlatform, removedTtsPlatformMessage } =
+        await import('@/lib/tts/activePlatforms');
+      if (isRemovedTtsPlatform(platform) || !isActiveTtsPlatform(platform)) {
+        throw new AppError(removedTtsPlatformMessage(platform), {
+          code: 'VALIDATION',
+          status: 400,
+        });
+      }
+    }
+    // Free: edge_tts + piper only. LA Studio / CapCut / … need Trial/Pro (tts_premium).
     const ttsDenied = await requireTtsPlatformAccess(req, platform, body);
     if (ttsDenied) return ttsDenied;
-    // Free TTS platforms: 3 lượt/ngày
-    {
+    // Free Edge/Piper: 3/day · Trial: 5/day — CHỈ scene gen thật.
+    // Nghe thử (isPreview) không đếm quota: user phải nghe được giọng cấu hình.
+    // Cache HIT cũng không đếm (tránh 3 lần phát lại là hết quota).
+    if (!isPreview) {
       const { FREE_TTS_PLATFORMS } = await import(
         '@/lib/commercial/featureMatrix'
       );
@@ -225,6 +237,11 @@ export async function POST(req: Request) {
       vinaSpeakerSeed: ttsConfig?.vinaSpeakerSeed,
       vinaStyleSeed: ttsConfig?.vinaStyleSeed,
       vinaEngineUrl: ttsConfig?.vinaEngineUrl,
+      laStudioBaseUrl: ttsConfig?.laStudioBaseUrl,
+      laStudioApiKey: ttsConfig?.laStudioApiKey,
+      laStudioModel: ttsConfig?.laStudioModel,
+      laStudioFamily: ttsConfig?.laStudioFamily,
+      language: ttsConfig?.language,
       googleCloudApiKey: ttsConfig?.googleCloudApiKey,
       vbeeApiKey: ttsConfig?.vbeeApiKey,
       vbeeAppId: ttsConfig?.vbeeAppId,
@@ -233,19 +250,21 @@ export async function POST(req: Request) {
       chapterNum,
     };
 
+    /**
+     * Prefer per-call flags from provider.generate (truth for that synth).
+     * Fallback to provider.supportsNative* only when flags omitted.
+     * Do NOT hardcode platform names here — removed engines (VieNeu…) must not
+     * force nativeSpeed and skip FFmpeg when they never applied speed.
+     */
     const resolveNativeFlags = (
       prov: (typeof TTS_PROVIDERS)[string],
-      result: { method: string; nativeSpeedApplied?: boolean; nativePitchApplied?: boolean },
-      plat: string,
+      result: {
+        method: string;
+        nativeSpeedApplied?: boolean;
+        nativePitchApplied?: boolean;
+      },
+      _plat: string,
     ): { nativeSpeed: boolean; nativePitch: boolean } => {
-      if (
-        plat === 'vieneu_tts' ||
-        plat === 'piper' ||
-        /VieNeu|Piper/i.test(result.method || '')
-      ) {
-        // Piper length_scale is native speed; pitch not native
-        return { nativeSpeed: true, nativePitch: false };
-      }
       return {
         nativeSpeed:
           result.nativeSpeedApplied !== undefined
@@ -258,18 +277,9 @@ export async function POST(req: Request) {
       };
     };
 
-    // Resolve sample path for Zero-Shot/clone engines so cache invalidates when refs change
+    // Resolve sample path for clone engines so cache invalidates when refs change
     let cacheSamplePath = '';
-    if (platform === 'vina_voice' && voice) {
-      try {
-        const hit = loadVinaProfiles().find((p) => p.name === voice);
-        if (hit) {
-          cacheSamplePath = resolveSamplePath(hit, mergeSettings({}), process.cwd()) || '';
-        }
-      } catch {
-        /* ignore */
-      }
-    } else if (platform === 'omnivoice_local' && voice) {
+    if (platform === 'omnivoice_local' && voice) {
       try {
         const entry = findOmniLibraryEntry(voice, process.cwd());
         cacheSamplePath = resolveOmniRefAudioPath(entry || voice, process.cwd()) || '';
@@ -281,10 +291,7 @@ export async function POST(req: Request) {
     const cleanedSceneText = cleanVoiceScript(String(sceneText || ''));
     const previewTextKey = cleanedSceneText.slice(0, 500);
     const isChapterJob = !isPreview && Number(chapterNum) > 0;
-    const nfeForCache =
-      platform === 'vina_voice'
-        ? resolveNfeStep({ isPreview: !!isPreview, isChapter: isChapterJob })
-        : undefined;
+    const nfeForCache = undefined;
     const prosody = normalizePreviewProsody(speed, pitch);
     const variantKey = buildTtsCacheVariantKey({
       platform,
@@ -305,15 +312,11 @@ export async function POST(req: Request) {
       speakerSeed:
         typeof ttsConfig?.vinaSpeakerSeed === 'number'
           ? ttsConfig.vinaSpeakerSeed
-          : platform === 'vina_voice'
-            ? 2336
-            : undefined,
+          : undefined,
       styleSeed:
         typeof ttsConfig?.vinaStyleSeed === 'number'
           ? ttsConfig.vinaStyleSeed
-          : platform === 'vina_voice'
-            ? 4125
-            : undefined,
+          : undefined,
       nfeStep: nfeForCache,
       variantKey,
       samplePath: cacheSamplePath || undefined,
@@ -343,15 +346,12 @@ export async function POST(req: Request) {
       const isWavPreview =
         platform === 'piper' ||
         platform === 'gemini_tts' ||
-        platform === 'vieneu_tts' ||
-        platform === 'vina_voice' ||
-        platform === 'vbee' ||
-        platform === 'omnivoice_local';
+        platform === 'omnivoice_local' ||
+        platform === 'la_studio';
       // All platforms: reuse existing MP3/WAV — identity already in sample/vector.
-      // Zero-Shot: durable forever (key includes sample fingerprint).
-      // Cloud/edge: 7d retention. OmniVoice: 24h (model/prompt drift).
+      // Local engines: durable forever. OmniVoice: 24h. Cloud/edge: 7d.
       const maxAgeMs =
-        platform === 'vina_voice' || platform === 'piper' || platform === 'vieneu_tts'
+        platform === 'piper' || platform === 'la_studio'
           ? undefined
           : platform === 'omnivoice_local'
             ? 24 * 60 * 60 * 1000
@@ -365,12 +365,17 @@ export async function POST(req: Request) {
         console.log(
           `[TTS Preview] cache HIT (no re-synth): ${hit.filename} age=${Math.round(hit.ageMs / 1000)}s`,
         );
+        const hitDur =
+          typeof hit.durationSec === 'number' && hit.durationSec > 0
+            ? hit.durationSec
+            : undefined;
         return NextResponse.json({
           success: true,
           audioPath: hit.publicUrl,
           method: hit.method,
           voice,
-          duration: 5,
+          // Real duration when probed — never fake 5s (breaks sync UI / "silent" feel)
+          duration: hitDur ?? 0,
           driveSaved: false,
           driveFilePath: '',
           filename: hit.filename,
@@ -383,16 +388,16 @@ export async function POST(req: Request) {
     } else if (
       !skipSceneCache &&
       !useMulti &&
-      (platform === 'vina_voice' ||
-        platform === 'piper' ||
+      (platform === 'piper' ||
         platform === 'edge_tts' ||
-        platform === 'omnivoice_local')
+        platform === 'omnivoice_local' ||
+        platform === 'la_studio')
     ) {
       // Full scene (kịch bản): reuse WAV if same text+voice already generated
       const isWavScene =
-        platform === 'vina_voice' ||
         platform === 'piper' ||
-        platform === 'omnivoice_local';
+        platform === 'omnivoice_local' ||
+        platform === 'la_studio';
       const sceneHit = tryReadSceneCache(sceneCacheInput, isWavScene ? 'wav' : 'mp3');
       if (sceneHit) {
         const abs = path.join(
@@ -551,27 +556,45 @@ export async function POST(req: Request) {
         console.log(`[TTS API] ${provider.name} xử lý thành công!`);
       }
     } catch (err: unknown) {
-      console.error(`[TTS API] ${provider.name} lỗi: ${(err as Error).message}`);
-      return NextResponse.json({ error: `Lỗi sinh âm thanh từ ${provider.name}: ${(err as Error).message || 'unknown'}` }, { status: 500 });
+      const msg = (err as Error).message || 'unknown';
+      console.error(`[TTS API] ${provider.name} lỗi: ${msg}`);
+      // Validation / wrong-voice → 400 (client fail-fast). Engine/runtime → 500.
+      const isClient =
+        /chưa chọn|không phải|không hợp lệ|không tồn tại|không thấy|thiếu|đã gỡ|gói Free|Session ID|API [Kk]ey/i.test(
+          msg,
+        );
+      return NextResponse.json(
+        {
+          error: `Lỗi sinh âm thanh từ ${provider.name} (giọng «${voice || '?'}»): ${msg}`,
+          voice: voice || '',
+          platform,
+        },
+        { status: isClient ? 400 : 500 },
+      );
     }
 
     if (!audioBuffer) {
       return NextResponse.json({ error: 'TTS provider did not return a valid audio buffer.' }, { status: 500 });
     }
 
-    // Multi path: speed/pitch already applied per-seg → only loudnorm here
-    // Single path: FFmpeg only for axes the provider did NOT apply natively
+    // Multi path: speed/pitch already applied per-seg → only loudnorm + peak limiter here
+    // Single path: FFmpeg for axes the provider did NOT apply natively
+    // Peak limiter always on (even preview / native prosody) — Vina/Piper hay chạm 0.0 dBFS → rè
     const speedViaFFmpeg = useMulti || nativeSpeedApplied ? 1.0 : speed;
     const pitchViaFFmpeg = useMulti || nativePitchApplied ? 0 : pitch;
     const wantLoudnorm = applyLoudnorm !== false && !isPreview;
+    // Vina already peak-limits in engine postProcess; still re-apply cheap alimiter
+    // for Piper / other engines that skip FFmpeg when speed=1 pitch=0.
+    const wantPeakLimiter = true;
 
     if (
       Math.abs(pitchViaFFmpeg) > 0.001 ||
       Math.abs(speedViaFFmpeg - 1.0) > 0.001 ||
-      wantLoudnorm
+      wantLoudnorm ||
+      wantPeakLimiter
     ) {
       console.log(
-        `[TTS Post-Process] FFmpeg Speed=${speedViaFFmpeg} Pitch=${pitchViaFFmpeg} Loudnorm=${wantLoudnorm} multi=${useMulti} nativeS=${nativeSpeedApplied} nativeP=${nativePitchApplied}...`,
+        `[TTS Post-Process] FFmpeg Speed=${speedViaFFmpeg} Pitch=${pitchViaFFmpeg} Loudnorm=${wantLoudnorm} PeakLimit=${wantPeakLimiter} multi=${useMulti} nativeS=${nativeSpeedApplied} nativeP=${nativePitchApplied}...`,
       );
       try {
         audioBuffer = await applyAudioEffects(
@@ -579,14 +602,24 @@ export async function POST(req: Request) {
           pitchViaFFmpeg,
           speedViaFFmpeg,
           wantLoudnorm,
+          { peakLimiter: wantPeakLimiter },
         );
         console.log(`[TTS Effects] Thành công!`);
       } catch (effErr: unknown) {
         console.error('[TTS Effects] failed:', effErr);
-        // Prosody is critical UX — surface error instead of silent wrong speed
-        return NextResponse.json(
-          { error: `TTS audio effects failed: ${(effErr as Error).message}` },
-          { status: 500 },
+        const prosodyCritical =
+          Math.abs(pitchViaFFmpeg) > 0.001 ||
+          Math.abs(speedViaFFmpeg - 1.0) > 0.001;
+        if (prosodyCritical) {
+          // Prosody is critical UX — surface error instead of silent wrong speed
+          return NextResponse.json(
+            { error: `TTS audio effects failed: ${(effErr as Error).message}` },
+            { status: 500 },
+          );
+        }
+        // Peak limiter / loudnorm only: keep raw buffer so preview still plays
+        console.warn(
+          '[TTS Effects] peak/loudnorm failed — keep raw buffer for playability',
         );
       }
     } else {
@@ -652,16 +685,15 @@ export async function POST(req: Request) {
     const isWav =
       methodUsed.includes('Gemini') ||
       methodUsed.includes('Piper') ||
-      methodUsed.includes('VieNeu') ||
       methodUsed.includes('Vina') ||
       methodUsed.includes('UVE') ||
       methodUsed.includes('ONNX') ||
       methodUsed.includes('OmniVoice') ||
-      platform === 'vina_voice' ||
       platform === 'piper' ||
-      platform === 'vieneu_tts' ||
       platform === 'omnivoice_local' ||
-      platform === 'vbee';
+      platform === 'la_studio' ||
+      platform === 'gemini_tts' ||
+      methodUsed.includes('LAStudio');
     let filename = '';
     let localSavePath = '';
     let audioPathRet = '';
@@ -707,10 +739,10 @@ export async function POST(req: Request) {
         !skipSceneCache &&
         !useMulti &&
         audioBuffer &&
-        (platform === 'vina_voice' ||
-          platform === 'piper' ||
+        (platform === 'piper' ||
           platform === 'edge_tts' ||
-          platform === 'omnivoice_local')
+          platform === 'omnivoice_local' ||
+          platform === 'la_studio')
       ) {
         try {
           writeSceneCache(sceneCacheInput, isWav ? 'wav' : 'mp3', audioBuffer);

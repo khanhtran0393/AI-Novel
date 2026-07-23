@@ -50,6 +50,7 @@ export default function QualityGateBadge({
   const names = useNovelStore((s) => s.nhan_vat);
   const userRules = useNovelStore((s) => s.userRules);
   const verdict = useNovelStore((s) => s.editorReviews?.[chapter]?.verdict);
+  const scriptMode = useNovelStore((s) => s.scriptMode);
 
   // Lazy ensure once when content exists and no report
   React.useEffect(() => {
@@ -61,8 +62,20 @@ export default function QualityGateBadge({
       wordGoal,
       userRules,
       editorVerdict: verdict,
+      scriptMode,
+      force: true,
     });
-  }, [lazyScan, report, chapter, noiDung, names, wordGoal, userRules, verdict]);
+  }, [
+    lazyScan,
+    report,
+    chapter,
+    noiDung,
+    names,
+    wordGoal,
+    userRules,
+    verdict,
+    scriptMode,
+  ]);
 
   const live = useChapterQuality(chapter);
 
@@ -82,10 +95,18 @@ export default function QualityGateBadge({
   const hard = live?.hardErrors ?? 0;
   const words = live?.wordCount ?? 0;
   const scenes = live?.sceneCount ?? 0;
+  const topErrors =
+    live?.findings
+      ?.filter((f) => f.severity === 'error')
+      .slice(0, 2)
+      .map((f) => f.message)
+      .join(' · ') || '';
   const tip = live
     ? ready
-      ? `Quality Gate OK · ${words} từ · ${scenes} cảnh · media-ready`
-      : `Quality Gate: ${hard} lỗi · ${words} từ · ${scenes} cảnh · chặn Gen Prompt/Ảnh/Video`
+      ? `Quality Gate OK · ${words} từ · ${scenes} cảnh · media-ready (Gen Prompt/Ảnh/Video mở)`
+      : `Quality Gate chặn media (không chặn đọc/sửa kịch bản): ${hard} lỗi · ${words} từ · ${scenes} cảnh.${
+          topErrors ? ` ${topErrors}` : ''
+        } Thường do thiếu từ (word-gate) hoặc thiếu tag [CẢNH N]. Viết thêm / continue chương rồi thử lại.`
     : 'Đang quét Quality Gate…';
 
   if (variant === 'dot') {

@@ -79,7 +79,7 @@ const promptPairs = scenes.map((sc, i) => {
     imagePrompt: shot.image_prompt,
     videoPrompt: shot.video_prompt,
     characterHints: ['Hàn Dực', 'Liễu Yên'],
-    styleHint: 'dark survival realism',
+    styleHint: 'cinematic natural realism',
     durationSec: 5,
   });
   return {

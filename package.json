@@ -1,6 +1,6 @@
 {
   "name": "ai-novel-script-generator",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "description": "Ai Novel — Free, Trial and Pro desktop application",
   "author": "Ai Novel",
   "private": true,
@@ -27,20 +27,31 @@
     "crown:stub": "node scripts/lib/crown-ip-stub.cjs apply",
     "crown:restore": "node scripts/lib/crown-ip-stub.cjs restore",
     "smoke:crown-ip": "node scripts/smoke-crown-ip.cjs",
-    "build:desktop": "npm run release:verify && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
+    "build:desktop": "npm run prepare:la-studio-kokoro && npm run release:verify && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
     "release:publish": "node scripts/publish-desktop-update.mjs --publish --dir dist",
     "release:publish:unsigned": "node scripts/publish-desktop-update.mjs --publish --allow-unsigned --dir dist-qa-unsigned",
-    "release:manifest": "node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned",
+    "release:manifest": "node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned --strict",
     "release:github": "node scripts/publish-github-release.mjs --dir dist-qa-unsigned",
+    "release:github:cred": "node scripts/publish-github-via-git-credential.mjs --dir dist-qa-unsigned",
+    "release:github:verify": "node scripts/verify-github-update-feed.mjs",
+    "release:ship-update": "node scripts/ship-update-ready.mjs",
+    "smoke:auto-update": "node scripts/smoke-auto-update-empirical.cjs --baseline 1.0.4",
+    "smoke:latest-yml": "node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned --strict",
     "brand:icons": "node scripts/generate-brand-icons.mjs",
     "brand:sync": "node scripts/lib/sync-brand-assets.cjs",
+    "brand:patch-dev-icon": "node scripts/lib/patch-electron-dev-icon.cjs",
     "smoke:brand-splash": "node scripts/smoke-brand-splash.cjs",
     "assert:commercial-signing": "node scripts/assert-commercial-signing.mjs",
     "assert:commercial-package": "node scripts/assert-commercial-package.mjs dist",
-    "pack:commercial": "npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never && npm run audit:package -- dist/win-unpacked",
+    "preflight:pack": "node scripts/preflight-pack.mjs --ship",
+    "preflight:pack:signed": "node scripts/preflight-pack.mjs --signed",
+    "pack:commercial": "npm run preflight:pack:signed && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never && npm run audit:package -- dist/win-unpacked",
     "pack:ship": "npm run pack:unsigned:qa:verify",
-    "pack:unsigned:qa": "npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false",
-    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:anti-tamper && npm run smoke:labyrinth && npm run smoke:re-harden && npm run smoke:crown-ip",
+    "pack:unsigned:portable": "npm run preflight:pack && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false",
+    "pack:unsigned:qa": "npm run preflight:pack && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.verifyUpdateCodeSignature=false && node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned --strict",
+    "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:anti-tamper && npm run smoke:labyrinth && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:defense-pack && npm run postpack:checklist -- dist-qa-unsigned",
+    "smoke:defense-pack": "npx tsx scripts/smoke-defense-pack.mts",
+    "postpack:checklist": "node scripts/post-pack-human-checklist.mjs",
     "test:channel-ship": "npx tsx src/scripts/verify-channel-ship.mjs",
     "test:channel-dna": "npx tsx src/scripts/verify-channel-output-dna.mjs",
     "test:integrations": "npx tsx scripts/smoke-pipeline-p0p2.mts",
@@ -59,7 +70,8 @@
     "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
     "test:e2e:ui": "playwright test --project=ui",
     "test:e2e:api": "playwright test --project=api-and-contracts",
-    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-toolbox-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts",
+    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-toolbox-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts && npx tsx scripts/smoke-telegram-admin.mts",
+    "smoke:telegram-admin": "npx tsx scripts/smoke-telegram-admin.mts",
     "smoke:credential-vault": "node scripts/run-electron-smoke.cjs scripts/smoke-credential-vault.cjs",
     "smoke:capcut-live": "npx tsx scripts/smoke-capcut-live.mts",
     "license:issue": "node scripts/issue-license.mjs",
@@ -78,6 +90,10 @@
     "setup:supabase": "node scripts/setup-supabase-cloud.mjs",
     "db:migrate:supabase": "node scripts/apply-supabase-migration.mjs",
     "cloud:bootstrap": "node scripts/do-all-commercial-cloud.mjs",
+    "prepare:la-studio-kokoro": "node scripts/prepare-la-studio-kokoro.mjs",
+    "prepare:release-notes": "node scripts/prepare-release-notes.mjs",
+    "smoke:la-studio-tts": "node scripts/smoke-la-studio-tts.mjs",
+    "smoke:release-notes": "node scripts/smoke-release-notes.mjs",
     "prepare:publish": "npm run commercial:notices && npm run ship:check && npm run typecheck && npm run smoke:core && npm run smoke:pipeline && npm run smoke:commercial && npm run smoke:credential-vault && node scripts/smoke-electron-security.cjs && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:nav-analyzer-cloud && npm run smoke:ip-catalog && npm run smoke:seedance-cloud && npm run verify:core",
     "smoke:cloud-ip-live": "npm run smoke:seedance-cloud-live && npm run smoke:psych-cloud-live",
     "commercial:backup-seller": "node scripts/backup-seller-secrets.mjs",
@@ -94,8 +110,22 @@
     "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts",
     "smoke:nav-analyzer-cloud": "npx tsx scripts/smoke-nav-analyzer-cloud.mts",
     "smoke:toolbox-cloud-ip": "npx tsx scripts/smoke-toolbox-cloud-ip.mts",
+    "smoke:vina": "node scripts/smoke-vina-catalog.mjs",
+    "smoke:youtube-transcript": "npx tsx scripts/smoke-youtube-transcript-errors.mts && npx tsx scripts/smoke-youtube-user-journey.mts",
+    "verify:tts-integrity": "npx tsx scripts/verify-tts-voice-integrity.ts",
+    "verify:tts-preview": "npx tsx scripts/verify-tts-preview-playpath.ts && npx tsx scripts/verify-tts-preview-preflight.ts && npx tsx scripts/verify-tts-prosody-cache.ts && npm run verify:tts-integrity",
+    "audit:tts-preview": "node scripts/audit-tts-preview-pipeline.mjs",
+    "verify:agent-done": "node scripts/verify-agent-done-gate.mjs",
+    "verify:script-mode-pacing": "npx tsx scripts/verify-script-mode-pacing.mts",
+    "smoke:printfilm": "npx tsx scripts/smoke-printfilm-adoptions.mts && npm run verify:script-mode-pacing",
+    "smoke:style-engine": "npx tsx scripts/smoke-style-engine.mts",
+    "smoke:matrix": "npx tsx scripts/smoke-matrix-engine.mts",
+    "smoke:matrix:integration": "npx tsx scripts/smoke-matrix-integration.mts",
+    "smoke:style-engine:integration": "npx tsx scripts/smoke-style-engine-integration.mts",
+    "smoke:style-engine:hardened": "npx tsx scripts/smoke-style-engine-hardened.mts",
     "compile:python-gateway": "node scripts/compile-python-gateway.cjs",
-    "clean:workspace": "node scripts/clean-workspace.mjs"
+    "clean:workspace": "node scripts/clean-workspace.mjs",
+    "smoke:la-studio-preflight": "tsx scripts/smoke-la-studio-preflight.ts"
   },
   "build": {
     "appId": "com.ainovel.desktop",
@@ -319,7 +349,8 @@
         "filter": [
           "public.env",
           "PACKAGING_STANDARD.json",
-          "PACKAGING_STANDARD.md"
+          "PACKAGING_STANDARD.md",
+          "release-notes.json"
         ]
       },
       {
@@ -339,6 +370,31 @@
           "NPM_DEPENDENCY_NOTICE.json",
           "PRICING.md",
           "INSTALL_SUPPORT.md"
+        ]
+      },
+      {
+        "from": "data/vina-voices",
+        "to": "data/vina-voices",
+        "filter": [
+          "profiles_goc.json",
+          "profiles_user.json",
+          "chunk_profiles.json",
+          "session_state.json",
+          "help.json",
+          "roles.json",
+          "README.md",
+          "SAMPLES_REQUIRED.txt",
+          "samples/**/*",
+          "user-clones/**/*",
+          "!temp/**",
+          "!session/**"
+        ]
+      },
+      {
+        "from": "bin/la-studio-kokoro",
+        "to": "bin/la-studio-kokoro",
+        "filter": [
+          "**/*"
         ]
       }
     ]

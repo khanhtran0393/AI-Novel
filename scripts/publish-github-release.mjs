@@ -94,9 +94,9 @@ if (!fs.existsSync(exePath)) {
   );
 }
 
-// Ensure latest.yml exists
+// Always regenerate canonical latest.yml (never trust electron-builder / stale yml)
 const ymlPath = path.join(releaseDir, 'latest.yml');
-if (!fs.existsSync(ymlPath)) {
+{
   const gen = spawnSync(
     process.execPath,
     [
@@ -107,11 +107,24 @@ if (!fs.existsSync(ymlPath)) {
       'latest',
       '--version',
       version,
+      '--strict',
     ],
     { cwd: root, encoding: 'utf8', windowsHide: true },
   );
   if (gen.status !== 0) {
-    throw new Error(gen.stderr || gen.stdout || 'generate-update-manifest failed');
+    throw new Error(
+      gen.stderr || gen.stdout || 'generate-update-manifest failed',
+    );
+  }
+  if (gen.stdout) process.stdout.write(gen.stdout);
+  if (!fs.existsSync(ymlPath)) {
+    throw new Error(`latest.yml not written to ${ymlPath}`);
+  }
+  const ymlBody = fs.readFileSync(ymlPath, 'utf8');
+  if (!/^version:\s*\d+\.\d+\.\d+/m.test(ymlBody)) {
+    throw new Error(
+      `latest.yml missing version line after generate:\n${ymlBody.slice(0, 200)}`,
+    );
   }
 }
 
@@ -254,6 +267,23 @@ async function main() {
     .update(fs.readFileSync(exePath))
     .digest('base64');
 
+  // Fail-closed: electron-updater must be able to GET latest.yml at the real tag
+  const publicYml = `https://github.com/${owner}/${repo}/releases/download/${encodeURIComponent(tag)}/latest.yml`;
+  const ymlCheck = await fetch(publicYml, {
+    headers: { 'User-Agent': 'ainovel-release-publisher' },
+    redirect: 'follow',
+  });
+  if (!ymlCheck.ok) {
+    throw new Error(
+      `Post-upload verify failed: GET ${publicYml} → HTTP ${ymlCheck.status}. ` +
+        `electron-updater will not work without a public latest.yml asset.`,
+    );
+  }
+  const ymlBody = await ymlCheck.text();
+  if (!/version:\s*/.test(ymlBody) || !/sha512:\s*/.test(ymlBody)) {
+    throw new Error(`Post-upload latest.yml looks invalid at ${publicYml}`);
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -263,6 +293,8 @@ async function main() {
         version,
         sha512Prefix: sha.slice(0, 24) + '…',
         check: `https://github.com/${owner}/${repo}/releases/tag/${tag}`,
+        latestYml: publicYml,
+        latestYmlHttp: ymlCheck.status,
       },
       null,
       2,

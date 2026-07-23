@@ -5,29 +5,17 @@ import { useNovelStore } from '@/store/useNovelStore';
 import {
   charImageKey,
   getCharacterProfileSetupStatus,
+  type NhanVatProfile,
+  type WardrobeVariant,
 } from '@/lib/characterProfile';
 import {
   getCharacterVoiceOptions,
   suggestVoiceFromProfile,
 } from '@/lib/characterVoice';
 import { prepareVoiceCatalog } from '@/lib/voiceCatalogPrep';
+import { characterWardrobeImageKey } from '@/contracts';
 
-type CharacterProfileDraft = {
-  gioi_tinh: string;
-  tuoi: string;
-  dang_nguoi: string;
-  vai_tro: string;
-  quan_ao: string;
-  ngoai_hinh: string;
-  dac_diem_nhan_dang: string;
-  khuet_tat: string;
-  so_thich: string;
-  thoi_quen: string;
-  dong_co: string;
-  giong_thoai: string;
-  prompt: string;
-  tts_voice?: string;
-};
+type CharacterProfileDraft = NhanVatProfile;
 
 type CharacterProfileFormProps = {
   editingChar: string | null;
@@ -43,6 +31,7 @@ type CharacterProfileFormProps = {
   handleGenerateCharPrompt: (name: string) => void;
   handleRegenerateCharPromptOnly: (name: string) => void;
   handleGenerateCharImage: (name: string) => void;
+  handleGenerateWardrobeImage?: (name: string, wardrobeId: string) => void;
   handleSaveChar: (name: string) => void;
   handleRenameChar: (name: string) => void;
   setEditingChar: (name: string | null) => void;
@@ -67,6 +56,7 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
     handleGenerateCharPrompt,
     handleRegenerateCharPromptOnly,
     handleGenerateCharImage,
+    handleGenerateWardrobeImage,
     handleSaveChar,
     handleRenameChar,
     setEditingChar,
@@ -81,6 +71,7 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
   const sheetProjectUrl = useNovelStore((s) =>
     editingChar ? s.projectUrls?.[charImageKey(editingChar)] : undefined,
   );
+  const generatedImages = useNovelStore((s) => s.generatedImages);
   const setCharacterVoice = useNovelStore((s) => s.setCharacterVoice);
   const [voiceListTick, setVoiceListTick] = useState(0);
   useEffect(() => {
@@ -245,6 +236,186 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                     onChange={(e) => patchDraft({ quan_ao: e.target.value })}
                     className="h-7 w-full rounded border border-zinc-800 bg-black/60 px-2 text-[11px] text-zinc-300 outline-none focus:border-amber-500"
                   />
+                </div>
+
+                {/* Wardrobe variants (optional — Printfilm P1) */}
+                <div className="flex flex-col gap-1.5 rounded border border-violet-900/40 bg-violet-950/10 p-2">
+                  <div className="flex items-center justify-between gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-violet-400/90">
+                      Wardrobe / biến thể trang phục
+                    </label>
+                    <button
+                      type="button"
+                      className="rounded border border-violet-800/50 px-1.5 py-0.5 text-[8px] font-bold uppercase text-violet-300 hover:bg-violet-900/30 cursor-pointer"
+                      onClick={() => {
+                        const list = [...(profileDraft.wardrobe_variants || [])];
+                        const n = list.length + 1;
+                        const id = `w${n}`;
+                        const next: WardrobeVariant = {
+                          id,
+                          name: n === 1 ? 'Hàng ngày' : `Biến thể ${n}`,
+                          description: '',
+                          image_key: characterWardrobeImageKey(editingChar, id),
+                        };
+                        list.push(next);
+                        patchDraft({
+                          wardrobe_variants: list,
+                          active_wardrobe_id:
+                            profileDraft.active_wardrobe_id || id,
+                        });
+                      }}
+                    >
+                      + Thêm
+                    </button>
+                  </div>
+                  <p className="text-[8px] leading-relaxed text-zinc-600">
+                    Tuỳ chọn — khóa mặt giữ nguyên; chỉ đổi lớp trang phục khi gen scene.
+                  </p>
+                  {(profileDraft.wardrobe_variants || []).length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {(profileDraft.wardrobe_variants || []).map((w, wi) => {
+                        const active =
+                          (profileDraft.active_wardrobe_id || '') === w.id ||
+                          (!profileDraft.active_wardrobe_id && wi === 0);
+                        return (
+                          <div
+                            key={w.id}
+                            className={`rounded border p-1.5 ${
+                              active
+                                ? 'border-violet-600/50 bg-violet-950/30'
+                                : 'border-zinc-800 bg-black/40'
+                            }`}
+                          >
+                            <div className="mb-1 flex flex-wrap items-center gap-1">
+                              <button
+                                type="button"
+                                className={`rounded px-1.5 py-0.5 text-[8px] font-bold uppercase cursor-pointer ${
+                                  active
+                                    ? 'bg-violet-500/30 text-violet-200'
+                                    : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+                                }`}
+                                onClick={() =>
+                                  patchDraft({ active_wardrobe_id: w.id })
+                                }
+                                title="Đặt active cho identity lock"
+                              >
+                                {active ? 'Active' : 'Chọn'}
+                              </button>
+                              <input
+                                type="text"
+                                value={w.name}
+                                onChange={(e) => {
+                                  const list = [
+                                    ...(profileDraft.wardrobe_variants || []),
+                                  ];
+                                  list[wi] = {
+                                    ...w,
+                                    name: e.target.value,
+                                  };
+                                  patchDraft({ wardrobe_variants: list });
+                                }}
+                                className="h-6 min-w-0 flex-1 rounded border border-zinc-800 bg-black/60 px-1.5 text-[10px] text-zinc-300 outline-none focus:border-violet-500"
+                                placeholder="Tên (chiến đấu / lễ…)"
+                              />
+                              <button
+                                type="button"
+                                className="text-[8px] font-bold uppercase text-rose-500/80 hover:text-rose-400 cursor-pointer"
+                                onClick={() => {
+                                  const list = (
+                                    profileDraft.wardrobe_variants || []
+                                  ).filter((_, i) => i !== wi);
+                                  const nextActive =
+                                    profileDraft.active_wardrobe_id === w.id
+                                      ? list[0]?.id || ''
+                                      : profileDraft.active_wardrobe_id;
+                                  patchDraft({
+                                    wardrobe_variants: list,
+                                    active_wardrobe_id: nextActive,
+                                  });
+                                }}
+                              >
+                                Xóa
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={w.description}
+                              onChange={(e) => {
+                                const list = [
+                                  ...(profileDraft.wardrobe_variants || []),
+                                ];
+                                list[wi] = {
+                                  ...w,
+                                  description: e.target.value,
+                                };
+                                patchDraft({ wardrobe_variants: list });
+                              }}
+                              className="mb-1 h-6 w-full rounded border border-zinc-800 bg-black/60 px-1.5 text-[10px] text-zinc-400 outline-none focus:border-violet-500"
+                              placeholder="Mô tả trang phục biến thể"
+                            />
+                            <input
+                              type="text"
+                              value={w.visualPrompt || ''}
+                              onChange={(e) => {
+                                const list = [
+                                  ...(profileDraft.wardrobe_variants || []),
+                                ];
+                                list[wi] = {
+                                  ...w,
+                                  visualPrompt: e.target.value,
+                                };
+                                patchDraft({ wardrobe_variants: list });
+                              }}
+                              className="h-6 w-full rounded border border-zinc-800 bg-black/60 px-1.5 text-[10px] text-zinc-400 outline-none focus:border-violet-500"
+                              placeholder="EN visual prompt (optional)"
+                            />
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={generatingCharImage || !handleGenerateWardrobeImage}
+                                onClick={() =>
+                                  handleGenerateWardrobeImage?.(
+                                    editingChar,
+                                    w.id,
+                                  )
+                                }
+                                className="rounded border border-emerald-800/50 bg-emerald-500/15 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40 cursor-pointer"
+                                title="Gen ảnh full-body cho wardrobe này"
+                              >
+                                {generatingCharImage ? 'Đang gen…' : 'Gen ảnh wardrobe'}
+                              </button>
+                              {(() => {
+                                const wKey =
+                                  w.image_key ||
+                                  characterWardrobeImageKey(editingChar, w.id);
+                                const img = generatedImages?.[wKey];
+                                if (!img) {
+                                  return (
+                                    <span className="text-[8px] text-zinc-600">
+                                      Chưa có still
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    type="button"
+                                    className="text-[8px] font-bold uppercase text-sky-400 hover:text-sky-300 cursor-pointer"
+                                    onClick={() => onImageZoom(img)}
+                                  >
+                                    Xem ảnh
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-zinc-600">
+                      Chưa có biến thể — signature outfit ở trên vẫn dùng mặc định.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1">

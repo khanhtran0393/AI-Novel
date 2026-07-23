@@ -10,6 +10,7 @@ const path = require('path');
 const {
   applyShellHardenInPlace,
   restoreShellFromBackup,
+  SHELL_FILES,
 } = require('./lib/desktop-re-harden.cjs');
 const { syncBrandAssets } = require('./lib/sync-brand-assets.cjs');
 
@@ -34,6 +35,63 @@ function backupPackageJson() {
  */
 exports.default = async function electronBeforePack(context) {
   backupPackageJson();
+
+  // Release notes — stamp current package.json version into commercial/release-notes.json
+  // (extraResources → resources/commercial/release-notes.json for UpdateSuccessModal)
+  try {
+    const { spawnSync } = require('child_process');
+    const notesPrep = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'scripts', 'prepare-release-notes.mjs')],
+      { cwd: ROOT, stdio: 'inherit', env: process.env },
+    );
+    if (notesPrep.status !== 0) {
+      throw new Error(
+        `[release-notes] prepare failed status=${notesPrep.status}. ` +
+          `Run: node scripts/prepare-release-notes.mjs`,
+      );
+    }
+    const notesFile = path.join(
+      ROOT,
+      'resources',
+      'commercial',
+      'release-notes.json',
+    );
+    if (!fs.existsSync(notesFile)) {
+      throw new Error('[release-notes] missing resources/commercial/release-notes.json after prepare');
+    }
+    console.log('[release-notes] stamped for pack → extraResources commercial/');
+  } catch (err) {
+    console.error('[release-notes] BEFORE PACK FAIL:', err?.message || err);
+    throw err;
+  }
+
+  // LA Studio / Kokoro-VI portable TTS — required for ship (platform la_studio)
+  try {
+    const { spawnSync } = require('child_process');
+    const prep = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'scripts', 'prepare-la-studio-kokoro.mjs')],
+      { cwd: ROOT, stdio: 'inherit', env: process.env },
+    );
+    if (prep.status !== 0) {
+      throw new Error(
+        `[la-studio-kokoro] prepare failed status=${prep.status}. ` +
+          `Run: npm run prepare:la-studio-kokoro`,
+      );
+    }
+    const kokoroCli = path.join(ROOT, 'bin', 'la-studio-kokoro', 'bin', 'kokoro-vi-cli.exe');
+    const kokoroOnnx = path.join(ROOT, 'bin', 'la-studio-kokoro', 'models', 'kokoro_vi.onnx');
+    if (!fs.existsSync(kokoroCli) || !fs.existsSync(kokoroOnnx)) {
+      throw new Error(
+        '[la-studio-kokoro] missing bin/la-studio-kokoro after prepare — TTS ship will be empty',
+      );
+    }
+    console.log('[la-studio-kokoro] portable pack ready for extraResources');
+  } catch (err) {
+    console.error('[la-studio-kokoro] BEFORE PACK FAIL:', err?.message || err);
+    throw err;
+  }
 
   // Always sync brand into electron/** before ASAR (splash logo ≥5s needs these files)
   try {
@@ -107,10 +165,34 @@ exports.default = async function electronBeforePack(context) {
     return;
   }
 
-  // Always restore first if a previous pack left hardened sources
-  const prior = restoreShellFromBackup();
-  if (prior.restored.length) {
-    console.log('[re-harden] restored leftover shell before re-harden:', prior.restored.length);
+  // Only restore leftover *minified* workspace files (crash mid-pack).
+  // Never blanket-restore backup over clean edited sources (stale backup
+  // would ship old updater.js and break auto-update).
+  {
+    let needRestore = false;
+    for (const rel of SHELL_FILES) {
+      const abs = path.join(ROOT, rel);
+      try {
+        if (
+          fs.existsSync(abs) &&
+          fs.readFileSync(abs, 'utf8').includes('ainovel-re-harden')
+        ) {
+          needRestore = true;
+          break;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (needRestore) {
+      const prior = restoreShellFromBackup();
+      if (prior.restored.length) {
+        console.log(
+          '[re-harden] restored leftover minified shell before re-harden:',
+          prior.restored.length,
+        );
+      }
+    }
   }
 
   try {

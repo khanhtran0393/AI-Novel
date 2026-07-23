@@ -65,17 +65,29 @@ export function useOmniVoiceStatus(active: boolean) {
         cache: 'no-store',
       });
       const j = await r.json().catch(() => ({}));
+      const online = !!j?.online || !!j?.ok;
+      const detail =
+        (!online && (j?.error || j?.spawnError || j?.python))
+          ? [
+              j?.error || j?.message || 'Chưa sẵn sàng',
+              j?.spawnError ? `spawn: ${j.spawnError}` : '',
+              j?.python ? `python: ${j.python}` : '',
+              j?.logPath ? `log: ${j.logPath}` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : String(j?.message || (j?.ok ? 'Engine online' : 'Chưa sẵn sàng'));
       setStatus({
-        online: !!j?.online || !!j?.ok,
-        ready: j?.ready !== false && (!!j?.online || !!j?.ok),
-        modelLoaded: j?.modelLoaded !== false && (!!j?.online || !!j?.ok),
+        online,
+        ready: j?.ready !== false && online,
+        modelLoaded: j?.modelLoaded !== false && online,
         baseUrl: j?.baseUrl || null,
-        message: String(j?.message || (j?.ok ? 'Engine online' : 'Chưa sẵn sàng')),
+        message: detail,
         loading: false,
         starting: false,
-        error: j?.error ? String(j.error) : undefined,
+        error: j?.error ? String(j.error) : j?.spawnError ? String(j.spawnError) : undefined,
       });
-      return !!j?.ok || !!j?.online;
+      return online;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatus({

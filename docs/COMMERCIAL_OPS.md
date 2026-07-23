@@ -21,6 +21,9 @@ Pro trọn đời vẫn là `plan: pro`, dùng hạn dài theo chính sách sell
 
 Bridge Telegram dùng `AINOVEL_ENTITLEMENT_PRIVATE_KEY_B64` trên Vercel; desktop không biết private key. Deploy bằng `npm run telegram:deploy-bridge`. Supabase migration chuẩn hóa mọi bản ghi lịch sử `vip` thành `pro`.
 
+**Kích hoạt tay:** admin dán HWID khách (Zalo/chat) vào bot → chọn gói → copy `AINOVEL2.…` gửi khách.  
+Lệnh: `/activate <hwid> [month|year|lifetime]`, `/lookup`, `/list`, `/revoke`, `/help` — chi tiết `COMMERCIAL_ADMIN.md`.
+
 ## Chuỗi phát hành
 
 ```powershell

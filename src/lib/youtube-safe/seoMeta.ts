@@ -5,6 +5,49 @@
   type ThumbBias,
 } from '../youtubePsych55';
 import { clipAtWordBoundary } from './text';
+import {
+  YOUTUBE_MOBILE_TITLE_MAX,
+  YOUTUBE_TITLE_HARD_MAX,
+  buildFiveTitleFormulas,
+  compositionPromptBlock,
+  enforceMobileTitle,
+  frontLoadHookKeywords,
+  scoreTitleMobileDiscipline,
+  type ThumbCompositionId,
+} from './highCtr';
+import {
+  buildStyleCtrTitleCandidates,
+  getStyleEngineProfile,
+  resolveStyleEngineFromSetupPayload,
+  resolveStyleEngineProfile,
+  styleEngineTitleScoreBoost,
+  type StyleEngineProfile,
+} from '../styleEngineProfiles';
+import { composeMatrix, matrixScoreMotifs, normKey as matrixNormKey } from '../matrixEngine';
+
+export type StyleEngineSeoOpts = {
+  chu_de?: string;
+  phong_cach?: string;
+  genre?: string;
+  styleEngineId?: string | null;
+};
+
+function resolveSeoStyleProfile(
+  opts?: StyleEngineSeoOpts | null,
+): StyleEngineProfile | null {
+  if (!opts) return null;
+  if (opts.styleEngineId) {
+    const byId = getStyleEngineProfile(opts.styleEngineId);
+    if (byId) return byId;
+  }
+  if (opts.chu_de || opts.phong_cach) {
+    return resolveStyleEngineProfile(opts.chu_de, opts.phong_cach);
+  }
+  if (opts.genre) {
+    return resolveStyleEngineFromSetupPayload({ genre: opts.genre });
+  }
+  return null;
+}
 
 /**
  * Heuristic nhẹ: chấm narrative psych cục bộ (0–100) để log / tín hiệu phụ.
@@ -79,9 +122,9 @@ export function scoreNarrativePsychScript(script: string): {
  * 8. Emotional high-arousal — đe dọa, bí mật, phản bội, sống còn
  */
 
-/** Lexicon kích hoạt cảm xúc / đe dọa (mạt thế · sinh tồn · drama) */
+/** Lexicon kích hoạt cảm xúc / đe dọa (drama · suspense — genre-agnostic) */
 const PSYCH_THREAT_RE =
-  /chết|giết|máu|đau|sợ|hối|mất|cướp|phản bội|bí mật|giấu|trốn|chạy|đuổi|còn lại|cuối cùng|không còn|tuyệt|tuyệt vọng|cô đơn|đói|lạnh|bóng tối|xác|quái|virus|sống sót|sinh tồn|mạt thế|tận thế|cách ly|cấm|nguy hiểm|đe dọa|thù|hận|dối|lừa|bẫy|sụp|sụp đổ|tan|nát|vỡ|khóc|la|thét|câm|im lặng|không ai|mọi người|hắn|nàng|ta phải|đừng|không được|phải chết|chỉ còn/i;
+  /chết|giết|máu|đau|sợ|hối|mất|cướp|phản bội|bí mật|giấu|trốn|chạy|đuổi|còn lại|cuối cùng|không còn|tuyệt|tuyệt vọng|cô đơn|đói|lạnh|bóng tối|xác|quái|virus|sống sót|cách ly|cấm|nguy hiểm|đe dọa|thù|hận|dối|lừa|bẫy|sụp|sụp đổ|tan|nát|vỡ|khóc|la|thét|câm|im lặng|không ai|mọi người|hắn|nàng|ta phải|đừng|không được|phải chết|chỉ còn/i;
 
 const PSYCH_CURIOSITY_RE =
   /tại sao|vì sao|làm sao|liệu|có phải|không ngờ|thật ra|sự thật|bí mật|chưa ai|không ai biết|bỗng|bất ngờ|hóa ra|thì ra|nhưng|mà|nếu|khi ấy|lúc đó|trước khi|sau khi/i;
@@ -213,7 +256,11 @@ function motifOverlapPenalty(candidate: string, used: string[] | undefined): num
 function generateSeoTitleCandidates(
   hook: string,
   novelTitle?: string,
-  opts?: { seed?: number; usedTitles?: string[]; maxCandidates?: number },
+  opts?: {
+    seed?: number;
+    usedTitles?: string[];
+    maxCandidates?: number;
+  } & StyleEngineSeoOpts,
 ): string[] {
   const sentences = splitSentencesVi(stripDialogueStyle(hook || ''));
   const ranked = [...sentences]
@@ -269,14 +316,69 @@ function generateSeoTitleCandidates(
     }
   }
 
+  // High-CTR: always inject 5 psychological title formulas (mobile-clipped)
+  for (const v of buildFiveTitleFormulas({
+    hook: hook || core,
+    novelTitle,
+    seed,
+    mobileClip: true,
+  })) {
+    if (v.title.length >= 16) out.unshift(v.title);
+  }
+
+  // Style Engine niche CTR templates (Tu Tiên / Vả mặt / …)
+  const styleProf = resolveSeoStyleProfile(opts);
+  for (const t of buildStyleCtrTitleCandidates(styleProf, core)) {
+    const cleaned = t.length > 100 ? clipAtWordBoundary(t, 100) : t;
+    if (cleaned.length >= 16) out.unshift(cleaned);
+  }
+
+  // Matrix motifs when StyleEngine null — light candidate from topic×style material
+  if (!styleProf && (opts?.chu_de || opts?.phong_cach || opts?.genre)) {
+    const mx = composeMatrix({
+      chu_de: opts.chu_de,
+      phong_cach: opts.phong_cach,
+      genre: opts.genre,
+    });
+    const motifs = matrixScoreMotifs(mx);
+    if (motifs[0] && core.length >= 8) {
+      const cand = clipAtWordBoundary(
+        `${core.slice(0, 36)} — ${motifs[0]}`.normalize('NFC'),
+        100,
+      );
+      if (cand.length >= 16) out.unshift(cand);
+    }
+  }
+
   return Array.from(new Set(out));
+}
+
+/** Score boost from matrix motifs (when StyleEngine miss or as additive). */
+export function matrixTitleScoreBoost(
+  title: string,
+  opts?: StyleEngineSeoOpts | null,
+): number {
+  if (!opts?.chu_de && !opts?.phong_cach && !opts?.genre) return 0;
+  const motifs = matrixScoreMotifs({
+    chu_de: opts?.chu_de,
+    phong_cach: opts?.phong_cach,
+    genre: opts?.genre,
+  });
+  const t = matrixNormKey(title || '');
+  if (!t) return 0;
+  let hits = 0;
+  for (const m of motifs) {
+    if (t.includes(matrixNormKey(m))) hits += 1;
+  }
+  if (hits <= 0) return 0;
+  return Math.min(1.8, 0.35 * hits + 0.2);
 }
 
 /** Pick best title: psych score + 55-law boost − motif penalty + seed diversity among top-K */
 export function pickBestSeoTitle(
   hook: string,
   novelTitle?: string,
-  opts?: { seed?: number; usedTitles?: string[] },
+  opts?: { seed?: number; usedTitles?: string[] } & StyleEngineSeoOpts,
 ): { title: string; lawId?: number; lawName?: string } {
   const cands = generateSeoTitleCandidates(hook, novelTitle, opts);
   if (!cands.length) {
@@ -284,9 +386,12 @@ export function pickBestSeoTitle(
       'SEO title: khong sinh duoc candidate tu hook. Sua hook/kich ban roi gen lai.',
     );
   }
+  const styleProf = resolveSeoStyleProfile(opts);
   const scored = cands.map((c) => {
     const cleaned = sanitizeSeoTitle(c);
     let sc = scoreSeoTitle(cleaned) + scoreTitleAgainstPsychLaws(cleaned);
+    sc += styleEngineTitleScoreBoost(cleaned, styleProf);
+    sc += matrixTitleScoreBoost(cleaned, opts);
     sc -= motifOverlapPenalty(cleaned, opts?.usedTitles);
     // Penalize awkward long "Vì sao [full narrative clause]"
     if (/^(vì|tại)\s+sao\s+/i.test(cleaned) && cleaned.length > 72) sc -= 1.2;
@@ -294,9 +399,13 @@ export function pickBestSeoTitle(
     // Prefer tension cores over soft gesture / trivial body beats
     if (/nứt|chết|chạy|bẫy|sụp|mất|bí mật|tường|khép|chôn|dao|chân thứ/i.test(cleaned)) sc += 0.8;
     if (/níu cổ tay|mỉm cười|nuốt nước bọt/i.test(cleaned)) sc -= 1.0;
-    // Prefer shorter punchy titles
-    if (cleaned.length >= 40 && cleaned.length <= 85) sc += 0.3;
-    if (cleaned.length > 95) sc -= 0.5;
+    // Mobile CTR discipline: prefer ≤70 (YouTube app truncate)
+    const mobile = scoreTitleMobileDiscipline(cleaned);
+    sc += mobile.score * 0.12;
+    if (cleaned.length >= 40 && cleaned.length <= YOUTUBE_MOBILE_TITLE_MAX) sc += 0.9;
+    else if (cleaned.length > YOUTUBE_MOBILE_TITLE_MAX && cleaned.length <= 85) sc -= 0.2;
+    if (cleaned.length > 95) sc -= 0.6;
+    if (/^(chê|đừng mở|giả làm|xuyên không|mỗi lần)/i.test(cleaned)) sc += 0.5;
     const seed = opts?.seed ?? 0;
     sc += ((hashSeed(cleaned) + seed) % 7) * 0.12;
     return { c: cleaned, sc, law: detectPsychLawInTitle(cleaned) };
@@ -381,7 +490,7 @@ export function extractHookFromScript(
     /** Visual DNA / media style — required for non-empty thumbnailPrompt (B10: no invent) */
     visualDna?: string;
     characterHint?: string;
-  },
+  } & StyleEngineSeoOpts,
 ): {
   hook: string;
   thumbnailLine: string;
@@ -393,6 +502,12 @@ export function extractHookFromScript(
   const targetSec = opts?.targetSec ?? 30;
   const wpm = opts?.wpm ?? 140;
   const targetWords = Math.max(55, Math.round((wpm * targetSec) / 60));
+  const styleOpts: StyleEngineSeoOpts = {
+    chu_de: opts?.chu_de,
+    phong_cach: opts?.phong_cach,
+    genre: opts?.genre,
+    styleEngineId: opts?.styleEngineId,
+  };
 
   const cleaned = (script || '')
     .normalize('NFC')
@@ -452,7 +567,7 @@ export function extractHookFromScript(
   hook = applyOpenLoopEnding(hook, sentences, startIdx + picked.length);
 
   const thumbnailLine = buildClickThumbnailLine(hook, sentences);
-  const seoTitle = buildSeoTitleFromHook(hook, thumbnailLine);
+  const seoTitle = buildSeoTitleFromHook(hook, thumbnailLine, undefined, styleOpts);
   const seoTags = buildSeoTags(hook);
   const seoDescription = buildSeoDescription({
     hook,
@@ -468,6 +583,7 @@ export function extractHookFromScript(
       thumbnailLine,
       visualDna,
       characterHint: opts?.characterHint,
+      styleEngine: styleOpts,
     });
   }
 
@@ -511,24 +627,39 @@ function applyOpenLoopEnding(hook: string, allSentences: string[], nextIdx: numb
 export const YOUTUBE_META_PASS_SCORE = 8.5;
 
 /**
- * SEO Title — template CTR tâm lý, KHÔNG thoại, ≤100 ký tự.
- * Chọn biến thể điểm cao nhất (duyên hút + tò mò).
+ * SEO Title — template CTR tâm lý, KHÔNG thoại.
+ * Prefer mobile ≤70; hard cap 100. Includes 5 formula candidates in pool.
  */
 export function buildSeoTitleFromHook(
   hook: string,
   _thumbnailLine?: string,
   novelTitle?: string,
-  opts?: { seed?: number; usedTitles?: string[] },
+  opts?: {
+    seed?: number;
+    usedTitles?: string[];
+    preferMobile?: boolean;
+  } & StyleEngineSeoOpts,
 ): string {
+  const preferMobile = opts?.preferMobile !== false;
   const picked = pickBestSeoTitle(hook, novelTitle, {
     seed: opts?.seed ?? hashSeed(hook + (novelTitle || '') + (_thumbnailLine || '')),
     usedTitles: opts?.usedTitles,
+    chu_de: opts?.chu_de,
+    phong_cach: opts?.phong_cach,
+    genre: opts?.genre,
+    styleEngineId: opts?.styleEngineId,
   });
-  return (
-    picked.title.slice(0, 100) ||
-    clipAtWordBoundary(stripDialogueStyle(hook || ''), 100) ||
-    'Sự thật không ai dám kể… xem đến cuối'
-  );
+  let title =
+    picked.title ||
+    clipAtWordBoundary(stripDialogueStyle(hook || ''), YOUTUBE_MOBILE_TITLE_MAX) ||
+    'Sự thật không ai dám kể… xem đến cuối';
+  title = frontLoadHookKeywords(sanitizeSeoTitle(title));
+  if (preferMobile && title.length > YOUTUBE_MOBILE_TITLE_MAX) {
+    const clipped = enforceMobileTitle(title, YOUTUBE_MOBILE_TITLE_MAX);
+    // Keep clip if still substantial
+    if (clipped.length >= 28) title = clipped;
+  }
+  return title.slice(0, YOUTUBE_TITLE_HARD_MAX);
 }
 
 /**
@@ -628,14 +759,17 @@ export function buildClickThumbnailLine(
   return sanitizeThumbnailLine(best.slice(0, MAX));
 }
 
-/** Chấm Title 0–10: tò mò + hút click (không thoại) */
+/** Chấm Title 0–10: tò mò + hút click (không thoại) + kỷ luật mobile ≤70 */
 export function scoreSeoTitle(title: string): number {
   const t = (title || '').normalize('NFC').trim();
   if (!t) return 0;
   let s = 3;
   const len = t.length;
-  if (len >= 55 && len <= 100) s += 2;
-  else if (len >= 40 && len < 55) s += 1;
+  // Mobile-first: 40–70 is sweet spot; 71–100 still ok but weaker
+  if (len >= 40 && len <= YOUTUBE_MOBILE_TITLE_MAX) s += 2.2;
+  else if (len >= 28 && len < 40) s += 1;
+  else if (len > YOUTUBE_MOBILE_TITLE_MAX && len <= 85) s += 0.8;
+  else if (len > 85 && len <= 100) s += 0.2;
   else if (len < 28) s -= 2;
   if (len > 100) s -= 2;
 
@@ -644,6 +778,7 @@ export function scoreSeoTitle(title: string): number {
   if (PSYCH_QUESTION_RE.test(t) || /[…]$/.test(t)) s += 1;
   if (PSYCH_NUMBER_RE.test(t)) s += 0.5;
   if (/đừng bỏ lỡ|fomo|không ai dám/i.test(t)) s += 1;
+  if (/^(chê|đừng mở|giả làm|xuyên không|mỗi lần|phế vật|trọng sinh)/i.test(t)) s += 0.8;
   // Trừ điểm: kiểu hội thoại / trích thoại / dump thoại FOMO
   if (PSYCH_DIALOGUE_RE.test(t) || /^(hắn|nàng|tôi|ta)\s/i.test(t)) s -= 2.5;
   if (/^(cô|anh|chị|em)\s+(chỉ|nói|hỏi|thì thầm)/i.test(t)) s -= 2.5;
@@ -657,6 +792,8 @@ export function scoreSeoTitle(title: string): number {
 
   // 55 psych laws boost
   s += Math.min(2, scoreTitleAgainstPsychLaws(t));
+  // Mobile discipline soft boost (never claims CTR%)
+  s += Math.min(0.8, scoreTitleMobileDiscipline(t).score * 0.08);
 
   return Math.max(0, Math.min(10, Math.round(s * 10) / 10));
 }
@@ -753,7 +890,7 @@ export function generateYoutubeMetaWithQA(params: {
   /** Visual DNA / media style — required for thumbnail prompt (B10: no invent) */
   visualDna?: string;
   characterHint?: string;
-}): {
+} & StyleEngineSeoOpts): {
   hook: string;
   seoTitle: string;
   thumbnailLine: string;
@@ -772,11 +909,18 @@ export function generateYoutubeMetaWithQA(params: {
       'Thieu visualDna (Visual DNA / Media Style) de generateYoutubeMetaWithQA. App khong tu bi a style thumbnail.',
     );
   }
+  const styleOpts: StyleEngineSeoOpts = {
+    chu_de: params.chu_de,
+    phong_cach: params.phong_cach,
+    genre: params.genre,
+    styleEngineId: params.styleEngineId,
+  };
   const base = extractHookFromScript(params.script, {
     targetSec: 30,
     wpm: 140,
     visualDna,
     characterHint: params.characterHint,
+    ...styleOpts,
   });
   const seed0 = hashSeed(
     base.hook + (params.novelTitle || '') + String(params.chapter || 0),
@@ -817,8 +961,14 @@ export function generateYoutubeMetaWithQA(params: {
     const picked = pickBestSeoTitle(base.hook, params.novelTitle, {
       seed,
       usedTitles: params.usedTitles,
+      ...styleOpts,
     });
-    const seoTitle = picked.title.slice(0, 100);
+    let seoTitle = frontLoadHookKeywords(sanitizeSeoTitle(picked.title));
+    if (seoTitle.length > YOUTUBE_MOBILE_TITLE_MAX) {
+      const clipped = enforceMobileTitle(seoTitle, YOUTUBE_MOBILE_TITLE_MAX);
+      if (clipped.length >= 28) seoTitle = clipped;
+    }
+    seoTitle = seoTitle.slice(0, YOUTUBE_TITLE_HARD_MAX);
 
     const sents = splitSentencesVi(base.hook);
     const thumbSeedHook =
@@ -828,6 +978,12 @@ export function generateYoutubeMetaWithQA(params: {
       usedLines: params.usedThumbLines,
       preferredBias: biases[(round + seed) % biases.length],
     });
+    // Prefer style engine overlay examples when thumb is weak / short
+    const styleOverlays = resolveSeoStyleProfile(styleOpts)?.ctr.thumbTextExamples;
+    if (styleOverlays?.length && (round === 1 || thumbnailLine.length < 8)) {
+      const pick = styleOverlays[(seed + round) % styleOverlays.length];
+      if (pick) thumbnailLine = pick.slice(0, 30);
+    }
     thumbnailLine = thumbnailLine.slice(0, 30);
 
     const seoTags = normalizeHashtagField(base.seoTags || buildSeoTags(base.hook));
@@ -869,6 +1025,7 @@ export function generateYoutubeMetaWithQA(params: {
       thumbnailLine,
       visualDna,
       characterHint: params.characterHint,
+      styleEngine: styleOpts,
       psychBias: biases[(round + seed) % biases.length],
     });
 
@@ -969,8 +1126,7 @@ export function buildSeoTags(text: string): string {
   const base = [
     'truyệnaudio',
     'kểchuyện',
-    'mạtthế',
-    'sinhtồn',
+    'kịchbản',
     'truyệnđêm',
     'audiobook',
     'novel',
@@ -1124,15 +1280,24 @@ export function buildThumbnailPrompt(params: {
   psychBias?: ThumbBias;
   /** Optional competitor thumb DNA — preferred over visualDna when set */
   competitorThumbDna?: string;
+  /**
+   * High-CTR composition preset (split / hologram / scale / emotion zoom).
+   * Locks layout in prompt — does not invent story content.
+   */
+  compositionId?: ThumbCompositionId | string | null;
+  /** Style Engine niche composition (Setup chu_de/phong_cach) */
+  styleEngine?: StyleEngineSeoOpts | null;
 }): string {
   const mood = (params.thumbnailLine || params.hook || '').trim().slice(0, 120);
   if (!mood) {
     throw new Error('Thieu hook/thumbnailLine de tao thumbnail prompt.');
   }
   const competitor = params.competitorThumbDna?.trim() || '';
+  const styleProf = resolveSeoStyleProfile(params.styleEngine);
   const dna =
     competitor ||
     params.visualDna?.trim() ||
+    styleProf?.visual.visualDnaEn ||
     '';
   if (!dna) {
     throw new Error('Thieu visualDna de tao thumbnail prompt.');
@@ -1157,9 +1322,15 @@ export function buildThumbnailPrompt(params: {
   if (!biasText) {
     throw new Error(`Thumbnail psychBias khong hop le: ${bias}`);
   }
+  const composition = compositionPromptBlock(params.compositionId);
+  const styleComp = styleProf?.ctr.thumbCompositionHintEn?.trim();
+  const styleGrade = styleProf?.visual.colorGrade?.trim();
   const core = [
     `YouTube thumbnail still, 16:9, high contrast, readable negative space for bold text overlay`,
     `dramatic key light, shallow depth, emotional face readable at small size`,
+    composition ? `COMPOSITION LOCK: ${composition}` : undefined,
+    styleComp ? `STYLE ENGINE COMPOSITION: ${styleComp}` : undefined,
+    styleGrade ? `color grade: ${styleGrade}` : undefined,
     `click-curiosity bias (${bias}): ${biasText}`,
     char || undefined,
     `scene mood / overlay intent: ${mood}`,
@@ -1167,6 +1338,8 @@ export function buildThumbnailPrompt(params: {
       ? undefined
       : dna,
     `no clutter, no watermark, no UI chrome, no illegible tiny text painted in image`,
+    // Overlay text is applied in CapCut/editor — do not bake long title into pixels
+    `leave clean text-safe zone for 2-4 word overlay only; do NOT paint full video title into the image`,
   ]
     .filter(Boolean)
     .join(', ');

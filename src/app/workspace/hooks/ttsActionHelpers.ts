@@ -101,9 +101,11 @@ export function resolveDefaultTtsVoice(state: NovelStoreSnapshot): {
   const current = (state.ttsConfig?.voice || '').trim();
   if (current) return { voice: current, autoFilled: false };
 
-  const platform = (state.ttsConfig?.platform || '').trim() || '(chua chon platform)';
+  const platform =
+    (state.ttsConfig?.platform || '').trim() || '(chưa chọn platform)';
   throw new Error(
-    `Chua chon voice TTS cho platform "${platform}". App khong tu gan voice.`,
+    `Chưa chọn giọng TTS cho platform «${platform}». ` +
+      `Mở «Cấu Hình Giọng Đọc Toàn Cục» → chọn giọng. App không tự gán giọng.`,
   );
 }
 

@@ -13,7 +13,7 @@ Hệ thống hiện tại là một Studio khép kín: từ khâu viết kịch 
 - **Tính năng độc quyền**: Sticky Navigation, Word-Gate, thanh công cụ Toolbars, màn hình giám sát luồng Gen (Media Gen Progress).
 
 ## 🧠 LÕI ENGINE "NATIVE"
-- **Zero-Legacy Engine**: Code engine hoạt động 100% bằng TypeScript Native in-process. Không phụ thuộc vào các binary Go cũ. Hỗ trợ đa dạng thể loại (không ép buộc "mạt thế"). 
+- **Zero-Legacy Engine**: Code engine hoạt động 100% bằng TypeScript Native in-process. Không phụ thuộc vào các binary Go cũ. Hỗ trợ đa dạng thể loại (không ép buộc một thể loại cố định). 
 - **Setup Genre**: Quy định thế giới, phong cách, luật lệ được cá nhân hóa hoàn toàn ở Bước Setup (không hardcode).
 - **Character Roster**: Quản lý hồ sơ nhân vật sâu (tuổi, giới tính, ngoại hình, khuyết điểm, động cơ, giọng TTS riêng biệt). Tự động nạp vào Prompt Studio để khóa định dạng nhân vật (Identity Lock).
 

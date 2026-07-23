@@ -9,6 +9,19 @@ import {
 } from '@/lib/voiceCast';
 import { pushChannelMemory } from '@/lib/channelModel';
 import { mergeYoutubeSafe as mergeYoutubeSafeConfig } from '@/lib/youtubeSafe';
+import {
+  emptySceneLocation,
+  normalizeSceneLocationAssets,
+  type SceneLocationAsset,
+} from '@/lib/sceneLocationLibrary';
+import {
+  normalizeScriptMode,
+  scriptModeMediaSoftPatch,
+} from '@/lib/scriptMode';
+import {
+  resolveStyleEngineProfile,
+  styleEngineMediaSoftPatch,
+} from '@/lib/styleEngineProfiles';
 import type { NovelActions } from './novelTypes';
 import type { StoreGet, StoreSet } from './storeSet';
 
@@ -18,8 +31,10 @@ type StoryActions = Pick<
   | 'renameNhanVat' | 'setDanhSachChuong' | 'updateChuong' | 'selectChuong'
   | 'setTabHienTai' | 'setWorkspaceTab' | 'setDangTai'
   | 'setPipelineStep' | 'updateLorebook' | 'updateTomTatCuonChieu' | 'updateTriNhoNganHan'
-  | 'updateNhanVatPrompt' | 'updateYoutubeSafe' | 'setHumanEditFlag' | 'setChapterHook'
-  | 'setSetupKind' | 'setYoutubeRewrite'
+  | 'updateNhanVatPrompt'
+  | 'setSceneLocationAssets' | 'upsertSceneLocationAsset' | 'removeSceneLocationAsset'
+  | 'updateYoutubeSafe' | 'setHumanEditFlag' | 'setChapterHook'
+  | 'setSetupKind' | 'setYoutubeRewrite' | 'setScriptMode'
   | 'updateUserRules' | 'updateEditorReview' | 'setCungHienTai' | 'addChuongMoi'
   | 'updateWorldState' | 'updateSpentEntities' | 'setNextBeatType' | 'setMemoryPipelineStatus'
 >;
@@ -33,9 +48,43 @@ export function createStoryActions(
         set((state) => {
           const newSetup = { ...state.setup, ...data };
           const generatedName = `${newSetup.chu_de} - ${newSetup.phong_cach}`;
-          return {
+          const genreTouched =
+            data.chu_de !== undefined || data.phong_cach !== undefined;
+          const base = {
             setup: newSetup,
-            ten_tac_pham: state.giai_doan === 1 ? generatedName : state.ten_tac_pham,
+            ten_tac_pham:
+              state.giai_doan === 1 ? generatedName : state.ten_tac_pham,
+          };
+          if (!genreTouched) return base;
+
+          const profile = resolveStyleEngineProfile(
+            newSetup.chu_de,
+            newSetup.phong_cach,
+          );
+          const soft = styleEngineMediaSoftPatch(profile, {
+            wpm: state.wpm,
+            secondsPerBeat: state.secondsPerBeat,
+            visualDnaPrompt: state.visualDnaPrompt,
+            mediaStylePreset: state.mediaStylePreset,
+            activeStyleEngineId: state.activeStyleEngineId,
+            scriptMode: state.scriptMode,
+          });
+          return {
+            ...base,
+            activeStyleEngineId:
+              soft.activeStyleEngineId !== undefined
+                ? soft.activeStyleEngineId
+                : profile?.id ?? null,
+            ...(soft.wpm != null ? { wpm: soft.wpm } : {}),
+            ...(soft.secondsPerBeat != null
+              ? { secondsPerBeat: soft.secondsPerBeat }
+              : {}),
+            ...(soft.visualDnaPrompt != null
+              ? { visualDnaPrompt: soft.visualDnaPrompt }
+              : {}),
+            ...(soft.mediaStylePreset != null
+              ? { mediaStylePreset: soft.mediaStylePreset }
+              : {}),
           };
         }),
 
@@ -176,6 +225,10 @@ export function createStoryActions(
             ...(oldVal.expression_prompts || {}),
             ...(data.expression_prompts || {}),
           },
+          wardrobe_variants:
+            data.wardrobe_variants !== undefined
+              ? data.wardrobe_variants
+              : oldVal.wardrobe_variants,
         });
         return {
           nhan_vat_prompts: {
@@ -184,6 +237,28 @@ export function createStoryActions(
           },
         };
       }),
+
+      setSceneLocationAssets: (items) =>
+        set({
+          scene_location_assets: normalizeSceneLocationAssets(items),
+        }),
+
+      upsertSceneLocationAsset: (item: SceneLocationAsset) =>
+        set((state) => {
+          const next = emptySceneLocation(item);
+          const list = normalizeSceneLocationAssets(state.scene_location_assets);
+          const idx = list.findIndex((x) => x.id === next.id);
+          if (idx >= 0) list[idx] = { ...list[idx], ...next, updatedAt: Date.now() };
+          else list.push({ ...next, updatedAt: Date.now() });
+          return { scene_location_assets: list };
+        }),
+
+      removeSceneLocationAsset: (id) =>
+        set((state) => ({
+          scene_location_assets: normalizeSceneLocationAssets(
+            state.scene_location_assets,
+          ).filter((x) => x.id !== id),
+        })),
 
       updateYoutubeSafe: (config) =>
         set((state) => ({
@@ -244,6 +319,34 @@ export function createStoryActions(
             youtubeSimilarityTarget: target,
           };
         }),
+
+      setScriptMode: (mode) => {
+        const m = normalizeScriptMode(mode);
+        // Soft pacing per Phong Cách Kịch Bản (WPM / beat / video / word goal)
+        const state = get();
+        const soft = scriptModeMediaSoftPatch(m, {
+          so_tu_chuong: state.setup?.so_tu_chuong,
+          secondsPerBeat: state.secondsPerBeat,
+          videoDuration: state.videoDuration,
+          wpm: state.wpm,
+        });
+        set({
+          scriptMode: m,
+          setup: {
+            ...state.setup,
+            ...(soft.so_tu_chuong != null
+              ? { so_tu_chuong: soft.so_tu_chuong }
+              : {}),
+          },
+          ...(soft.secondsPerBeat != null
+            ? { secondsPerBeat: soft.secondsPerBeat }
+            : {}),
+          ...(soft.videoDuration != null
+            ? { videoDuration: soft.videoDuration }
+            : {}),
+          ...(soft.wpm != null ? { wpm: soft.wpm } : {}),
+        });
+      },
 
       updateUserRules: (rules) => set((state) => ({ userRules: { ...state.userRules, ...rules } })),
 

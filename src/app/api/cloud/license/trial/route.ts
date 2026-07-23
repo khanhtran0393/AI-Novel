@@ -55,10 +55,16 @@ export async function POST(req: Request) {
       });
     }
 
-    // Fallback local vault
+    // Fallback local vault (+ mint token when signer available)
     const local = startTrial(hwid);
     if (!local.ok) {
       throw new AppError(local.error || 'Trial fail', {
+        code: 'VALIDATION',
+        status: 400,
+      });
+    }
+    if (!local.status.active && !local.created) {
+      throw new AppError(local.error || 'Máy này đã dùng trial (hết hạn).', {
         code: 'VALIDATION',
         status: 400,
       });
@@ -67,11 +73,14 @@ export async function POST(req: Request) {
       ok: true,
       cloud: false,
       created: local.created,
+      token: local.token || null,
       status: local.status,
       message: local.created
-        ? `Trial local ${local.status.days} ngày.`
-        : local.error || 'Trial đã tồn tại.',
-      // local trial uses assertProAccess trial vault — no token required
+        ? `Trial local ${local.status.days} ngày — quyền như Pro (video · CapCut · ship · TTS premium).`
+        : local.error || 'Trial đang active — token phiên đã cấp lại.',
+      storeHint: local.token
+        ? 'localStorage.ainovel.entitlementToken'
+        : undefined,
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {

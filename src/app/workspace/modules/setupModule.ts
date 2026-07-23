@@ -5,7 +5,7 @@ import { postGenerate, postJson, API } from './apiClient';
 import type { SetupData } from '@/store/useNovelStore';
 
 
-/** Gợi ý khuyết điểm (điểm yếu) — không ép khuyết tật mạt thế */
+/** Gợi ý khuyết điểm (điểm yếu) — không ép trope khuyết tật theo thể loại */
 export const CO_THE_KHUYET_TAT = [
   'kiêu ngạo che giấu nỗi sợ bị coi thường',
   'nói dối khi bị dồn vào chân tường',
@@ -36,11 +36,48 @@ export const VAT_PHAM_MAC_DINH = [
 
 export const getFriendlyErrorMessage = (err: unknown): string => {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('429') || msg.includes('Quota') || msg.includes('quota') || msg.includes('limit')) {
+
+  // YouTube / phụ đề TRƯỚC quota — tránh "rate limit" YouTube bị nhầm thành Gemini 429
+  if (
+    msg.includes('phụ đề YouTube') ||
+    msg.includes('youtube-transcript-api') ||
+    msg.includes('fetch_youtube_transcript') ||
+    msg.includes('Cách khắc phục') ||
+    msg.includes('BẢN CHÉP LỜI') ||
+    (msg.includes('❌') && (msg.includes('📍') || msg.includes('✅') || msg.includes('🔎')))
+  ) {
+    return msg.startsWith('❌') || msg.startsWith('⚠️') ? msg : `❌ ${msg}`;
+  }
+
+  // Gemini / LLM quota only (không match mọi chữ "limit")
+  const isLlmQuota =
+    /\b429\b/.test(msg) ||
+    /quota exceeded/i.test(msg) ||
+    /resource.?exhausted/i.test(msg) ||
+    (/quota/i.test(msg) && /gemini|aistudio|generativelanguage|api key/i.test(msg));
+  if (isLlmQuota) {
     return `⚠️ Hạn mức API miễn phí (Quota Exceeded 429) của bạn đã tạm thời cạn kiệt.\n\n💡 Hướng dẫn khắc phục:\n1. Truy cập https://aistudio.google.com/app/apikey để tạo thêm API Key miễn phí.\n2. Nhấp vào "API Keys" ở góc trên bên phải để thêm nhiều Key xoay vòng quota. Hệ thống sẽ TỰ ĐỘNG XOAY VÒNG khi hết hạn ngạch.\n3. Hoặc chờ 5-15 phút để Google tự reset hạn ngạch.`;
   }
   return `❌ Lỗi hệ thống AI: ${msg}`;
 };
+
+/**
+ * Toast ngắn: lấy «Vì sao» + bước khắc phục đầu (tránh cắt giữa message dài).
+ * Client-safe — không import youtubeSource (server-only).
+ */
+export function summarizeSetupErrorForToast(full: string, maxLen = 220): string {
+  const text = (full || '').trim();
+  if (!text) return 'Đã xảy ra lỗi.';
+  const why = text.match(/🔎 Vì sao:\s*(.+)/)?.[1]?.trim();
+  const firstFix = text
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.startsWith('• '));
+  const core = [why, firstFix].filter(Boolean).join(' ');
+  const out = core || text.replace(/\s+/g, ' ');
+  if (out.length <= maxLen) return out;
+  return `${out.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+}
 
 export async function randomTemplateAction(params: {
 apiKey: string;
@@ -55,7 +92,7 @@ apiKey: string;
   const pc = String(phong_cach || '').trim();
   if (!de || !pc) {
     throw new Error(
-      'Chua chon Setup Chu de va Phong cach. App khong tu gan mat the khi sinh y tuong.',
+      'Chua chon Setup Chu de va Phong cach. App khong tu gan the loai mac dinh khi sinh y tuong.',
     );
   }
   const data = await postGenerate('GENERATE_IDEAS', { chu_de: de, phong_cach: pc });
@@ -81,6 +118,7 @@ export type YoutubeSourcePayload = {
   source?: string;
   rewriteBrief?: string;
   error?: string;
+  errorCode?: string;
 };
 
 /** Lấy tiêu đề / mô tả / phụ đề YouTube để seed mo_ta (viết lại kịch bản tương tự). */
@@ -198,17 +236,22 @@ export async function generateOutlineAction(params: {
     Math.min(100, Math.round(youtubeRewrite?.similarityTarget ?? 80)),
   );
 
-  // Normalize chapter counts — empty string from UI breaks the prompt
-  const soChuongN = Number(setupData.so_chuong);
-  const so_chuong =
-    Number.isFinite(soChuongN) && soChuongN >= 1
-      ? Math.min(500, Math.round(soChuongN))
-      : 10;
-  const soTuN = Number(setupData.so_tu_chuong);
-  const so_tu_chuong =
-    Number.isFinite(soTuN) && soTuN >= 500
-      ? Math.min(10000, Math.round(soTuN))
-      : 4250;
+  // Normalize chapter/word scale — Free/Trial aware (cấm ép 4250 khi Free 600)
+  const { normalizeSetupScaleForTier, resolveMeteredTierFromFlags } =
+    await import('@/lib/commercial/freeLimitsPolicy');
+  const liveFlags = (await import('@/store/useNovelStore')).useNovelStore.getState();
+  const tier = resolveMeteredTierFromFlags({
+    is_pro: liveFlags.is_pro,
+    is_trial: liveFlags.is_trial,
+    is_vip: liveFlags.is_vip,
+  });
+  const scaled = normalizeSetupScaleForTier(
+    setupData.so_chuong,
+    setupData.so_tu_chuong,
+    tier,
+  );
+  const so_chuong = scaled.so_chuong;
+  const so_tu_chuong = scaled.so_tu_chuong;
 
   // Cốt truyện đã phân tích (không nhét full transcript thô)
   let mo_ta = String(setupData.mo_ta || '').trim();
@@ -258,10 +301,12 @@ export async function generateOutlineAction(params: {
     rewrite_source_kind: rewriteOn ? sourceKind : '',
   };
 
-  const result = await postGenerate(
-    'GENERATE_OUTLINE',
-    safeSetup as unknown as Record<string, unknown>,
-  );
+  const { useNovelStore } = await import('@/store/useNovelStore');
+  const scriptMode = useNovelStore.getState().scriptMode || 'chuyen_sau';
+  const result = await postGenerate('GENERATE_OUTLINE', {
+    ...(safeSetup as unknown as Record<string, unknown>),
+    scriptMode,
+  });
   // P2: MiroFish only at outline/lore — silent hooks after outline (never block)
   try {
     const { silentEnrichArcHooks } = await import('./integrationsModule');

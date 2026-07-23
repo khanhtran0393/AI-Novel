@@ -28,10 +28,11 @@ set AINOVEL_SPLASH_MS=5000
 
 | Path | Vai trò | Fail pack nếu thiếu? |
 |------|---------|----------------------|
-| `build/icon-source-logo.jpg` | Nguồn `npm run brand:icons` | Có (brand:icons) |
-| `build/icon.ico` / `build/icon.png` | Taskbar + `win.icon` + rcedit .exe | Có (ship-check / beforePack) |
-| `electron/icon.ico` / `electron/icon.png` | `BrowserWindow` icon runtime | Có (brand:sync) |
-| `electron/splash-logo.jpg` | Logo boot (nhúng base64) | Có (beforePack hard-fail) |
+| `build/icon-source-logo.jpg` | Nguồn `npm run brand:icons` (JPG có nền đen OK) | Có (brand:icons) |
+| `build/icon.ico` / `build/icon.png` | Taskbar + `win.icon` + rcedit .exe — **alpha trong suốt** (punch nền đen) | Có (ship-check / beforePack) |
+| `electron/icon.ico` / `electron/icon.png` | `BrowserWindow` icon runtime (alpha) | Có (brand:sync) |
+| `electron/splash-logo.png` | Logo boot ưu tiên (alpha, không ô vuông đen) | Có sau `brand:icons` |
+| `electron/splash-logo.jpg` | Fallback logo boot (có thể còn nền đen) | Có (beforePack hard-fail) |
 | `electron/splashBrand.js` | Embed logo + gate 5s | Có (beforePack hard-fail) |
 | `electron/splash.html` | Fallback loadFile (transparent) | Có (ship-check) |
 | `main.js` | `require('./electron/splashBrand')`, `transparent: true`, gate | Có (smoke + not stuck minify) |

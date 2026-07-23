@@ -61,7 +61,7 @@ export function shouldParallelSplitMono(
   const len = String(text || '').trim().length;
   if (len < 320) return false;
   // Omni/Vina: serial only (shared GPU/VRAM guard) — never chunk-parallel
-  if (p === 'vina_voice' || p === 'omnivoice_local') return false;
+  if (p === 'vina_voice' || p === 'omnivoice_local' || p === 'la_studio') return false;
   return (
     p === 'edge_tts' ||
     p === 'piper' ||

@@ -39,13 +39,43 @@ export function convertToWavMono(
 export function buildProsodyFilter(settings: VinaVoiceSettings): string {
   const pitch = emotionPitchBias(settings);
   const speed = Math.max(0.5, Math.min(2.0, settings.speed || 1));
-  const rate = Math.round(44100 * Math.pow(2, pitch / 12));
-  const tempo = speed * (44100 / rate);
-  const filters: string[] = [
-    `asetrate=${rate}`,
-    'aresample=44100',
-    `atempo=${Math.max(0.5, Math.min(2.0, tempo)).toFixed(4)}`,
-  ];
+  const filters: string[] = [];
+  // SR-safe pitch: aresample → asetrate → aresample (works for 24k / 22k / 44.1k).
+  if (Math.abs(pitch) > 0.01) {
+    const rateFactor = Math.pow(2, pitch / 12);
+    const newSampleRate = Math.max(
+      8000,
+      Math.min(192000, Math.round(44100 * rateFactor)),
+    );
+    let tempo = (1 / rateFactor) * speed;
+    filters.push('aresample=44100');
+    filters.push(`asetrate=${newSampleRate}`);
+    filters.push('aresample=44100');
+    while (tempo > 2.0) {
+      filters.push('atempo=2.0');
+      tempo /= 2.0;
+    }
+    while (tempo < 0.5) {
+      filters.push('atempo=0.5');
+      tempo /= 0.5;
+    }
+    if (Math.abs(tempo - 1.0) > 0.001) {
+      filters.push(`atempo=${Math.max(0.5, Math.min(2.0, tempo)).toFixed(4)}`);
+    }
+  } else if (Math.abs(speed - 1) > 0.01) {
+    let tempo = speed;
+    while (tempo > 2.0) {
+      filters.push('atempo=2.0');
+      tempo /= 2.0;
+    }
+    while (tempo < 0.5) {
+      filters.push('atempo=0.5');
+      tempo /= 0.5;
+    }
+    if (Math.abs(tempo - 1.0) > 0.001) {
+      filters.push(`atempo=${Math.max(0.5, Math.min(2.0, tempo)).toFixed(4)}`);
+    }
+  }
   if (settings.treble_boost && Math.abs(settings.treble_boost) > 0.01) {
     filters.push(`treble=g=${settings.treble_boost}`);
   }
@@ -53,6 +83,8 @@ export function buildProsodyFilter(settings: VinaVoiceSettings): string {
     const g = ((settings.formant - 1) * 6).toFixed(2);
     filters.push(`equalizer=f=1200:t=q:w=1:g=${g}`);
   }
+  // Always leave ~1 dB headroom before loudnorm (raw ONNX often peaks at 0.0 dBFS → rè).
+  filters.push('alimiter=limit=0.89:level=disabled:attack=5:release=50');
   filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   return filters.join(',');
 }

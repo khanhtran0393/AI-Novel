@@ -132,13 +132,19 @@ add(
   ),
 );
 
-const qaPortable = path.join(root, 'dist-qa-unsigned', 'AI-Novel-1.0.0-x64.exe');
-const qaUnpacked = path.join(
-  root,
-  'dist-qa-unsigned',
-  'win-unpacked',
-  'AI Novel & Script Generator.exe',
-);
+const pkgVersion = String(pkg.version || '0.0.0').trim();
+const qaPortableCandidates = [
+  path.join(root, 'dist-qa-unsigned', `AI-Novel-${pkgVersion}-x64.exe`),
+  path.join(root, 'dist-qa-unsigned', 'AI-Novel-1.0.0-x64.exe'),
+];
+const qaPortable =
+  qaPortableCandidates.find((p) => fs.existsSync(p)) || qaPortableCandidates[0];
+const qaUnpackedCandidates = [
+  path.join(root, 'dist-qa-unsigned', 'win-unpacked', 'Ai Novel.exe'),
+  path.join(root, 'dist-qa-unsigned', 'win-unpacked', 'AI Novel & Script Generator.exe'),
+];
+const qaUnpacked =
+  qaUnpackedCandidates.find((p) => fs.existsSync(p)) || qaUnpackedCandidates[0];
 add('QA unsigned portable artifact', fs.existsSync(qaPortable), qaPortable);
 add('QA win-unpacked exe', fs.existsSync(qaUnpacked), qaUnpacked);
 

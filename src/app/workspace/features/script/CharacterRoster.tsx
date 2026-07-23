@@ -44,6 +44,7 @@ export default function CharacterRoster({ onImageZoom }: Props) {
     handleGenerateAllCharPrompts,
     handleRegenerateCharPromptOnly,
     handleGenerateCharImage,
+    handleGenerateWardrobeImage,
     handleSaveChar,
     handleRenameChar,
   } = useCharacterActions();
@@ -136,6 +137,7 @@ export default function CharacterRoster({ onImageZoom }: Props) {
             handleGenerateCharPrompt={handleGenerateCharPrompt}
             handleRegenerateCharPromptOnly={handleRegenerateCharPromptOnly}
             handleGenerateCharImage={handleGenerateCharImage}
+            handleGenerateWardrobeImage={handleGenerateWardrobeImage}
             handleSaveChar={handleSaveChar}
             handleRenameChar={handleRenameChar}
             setEditingChar={setEditingChar}

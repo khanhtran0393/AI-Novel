@@ -16,7 +16,8 @@ import {
 import { buildClientApiHeaders } from '../../modules/apiClient';
 import LicenseModal from './LicenseModal';
 
-const LOGO_SRC = '/brand/logo.png';
+/** Cache-bust after transparent-alpha brand regen (avoid stale black-bg PNG). */
+const LOGO_SRC = '/brand/logo.png?v=alpha3';
 
 export default function BrandLogoButton() {
   const isPro = useNovelStore(selectIsPro);
@@ -103,7 +104,7 @@ export default function BrandLogoButton() {
       <button
         type="button"
         onClick={() => setLicenseOpen(true)}
-        className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-transparent p-0 shadow-lg shadow-amber-500/25 ring-1 ring-amber-300/25 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-200/90 border-0 overflow-visible ${
+        className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-950 p-0 shadow-lg shadow-amber-500/30 ring-1 ring-amber-300/40 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-200/90 border-0 overflow-visible ${
           showFreePromo ? 'ainovel-logo-pulse' : ''
         }`}
         title={
@@ -115,14 +116,15 @@ export default function BrandLogoButton() {
         }
         aria-label="Mở Bản quyền License"
       >
-        <span className="relative z-[1] block h-11 w-11 overflow-hidden rounded-2xl">
+        {/* Dark circular plate under alpha PNG so logo never reads as empty black hole */}
+        <span className="relative z-[1] block h-11 w-11 overflow-hidden rounded-full bg-gradient-to-br from-amber-950/90 via-zinc-950 to-black ring-1 ring-amber-500/30">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={LOGO_SRC}
             alt="AI Novel"
             width={44}
             height={44}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain bg-transparent"
             draggable={false}
           />
         </span>

@@ -99,7 +99,7 @@ export interface NhanVatProfile {
   /**
    * Khuyết điểm nhân vật (BẮT BUỘC có nội dung khi hồ sơ đầy đủ):
    * điểm yếu tính cách, thói xấu, nỗi sợ, hạn chế xã hội/tâm lý;
-   * có thể gồm thương tật thể chất nếu phù hợp Setup — KHÔNG ép "khuyết tật mạt thế".
+   * có thể gồm thương tật thể chất nếu phù hợp Setup — KHÔNG ép trope khuyết tật cứng.
    */
   khuet_tat: string;
   /**
@@ -115,6 +115,27 @@ export interface NhanVatProfile {
   angle_prompts?: Partial<Record<CharAngle, string>>;
   /** Prompt tiếng Anh cho từng biểu cảm khuôn mặt */
   expression_prompts?: Partial<Record<CharEmotion, string>>;
+  /**
+   * Optional costume / wardrobe variants (Printfilm-style) — không bắt buộc setup complete.
+   * Face lock stays fixed; only outfit layer changes.
+   */
+  wardrobe_variants?: WardrobeVariant[];
+  /** Active wardrobe id when generating scene images (optional) */
+  active_wardrobe_id?: string;
+}
+
+/** Costume / wardrobe set for identity-consistent outfit swaps */
+export interface WardrobeVariant {
+  /** Stable id (slug), e.g. daily | battle | formal */
+  id: string;
+  /** Display name VN/EN */
+  name: string;
+  /** Short outfit description (can be VN) */
+  description: string;
+  /** English visual prompt for this outfit only */
+  visualPrompt?: string;
+  /** generatedImages key (usually characterWardrobeImageKey) */
+  image_key?: string;
 }
 
 export type NhanVatPromptsMap = Record<string, NhanVatProfile>;
@@ -137,7 +158,53 @@ export function emptyNhanVatProfile(): NhanVatProfile {
     prompt: '',
     angle_prompts: {},
     expression_prompts: {},
+    wardrobe_variants: [],
+    active_wardrobe_id: '',
   };
+}
+
+function normalizeWardrobeVariants(
+  raw?: WardrobeVariant[] | null,
+): WardrobeVariant[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WardrobeVariant[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i];
+    if (!v || typeof v !== 'object') continue;
+    const id = String(v.id || `w${i + 1}`)
+      .normalize('NFC')
+      .trim()
+      .replace(/\s+/g, '_')
+      .slice(0, 48);
+    const name = String(v.name || id).normalize('NFC').trim();
+    const description = String(v.description || '').normalize('NFC').trim();
+    if (!id || !name) continue;
+    const visualPrompt = String(v.visualPrompt || '').trim();
+    const image_key = String(v.image_key || '').trim();
+    const item: WardrobeVariant = {
+      id,
+      name,
+      description,
+    };
+    if (visualPrompt) item.visualPrompt = visualPrompt;
+    if (image_key) item.image_key = image_key;
+    out.push(item);
+  }
+  return out;
+}
+
+/** Active wardrobe entry or undefined */
+export function getActiveWardrobe(
+  profile?: Partial<NhanVatProfile> | null,
+): WardrobeVariant | undefined {
+  const list = normalizeWardrobeVariants(profile?.wardrobe_variants);
+  if (!list.length) return undefined;
+  const active = String(profile?.active_wardrobe_id || '').trim();
+  if (active) {
+    const hit = list.find((w) => w.id === active);
+    if (hit) return hit;
+  }
+  return list[0];
 }
 
 /** Merge partial + legacy data safely (persist may miss new keys) */
@@ -151,6 +218,8 @@ export function normalizeNhanVatProfile(
     ...raw,
     angle_prompts: { ...(raw.angle_prompts || {}) },
     expression_prompts: { ...(raw.expression_prompts || {}) },
+    wardrobe_variants: normalizeWardrobeVariants(raw.wardrobe_variants),
+    active_wardrobe_id: String(raw.active_wardrobe_id || '').trim(),
   };
 }
 
@@ -174,7 +243,7 @@ export const CHAR_PROFILE_REQUIRED_FIELDS: Array<{
   { key: 'dac_diem_nhan_dang', label: 'Đặc điểm nhận dạng', minLen: 2 },
   {
     key: 'khuet_tat',
-    label: 'Khuyết điểm (điểm yếu / thói xấu / nỗi sợ — không bắt buộc khuyết tật mạt thế)',
+    label: 'Khuyết điểm (điểm yếu / thói xấu / nỗi sợ — không bắt buộc trope khuyết tật cứng)',
     minLen: 2,
   },
   { key: 'prompt', label: 'Master prompt EN', minLen: 12 },
@@ -190,7 +259,7 @@ export type CharacterSetupStatus = {
 
 /**
  * Hồ sơ NV setup xong = đủ MỌI trường bắt buộc (gồm khuyết điểm) + giọng TTS + ảnh tham chiếu.
- * Khuyết điểm = điểm yếu nhân vật, không ép "khuyết tật mạt thế".
+ * Khuyết điểm = điểm yếu nhân vật, không ép trope khuyết tật cứng.
  */
 export function getCharacterProfileSetupStatus(
   raw?: Partial<NhanVatProfile> | null,
@@ -257,11 +326,23 @@ export function buildIdentityLockEnglish(profile: Partial<NhanVatProfile> | unde
   }
   if (profile.khuet_tat?.trim()) {
     parts.push(
-      `Character flaw / weakness (behavioral or limiting trait — not forced post-apoc disability): ${profile.khuet_tat.trim()}`,
+      `Character flaw / weakness (behavioral or limiting trait — behavioral flaw matching character, not a forced genre trope): ${profile.khuet_tat.trim()}`,
     );
   }
   if (profile.quan_ao?.trim()) {
     parts.push(`Signature outfit: ${profile.quan_ao.trim()}`);
+  }
+  const wardrobe = getActiveWardrobe(profile);
+  if (wardrobe) {
+    const outfit =
+      wardrobe.visualPrompt?.trim() ||
+      wardrobe.description?.trim() ||
+      wardrobe.name;
+    if (outfit) {
+      parts.push(
+        `Active wardrobe / costume variant "${wardrobe.name}": ${outfit}`,
+      );
+    }
   }
   if (profile.gioi_tinh?.trim() || profile.tuoi?.trim() || profile.dang_nguoi?.trim()) {
     parts.push(
@@ -363,6 +444,39 @@ export function formatProfileBibleLine(name: string, p: Partial<NhanVatProfile>)
   return `- ${name}: ${bits.join('; ')}. Giọng/hành vi/nhận diện phải nhất quán.`;
 }
 
+/**
+ * Full-body wardrobe / costume variant sheet (face lock fixed, outfit changes).
+ * Used when user gen ảnh cho một wardrobe id.
+ */
+export function composeWardrobeSheetPrompt(
+  profile: Partial<NhanVatProfile>,
+  wardrobe: WardrobeVariant,
+  charName?: string,
+): string {
+  const identity = buildIdentityLockEnglish({
+    ...profile,
+    // Force this wardrobe as active for lock composition
+    active_wardrobe_id: wardrobe.id,
+    wardrobe_variants: [wardrobe, ...(profile.wardrobe_variants || [])],
+  });
+  const outfit =
+    wardrobe.visualPrompt?.trim() ||
+    wardrobe.description?.trim() ||
+    wardrobe.name;
+  const nameHint = charName?.trim() ? `Character: ${charName.trim()}. ` : '';
+  return [
+    `${nameHint}Professional full-body costume / wardrobe reference sheet, single cohesive image, clean neutral studio background`,
+    identity || 'consistent character identity',
+    `Wardrobe variant "${wardrobe.name}": ${outfit}`,
+    'CRITICAL: identical face structure, hair, eyes, skin, scars/moles/marks and body proportions as identity lock',
+    'ONLY the outfit / costume / accessories change for this wardrobe variant',
+    'full body standing pose front three-quarter preferred, clear garment details, concept art production design',
+    'cinematic natural lighting, high detail, no text labels, no watermark, no logo',
+  ]
+    .filter(Boolean)
+    .join('. ');
+}
+
 /** Compact reference block for image-prompt API (character consistency) */
 export function formatCharacterVisualRef(
   name: string,
@@ -378,6 +492,11 @@ export function formatCharacterVisualRef(
     ` | Trang phục: ${p.quan_ao || '?'}` +
     ` | Face lock: ${p.ngoai_hinh || '?'}` +
     ` | Đặc điểm nhận dạng (BẮT BUỘC giữ): ${p.dac_diem_nhan_dang || p.khuet_tat || '?'}` +
+    (() => {
+      const w = getActiveWardrobe(p);
+      if (!w) return '';
+      return ` | Wardrobe active: ${w.name}${w.description ? ` (${w.description})` : ''}`;
+    })() +
     ` | Prompt khóa: "${lock || p.prompt || ''}"`
   );
 }

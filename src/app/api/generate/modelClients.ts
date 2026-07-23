@@ -107,48 +107,58 @@ export function cleanAndParseJson(text: string) {
     return JSON.parse(repaired);
   } catch {}
 
-  // 5. Tìm kiếm và trích xuất khối JSON đối tượng { ... } lớn nhất bằng Regex
+  // 5–6. Extract largest JSON block. Prefer the structure that starts first:
+  // if `[` comes before `{`, try array first (avoids carving one object out of `[{…},{…}]`
+  // which previously produced invalid multi-object fragments or empty normalize).
   const startCurly = cleaned.indexOf('{');
   const endCurly = cleaned.lastIndexOf('}');
-  if (startCurly !== -1 && endCurly !== -1 && endCurly > startCurly) {
-    try {
-      const jsonCandidate = cleaned.substring(startCurly, endCurly + 1);
-      return JSON.parse(jsonCandidate);
-    } catch {}
-    
-    // Thử sửa chữa jsonCandidate trích xuất được
-    try {
-      const repairedCandidate = repairJson(cleaned.substring(startCurly, endCurly + 1));
-      return JSON.parse(repairedCandidate);
-    } catch {}
-    
-    // Thử sửa chữa cấu trúc của jsonCandidate
-    try {
-      const structuralCandidate = cleanJsonStructurally(cleaned.substring(startCurly, endCurly + 1));
-      return JSON.parse(structuralCandidate);
-    } catch {}
-  }
-
-  // 6. Tìm kiếm và trích xuất khối JSON mảng [ ... ] lớn nhất bằng Regex
   const startSquare = cleaned.indexOf('[');
   const endSquare = cleaned.lastIndexOf(']');
-  if (startSquare !== -1 && endSquare !== -1 && endSquare > startSquare) {
-    try {
-      const jsonCandidate = cleaned.substring(startSquare, endSquare + 1);
-      return JSON.parse(jsonCandidate);
-    } catch {}
-    
-    // Thử sửa chữa jsonCandidate mảng trích xuất được
-    try {
-      const repairedCandidate = repairJson(cleaned.substring(startSquare, endSquare + 1));
-      return JSON.parse(repairedCandidate);
-    } catch {}
 
-    // Thử sửa chữa cấu trúc của mảng Candidate
-    try {
-      const structuralCandidate = cleanJsonStructurally(cleaned.substring(startSquare, endSquare + 1));
-      return JSON.parse(structuralCandidate);
-    } catch {}
+  const tryParseSlice = (start: number, end: number): unknown | undefined => {
+    if (start === -1 || end === -1 || end <= start) return undefined;
+    const slice = cleaned.substring(start, end + 1);
+    for (const candidate of [
+      slice,
+      (() => {
+        try {
+          return repairJson(slice);
+        } catch {
+          return '';
+        }
+      })(),
+      (() => {
+        try {
+          return cleanJsonStructurally(slice);
+        } catch {
+          return '';
+        }
+      })(),
+    ]) {
+      if (!candidate) continue;
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        /* next */
+      }
+    }
+    return undefined;
+  };
+
+  const preferArray =
+    startSquare !== -1 &&
+    (startCurly === -1 || startSquare < startCurly);
+
+  if (preferArray) {
+    const arr = tryParseSlice(startSquare, endSquare);
+    if (arr !== undefined) return arr;
+    const obj = tryParseSlice(startCurly, endCurly);
+    if (obj !== undefined) return obj;
+  } else {
+    const obj = tryParseSlice(startCurly, endCurly);
+    if (obj !== undefined) return obj;
+    const arr = tryParseSlice(startSquare, endSquare);
+    if (arr !== undefined) return arr;
   }
 
   // Nếu tất cả các nỗ lực đều thất bại, đưa ra phản hồi lỗi chứa toàn bộ nội dung để chẩn đoán
@@ -524,9 +534,29 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
 
         if (response.ok) {
           const data = errorData;
-          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          // Gemini 2.5 may split thought + answer across parts — join all text parts.
+          // Only parts[0] often yields empty / non-JSON and causes "mảng prompt rỗng".
+          const candidate = data.candidates?.[0];
+          const parts = candidate?.content?.parts;
+          let text = '';
+          if (Array.isArray(parts)) {
+            text = parts
+              .map((p: { text?: string }) =>
+                typeof p?.text === 'string' ? p.text : '',
+              )
+              .filter(Boolean)
+              .join('\n')
+              .trim();
+          }
+          if (!text && typeof candidate?.content?.parts?.[0]?.text === 'string') {
+            text = String(candidate.content.parts[0].text).trim();
+          }
           if (!text) {
-            throw new Error(`[Key ${i + 1}/${keys.length}]: AI không trả về kết quả hợp lệ.`);
+            const finish = String(candidate?.finishReason || data.promptFeedback?.blockReason || '');
+            const reason = finish ? ` finishReason/block=${finish}` : '';
+            throw new Error(
+              `[Key ${i + 1}/${keys.length}]: AI không trả về text hợp lệ.${reason}`,
+            );
           }
           globalLastWorkingKey = apiKey;
           globalLastWorkingModel = model;

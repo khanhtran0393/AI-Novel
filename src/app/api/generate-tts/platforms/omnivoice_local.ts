@@ -1,3 +1,4 @@
+import fs from 'fs';
 import {
   synthesizeOmniVoiceLocal,
   isForeignOmniVoiceId,
@@ -22,14 +23,17 @@ const DESIGN_PRESETS = new Set([
 ]);
 
 /**
- * OmniVoice Local only — no Edge / Piper / sample fallback.
- * Fail with clear Error if server offline, wrong voice, or clone missing ref.
+ * OmniVoice Local only — no Edge / Piper / foreign-engine fallback (B10).
+ * Preview + durable user-clone (lsc_*): may play saved ref sample when Omni inference fails.
  */
 export const provider_omnivoice_local: TTSProvider = {
   name: 'OmniVoice Local',
   supportsNativeSpeed: true,
   supportsNativePitch: false,
   generate: async (text, opts) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extra = opts as any;
+    const isPreview = extra.isPreview === true;
     const voice = String(opts.voice || '').trim();
     if (!voice) {
       throw new Error(
@@ -74,7 +78,35 @@ export const provider_omnivoice_local: TTSProvider = {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(msg.startsWith('OmniVoice') || msg.startsWith('GPU TTS') ? msg : `OmniVoice: ${msg}`);
+      // Preview only: durable Voice Clone sample so Nghe thử / ▶ never dead-ends
+      // when Omni runtime is broken (libtorchcodec, OOM, …). Full gen still hard-fails.
+      if (isPreview && /^lsc_/i.test(voice)) {
+        try {
+          const { resolveCloneAudioPath } = await import('@/lib/laStudioClones');
+          const hit = resolveCloneAudioPath(voice);
+          if (hit && fs.existsSync(hit.path)) {
+            const buffer = fs.readFileSync(hit.path);
+            if (buffer.length > 400) {
+              console.warn(
+                `[OmniVoice] preview fallback user-clone sample id=${voice} after: ${msg.slice(0, 120)}`,
+              );
+              return {
+                buffer,
+                method: `OmniVoice-UserCloneSample:${voice}`,
+                nativeSpeedApplied: false,
+                nativePitchApplied: false,
+              };
+            }
+          }
+        } catch {
+          /* rethrow original */
+        }
+      }
+      throw new Error(
+        msg.startsWith('OmniVoice') || msg.startsWith('GPU TTS')
+          ? msg
+          : `OmniVoice: ${msg}`,
+      );
     }
   },
 };

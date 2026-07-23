@@ -37,8 +37,44 @@ interface AinovelCredentialsApi {
   set: (credentials: Record<string, unknown>) => Promise<{ ok?: boolean; error?: string }>;
 }
 
+interface AinovelUpdaterJustUpdated {
+  fromVersion: string;
+  toVersion: string;
+  blocks?: Array<{
+    version: string;
+    date?: string;
+    title?: string;
+    items: string[];
+  }>;
+  items?: string[];
+  releaseNotes?: string | null;
+}
+
+interface AinovelUpdaterApi {
+  isElectron?: boolean;
+  getStatus?: () => Promise<{
+    justUpdated?: AinovelUpdaterJustUpdated | null;
+    appVersion?: string;
+    available?: boolean;
+    downloaded?: boolean;
+    version?: string | null;
+    releaseNotes?: unknown;
+    error?: string | null;
+  }>;
+  check?: () => Promise<unknown>;
+  download?: () => Promise<unknown>;
+  install?: () => Promise<unknown>;
+  ackChangelog?: () => Promise<unknown>;
+  onStatus?: (
+    handler: (status: {
+      justUpdated?: AinovelUpdaterJustUpdated | null;
+    }) => void,
+  ) => () => void;
+}
+
 interface Window {
   ainovelPersist?: AinovelPersistApi;
   ainovelTools?: AinovelToolsApi;
   ainovelCredentials?: AinovelCredentialsApi;
+  ainovelUpdater?: AinovelUpdaterApi;
 }
