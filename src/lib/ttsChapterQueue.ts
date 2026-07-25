@@ -60,8 +60,26 @@ let state: ChapterQueueSnapshot = { ...IDLE };
 const listeners = new Set<Listener>();
 let runToken = 0;
 
-function emit() {
-  const snap = { ...state, errors: [...state.errors], failedIndexes: [...state.failedIndexes] };
+/** Throttle UI listeners — rapid emit thrashing re-renders entire workspace. */
+const UI_EMIT_MIN_MS = 200;
+let lastUiEmitAt = 0;
+let uiEmitTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingUiSnap: ChapterQueueSnapshot | null = null;
+
+/** Debounce disk IPC — writeFileSync on main process freezes Electron chrome. */
+const DISK_PERSIST_MS = 1500;
+let diskPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingDiskSnap: ChapterQueueSnapshot | null = null;
+
+function cloneSnap(): ChapterQueueSnapshot {
+  return {
+    ...state,
+    errors: [...state.errors],
+    failedIndexes: [...state.failedIndexes],
+  };
+}
+
+function notifyListeners(snap: ChapterQueueSnapshot) {
   for (const fn of listeners) {
     try {
       fn(snap);
@@ -69,8 +87,54 @@ function emit() {
       /* ignore */
     }
   }
-  // Persist snapshot to Electron when available (best-effort)
-  void persistQueueSnapshot(snap);
+}
+
+function scheduleDiskPersist(snap: ChapterQueueSnapshot, immediate = false) {
+  pendingDiskSnap = snap;
+  if (immediate) {
+    if (diskPersistTimer) {
+      clearTimeout(diskPersistTimer);
+      diskPersistTimer = null;
+    }
+    void persistQueueSnapshot(snap);
+    pendingDiskSnap = null;
+    return;
+  }
+  if (diskPersistTimer) return;
+  diskPersistTimer = setTimeout(() => {
+    diskPersistTimer = null;
+    const s = pendingDiskSnap;
+    pendingDiskSnap = null;
+    if (s) void persistQueueSnapshot(s);
+  }, DISK_PERSIST_MS);
+}
+
+function emit(opts?: { force?: boolean; flushDisk?: boolean }) {
+  const force = opts?.force === true;
+  const snap = cloneSnap();
+  pendingUiSnap = snap;
+
+  const now = Date.now();
+  const due = force || now - lastUiEmitAt >= UI_EMIT_MIN_MS;
+  if (due) {
+    if (uiEmitTimer) {
+      clearTimeout(uiEmitTimer);
+      uiEmitTimer = null;
+    }
+    lastUiEmitAt = now;
+    pendingUiSnap = null;
+    notifyListeners(snap);
+  } else if (!uiEmitTimer) {
+    uiEmitTimer = setTimeout(() => {
+      uiEmitTimer = null;
+      const s = pendingUiSnap || cloneSnap();
+      pendingUiSnap = null;
+      lastUiEmitAt = Date.now();
+      notifyListeners(s);
+    }, UI_EMIT_MIN_MS);
+  }
+
+  scheduleDiskPersist(snap, opts?.flushDisk === true);
 }
 
 async function persistQueueSnapshot(snap: ChapterQueueSnapshot) {
@@ -82,6 +146,46 @@ async function persistQueueSnapshot(snap: ChapterQueueSnapshot) {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Mark queue busy immediately so the button shows "Đang gen…" before preflight/warm.
+ * Call before any heavy sync work; pair with clearChapterQueuePrepare on early exit.
+ */
+export function beginChapterQueuePrepare(
+  chapterNumber: number,
+  status = 'Đang chuẩn bị TTS chương…',
+): void {
+  if (state.running && !state.status.startsWith('Đang chuẩn bị')) return;
+  state = {
+    ...IDLE,
+    running: true,
+    cancelled: false,
+    chapter: chapterNumber,
+    status,
+    startedAt: Date.now(),
+  };
+  emit({ force: true, flushDisk: true });
+}
+
+/** Abort prepare phase without a full queue run (preflight fail, warm fail, …). */
+export function clearChapterQueuePrepare(status = ''): void {
+  if (!state.running) {
+    if (status) {
+      state = { ...state, status };
+      emit({ force: true });
+    }
+    return;
+  }
+  // Only clear if we never entered real worker loop (total still 0)
+  if (state.total > 0) return;
+  state = {
+    ...IDLE,
+    status: status || state.status,
+    finishedAt: Date.now(),
+    lastResult: state.lastResult,
+  };
+  emit({ force: true, flushDisk: true });
 }
 
 export function getChapterQueueState(): ChapterQueueSnapshot {
@@ -100,8 +204,19 @@ export function subscribeChapterQueue(fn: Listener): () => void {
 
 export function cancelChapterQueue(): void {
   if (!state.running) return;
+  // Prepare phase (total===0): stop immediately so GUI unlocks
+  if (state.total === 0) {
+    state = {
+      ...IDLE,
+      status: 'Đã dừng (chuẩn bị)',
+      finishedAt: Date.now(),
+      lastResult: state.lastResult,
+    };
+    emit({ force: true, flushDisk: true });
+    return;
+  }
   state = { ...state, cancelled: true, status: 'Đang dừng…' };
-  emit();
+  emit({ force: true, flushDisk: true });
 }
 
 /** Show a notice on the chapter TTS status bar even when queue is idle. */
@@ -111,7 +226,7 @@ export function setChapterQueueNotice(status: string, patch?: Partial<ChapterQue
     ...patch,
     status: status || state.status,
   };
-  emit();
+  emit({ force: true });
 }
 
 export type StartChapterQueueParams = {
@@ -149,8 +264,17 @@ export type StartChapterQueueParams = {
  */
 export async function startChapterQueue(
   params: StartChapterQueueParams,
-): Promise<{ ok: number; fail: number; skipped: number }> {
-  if (state.running) {
+): Promise<{
+  ok: number;
+  fail: number;
+  skipped: number;
+  cancelled: boolean;
+  failedIndexes: number[];
+  errors: string[];
+}> {
+  // Allow transition from beginChapterQueuePrepare (running + total===0).
+  // Block only when a real worker loop is already active (total > 0).
+  if (state.running && state.total > 0) {
     throw new Error('Đang có job TTS chương chạy nền. Hãy dừng trước.');
   }
 
@@ -173,9 +297,9 @@ export async function startChapterQueue(
     skipped: params.initialSkipped || 0,
     errors: [...(params.initialErrors || [])],
     failedIndexes: [],
-    startedAt: Date.now(),
+    startedAt: state.startedAt || Date.now(),
   };
-  emit();
+  emit({ force: true, flushDisk: true });
 
   try {
     let nextIndex = 0;
@@ -289,13 +413,16 @@ export async function startChapterQueue(
         skipped: result.skipped,
       },
     };
-    emit();
+    emit({ force: true, flushDisk: true });
 
     params.onComplete?.(result);
     return {
       ok: result.ok,
       fail: result.fail,
       skipped: result.skipped,
+      cancelled: result.cancelled,
+      failedIndexes: result.failedIndexes,
+      errors: result.errors,
     };
   } catch (e) {
     state = {
@@ -304,7 +431,7 @@ export async function startChapterQueue(
       finishedAt: Date.now(),
       status: e instanceof Error ? e.message : String(e),
     };
-    emit();
+    emit({ force: true, flushDisk: true });
     throw e;
   }
 }

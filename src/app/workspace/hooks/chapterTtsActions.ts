@@ -29,6 +29,8 @@ import {
 } from '@/lib/jobQueue';
 import { scheduleSilentChapterTimeline } from '../modules/integrationsModule';
 import {
+  beginChapterQueuePrepare,
+  clearChapterQueuePrepare,
   getChapterQueueState,
   setChapterQueueNotice,
   startChapterQueue,
@@ -46,39 +48,95 @@ import {
 } from './ttsActionHelpers';
 import { API } from '@/contracts';
 import { assertTtsMediaPreflight } from '@/lib/pipeline';
+import {
+  buildChapterSrt,
+  resolveChapterTtsOutputDir,
+  type ChapterExportScene,
+} from '@/lib/tts/chapterTtsExport';
+import { yieldToUi } from '@/store/persistStorage';
+import { scheduleAppWork } from '@/lib/appWork';
 
 /**
- * Gen TTS cả chương qua queue nền (sống sót remount React / đổi tab).
- * Tách khỏi useTTSActions để scene TTS và chapter TTS không chồng chéo.
+ * Gen TTS cả chương (force đè) → ghép 1 MP3 + SRT → lưu thư mục đầu ra kênh.
+ * GUI chỉ hiển thị progress (ttsChapterQueue) — job chạy luồng nền tách click stack.
+ * Persist mute + yield do scheduleAppWork (tránh stringify/IPC đơ Electron).
  */
-export async function generateChapterTts(
+export function generateChapterTts(
   chapterOpts: ChapterTTSOptions = {},
-): Promise<{ ok: number; fail: number; skipped: number }> {
+): Promise<{
+  ok: number;
+  fail: number;
+  skipped: number;
+  exportPath?: string;
+  srtPath?: string;
+}> {
+  const chapterHint = useNovelStore.getState().chuong_dang_chon;
+  // Reserve queue immediately (sync) so double-click cannot schedule two flows
+  const q0 = getChapterQueueState();
+  if (q0.running) {
+    setChapterQueueNotice('⛔ Đang có job TTS chương — bấm 「Dừng」 trước.');
+    return Promise.resolve({ ok: 0, fail: 0, skipped: 0 });
+  }
+  beginChapterQueuePrepare(chapterHint, 'Đang xếp luồng nền TTS chương…');
+
+  const { promise } = scheduleAppWork({
+    kind: 'tts',
+    title: `TTS chương ${chapterHint || ''}`.trim(),
+    mutePersist: true,
+    yieldBeforeStart: true,
+    meta: { force: chapterOpts.force !== false, chapter: chapterHint },
+    run: async (ctl) => {
+      ctl.setMessage('Đang chuẩn bị TTS chương trên luồng nền…');
+      return generateChapterTtsInner(chapterOpts);
+    },
+  });
+  return promise;
+}
+
+async function generateChapterTtsInner(
+  chapterOpts: ChapterTTSOptions = {},
+): Promise<{
+  ok: number;
+  fail: number;
+  skipped: number;
+  exportPath?: string;
+  srtPath?: string;
+}> {
     const {
       includeHook = true,
-      onlyFailed = false,
-      force = false,
+      /** Default true: nút chính = gen đè toàn bộ */
+      force = true,
       silent = false,
       bypassYoutubeGate = true, // chapter batch: default run; gate is advisory
+      exportFull = true,
     } = chapterOpts;
-    // force = re-gen all; onlyFailed ignores skipExisting for failed set
-    let skipExisting = force ? false : chapterOpts.skipExisting !== false && !onlyFailed;
+    // force = re-gen all (overrides skipExisting)
+    let skipExisting = force ? false : chapterOpts.skipExisting !== false;
 
     const notice = (msg: string) => {
       console.info('[Chapter TTS]', msg);
       setChapterQueueNotice(msg);
     };
 
-    if (getChapterQueueState().running) {
+    // Outer generateChapterTts already reserved queue (prepare). Only block a real worker loop.
+    const q0 = getChapterQueueState();
+    if (q0.running && q0.total > 0) {
       notice('⛔ Đang có job TTS chương — bấm 「Dừng」 trước.');
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
     let state = useNovelStore.getState();
     const chapterNumber = state.chuong_dang_chon;
+
+    // Refresh prepare status + paint before preflight / warm (GUI stays responsive)
+    beginChapterQueuePrepare(chapterNumber, 'Đang chuẩn bị TTS chương…');
+    await yieldToUi();
+    if (getChapterQueueState().cancelled || !getChapterQueueState().running) {
+      return { ok: 0, fail: 0, skipped: 0 };
+    }
     const chapter = state.danh_sach_chuong.find((c) => c.so_chuong === chapterNumber);
     if (!chapter?.noi_dung?.trim() && !state.chapterHooks?.[chapterNumber]?.hook?.trim()) {
-      notice('❌ Chương trống — viết kịch bản hoặc Hook trước khi TTS.');
+      clearChapterQueuePrepare('❌ Chương trống — viết kịch bản hoặc Hook trước khi TTS.');
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
@@ -89,7 +147,7 @@ export async function generateChapterTts(
       state = useNovelStore.getState();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      notice(`❌ ${msg}`);
+      clearChapterQueuePrepare(`❌ ${msg}`);
       if (!silent) toast.error('TTS chương', msg);
       return { ok: 0, fail: 0, skipped: 0 };
     }
@@ -114,8 +172,14 @@ export async function generateChapterTts(
       });
     } catch (pfErr) {
       const msg = pfErr instanceof Error ? pfErr.message : String(pfErr);
-      notice(`🚫 Media preflight TTS: ${msg}`);
+      clearChapterQueuePrepare(`🚫 Media preflight TTS: ${msg}`);
       if (!silent) toast.error('TTS preflight', msg);
+      return { ok: 0, fail: 0, skipped: 0 };
+    }
+
+    notice('Đang tách cảnh + cast preflight…');
+    await yieldToUi();
+    if (getChapterQueueState().cancelled || !getChapterQueueState().running) {
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
@@ -125,26 +189,8 @@ export async function generateChapterTts(
       includeHook,
     });
 
-    if (onlyFailed) {
-      const failed = new Set(loadChapterFailLog(chapterNumber));
-      if (!failed.size) {
-        const missing = jobs.filter((j) => !hasGeneratedAudio(state, chapterNumber, j.sceneIndex));
-        if (missing.length) {
-          notice(`↺ Không có fail-log → gen ${missing.length} cảnh chưa có audio`);
-          jobs = missing;
-          skipExisting = false;
-        } else {
-          notice('❌ Không có fail-log và mọi cảnh đã có audio — dùng 「Gen lại toàn bộ」');
-          return { ok: 0, fail: 0, skipped: jobs.length };
-        }
-      } else {
-        jobs = jobs.filter((j) => failed.has(j.sceneIndex));
-        notice(`↺ Retry ${jobs.length} cảnh trong fail-log`);
-      }
-    }
-
     if (!jobs.length) {
-      notice('❌ Không tách được cảnh — cần thẻ [CẢNH n:…] hoặc đoạn văn.');
+      clearChapterQueuePrepare('❌ Không tách được cảnh — cần thẻ [CẢNH n:…] hoặc đoạn văn.');
       return { ok: 0, fail: 0, skipped: 0 };
     }
 
@@ -163,7 +209,7 @@ export async function generateChapterTts(
       bypass: bypassYoutubeGate,
     });
     if (gate.hardBlock && !bypassYoutubeGate) {
-      notice(`🚫 Gate chặn: ${gate.reasons[0] || 'youtube-safe'}`);
+      clearChapterQueuePrepare(`🚫 Gate chặn: ${gate.reasons[0] || 'youtube-safe'}`);
       return { ok: 0, fail: 0, skipped: 0 };
     }
     if (gate.hardBlock && bypassYoutubeGate) {
@@ -189,19 +235,19 @@ export async function generateChapterTts(
       const why =
         chPf.blocked[0]?.result.issues.find((i) => i.level === 'block')?.message ||
         'preflight block';
-      notice(`🚫 0 cảnh chạy được: ${why}`);
+      clearChapterQueuePrepare(`🚫 0 cảnh chạy được: ${why}`);
       return { ok: 0, fail: chPf.blocked.length, skipped: 0 };
     }
 
     // If skipExisting would skip ALL — auto force so button is not a no-op
     let effectiveSkip = skipExisting;
-    if (effectiveSkip && !onlyFailed && !force) {
+    if (effectiveSkip && !force) {
       const allHaveAudio = chPf.runnable.every((j) =>
         hasGeneratedAudio(useNovelStore.getState(), chapterNumber, j.sceneIndex),
       );
       if (allHaveAudio) {
-        notice(
-          `Info: ${chPf.runnable.length} canh da co audio. Khong tu gen de; bat force/gen lai toan bo neu muon.`,
+        clearChapterQueuePrepare(
+          `Info: ${chPf.runnable.length} cảnh đã có audio. Không tự gen đè — bật force nếu muốn gen lại.`,
         );
         return { ok: 0, fail: 0, skipped: chPf.runnable.length };
       }
@@ -218,7 +264,7 @@ export async function generateChapterTts(
 
     const platform = (state.ttsConfig.platform || '').trim();
     if (!platform) {
-      notice('❌ Chưa chọn engine TTS (platform).');
+      clearChapterQueuePrepare('❌ Chưa chọn engine TTS (platform).');
       return { ok: 0, fail: 0, skipped: 0 };
     }
     let concurrency = resolveChapterTtsConcurrency(platform);
@@ -226,6 +272,7 @@ export async function generateChapterTts(
     // Pre-warm Zero-Shot ONNX worker pool (multi-process → true parallel + later concat)
     if (platform === 'vina_voice') {
       notice('🔥 Warm pool não ONNX (nhiều worker song song)…');
+      await yieldToUi();
       try {
         const wr = await fetch(API.vinaVoiceWarm, { method: 'POST' });
         const wj = await wr.json().catch(() => ({}));
@@ -244,10 +291,14 @@ export async function generateChapterTts(
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        notice('Warm fail: ' + msg);
+        clearChapterQueuePrepare('Warm fail: ' + msg);
         if (!silent) toast.error('Vina warm pool', msg);
         return { ok: 0, fail: jobs.length, skipped: 0 };
       }
+    }
+
+    if (!getChapterQueueState().running) {
+      return { ok: 0, fail: 0, skipped: 0 };
     }
 
     notice(
@@ -380,14 +431,10 @@ export async function generateChapterTts(
           }
           if (r.ok > 0 && !r.cancelled) {
             scheduleSilentChapterTimeline({ chapterNum: chapterNumber, delayMs: 600 });
-            toast.success(
-              'TTS chương xong',
-              `OK ${r.ok} · lỗi ${r.fail} · bỏ qua ${r.skipped}`,
-            );
-          } else if (r.fail > 0) {
+          } else if (r.fail > 0 && !silent) {
             toast.warn(
               'TTS chương có lỗi',
-              `OK ${r.ok} · lỗi ${r.fail} — Jobs → Retry hoặc Gen lại lỗi`,
+              `OK ${r.ok} · lỗi ${r.fail} — Jobs panel có thể retry item`,
             );
           }
           const summary = summarizeChapterTtsResult(chapterNumber, r);
@@ -403,7 +450,50 @@ export async function generateChapterTts(
           }
         },
       });
-      return result;
+
+      // Force-gen xong → ghép full + SRT → thư mục đầu ra kênh
+      let exportPath: string | undefined;
+      let srtPath: string | undefined;
+      if (exportFull && !result.cancelled && result.ok > 0) {
+        try {
+          const exp = await exportChapterFullAudioAndSrt({
+            chapterNumber,
+            jobs,
+            notice,
+          });
+          exportPath = exp.driveFilePath || exp.audioPath;
+          srtPath = exp.driveSrtPath || exp.srtPath;
+          if (exportPath && !silent) {
+            toast.success(
+              'TTS chương + file full',
+              `OK ${result.ok} · full: ${exportPath}` +
+                (srtPath ? `\nSRT: ${srtPath}` : ''),
+            );
+          } else if (result.ok > 0 && !silent) {
+            toast.success(
+              'TTS chương xong',
+              `OK ${result.ok} · lỗi ${result.fail} · bỏ qua ${result.skipped}`,
+            );
+          }
+        } catch (expErr) {
+          const msg =
+            expErr instanceof Error ? expErr.message : String(expErr);
+          notice(`⚠️ Ghép full/SRT: ${msg}`);
+          if (!silent) {
+            toast.warn(
+              'TTS xong — ghép full lỗi',
+              `Audio từng cảnh OK nhưng full/SRT: ${msg}`,
+            );
+          }
+        }
+      } else if (result.ok > 0 && !result.cancelled && !silent) {
+        toast.success(
+          'TTS chương xong',
+          `OK ${result.ok} · lỗi ${result.fail} · bỏ qua ${result.skipped}`,
+        );
+      }
+
+      return { ...result, exportPath, srtPath };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       notice(`❌ Queue lỗi: ${msg}`);
@@ -411,6 +501,125 @@ export async function generateChapterTts(
       toast.error('TTS chương', msg);
       throw e;
     }
+}
+
+/**
+ * Collect per-scene audio (job order) → concat → MP3 + SRT under channel output.
+ */
+async function exportChapterFullAudioAndSrt(input: {
+  chapterNumber: number;
+  jobs: TtsSceneJob[];
+  notice: (msg: string) => void;
+}): Promise<{
+  audioPath: string;
+  duration: number;
+  driveFilePath?: string;
+  driveSrtPath?: string;
+  srtPath?: string;
+}> {
+  const st = useNovelStore.getState();
+  const scenes: ChapterExportScene[] = [];
+  for (const job of input.jobs) {
+    const key = getGeneratedAudioAssetKey(input.chapterNumber, job.sceneIndex);
+    const audio = st.generatedAudioPaths?.[key];
+    const p = String(audio?.path || '').trim();
+    if (!p) continue;
+    scenes.push({
+      sceneIndex: job.sceneIndex,
+      title: job.title,
+      text: job.text,
+      audioPath: p,
+      durationSec: Number(audio?.duration) || 0,
+    });
+  }
+  if (scenes.length < 1) {
+    throw new Error('Không có audio cảnh nào để ghép full.');
+  }
+
+  let channel: { savePathRoot?: string } | null = null;
+  try {
+    channel =
+      typeof st.getActiveChannel === 'function'
+        ? st.getActiveChannel()
+        : null;
+  } catch {
+    channel = null;
+  }
+  if (!channel && st.channels && st.activeChannelId) {
+    channel = st.channels[st.activeChannelId] || null;
+  }
+  const drivePath = resolveChapterTtsOutputDir({
+    channelSavePathRoot: channel?.savePathRoot,
+    savePathTTS: st.savePathTTS,
+    googleDrivePath: st.googleDrivePath,
+  });
+
+  const srtContent = buildChapterSrt({
+    scenes,
+    cast: st.voiceCast,
+    characterNames: st.nhan_vat || [],
+    wpm: st.wpm || 140,
+  });
+
+  input.notice(
+    `🔗 Ghép ${scenes.length} audio → 1 file full + SRT` +
+      (drivePath ? ` → ${drivePath}` : ' (chỉ public/audio — chưa set thư mục kênh)'),
+  );
+
+  const res = await fetch(API.concatAudio, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      paths: scenes.map((s) => s.audioPath),
+      chapterNum: input.chapterNumber,
+      sceneIndex: 0,
+      outputRole: 'chapter',
+      drivePath: drivePath || undefined,
+      ten_tac_pham: st.ten_tac_pham || '',
+      srtContent,
+      applyLoudnorm: true,
+      cleanup: false,
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    error?: string;
+    audioPath?: string;
+    duration?: number;
+    driveFilePath?: string;
+    driveSrtPath?: string;
+    srtPath?: string;
+  };
+  if (!res.ok || !data.success || !data.audioPath) {
+    throw new Error(data.error || `concat-audio HTTP ${res.status}`);
+  }
+
+  // Store chapter master as special key for convenience
+  const fullKey = `${input.chapterNumber}_full`;
+  try {
+    st.addGeneratedAudio(
+      fullKey,
+      data.audioPath,
+      Number(data.duration) || scenes.reduce((a, s) => a + (s.durationSec || 0), 0),
+    );
+  } catch {
+    /* optional */
+  }
+
+  input.notice(
+    `✅ Full ch.${input.chapterNumber}: ${data.driveFilePath || data.audioPath}` +
+      (data.driveSrtPath || data.srtPath
+        ? ` · SRT ${data.driveSrtPath || data.srtPath}`
+        : ''),
+  );
+
+  return {
+    audioPath: data.audioPath,
+    duration: Number(data.duration) || 0,
+    driveFilePath: data.driveFilePath,
+    driveSrtPath: data.driveSrtPath,
+    srtPath: data.srtPath,
+  };
 }
 
 /** Dry-run preflight + export report file */
@@ -504,9 +713,8 @@ export async function runChapterCastPreflightReport(
     }
     report +=
       '\n\n## Cách dùng nút\n' +
-      '• Gen TTS cả chương: skip audio đã có; hỏi force nếu 100% đã có.\n' +
-      '• Gen lại cảnh lỗi: theo fail-log; nếu không có log → gen cảnh chưa audio.\n' +
-      '• Gen lại toàn bộ: force đè audio cũ.\n';
+      '• Gen TTS cả chương: FORCE gen đè mọi cảnh → ghép 1 MP3 + SRT → thư mục đầu ra kênh.\n' +
+      '• Jobs panel: retry item lỗi trong batch TTS.\n';
 
     const shouldExport = opts?.exportFile !== false;
     let saveNote = '';

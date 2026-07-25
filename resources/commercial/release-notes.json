@@ -2,6 +2,85 @@
   "schema": "ainovel.release-notes.v1",
   "product": "AI Novel",
   "versions": {
+    "1.0.12": {
+      "date": "2026-07-25",
+      "title": "License One-Path harden + ship rebuild",
+      "items": [
+        "License: Telegram/bridge fail-closed — không gửi AINOVEL2 khi ledger Supabase lỗi (token rỗng nếu dbOk=false)",
+        "License: issue/codes/webhook/cloud chỉ cấp khi ghi licenses thành công — cấm token-only",
+        "License: activate Supabase authority cấm fallback vault local; re-bind exp = min(token, ledger)",
+        "License: verify bắt buộc token_hash + exp khớp; ticket stale → clear local, tier theo HWID ledger",
+        "License: Paid Pro retires local Trial vault (status + activate) — hết ghost Trial offline",
+        "Smoke: license-ledger-integrity · license-one-path · telegram-admin",
+        "Giữ 1.0.11: ghost media reconcile · KeyRotate 20p · Flow I2V/T2V · TTS schema",
+        "public.env enforce · dual-feed auto-update · unsigned NSIS QA"
+      ],
+      "packedAt": "2026-07-25T17:16:04.413Z"
+    },
+    "1.0.11": {
+      "date": "2026-07-25",
+      "title": "Media ghost cleanup + Flow I2V/T2V + key rotate",
+      "items": [
+        "Ghost media: gỡ path store không còn file (reconcile disk + toast khi mở workspace / trước export CapCut)",
+        "API POST /api/media/reconcile — server-side prune audio/ảnh/video ảo",
+        "KeyRotate: auth cooldown 20 phút (không còn khóa 6 giờ giả «giữ nhịp»); clear cooldown khi đổi API keys",
+        "Flow I2V: nén ảnh start mạnh hơn; re-warm extension mỗi lần upload; timeout fail-fast",
+        "Flow T2V async ổn định; gen ảnh NARWHAL/GEM_PIX_2 message rõ khi INVALID_ARGUMENT",
+        "TTS walk: sceneText + ttsConfig đúng schema; Piper/Edge live OK",
+        "XinChao-Cut / CapCut export pack + soft cutsdk; GUI jank/boot harden (phiên trước)"
+      ],
+      "packedAt": "2026-07-25T14:52:21.671Z"
+    },
+    "1.0.10": {
+      "date": "2026-07-24",
+      "title": "Cập nhật im lặng — không cửa sổ Setup",
+      "items": [
+        "Auto-update: cài NSIS silent /S + windowsHide (spawnSilentNsis) — không hiện «Ai Novel Setup» Back/Next",
+        "NSIS oneClick=true (bỏ installer kiểu chọn thư mục / wizard assisted)",
+        "Fallback electron-updater quitAndInstall(true,true); tránh shell.openPath mở Setup không /S",
+        "Giữ 1.0.9: đóng app tắt browser Flow"
+      ],
+      "packedAt": "2026-07-25T14:31:19.408Z"
+    },
+    "1.0.9": {
+      "date": "2026-07-24",
+      "title": "Đóng app tắt browser Flow + ổn định pack",
+      "items": [
+        "Flow: đóng Ai Novel tự kill Chrome/Edge Flow (accounts_data / flow-profiles) — hết sót «Google Flow – Studio» trên taskbar",
+        "Flow: killAllFlowBrowsers + hooks Node exit + main.js before-quit/quitAppFully (không đụng Chrome cá nhân)",
+        "Pack: MediaAssetActions đủ setVideoApiBaseUrl / external video API (typecheck build)",
+        "Pack: tsconfig exclude tools/xinchao-cut + vendor/dist (Next typecheck không quét project lạ)",
+        "Smoke: scripts/smoke-flow-browser-quit.mts — contract kill khi quit"
+      ],
+      "packedAt": "2026-07-24T16:35:14.474Z"
+    },
+    "1.0.8": {
+      "date": "2026-07-24",
+      "title": "Flow gen ổn định + Piper giọng VN + UX model/outline",
+      "items": [
+        "Flow: tiến trình gen rõ (reCAPTCHA / upload / gửi gen / tải file) — không chỉ «Gửi prompt…»",
+        "Flow: nén ảnh start/ref trước upload; body-stash HTTP + extension SW upload (hết timeout uploadImage ~66s)",
+        "Flow: chờ đăng nhập Google 120s; message bắt buộc login trên browser app (không Chrome cá nhân)",
+        "Flow: extension captcha/XHR timeout dài hơn; warm tab Flow trước gen/upload",
+        "Cấu hình đầu ra: ghi chú model T2V/I2V/R2V/EXT + badge trong dropdown (tránh MODEL_MISMATCH)",
+        "Piper VN: thêm model rhasspy vi_VN (VAIS/25h/Vivos 65 speaker) + tên tiếng Việt hiển thị",
+        "Sidebar: Tóm tắt chương mặc định mở khi chuẩn bị gen kịch bản",
+        "Bat dev: Khoi_Dong_App_DevConsole ASCII/CRLF + guard package.json AI Novel"
+      ],
+      "packedAt": "2026-07-24T16:07:55.301Z"
+    },
+    "1.0.7": {
+      "date": "2026-07-23",
+      "title": "TTS Piper ship + LA Studio download + memory/cast hard-fail fix",
+      "items": [
+        "Piper: ship runtime + ONNX (extraResources bin/piper + piper_vn); path resolve AI_NOVEL_ROOT — nghe thử gói khách không trống",
+        "LA Studio: fix Invalid URL khi tải family (HF redirect relative → resolve absolute); VieNeu/Kokoro/browser download an toàn",
+        "Commit memory: coerce lorebook/tóm tắt (hết crash lorebook_cap_nhat.trim is not a function)",
+        "Role Cast: seed + migrate platform luôn có voiceId (hết «chưa có voiceId»); bỏ thẻ [CẢNH n] khỏi bảng thoại",
+        "TTS preview: không new URL() trên path Windows (tránh Invalid URL); lỗi gen ảnh thumbnail hiện HTTP/status rõ"
+      ],
+      "packedAt": "2026-07-23T15:36:10.897Z"
+    },
     "1.0.6": {
       "date": "2026-07-23",
       "title": "Workflow UX + Free scale + License clarity",
@@ -12,7 +91,8 @@
         "Empty workspace: bước Setup → API key → Outline → Viết rõ ràng",
         "TTS modal: Đóng/Esc; Free chỉ Edge/Piper; Gen Prompt nhắc thứ tự TTS→Prompt→Ảnh",
         "Onboarding core-loop tick thật khi làm từng bước; lỗi Setup/media tiếng Việt có dấu"
-      ]
+      ],
+      "packedAt": "2026-07-23T14:28:00.856Z"
     },
     "1.0.5": {
       "date": "2026-07-22",

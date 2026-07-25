@@ -11,13 +11,22 @@ import {
   TRIAL_LIMITS,
   clampFreeChapterCount,
   clampFreeWordGoal,
+  contentWordCeilingForTier,
   countContentWords,
+  effectiveSetupWordGoal,
+  freeWordCapMessage,
   generateRequestToFreeBucket,
   isFreeChapterOutOfRange,
   isTrialChapterOutOfRange,
   normalizeSetupScaleForTier,
   resolveWriteChapterNum,
+  resolveWriteWordPlan,
 } from '../src/lib/commercial/freeLimitsPolicy.ts';
+import {
+  shouldStopWordGateContinue,
+  wordBandFromSetupGoal,
+} from '../src/lib/pipeline/wordBand.ts';
+import { evaluateWordGate } from '../src/lib/storyWriting.ts';
 
 function section(name: string) {
   console.log(`\n=== ${name} ===`);
@@ -39,6 +48,81 @@ assert.equal(clampFreeChapterCount(1), 1);
 assert.equal(isFreeChapterOutOfRange(3), true);
 assert.equal(isFreeChapterOutOfRange(2), false);
 assert.equal(isFreeChapterOutOfRange(0), true);
+
+// +20% headroom: Free hard-stop content = 720; Trial = 3600
+section('contentWordCeilingForTier (+20%)');
+assert.equal(contentWordCeilingForTier('free'), 720);
+assert.equal(contentWordCeilingForTier('trial'), 3600);
+assert.equal(
+  effectiveSetupWordGoal(4250, { is_pro: false, is_trial: false }),
+  600,
+);
+assert.equal(
+  effectiveSetupWordGoal(4250, { is_pro: true, is_trial: false }),
+  4250,
+);
+assert.ok(
+  freeWordCapMessage().includes('600') ||
+    freeWordCapMessage().includes('toàn chương') ||
+    freeWordCapMessage().includes('cổng từ'),
+);
+
+section('wordBand +20% ceiling');
+const band600 = wordBandFromSetupGoal(600);
+assert.equal(band600.min, Math.round(600 * 0.92));
+assert.equal(band600.max, Math.round(600 * 1.2));
+const band4250 = wordBandFromSetupGoal(4250);
+assert.equal(band4250.max, Math.round(4250 * 1.2));
+
+section('resolveWriteWordPlan — goal = user so_tu (tier clamp, not fixed 4250)');
+const freePlan = resolveWriteWordPlan(4250, { is_pro: false, is_trial: false });
+assert.equal(freePlan.goal, 600);
+assert.equal(freePlan.min, Math.round(600 * 0.92));
+assert.equal(freePlan.max, Math.round(600 * 1.2));
+assert.equal(freePlan.tier, 'free');
+const proPlan = resolveWriteWordPlan(2800, { is_pro: true });
+assert.equal(proPlan.goal, 2800);
+assert.equal(proPlan.min, Math.round(2800 * 0.92));
+assert.equal(proPlan.max, Math.round(2800 * 1.2));
+const user800 = resolveWriteWordPlan(800, { is_pro: true });
+assert.equal(user800.goal, 800); // Pro respects user 800 — not forced 4250
+
+section('evaluateWordGate = full chapter + hard max (anti 200%+)');
+const under = evaluateWordGate('một '.repeat(100), 600, 3);
+assert.equal(under.needsContinue, true);
+assert.equal(under.overSoftMax, false);
+// Over hard max → stop continue even if scenes missing (anti 208%)
+const overMax = evaluateWordGate('một '.repeat(800), 600, 3);
+assert.equal(overMax.overSoftMax, true);
+assert.equal(overMax.needsContinue, false);
+// At goal + scenes → stop
+const atGoal = evaluateWordGate(
+  '[CẢNH 1: A]\n' +
+    'một '.repeat(200) +
+    '\n[CẢNH 2: B]\n' +
+    'hai '.repeat(200) +
+    '\n[CẢNH 3: C]\n' +
+    'ba '.repeat(200),
+  600,
+  3,
+);
+assert.equal(atGoal.wordsOk, true);
+assert.equal(atGoal.scenesOk, true);
+assert.equal(atGoal.needsContinue, false);
+const stopOver = shouldStopWordGateContinue({
+  wordCount: 800,
+  sceneCount: 1,
+  band: band600,
+  minScenes: 3,
+});
+assert.equal(stopOver.stop, true);
+const stopDone = shouldStopWordGateContinue({
+  wordCount: 600,
+  sceneCount: 3,
+  band: band600,
+  minScenes: 3,
+});
+assert.equal(stopDone.stop, true);
 
 // Regression: outline path used so_tu>=500 else 4250 — broke Free 100–499 / max 600
 section('normalizeSetupScaleForTier (outline/write)');

@@ -169,10 +169,10 @@ export default function YoutubeSetupPhase({
               1. Link YouTube (Chủ đề nguồn)
             </label>
             <p className="mb-2 text-[10px] text-zinc-500">
-              Dán link → bấm <strong className="text-zinc-300">Phân tích</strong>: lấy chép lời
-              (captions) vào <strong className="text-zinc-300">cache</strong> để đối chiếu % trùng,
-              đồng thời bóc <strong className="text-zinc-300">cốt truyện</strong> điền vào mục 3.
-              Video phải có captions.
+              Dán link → bấm <strong className="text-zinc-300">Phân tích</strong>: lấy{' '}
+              <strong className="text-zinc-300">lời thoại</strong> (phụ đề → nếu chặn thì tải audio +
+              Whisper) vào <strong className="text-zinc-300">cache</strong> để canh % trùng mục 2,
+              rồi bóc <strong className="text-zinc-300">cốt truyện</strong> vào mục 3. Có thể 1–3 phút.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative min-w-0 flex-1">
@@ -361,7 +361,7 @@ export default function YoutubeSetupPhase({
             </div>
             <textarea
               rows={6}
-              placeholder="Bấm «Phân tích» cạnh link — cốt truyện sẽ hiện ở đây (không dán chép lời thô)…"
+              placeholder="Bấm «Phân tích» cạnh link — hoặc gõ tóm tắt cốt truyện tay (khi YouTube chặn phụ đề)…"
               value={store.setup.mo_ta}
               onChange={(e) => store.setSetup({ mo_ta: e.target.value })}
               className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-amber-500 focus:bg-zinc-950 font-sans"

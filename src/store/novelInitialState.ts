@@ -117,6 +117,9 @@ export const INITIAL_STATE: NovelState = {
   imageCount: 1,
   videoProvider: 'flow',
   videoApiKey: '',
+  videoApiBaseUrl: '',
+  externalVideoApis: [],
+  activeExternalVideoApiId: '',
   videoAspectRatio: '16:9',
   /** Flow Veo clip length: 4 | 6 | 8 (default 8s matches labs.google) */
   videoDuration: 8,

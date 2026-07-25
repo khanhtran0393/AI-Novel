@@ -85,13 +85,19 @@ export function createImageSavers(ctx: ImageSaveContext): {
             ? ten_tac_pham.replace(/[\/\\:\*\?"<>\|]/g, '_').trim()
             : 'Kich Ban';
           const suffix = buffers.length > 1 ? `_V${variantIndex + 1}` : '';
+          // Character sheet: stable name from public filename (char_sheet_*.png)
+          // so face_ref survives reload — cấm Date.now() ephemeral (mất path).
+          const variantFilename = getVariantFilename(variantIndex);
+          const isCharSheet = /^char_sheet_/i.test(variantFilename);
           const driveFilename =
-            chapterNum === 0
-              ? `${scriptTitle}_ConceptArt_NhanVat_${Date.now()}${suffix}.png`
-              : `${driveMediaFilename(scriptTitle, chapterNum, sceneIndex, {
-                  kind: 'image',
-                  promptIndex,
-                }).replace(/\.png$/i, '')}${suffix}.png`;
+            chapterNum === 0 && isCharSheet
+              ? `${scriptTitle}_${variantFilename.replace(/\.png$/i, '')}${suffix}.png`
+              : chapterNum === 0
+                ? `${scriptTitle}_ConceptArt_NhanVat_${Date.now()}${suffix}.png`
+                : `${driveMediaFilename(scriptTitle, chapterNum, sceneIndex, {
+                    kind: 'image',
+                    promptIndex,
+                  }).replace(/\.png$/i, '')}${suffix}.png`;
           const driveFilePath = path.join(driveFolder, driveFilename);
           fs.writeFileSync(driveFilePath, imageBuffer);
           driveFilePaths.push(driveFilePath);

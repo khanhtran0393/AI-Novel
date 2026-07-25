@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Novel Flow Bridge",
-  "version": "1.0.17",
+  "version": "1.0.19",
   "description": "Bridge Google Flow (Imagen/Veo) for AI Novel — token capture, reCAPTCHA, API proxy",
   "icons": {
     "16": "icon16.png",
@@ -14,6 +14,9 @@
     "https://aisandbox-pa.googleapis.com/*",
     "https://aisandbox-pa.sandbox.googleapis.com/*",
     "https://storage.googleapis.com/*",
+    "https://www.google.com/*",
+    "https://google.com/*",
+    "https://www.gstatic.com/*",
     "http://127.0.0.1/*",
     "http://localhost/*",
     "ws://127.0.0.1/*",

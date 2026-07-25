@@ -29,13 +29,15 @@ export function useTikTokSessions(config: TTSConfig) {
       const slot = tiktokSessions.length + 1;
       toast.info(
         'Notice',
-        '🤖 Hệ thống đang mở Chrome để bạn đăng nhập TikTok.\n\n' +
-          `Session dòng #${slot} (profile Chrome riêng — nhiều tài khoản).\n` +
-          '1. Đăng nhập TikTok trên cửa sổ Chrome vừa mở\n' +
-          '2. Hệ thống tự lấy sessionid và đóng Chrome\n' +
-          '3. Session được thêm thành 1 dòng trong danh sách',
+        '🤖 Đang mở Chrome/Edge THẬT (không --no-sandbox)…\n\n' +
+          `Session dòng #${slot}.\n` +
+          '1. Ưu tiên **QR** đăng nhập — đợi vào For You\n' +
+          '2. Giữ cửa sổ mở; app tự lấy cookie rồi đóng\n' +
+          '3. Kẹt: F12 → Application → Cookies → copy sessionid dán ô dưới',
       );
-      const sessionId = await autoImportTikTokSessionAction(slot);
+      const sessionId = await autoImportTikTokSessionAction(slot, {
+        fresh: true,
+      });
       store.addTikTokSession(sessionId);
       toast.info('Notice', `🎉 Đã thêm SessionID TikTok (dòng #${slot}) thành công!`);
     } catch (err) {

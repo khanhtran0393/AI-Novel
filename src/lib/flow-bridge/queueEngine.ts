@@ -1,9 +1,11 @@
 /**
  * FlowAgent Task Queue & Worker Threading (Node port).
- * - Shared pending queue
- * - N workers (≤ accounts, max 3) in parallel mode
- * - Human delay delay_min..delay_max between tasks
- * - Retry 5× with 30s pause; slide to free account on hard fail
+ * Google Flow runtime standards:
+ * - Shared pending queue + N workers (≤ accounts, max 3)
+ * - Max 1 concurrent gen per Labs account (parallel = multi-account)
+ * - Human delay jitter between tasks
+ * - Error taxonomy + VN action messages (no auto model swap — B10)
+ * - Progress steps + recycle after success (session drift / RAM)
  * - Face-lock inject + optional upscale 2K/4K
  */
 import fs from 'fs';
@@ -38,10 +40,24 @@ import {
   extractVideoMedia,
   extractVideoOperations,
 } from './payloadBuilder';
-import { fileToBase64, injectFaceLockPrompt } from './promptInjector';
+import { injectFaceLockPrompt } from './promptInjector';
 import { applyCameraToPrompt, type CameraShot } from './cameraPrompt';
 import { applyAgentInstructions, loadFlowOps } from './opsStore';
 import { estimateTaskCredits, requireFlowVideoDuration } from './modelCatalog';
+import {
+  classifyFlowError,
+  describeFlowError,
+  formatFlowTaskError,
+  isPermanentFlowFailure,
+} from './flowRuntimeErrors';
+import {
+  isAccountBusy,
+  listBusyAccountIds,
+  markAccountBusy,
+  markAccountFree,
+  scheduleFlowRuntimeRecycle,
+} from './flowRuntimeRecycle';
+import { applyFlowTaskStep } from './flowRuntimeSteps';
 import type {
   FlowExecutionMode,
   FlowTask,
@@ -58,51 +74,12 @@ function sleep(ms: number) {
 }
 
 function classifyError(status?: number, message?: string): RetryCategory {
-  const raw = message || '';
-  const m = raw.toLowerCase();
-  // Parse "HTTP 400: ..." when status not passed separately
-  const httpMatch = raw.match(/\bHTTP\s*(\d{3})\b/i) || raw.match(/\bstatus[=:\s]+(\d{3})\b/i);
-  const code = status || (httpMatch ? Number(httpMatch[1]) : undefined);
-
-  if (code === 401 || m.includes('unauthent') || m.includes('token')) {
-    return 'token_401';
-  }
-  if (code === 429 || m.includes('rate')) return 'rate_429';
-  if (code === 403 || m.includes('forbidden') || m.includes('captcha')) {
-    return 'forbidden_403';
-  }
-  if (m.includes('quota') || m.includes('credit') || m.includes('paygate')) {
-    return 'quota';
-  }
-  if (m.includes('network') || m.includes('timeout') || m.includes('econn')) {
-    return 'network';
-  }
-  if (m.includes('policy') || m.includes('safety') || m.includes('content')) {
-    return 'content';
-  }
-  // Hard client errors (wrong model key for endpoint, bad payload) — do NOT retry 30s×5
-  if (
-    code === 400 ||
-    code === 404 ||
-    code === 422 ||
-    m.includes('bad request') ||
-    m.includes('invalid argument') ||
-    m.includes('invalid model') ||
-    m.includes('videomodelkey') ||
-    m.includes('model key') ||
-    m.includes('mismatched')
-  ) {
-    return 'content';
-  }
-  return 'other';
+  return classifyFlowError(status, message);
 }
 
-/** Categories that should fail the task immediately (no 30s retry loop). */
+/** Categories that should fail the task immediately (no long retry loop). */
 function isPermanentFailure(cat: RetryCategory, message?: string): boolean {
-  if (cat === 'content' || cat === 'quota') return true;
-  const m = (message || '').toLowerCase();
-  if (/\bHTTP\s*400\b/i.test(message || '') || m.includes('bad request')) return true;
-  return false;
+  return isPermanentFlowFailure(cat, message);
 }
 
 /** Read videoModelKey actually placed in Flow request body (after auto-swap). */
@@ -213,18 +190,103 @@ export class FlowQueueEngine {
   }
 
   snapshot() {
+    const active = this.tasks.filter(
+      (t) => t.status === 'pending' || t.status === 'running',
+    );
+    // Refresh queueAhead for pending tasks (position in line)
+    const pendingOrdered = this.tasks.filter((t) => t.status === 'pending');
+    for (let i = 0; i < pendingOrdered.length; i++) {
+      pendingOrdered[i].queueAhead = i;
+      if (
+        pendingOrdered[i].status === 'pending' &&
+        !String(pendingOrdered[i].progressMessage || '').includes('trước bạn')
+      ) {
+        pendingOrdered[i].progressMessage =
+          i === 0
+            ? 'Đầu hàng đợi Google Flow…'
+            : `Hàng đợi Flow — còn ${i} job trước bạn…`;
+      }
+    }
     return {
       mode: this.mode,
       running: this.running,
-      pending: this.tasks.filter(
-        (t) => t.status === 'pending' || t.status === 'running',
-      ).length,
+      pending: active.length,
       activeWorkers: this.activeWorkers,
       tasks: [...this.tasks].slice(-200),
     };
   }
 
+  getTask(id: string): FlowTask | undefined {
+    return this.tasks.find((t) => t.id === id);
+  }
+
+  /** Latest matching storyboard coords (video/extend preferred by kind). */
+  findTaskByCoords(opts: {
+    kind?: string;
+    chapterNum: number;
+    sceneIndex: number;
+    promptIndex?: number;
+  }): FlowTask | undefined {
+    const kind = opts.kind || 'video';
+    const pi =
+      opts.promptIndex != null && Number.isFinite(Number(opts.promptIndex))
+        ? Number(opts.promptIndex)
+        : undefined;
+    return [...this.tasks].reverse().find((t) => {
+      if (kind === 'video') {
+        if (t.kind !== 'video' && t.kind !== 'extend') return false;
+      } else if (t.kind !== kind) {
+        return false;
+      }
+      if (Number(t.chapterNum) !== Number(opts.chapterNum)) return false;
+      if (Number(t.sceneIndex) !== Number(opts.sceneIndex)) return false;
+      if (pi != null && Number(t.promptIndex) !== pi) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Enqueue + start workers without waiting for completion (async gen path).
+   * Returns the first created task id.
+   */
+  enqueueAndStart(body: Record<string, unknown>): {
+    ok: boolean;
+    error?: string;
+    task?: FlowTask;
+    tasks?: FlowTask[];
+  } {
+    this.stopFlag = false;
+    const ahead = this.tasks.filter(
+      (t) => t.status === 'pending' || t.status === 'running',
+    ).length;
+    const created = this.enqueueMany(body);
+    const task = created[0];
+    if (!task) return { ok: false, error: 'Thiếu prompt' };
+    task.queueAhead = ahead;
+    if (typeof body.appSavePath === 'string' && body.appSavePath.trim()) {
+      task.appSavePath = body.appSavePath.trim();
+    }
+    if (typeof body.correlationId === 'string' && body.correlationId.trim()) {
+      task.correlationId = body.correlationId.trim();
+    }
+    task.progressMessage =
+      ahead > 0
+        ? `Hàng đợi Flow — còn ${ahead} job trước bạn…`
+        : 'Đã xếp hàng — bắt đầu khi worker rảnh…';
+    this.start();
+    return { ok: true, task, tasks: created };
+  }
+
   clearPending() {
+    // Free busy locks for tasks we drop (running/pending) to avoid stuck accounts
+    for (const t of this.tasks) {
+      if (
+        (t.status === 'pending' || t.status === 'running') &&
+        t.accountId
+      ) {
+        markAccountFree(t.accountId);
+      }
+    }
     this.tasks = this.tasks.filter(
       (t) => t.status !== 'pending' && t.status !== 'running',
     );
@@ -234,6 +296,14 @@ export class FlowQueueEngine {
   stop() {
     this.stopFlag = true;
     this.running = false;
+    // Free every busy profile so a later runOne / start is not deadlocked
+    // waiting forever on maxConcurrentTasksPerAccount.
+    for (const id of listBusyAccountIds()) markAccountFree(id);
+  }
+
+  /** Allow generate-one / start after a previous queue stop. */
+  resumeFromStop() {
+    this.stopFlag = false;
   }
 
   enqueueMany(body: Record<string, unknown>): FlowTask[] {
@@ -270,13 +340,25 @@ export class FlowQueueEngine {
         (body.quality ? String(body.quality) : '') ||
         ops.defaultQuality ||
         'hd';
+      // Start+End (start+end paths distinct) stays auto/I2V first+last — not ingredients.
+      const startP = body.startImagePath
+        ? String(body.startImagePath)
+        : body.referenceImagePath
+          ? String(body.referenceImagePath)
+          : '';
+      const endP = body.endImagePath ? String(body.endImagePath) : '';
+      const dualI2vEnqueue = Boolean(
+        startP && endP && startP.split('?')[0] !== endP.split('?')[0],
+      );
       const videoMode = body.videoMode
         ? (String(body.videoMode) as FlowTask['videoMode'])
         : kind === 'extend'
           ? 'extend'
-          : ingredientPaths.length >= 1
-            ? 'ingredients'
-            : 'auto';
+          : dualI2vEnqueue
+            ? 'auto'
+            : ingredientPaths.length >= 1
+              ? 'ingredients'
+              : 'auto';
       const durationSecRaw =
         kind === 'video' || kind === 'extend'
           ? requireFlowVideoDuration(
@@ -304,6 +386,8 @@ export class FlowQueueEngine {
         status: 'pending',
         prompt,
         progress: 0,
+        step: 'queued',
+        progressMessage: 'Đang chờ trong hàng đợi Google Flow…',
         chapterNum:
           body.chapterNum != null ? Number(body.chapterNum) : undefined,
         sceneIndex:
@@ -347,7 +431,11 @@ export class FlowQueueEngine {
   }
 
   start() {
-    if (this.running) return;
+    if (this.running) {
+      // Already orchestrating — still clear stop if user hit stop then start.
+      this.stopFlag = false;
+      return;
+    }
     this.stopFlag = false;
     this.running = true;
     void this.orchestrate();
@@ -381,7 +469,7 @@ export class FlowQueueEngine {
 
   private async workerLoop(workerId: number) {
     while (!this.stopFlag) {
-      const next = this.tasks.find((t) => t.status === 'pending');
+      const next = this.pickNextPendingTask();
       if (!next) {
         if (this.activeWorkers === 0) break;
         await sleep(400);
@@ -395,15 +483,95 @@ export class FlowQueueEngine {
       this.activeWorkers++;
       try {
         await this.executeTaskWithRetry(next, workerId);
+      } catch (fatal) {
+        // Safety net: never leave a claimed task stuck in running forever
+        const msg = fatal instanceof Error ? fatal.message : String(fatal);
+        console.error(`[FlowQueue] w${workerId} fatal:`, msg.slice(0, 240));
+        if (next.status === 'running' || next.status === 'pending') {
+          next.status = 'failed';
+          next.error = formatFlowTaskError(describeFlowError(undefined, msg));
+          applyFlowTaskStep(next, 'error', { message: next.error });
+        }
+        if (next.accountId) markAccountFree(next.accountId);
       } finally {
         this.activeWorkers--;
       }
       if (this.stopFlag) break;
+      // Standard jitter between tasks (anti rate-limit Google Labs)
       const delay =
         this.delayMin +
         Math.floor(Math.random() * (this.delayMax - this.delayMin + 1));
       await sleep(delay);
     }
+  }
+
+  /**
+   * Prefer pending tasks that can run on a free Google account.
+   * Standard: maxConcurrentTasksPerAccount = 1 (parallel = multi-account).
+   * Claims task synchronously (status→running) to prevent double-pick.
+   */
+  private pickNextPendingTask(): FlowTask | undefined {
+    const pending = this.tasks.filter((t) => t.status === 'pending');
+    if (!pending.length) return undefined;
+    const maxPer =
+      Number(FLOW_DEFAULTS.maxConcurrentTasksPerAccount) > 0
+        ? Number(FLOW_DEFAULTS.maxConcurrentTasksPerAccount)
+        : 1;
+
+    // If any account is free (not busy), still start — pickAccount will assign.
+    // Block only when ALL verified accounts are busy AND we already have
+    // activeWorkers covering them (avoid pile-up on one Labs session).
+    if (maxPer > 0) {
+      const verified = loadAccounts().filter(
+        (a) => a.sessionVerified && a.email,
+      );
+      if (verified.length > 0) {
+        const free = verified.filter((a) => !isAccountBusy(a.id));
+        if (free.length === 0 && this.activeWorkers > 0) {
+          return undefined; // wait for an account slot
+        }
+      }
+    }
+
+    const next = pending[0];
+    // Atomic claim (sync) — must happen before any await in workerLoop
+    next.status = 'running';
+    next.updatedAt = Date.now();
+    applyFlowTaskStep(next, 'account', {
+      message: 'Đã nhận task — gắn profile Google Labs…',
+    });
+    return next;
+  }
+
+  /**
+   * True if hard recycle would kill Chrome while more gens may still need this profile.
+   * Pending tasks often have no accountId yet — treat unassigned pending carefully.
+   */
+  private hasMoreWorkForAccount(accountId: string): boolean {
+    const assigned = this.tasks.some(
+      (t) =>
+        t.accountId === accountId &&
+        (t.status === 'pending' || t.status === 'running'),
+    );
+    if (assigned) return true;
+
+    const pendingUnassigned = this.tasks.filter(
+      (t) => t.status === 'pending' && !t.accountId,
+    );
+    if (!pendingUnassigned.length) return false;
+
+    const verified = loadAccounts().filter(
+      (a) =>
+        a.sessionVerified &&
+        a.email &&
+        !(a.cooldownUntil && a.cooldownUntil > Date.now()),
+    );
+    // Only this account (or none other free) → pending will land here
+    if (verified.length <= 1) return true;
+    const othersFree = verified.filter(
+      (a) => a.id !== accountId && !isAccountBusy(a.id),
+    );
+    return othersFree.length === 0;
   }
 
   async runOne(body: Record<string, unknown>): Promise<{
@@ -421,6 +589,12 @@ export class FlowQueueEngine {
     });
     try {
       await prev.catch(() => undefined);
+      // Critical: /api/queue/stop leaves stopFlag=true forever. runOne is a
+      // direct single-shot path (generate-one / API gen video) and MUST clear it,
+      // otherwise every task dies immediately with «Đã huỷ hàng đợi».
+      this.stopFlag = false;
+      // Stale busy lock (crashed/cancelled task) would spin 40×700ms then fail.
+      for (const id of listBusyAccountIds()) markAccountFree(id);
       const created = this.enqueueMany(body);
       const task = created[0];
       if (!task) return { ok: false, error: 'Thiếu prompt' };
@@ -456,144 +630,243 @@ export class FlowQueueEngine {
   ): Promise<void> {
     let max: number = FLOW_DEFAULTS.maxRetries;
     let lastErr = '';
+    let accountSlotWaits = 0;
+    /** Account held under busy lock for this attempt — always free in finally */
+    let lockedAccountId: string | undefined;
 
-    for (let attempt = 1; attempt <= max; attempt++) {
-      if (this.stopFlag) {
-        task.status = 'cancelled';
-        return;
+    const releaseBusyLock = () => {
+      if (lockedAccountId) {
+        markAccountFree(lockedAccountId);
+        lockedAccountId = undefined;
       }
-      task.attempts = attempt;
-      task.status = 'running';
-      task.progress = 5;
-      task.updatedAt = Date.now();
-      task.error = undefined;
+    };
 
-      const acc = this.pickAccountForTask(task);
-      if (acc) {
-        task.accountId = acc.id;
-        markAccountTaskUsed(acc.id); // round-robin cursor
-        const tried =
-          this.triedAccounts.get(task.id) || new Set<string>();
-        tried.add(acc.id);
-        this.triedAccounts.set(task.id, tried);
-        console.log(
-          `[FlowQueue] w${workerId} task→profile ${acc.name || acc.id} project=${acc.projectId || '—'}`,
-        );
-      }
-
-      try {
-        await this.executeTaskOnce(task);
-        task.status = 'done';
-        task.progress = 100;
-        task.updatedAt = Date.now();
-        try {
-          const { setFlowMediaIdsFromTask } = await import('./mediaIdIndex');
-          setFlowMediaIdsFromTask({
-            chapterNum: task.chapterNum,
-            sceneIndex: task.sceneIndex,
-            promptIndex: task.promptIndex,
-            kind: task.kind,
-            mediaIds: task.mediaIds,
+    try {
+      for (let attempt = 1; attempt <= max; attempt++) {
+        if (this.stopFlag) {
+          task.status = 'cancelled';
+          applyFlowTaskStep(task, 'error', {
+            message: 'Đã huỷ hàng đợi Google Flow',
           });
-        } catch {
-          /* ignore */
-        }
-        if (task.accountId) {
-          recordAccountTaskResult(
-            task.accountId,
-            true,
-            task.estimatedCredits || 0,
-          );
-        }
-        return;
-      } catch (e) {
-        lastErr = e instanceof Error ? e.message : String(e);
-        const cat = classifyError(undefined, lastErr);
-        task.retryCategory = cat;
-        task.error = lastErr;
-        // Network/timeout: shrink remaining budget so we never spam 5×30s
-        if (cat === 'network' || cat === 'rate_429') {
-          max = Math.min(max, FLOW_DEFAULTS.maxRetriesNetwork);
-        }
-        console.warn(
-          `[FlowQueue] w${workerId} attempt ${attempt}/${max} fail [${cat}]:`,
-          lastErr.slice(0, 200),
-        );
-
-        // Permanent 400 / model mismatch — fail fast (was stuck "Đang gửi..." 30s×5)
-        if (isPermanentFailure(cat, lastErr)) {
-          console.error(
-            `[FlowQueue] permanent failure — stop retry:`,
-            lastErr.slice(0, 240),
-          );
-          task.status = 'failed';
-          task.progress = 0;
-          task.updatedAt = Date.now();
-          if (task.accountId) {
-            recordAccountTaskResult(task.accountId, false, 0);
-          }
           return;
         }
+        task.attempts = attempt;
+        task.status = 'running';
+        applyFlowTaskStep(task, 'account');
+        task.error = undefined;
+        releaseBusyLock();
 
-        // Token age / 401 — refresh tab; optional auto-relogin (P3)
-        if (cat === 'token_401') {
-          try {
-            const bridge = await import('./bridgeServer');
-            await bridge.commandExtension('refresh_flow_tab', {}, 60000, task.accountId);
-            await sleep(3000);
-            const ops = loadFlowOps();
-            const acc = task.accountId
-              ? loadAccounts().find((a) => a.id === task.accountId)
-              : null;
-            if (
-              ops.autoRelogin &&
-              acc?.autoRelogin !== false &&
-              attempt >= 2
-            ) {
-              console.log(
-                '[FlowQueue] P3 auto-relogin bootstrap for',
-                task.accountId,
-              );
-              const { bootstrapFlow } = await import('./bootstrap');
-              await bootstrapFlow({
-                forceChrome: true,
-                engine: 'auto',
-                waitExtensionMs: 25000,
-                waitLoginMs: 15000,
-                accountId: task.accountId,
-              });
+        const acc = this.pickAccountForTask(task);
+        if (acc) {
+          // Standard: 1 concurrent gen per Google account
+          if (
+            FLOW_DEFAULTS.maxConcurrentTasksPerAccount >= 1 &&
+            isAccountBusy(acc.id)
+          ) {
+            accountSlotWaits += 1;
+            if (accountSlotWaits > 40) {
+              lastErr = `Timeout chờ slot account ${acc.name || acc.id} (max 1 gen/account).`;
+              task.status = 'failed';
+              applyFlowTaskStep(task, 'error', { message: lastErr });
+              task.error = lastErr;
+              return;
             }
+            // Keep status running so another worker does not double-pick this task.
+            // Do not assign accountId until slot is free (avoids false hasMoreWork).
+            applyFlowTaskStep(task, 'queued', {
+              message: `Chờ slot profile ${acc.name || acc.id}…`,
+            });
+            await sleep(700);
+            attempt -= 1; // don't burn Google retry budget on lock wait
+            continue;
+          }
+          accountSlotWaits = 0;
+          task.accountId = acc.id;
+          markAccountBusy(acc.id);
+          lockedAccountId = acc.id;
+          markAccountTaskUsed(acc.id);
+          const tried =
+            this.triedAccounts.get(task.id) || new Set<string>();
+          tried.add(acc.id);
+          this.triedAccounts.set(task.id, tried);
+          console.log(
+            `[FlowQueue] w${workerId} task→profile ${acc.name || acc.id} project=${acc.projectId || '—'}`,
+          );
+        }
+
+        try {
+          applyFlowTaskStep(task, 'submit');
+          await this.executeTaskOnce(task);
+          task.status = 'done';
+          applyFlowTaskStep(task, 'done');
+          try {
+            const { setFlowMediaIdsFromTask } = await import('./mediaIdIndex');
+            setFlowMediaIdsFromTask({
+              chapterNum: task.chapterNum,
+              sceneIndex: task.sceneIndex,
+              promptIndex: task.promptIndex,
+              kind: task.kind,
+              mediaIds: task.mediaIds,
+            });
           } catch {
             /* ignore */
           }
-        }
+          if (task.accountId) {
+            recordAccountTaskResult(
+              task.accountId,
+              true,
+              task.estimatedCredits || 0,
+            );
+            const aid = task.accountId;
+            // Free before recycle decision so busy check is accurate
+            releaseBusyLock();
+            scheduleFlowRuntimeRecycle({
+              accountId: aid,
+              kind: task.kind,
+              hasMoreWorkForAccount: () => this.hasMoreWorkForAccount(aid),
+            });
+          }
+          return;
+        } catch (e) {
+          lastErr = e instanceof Error ? e.message : String(e);
+          const detail = describeFlowError(undefined, lastErr);
+          const cat = detail.category;
+          task.retryCategory = cat;
+          task.error = formatFlowTaskError(detail);
+          releaseBusyLock();
+          if (cat === 'network' || cat === 'rate_429') {
+            max = Math.min(max, FLOW_DEFAULTS.maxRetriesNetwork);
+          }
+          console.warn(
+            `[FlowQueue] w${workerId} attempt ${attempt}/${max} fail [${cat}]:`,
+            lastErr.slice(0, 200),
+          );
 
-        // Mark account cooldown + slide
-        if (task.accountId && (cat === 'quota' || cat === 'forbidden_403')) {
-          updateAccount(task.accountId, {
-            status: 'cooldown',
-            cooldownUntil: Date.now() + FLOW_DEFAULTS.accountCooldownMs,
-            lastError: lastErr.slice(0, 200),
-          });
-          recordAccountTaskResult(task.accountId, false, 0);
-          task.accountId = undefined; // force slide next pick
-        }
+          if (isPermanentFailure(cat, lastErr)) {
+            console.error(
+              `[FlowQueue] permanent failure — stop retry:`,
+              lastErr.slice(0, 240),
+            );
+            task.status = 'failed';
+            applyFlowTaskStep(task, 'error', {
+              message: task.error,
+            });
+            if (task.accountId) {
+              recordAccountTaskResult(task.accountId, false, 0);
+            }
+            return;
+          }
 
-        if (attempt < max) {
-          task.status = 'pending';
-          task.progress = 0;
-          await sleep(FLOW_DEFAULTS.retryDelayMs);
+          // Token / extension offline after recycle — refresh + conditional bootstrap
+          if (cat === 'token_401' || cat === 'network') {
+            try {
+              const bridge = await import('./bridgeServer');
+              await bridge.commandExtension(
+                'refresh_flow_tab',
+                {},
+                60000,
+                task.accountId,
+              );
+              await sleep(3000);
+              const ops = loadFlowOps();
+              const accRow = task.accountId
+                ? loadAccounts().find((a) => a.id === task.accountId)
+                : null;
+              const msg = lastErr.toLowerCase();
+              const looksOffline =
+                msg.includes('socket offline') ||
+                (msg.includes('extension') && msg.includes('offline')) ||
+                msg.includes('browser dead') ||
+                msg.includes('profile browser') ||
+                msg.includes('econnrefused') ||
+                msg.includes('not connected');
+              // Avoid bootstrap storm on transient timeout: offline always, else attempt≥2
+              const needBootstrap =
+                (cat === 'network' && (looksOffline || attempt >= 2)) ||
+                (cat === 'token_401' &&
+                  ops.autoRelogin &&
+                  accRow?.autoRelogin !== false &&
+                  attempt >= 2);
+              if (needBootstrap && task.accountId) {
+                console.log(
+                  '[FlowQueue] bootstrap after token/network fail for',
+                  task.accountId,
+                );
+                const { bootstrapFlow } = await import('./bootstrap');
+                await bootstrapFlow({
+                  forceChrome: true,
+                  engine: 'auto',
+                  waitExtensionMs: 25000,
+                  waitLoginMs: 15000,
+                  accountId: task.accountId,
+                });
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+
+          if (task.accountId && (cat === 'quota' || cat === 'forbidden_403')) {
+            updateAccount(task.accountId, {
+              status: 'cooldown',
+              cooldownUntil: Date.now() + FLOW_DEFAULTS.accountCooldownMs,
+              lastError: lastErr.slice(0, 200),
+            });
+            recordAccountTaskResult(task.accountId, false, 0);
+            task.accountId = undefined;
+          }
+
+          if (attempt < max) {
+            // CRITICAL: keep status=running during backoff.
+            // If we flip to pending, another worker can double-claim this task.
+            applyFlowTaskStep(task, 'queued', {
+              progress: Math.min(30, 10 + attempt * 5),
+              message: `Thử lại (${attempt}/${max}): ${lastErr.slice(0, 80)}…`,
+            });
+            // Recover hung Flow tab before next captcha attempt
+            if (
+              cat === 'network' ||
+              cat === 'token_401' ||
+              /CAPTCHA|timeout|Extension API/i.test(lastErr)
+            ) {
+              try {
+                const bridge = await import('./bridgeServer');
+                await bridge.commandExtension(
+                  'open_flow_tab',
+                  { stealFocus: false, autoClick: true },
+                  20_000,
+                  task.accountId,
+                );
+                await sleep(1200);
+                await bridge.commandExtension(
+                  'refresh_flow_tab',
+                  {},
+                  45_000,
+                  task.accountId,
+                );
+                await sleep(2000);
+              } catch {
+                /* best-effort */
+              }
+            }
+            await sleep(FLOW_DEFAULTS.retryDelayMs);
+          }
         }
       }
-    }
 
-    task.status = 'failed';
-    task.error = lastErr || 'Max retries exceeded';
-    if (task.accountId) {
-      recordAccountTaskResult(task.accountId, false, 0);
+      task.status = 'failed';
+      if (lastErr) {
+        task.error = formatFlowTaskError(describeFlowError(undefined, lastErr));
+      } else {
+        task.error = 'Max retries exceeded';
+      }
+      if (task.accountId) {
+        recordAccountTaskResult(task.accountId, false, 0);
+      }
+      applyFlowTaskStep(task, 'error', { message: task.error });
+    } finally {
+      releaseBusyLock();
     }
-    task.progress = 0;
-    task.updatedAt = Date.now();
   }
 
   private pickAccountForTask(task: FlowTask) {
@@ -638,12 +911,15 @@ export class FlowQueueEngine {
       return a;
     });
     const tried = this.triedAccounts.get(task.id) || new Set();
+    const maxPer = Number(FLOW_DEFAULTS.maxConcurrentTasksPerAccount) || 1;
     // Prefer not-yet-tried ready accounts — health + budget + lastTaskAt
+    // Standard: skip accounts currently genning (1 captcha/session at a time)
     const fresh = accounts.filter(
       (a) =>
         !tried.has(a.id) &&
         a.sessionVerified &&
         a.email &&
+        !(maxPer >= 1 && isAccountBusy(a.id)) &&
         !(a.cooldownUntil && a.cooldownUntil > Date.now()) &&
         !(a.status === 'cooldown' && a.cooldownUntil && a.cooldownUntil > Date.now()) &&
         (a.healthScore == null || a.healthScore >= ops.minHealthScore) &&
@@ -662,24 +938,66 @@ export class FlowQueueEngine {
       );
       return fresh[0];
     }
-    // Fallback: ignore health floor but still respect budget when possible
+    // Fallback: ignore health floor but still respect budget + busy lock
     const budgeted = accounts.filter(
       (a) =>
         !tried.has(a.id) &&
         a.sessionVerified &&
         a.email &&
+        !(maxPer >= 1 && isAccountBusy(a.id)) &&
         accountWithinBudget(a, need),
     );
     if (budgeted.length) {
       budgeted.sort((a, b) => (a.lastTaskAt || 0) - (b.lastTaskAt || 0));
       return budgeted[0];
     }
-    return pickReadyAccount(accounts);
+    // Last resort: may return a busy account → caller waits for slot
+    const anyReady = pickReadyAccount(accounts);
+    if (anyReady && maxPer >= 1 && isAccountBusy(anyReady.id)) {
+      // Prefer a free verified account even if health/budget edge
+      const free = accounts.find(
+        (a) =>
+          a.sessionVerified &&
+          a.email &&
+          !isAccountBusy(a.id) &&
+          !(a.cooldownUntil && a.cooldownUntil > Date.now()),
+      );
+      if (free) return free;
+    }
+    return anyReady;
   }
 
   private async executeTaskOnce(task: FlowTask): Promise<void> {
     const bridge = await import('./bridgeServer');
     await bridge.ensureBridgeStarted();
+
+    // After hard recycle, Chromium may be dead — relaunch profile before gen
+    if (task.accountId) {
+      try {
+        const { isProfileBrowserAlive, profileDirForAccount } = await import(
+          './chromeSession'
+        );
+        const dir = profileDirForAccount(task.accountId);
+        if (dir && !isProfileBrowserAlive(dir)) {
+          console.log(
+            `[FlowQueue] profile browser dead after recycle — bootstrap ${task.accountId}`,
+          );
+          const { bootstrapFlow } = await import('./bootstrap');
+          await bootstrapFlow({
+            forceChrome: true,
+            engine: 'auto',
+            waitExtensionMs: 25_000,
+            waitLoginMs: 12_000,
+            accountId: task.accountId,
+          });
+        }
+      } catch (bootErr) {
+        console.warn(
+          '[FlowQueue] post-recycle bootstrap failed:',
+          bootErr instanceof Error ? bootErr.message : bootErr,
+        );
+      }
+    }
 
     // Proactive token refresh if aged
     const snap = bridge.getBridgeSnapshot();
@@ -800,7 +1118,10 @@ export class FlowQueueEngine {
     // A supplied face/cast ref is part of the requested identity lock. If its
     // upload fails, hard-fail instead of silently producing a text-only result.
     if (refPath) {
-      task.progress = 15;
+      applyFlowTaskStep(task, 'submit', {
+        progress: 12,
+        message: 'Nén + upload ảnh ref / identity lock…',
+      });
       try {
         const mid = await this.uploadLocalImage(
           refPath,
@@ -809,9 +1130,13 @@ export class FlowQueueEngine {
           task.accountId,
         );
         if (mid) imageMediaIds = [mid];
+        applyFlowTaskStep(task, 'submit', {
+          progress: 22,
+          message: 'Đã upload ref — chuẩn bị gen ảnh…',
+        });
       } catch (upErr) {
         throw new Error(
-          `Flow reference-image upload failed; generation stopped to preserve identity lock: ${
+          `Upload ảnh ref thất bại (identity lock). Nén/ffmpeg + extension: ${
             upErr instanceof Error ? upErr.message : String(upErr)
           }`,
         );
@@ -820,7 +1145,10 @@ export class FlowQueueEngine {
 
     // Face-lock inject inside buildImageGenerateBody (FlowAgent stage 3)
     // edit kind: base ref + edit prompt (P1 object/light edit via re-gen)
-    task.progress = 35;
+    applyFlowTaskStep(task, 'submit', {
+      progress: 35,
+      message: 'Gửi gen ảnh Google Flow…',
+    });
     const gen =
       task.kind === 'edit' && imageMediaIds?.[0]
         ? buildImageEditBody({
@@ -840,13 +1168,67 @@ export class FlowQueueEngine {
             faceLock: Boolean(imageMediaIds?.length || refPath),
           });
 
+    // Warm Flow tab so grecaptcha + page XHR are ready (cuts CAPTCHA_TIMEOUT).
+    // Also clears google.com/sorry (restore window + auto-click + wait human).
+    applyFlowTaskStep(task, 'captcha', {
+      progress: 34,
+      message: 'Mở Flow + xử lý chặn bot Google (nếu có)…',
+    });
+    try {
+      const chRes = await bridge.commandExtension(
+        'resolve_google_challenge',
+        { timeoutMs: 180_000, autoClick: true },
+        200_000,
+        task.accountId,
+      );
+      if (chRes?.error && /GOOGLE_CHALLENGE|SORRY/i.test(String(chRes.error))) {
+        throw new Error(String(chRes.error));
+      }
+      if (chRes?.result && (chRes.result as { resolved?: boolean }).resolved) {
+        applyFlowTaskStep(task, 'captcha', {
+          progress: 38,
+          message: 'Đã vượt trang chặn bot — làm nóng tab Flow…',
+        });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/GOOGLE_CHALLENGE|SORRY/i.test(msg)) throw new Error(msg);
+      /* extension offline / method missing — continue open_flow_tab */
+    }
+    try {
+      const openRes = await bridge.commandExtension(
+        'open_flow_tab',
+        {
+          challengeTimeoutMs: 180_000,
+          autoClick: true,
+          // Do not steal OS focus every image gen (only /sorry/ path focuses)
+          stealFocus: false,
+        },
+        200_000,
+        task.accountId,
+      );
+      if (openRes?.error && /GOOGLE_CHALLENGE/i.test(String(openRes.error))) {
+        throw new Error(String(openRes.error));
+      }
+      await sleep(800);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/GOOGLE_CHALLENGE/i.test(msg)) throw new Error(msg);
+      /* tab may already exist */
+    }
+
+    applyFlowTaskStep(task, 'captcha', {
+      progress: 42,
+      message: 'Xác minh reCAPTCHA + gửi gen ảnh…',
+    });
     const res = await bridge.requestViaExtension({
       url: gen.url,
       method: 'POST',
       headers: buildBrowserHeaders(),
       body: gen.body,
       captchaAction: gen.captchaAction,
-      timeoutMs: 180_000,
+      // Extension page XHR budget ~160s + captcha + optional /sorry/ wait
+      timeoutMs: 260_000,
       accountId: task.accountId,
     });
 
@@ -857,7 +1239,7 @@ export class FlowQueueEngine {
       );
     }
 
-    task.progress = 70;
+    applyFlowTaskStep(task, 'download', { progress: 70 });
     let extracted = extractImageResults(res.data);
 
     // Stage 6: upscale 2K/4K if configured
@@ -954,9 +1336,14 @@ export class FlowQueueEngine {
     bridge: typeof import('./bridgeServer'),
     accountId?: string,
   ): Promise<string | undefined> {
-    const { base64, mimeType, byteLength } = fileToBase64(absPath);
-    // Large base64 over WS often times out — warn; still try (PNG from Imagen ~1MB).
-    if (byteLength > 2_500_000) {
+    const { prepareFlowUploadImage } = await import('./promptInjector');
+    const prepared = prepareFlowUploadImage(absPath);
+    const { base64, mimeType, byteLength } = prepared;
+    if (prepared.compressed) {
+      console.log(
+        `[FlowQueue] Upload using compressed still ${byteLength}B (was large PNG/ref)`,
+      );
+    } else if (byteLength > 2_500_000) {
       console.warn(
         `[FlowQueue] Large upload ${byteLength} bytes — may timeout on WS`,
       );
@@ -965,7 +1352,9 @@ export class FlowQueueEngine {
       buildUploadImageCandidates,
       extractUploadMediaId,
     } = await import('./payloadBuilder');
-    const fileName = path.basename(absPath) || 'upload.png';
+    const fileName =
+      path.basename(prepared.path || absPath).replace(/\.\w+$/i, '') +
+      (mimeType.includes('jpeg') || mimeType.includes('jpg') ? '.jpg' : '.png');
     const allCandidates = buildUploadImageCandidates({
       projectId,
       mimeType,
@@ -977,18 +1366,61 @@ export class FlowQueueEngine {
         delete c.body.imageInput;
       }
     }
-    // Anti-spam: only primary FlowAgent shapes (not 4× long timeouts)
-    const candidates = allCandidates.slice(
-      0,
-      Math.max(1, FLOW_DEFAULTS.maxUploadShapes),
-    );
-    const timeoutMs = Math.min(90_000, 45_000 + Math.floor(byteLength / 80));
+    // Prefer FlowAgent shapes first; allow 3 shapes after compress (was 2 → early give-up).
+    // 4× long timeouts still bad — cap shapes, raise per-try timeout for flaky SW.
+    const shapeBudget = prepared.compressed
+      ? Math.min(allCandidates.length, 3)
+      : Math.max(1, Math.min(FLOW_DEFAULTS.maxUploadShapes, 3));
+    const candidates = allCandidates.slice(0, shapeBudget);
+    // Body stashed over HTTP; SW fetch can stall — prefer fail-fast + re-warm over 3×180s hang.
+    // Compressed ~70KB still needs live extension socket (live: disconnect mid-upload → 180s dead air).
+    const timeoutMs = prepared.compressed ? 100_000 : 140_000;
     const errors: string[] = [];
 
+    const warmExtensionForUpload = async (why: string) => {
+      try {
+        const snap = bridge.getBridgeSnapshot?.() as
+          | {
+              extensionConnected?: boolean;
+              accounts?: Array<{
+                id?: string;
+                extensionConnected?: boolean;
+              }>;
+            }
+          | undefined;
+        const aid = String(accountId || '').trim();
+        const acc = (snap?.accounts || []).find((a) => a.id === aid);
+        const extOk = Boolean(
+          acc?.extensionConnected || snap?.extensionConnected,
+        );
+        if (!extOk) {
+          console.warn(
+            `[FlowQueue] Extension offline before upload (${why}) — open_flow_tab`,
+          );
+        }
+        await bridge.commandExtension(
+          'open_flow_tab',
+          { stealFocus: false, autoClick: true },
+          25_000,
+          accountId,
+        );
+        await sleep(extOk ? 800 : 2000);
+      } catch (e) {
+        console.warn(
+          `[FlowQueue] warmExtensionForUpload failed (${why}):`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    };
+
+    await warmExtensionForUpload('pre-upload');
+
     for (const upload of candidates) {
+      // Re-warm every shape — extension often drops after long image gen / idle
+      await warmExtensionForUpload(upload.label);
       try {
         console.log(
-          `[FlowQueue] Upload try ${upload.label} keys=${Object.keys(upload.body).join(',')}`,
+          `[FlowQueue] Upload try ${upload.label} keys=${Object.keys(upload.body).join(',')} bytes=${byteLength} compressed=${prepared.compressed} timeout=${timeoutMs}`,
         );
         const upRes = await bridge.requestViaExtension({
           url: upload.url,
@@ -1020,18 +1452,20 @@ export class FlowQueueEngine {
       } catch (e) {
         const em = e instanceof Error ? e.message : String(e);
         errors.push(`${upload.label}: ${em}`);
-        // First timeout → stop shapes (more shapes = more spam, same failure)
-        if (/timeout/i.test(em)) {
+        // Timeout / socket: re-warm then next shape (do not burn 9+ min silent)
+        if (/timeout|offline|socket|disconnect|không gửi/i.test(em)) {
           console.warn(
-            '[FlowQueue] Upload timeout — skip remaining shapes (anti-spam)',
+            `[FlowQueue] Upload fail on ${upload.label} (${em.slice(0, 80)}) — re-warm + next shape`,
           );
-          break;
+          await warmExtensionForUpload(`after-fail:${upload.label}`);
+          continue;
         }
       }
     }
 
     throw new Error(
-      `Upload failed (tried ${candidates.length}/${allCandidates.length} shapes). ` +
+      `Upload failed (tried ${candidates.length}/${allCandidates.length} shapes` +
+        `${prepared.compressed ? ', compressed' : ''}). ` +
         `First: ${errors.slice(0, 2).join(' | ')}`,
     );
   }
@@ -1076,7 +1510,7 @@ export class FlowQueueEngine {
           headers: buildBrowserHeaders(),
           body: genEx.body,
           captchaAction: genEx.captchaAction,
-          timeoutMs: 90_000,
+          timeoutMs: 200_000,
           accountId: task.accountId,
         });
         if (resEarly.error || (resEarly.status && resEarly.status >= 400)) {
@@ -1091,88 +1525,106 @@ export class FlowQueueEngine {
       }
     }
 
-    // P0 Ingredients 1–3
+    // Dual stills (Start+End = 2 ảnh liền kề) → I2V first+last, never R2V.
+    const startPathEarly = resolveLocalImage(
+      task.startImagePath || task.referenceImagePath,
+    );
+    const endPathEarly = resolveLocalImage(task.endImagePath);
+    const dualI2vStills = Boolean(
+      startPathEarly && endPathEarly && startPathEarly !== endPathEarly,
+    );
+
+    // P0 Ingredients / R2V — only when mode=ingredients AND not dual first+last stills
     if (
       !resEarly &&
+      !dualI2vStills &&
       (vMode === 'ingredients' || (task.ingredientPaths?.length || 0) > 0)
     ) {
-      const paths = (task.ingredientPaths || [])
-        .map((pp) => resolveLocalImage(pp))
-        .filter(Boolean) as string[];
-      for (const extra of [
-        task.startImagePath,
-        task.referenceImagePath,
-        task.endImagePath,
-      ]) {
-        const r = resolveLocalImage(extra);
+      const paths: string[] = [];
+      const pushUnique = (p?: string | null) => {
+        const r = resolveLocalImage(p || undefined);
         if (r && !paths.includes(r)) paths.push(r);
+      };
+      for (const pp of task.ingredientPaths || []) pushUnique(pp);
+      if (vMode === 'ingredients') {
+        pushUnique(task.startImagePath);
+        pushUnique(task.referenceImagePath);
       }
-      const mediaIds: string[] = [];
-      task.progress = 12;
-      for (const pp of paths.slice(0, 3)) {
-        const mid = await this.uploadLocalImage(
-          pp,
-          projectId,
-          bridge,
-          task.accountId,
-        );
-        if (mid) mediaIds.push(mid);
-      }
-      if (mediaIds.length) {
-        try {
-          const videoPromptIng = injectFaceLockPrompt(task.prompt, {
-            hasReference: true,
-            mediaId: mediaIds[0],
-          });
-          // Must be reference family — wrong UI model throws MODEL_MISMATCH (no swap)
-          // Ingredients need R2V keys; if UI has T2V/I2V selected use r2v default (not silent provider swap)
-          const ingModel =
-            detectVideoModelFamily(task.videoModel) === 'reference'
-              ? task.videoModel
-              : undefined;
-          const genIng = buildVideoIngredientsBody({
+      const uiFam = detectVideoModelFamily(task.videoModel);
+      // R2V only with reference-family UI model (or empty → default r2v key).
+      // I2V/Omni/T2V UI never enter ReferenceImages endpoint (B10).
+      const wantR2v =
+        vMode === 'ingredients' &&
+        paths.length >= 1 &&
+        (uiFam === 'reference' || uiFam === 'unknown');
+      if (wantR2v) {
+        const mediaIds: string[] = [];
+        task.progress = 12;
+        for (const pp of paths.slice(0, 3)) {
+          const mid = await this.uploadLocalImage(
+            pp,
             projectId,
-            prompt: videoPromptIng,
-            aspectRatio: task.aspectRatio,
-            videoModel: ingModel,
-            referenceMediaIds: mediaIds,
-            durationSec: task.durationSec,
-          });
-          const resolvedIng = extractVideoModelKeyFromBody(genIng.body);
-          console.log(
-            `[FlowQueue] Video INGREDIENTS n=${mediaIds.length} model=${resolvedIng} ui=${task.videoModel || '—'}`,
+            bridge,
+            task.accountId,
           );
-          resEarly = await bridge.requestViaExtension({
-            url: genIng.url,
-            method: 'POST',
-            headers: buildBrowserHeaders(),
-            body: genIng.body,
-            captchaAction: genIng.captchaAction,
-            timeoutMs: 90_000,
-            accountId: task.accountId,
-          });
-          if (resEarly.error || (resEarly.status && resEarly.status >= 400)) {
-            lastVidErrEarly =
-              resEarly.error ||
-              `HTTP ${resEarly.status}: ${JSON.stringify(resEarly.data).slice(0, 200)}`;
+          if (mid) mediaIds.push(mid);
+        }
+        if (mediaIds.length) {
+          try {
+            const videoPromptIng = injectFaceLockPrompt(task.prompt, {
+              hasReference: true,
+              mediaId: mediaIds[0],
+            });
+            const ingModel =
+              detectVideoModelFamily(task.videoModel) === 'reference'
+                ? task.videoModel
+                : undefined;
+            const genIng = buildVideoIngredientsBody({
+              projectId,
+              prompt: videoPromptIng,
+              aspectRatio: task.aspectRatio,
+              videoModel: ingModel,
+              referenceMediaIds: mediaIds,
+              durationSec: task.durationSec,
+            });
+            const resolvedIng = extractVideoModelKeyFromBody(genIng.body);
+            console.log(
+              `[FlowQueue] Video INGREDIENTS n=${mediaIds.length} model=${resolvedIng} ui=${task.videoModel || '—'}`,
+            );
+            resEarly = await bridge.requestViaExtension({
+              url: genIng.url,
+              method: 'POST',
+              headers: buildBrowserHeaders(),
+              body: genIng.body,
+              captchaAction: genIng.captchaAction,
+              timeoutMs: 200_000,
+              accountId: task.accountId,
+            });
+            if (resEarly.error || (resEarly.status && resEarly.status >= 400)) {
+              lastVidErrEarly =
+                resEarly.error ||
+                `HTTP ${resEarly.status}: ${JSON.stringify(resEarly.data).slice(0, 200)}`;
+              resEarly = null;
+              // Fall through I2V start-only — never invent end from ingredient list
+              startMediaId = mediaIds[0];
+            }
+          } catch (e) {
+            lastVidErrEarly = e instanceof Error ? e.message : String(e);
             resEarly = null;
             startMediaId = mediaIds[0];
-            endMediaId = mediaIds[1];
           }
-        } catch (e) {
-          lastVidErrEarly = e instanceof Error ? e.message : String(e);
-          resEarly = null;
-          startMediaId = mediaIds[0];
-          endMediaId = mediaIds[1];
         }
       }
     }
 
-    const startPath = resolveLocalImage(
-      task.startImagePath || task.referenceImagePath,
-    );
+    const startPath = startPathEarly;
     if (startPath && !startMediaId && !resEarly) {
-      task.progress = 10;
+      applyFlowTaskStep(task, 'submit', {
+        progress: 10,
+        message: dualI2vStills
+          ? 'Nén + upload ảnh start (I2V first+last)…'
+          : 'Nén + upload ảnh start (I2V)…',
+      });
       startMediaId = await this.uploadLocalImage(
         startPath,
         projectId,
@@ -1184,11 +1636,18 @@ export class FlowQueueEngine {
           `Upload start image failed (no mediaId). path=${startPath}`,
         );
       }
+      applyFlowTaskStep(task, 'submit', {
+        progress: 18,
+        message: 'Đã upload ảnh start — gửi gen video…',
+      });
     }
 
     const endPath = resolveLocalImage(task.endImagePath);
     if (endPath && !endMediaId && !resEarly) {
-      task.progress = 18;
+      applyFlowTaskStep(task, 'submit', {
+        progress: 16,
+        message: 'Nén + upload ảnh end (first+last)…',
+      });
       endMediaId = await this.uploadLocalImage(
         endPath,
         projectId,
@@ -1209,7 +1668,22 @@ export class FlowQueueEngine {
       (vMode === 'auto' || vMode === 't2v' || !task.startImagePath);
 
     if (wantPureT2v) {
-      task.progress = 12;
+      applyFlowTaskStep(task, 'submit', {
+        progress: 12,
+        message: 'Chuẩn bị gen video T2V…',
+      });
+      // Clear error when UI model is R2V/I2V but no start frame → pure T2V needs T2V model
+      try {
+        const fam = detectVideoModelFamily(task.videoModel);
+        if (fam === 'reference' || fam === 'i2v' || fam === 'extend') {
+          throw new Error(
+            `MODEL_MISMATCH: Đang gen video không có ảnh start (T2V) nhưng model UI «${task.videoModel}» thuộc nhánh ${fam.toUpperCase()}. ` +
+              `Vào Cấu hình Ảnh/Video chọn model T2V (vd. veo_3_1_t2v_fast), hoặc gen ảnh trước rồi Nối video (I2V).`,
+          );
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith('MODEL_MISMATCH')) throw e;
+      }
       const gen = buildVideoT2VBody({
         projectId,
         prompt: task.prompt,
@@ -1221,6 +1695,63 @@ export class FlowQueueEngine {
       console.log(
         `[FlowQueue] Video pure T2V model=${resolvedT2v} ui=${task.videoModel || '—'}`,
       );
+      applyFlowTaskStep(task, 'captcha', {
+        progress: 16,
+        message: 'Mở Flow + xử lý chặn bot Google (video)…',
+      });
+      // Quick probe first (no_challenge returns instantly). Full 180s only if
+      // a /sorry/ tab is present — avoids 200s hang when extension is offline.
+      try {
+        const chRes = await bridge.commandExtension(
+          'resolve_google_challenge',
+          { timeoutMs: 25_000, autoClick: true },
+          35_000,
+          task.accountId,
+        );
+        if (chRes?.error && /GOOGLE_CHALLENGE|SORRY/i.test(String(chRes.error))) {
+          // Real challenge still open — give human more time once
+          const longCh = await bridge.commandExtension(
+            'resolve_google_challenge',
+            { timeoutMs: 150_000, autoClick: true },
+            160_000,
+            task.accountId,
+          );
+          if (
+            longCh?.error &&
+            /GOOGLE_CHALLENGE|SORRY/i.test(String(longCh.error))
+          ) {
+            throw new Error(String(longCh.error));
+          }
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/GOOGLE_CHALLENGE|SORRY/i.test(msg)) throw new Error(msg);
+        if (/offline|timeout/i.test(msg)) {
+          throw new Error(
+            `Extension offline/timeout trước gen video T2V: ${msg}`,
+          );
+        }
+      }
+      try {
+        const openRes = await bridge.commandExtension(
+          'open_flow_tab',
+          {
+            challengeTimeoutMs: 30_000,
+            autoClick: true,
+            stealFocus: false,
+          },
+          45_000,
+          task.accountId,
+        );
+        if (openRes?.error && /GOOGLE_CHALLENGE/i.test(String(openRes.error))) {
+          throw new Error(String(openRes.error));
+        }
+        await sleep(400);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/GOOGLE_CHALLENGE/i.test(msg)) throw new Error(msg);
+        /* tab may already exist — continue to captcha+submit */
+      }
       // FlowAgent emits this exact browser event immediately before T2V.
       // Google uses it in the normal reCAPTCHA/risk-evaluation request flow.
       const telemetry = buildVideoFrontendTelemetryBody({
@@ -1260,13 +1791,17 @@ export class FlowQueueEngine {
           error instanceof Error ? error.message : String(error),
         );
       }
+      applyFlowTaskStep(task, 'captcha', {
+        progress: 40,
+        message: 'reCAPTCHA + gửi gen video T2V…',
+      });
       const t2vRes = await bridge.requestViaExtension({
         url: gen.url,
         method: 'POST',
         headers: buildBrowserHeaders(),
         body: gen.body,
         captchaAction: 'VIDEO_GENERATION',
-        timeoutMs: 90_000,
+        timeoutMs: 200_000,
         accountId: task.accountId,
       });
       if (t2vRes.error || (t2vRes.status && t2vRes.status >= 400)) {
@@ -1294,7 +1829,12 @@ export class FlowQueueEngine {
       mediaId: startMediaId,
     });
 
-    task.progress = resEarly ? 40 : 25;
+    applyFlowTaskStep(task, resEarly ? 'poll' : 'submit', {
+      progress: resEarly ? 40 : 25,
+      message: resEarly
+        ? 'Google đã nhận job — đang poll…'
+        : 'Gửi gen video Google Flow…',
+    });
 
     let res: Awaited<ReturnType<typeof bridge.requestViaExtension>> | null =
       resEarly;
@@ -1302,6 +1842,37 @@ export class FlowQueueEngine {
     if (res) {
       console.log('[FlowQueue] Using EXTEND/INGREDIENTS/T2V response');
     } else if (startMediaId) {
+      // Warm Flow tab before VIDEO_GENERATION captcha (same as T2V/image).
+      // Without this, cold/minimized tabs often return reCAPTCHA evaluation 403.
+      applyFlowTaskStep(task, 'captcha', {
+        progress: 20,
+        message: 'Mở Flow + reCAPTCHA trước gen video I2V…',
+      });
+      try {
+        await bridge.commandExtension(
+          'resolve_google_challenge',
+          { timeoutMs: 20_000, autoClick: true },
+          30_000,
+          task.accountId,
+        );
+      } catch {
+        /* continue — captcha step will re-check */
+      }
+      try {
+        await bridge.commandExtension(
+          'open_flow_tab',
+          {
+            challengeTimeoutMs: 25_000,
+            autoClick: true,
+            stealFocus: false,
+          },
+          40_000,
+          task.accountId,
+        );
+        await sleep(500);
+      } catch {
+        /* tab may already exist */
+      }
       // Single I2V attempt — model must match family (no ultra/t2v ladder)
       const gen = buildVideoI2VBody({
         projectId,
@@ -1323,7 +1894,7 @@ export class FlowQueueEngine {
           headers: buildBrowserHeaders(),
           body: gen.body,
           captchaAction: 'VIDEO_GENERATION',
-          timeoutMs: 90_000,
+          timeoutMs: 200_000,
           accountId: task.accountId,
         });
       } catch (e) {
@@ -1371,7 +1942,10 @@ export class FlowQueueEngine {
     while (!mediaReady(media) && polls < FLOW_DEFAULTS.videoPollMax) {
       await sleep(FLOW_DEFAULTS.videoPollMs);
       polls++;
-      task.progress = Math.min(85, 40 + polls);
+      applyFlowTaskStep(task, 'poll', {
+        progress: Math.min(85, 40 + polls),
+        message: `Google đang render video… (poll ${polls})`,
+      });
 
       // Strategy 1: batchCheck — only { operation: { name: primaryMediaId } }
       if (ops.length) {
@@ -1424,7 +1998,7 @@ export class FlowQueueEngine {
             url: buildGetMediaUrl(mid),
             method: 'GET',
             headers: buildBrowserHeaders(),
-            timeoutMs: 90_000,
+            timeoutMs: 200_000,
             accountId: task.accountId,
           });
           if (st.data) {
@@ -1460,7 +2034,10 @@ export class FlowQueueEngine {
       (q.includes('4k') || q.includes('fhd') || q.includes('1080'))
     ) {
       try {
-        task.progress = 90;
+        applyFlowTaskStep(task, 'download', {
+          progress: 90,
+          message: 'Tải video từ Google…',
+        });
         const up = buildUpsampleVideoBody({
           projectId,
           mediaId: media.mediaIds[0],

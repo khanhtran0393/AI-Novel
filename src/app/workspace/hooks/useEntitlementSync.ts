@@ -27,6 +27,9 @@ type CommercialStatus = {
   tokenValid?: boolean;
   /** When true, drop local token — Supabase has no active license for HWID */
   clearLocalToken?: boolean;
+  /** Fresh ticket after soft drift (replace localStorage) */
+  rebindToken?: string | null;
+  ticketStale?: boolean;
   /** Supabase ledger status: none | revoked | expired | active | … */
   cloudStatus?: string | null;
   cloudRevoked?: boolean;
@@ -93,9 +96,23 @@ export function useEntitlementSync() {
         labyrinthCodes: data.labyrinth?.recentCodes,
       });
 
+      // Prefer server rebind (ticket drift but HWID still Pro/Trial on ledger)
+      const rebind =
+        typeof data.rebindToken === 'string' &&
+        data.rebindToken.startsWith('AINOVEL2.')
+          ? data.rebindToken.trim()
+          : '';
+      if (rebind) {
+        try {
+          window.localStorage.setItem(ENTITLEMENT_LS_KEY, rebind);
+        } catch {
+          /* ignore */
+        }
+      }
+
       // Packaged customer: heartbeat to the seller API for revoke/expiry.
-      // Network failure keeps the offline-signed token; an explicit invalid
-      // response removes it immediately.
+      // Network failure keeps the offline-signed token; hard ledger deny removes it.
+      // Soft ticket drift must NOT force Free when commercial/status still says Pro.
       let storedToken = '';
       try {
         storedToken = window.localStorage.getItem(ENTITLEMENT_LS_KEY) || '';
@@ -113,36 +130,68 @@ export function useEntitlementSync() {
             }),
             cache: 'no-store',
           });
-          if (heartbeat.ok) {
-            const online = (await heartbeat.json().catch(() => ({}))) as {
-              valid?: boolean;
-            };
-            if (online.valid === false) {
-              window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
-              setVipStatus(false, false, false);
-              setCredits(100);
-              return;
+          const online = (await heartbeat.json().catch(() => ({}))) as {
+            valid?: boolean;
+            rebindToken?: string | null;
+            cloud?: { status?: string; revoked?: boolean };
+          };
+          const soft =
+            online.cloud?.status === 'token_mismatch' ||
+            online.cloud?.status === 'claims_mismatch' ||
+            online.cloud?.status === 'ticket_stale' ||
+            online.cloud?.status === 'ticket_rebound' ||
+            online.cloud?.status === 'hwid_mismatch';
+          if (
+            typeof online.rebindToken === 'string' &&
+            online.rebindToken.startsWith('AINOVEL2.')
+          ) {
+            try {
+              window.localStorage.setItem(
+                ENTITLEMENT_LS_KEY,
+                online.rebindToken.trim(),
+              );
+            } catch {
+              /* ignore */
             }
+          } else if (
+            heartbeat.ok &&
+            online.valid === false &&
+            !soft &&
+            (online.cloud?.revoked === true ||
+              online.cloud?.status === 'none' ||
+              online.cloud?.status === 'expired' ||
+              online.cloud?.status === 'revoked' ||
+              data.tier === 'free')
+          ) {
+            try {
+              window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
+            } catch {
+              /* ignore */
+            }
+            setVipStatus(false, false, false);
+            setCredits(100);
+            return;
           }
         } catch {
           // Offline grace: Ed25519/HWID/expiry remain enforced locally.
         }
       }
 
-      // Ledger (Supabase) says no license → drop local ticket so stale PRO cannot stick
-      // Also clear when remote heartbeat already wiped token above.
+      // Ledger (Supabase) hard-deny → drop local ticket.
+      // clearLocalToken is false when rebindToken was issued (already stored above).
       if (
         data.clearLocalToken ||
-        (data.authority === 'supabase' && !data.tokenValid) ||
         data.cloudRevoked ||
         data.cloudStatus === 'none' ||
         data.cloudStatus === 'expired' ||
         data.cloudStatus === 'revoked'
       ) {
-        try {
-          window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
-        } catch {
-          /* ignore */
+        if (!rebind) {
+          try {
+            window.localStorage.removeItem(ENTITLEMENT_LS_KEY);
+          } catch {
+            /* ignore */
+          }
         }
       }
 

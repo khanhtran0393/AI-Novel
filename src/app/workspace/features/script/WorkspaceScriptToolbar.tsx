@@ -22,6 +22,7 @@ import {
 } from '@/lib/sceneWorkspaceGroups';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
+import { useChapterTtsQueue } from '../../hooks/useChapterTtsQueue';
 
 export function WordGatePill() {
   const isStreaming = useStreamUi((s) => s.isStreaming);
@@ -248,18 +249,15 @@ export function SceneNavStrip() {
 }
 
 export function ChapterActionBar({
-  chapterTtsRunning,
-  chapterTtsStatus,
   handleGenerateChapterTTS,
   handleStopChapterTTS,
   handleWriteChapter,
 }: {
-  chapterTtsRunning: boolean;
-  chapterTtsStatus?: string;
-  handleGenerateChapterTTS: (opts: {
+  handleGenerateChapterTTS: (opts?: {
     includeHook?: boolean;
     skipExisting?: boolean;
-    onlyFailed?: boolean;
+    force?: boolean;
+    exportFull?: boolean;
   }) => Promise<unknown>;
   handleStopChapterTTS: () => void;
   handleWriteChapter: (overwrite?: boolean) => Promise<void>;
@@ -268,6 +266,11 @@ export function ChapterActionBar({
   const chuong = useNovelStore(selectChuongDangChon);
   const dangTai = useNovelStore(selectDangTai);
   const setDangTai = useNovelStore(selectSetDangTai);
+  // Leaf subscribe — progress ticks stay off parent
+  const q = useChapterTtsQueue();
+  const chapterTtsRunning = q.running;
+  const chapterTtsStatus = q.status;
+  const chapterTtsProgress = q.progress;
   const hasChapter = useNovelStore((s) =>
     s.danh_sach_chuong.some((c) => c.so_chuong === s.chuong_dang_chon),
   );
@@ -280,11 +283,17 @@ export function ChapterActionBar({
         <button
           type="button"
           disabled={chapterTtsRunning || isStreaming}
-          title="Gen TTS mọi cảnh; bỏ qua cảnh đã có audio. Hỏi force nếu 100% đã có."
+          title={
+            chapterTtsRunning
+              ? chapterTtsStatus || 'Đang gen TTS chương…'
+              : 'Force gen đè mọi cảnh → ghép 1 MP3 + SRT → thư mục đầu ra kênh'
+          }
           onClick={() =>
             void handleGenerateChapterTTS({
               includeHook: true,
-              skipExisting: true,
+              force: true,
+              skipExisting: false,
+              exportFull: true,
             }).catch((e) =>
               toast.error(
                 'TTS chương',
@@ -292,29 +301,23 @@ export function ChapterActionBar({
               ),
             )
           }
-          className="shrink-0 inline-flex items-center rounded border border-amber-700/50 bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-black hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          className="shrink-0 inline-flex items-center gap-1 rounded border border-amber-700/50 bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-black hover:bg-amber-400 disabled:opacity-70 disabled:cursor-wait whitespace-nowrap"
         >
-          {chapterTtsRunning ? 'Đang gen…' : '🎙️ Gen TTS cả chương'}
-        </button>
-        <button
-          type="button"
-          disabled={chapterTtsRunning || isStreaming}
-          title="Gen lại fail-log; nếu không có log → gen cảnh chưa có audio"
-          onClick={() =>
-            void handleGenerateChapterTTS({
-              includeHook: true,
-              onlyFailed: true,
-              skipExisting: false,
-            }).catch((e) =>
-              toast.error(
-                'Retry TTS',
-                e instanceof Error ? e.message : String(e),
-              ),
-            )
-          }
-          className="shrink-0 inline-flex items-center rounded border border-rose-800/50 bg-rose-950/30 px-2 py-0.5 text-[10px] font-bold text-rose-300 hover:bg-rose-950/50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-        >
-          ↺ Gen lại cảnh lỗi
+          {chapterTtsRunning ? (
+            <>
+              <span
+                className="inline-block h-2.5 w-2.5 shrink-0 animate-spin rounded-full border-2 border-black/30 border-t-black"
+                aria-hidden
+              />
+              <span className="max-w-[11rem] truncate">
+                {chapterTtsProgress > 0
+                  ? `TTS ${chapterTtsProgress}%`
+                  : 'Đang gen…'}
+              </span>
+            </>
+          ) : (
+            '🎙️ Gen TTS cả chương'
+          )}
         </button>
         {chapterTtsRunning ? (
           <button

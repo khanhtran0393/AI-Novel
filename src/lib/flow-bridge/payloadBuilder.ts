@@ -431,16 +431,18 @@ export function buildVideoI2VBody(opts: {
   void durationSec; // model-native length; field rejected by API
 
   const clientContext = buildClientContext(opts.projectId, '');
+  // Live aisandbox (Phoma/FlowAgent 2026): startImage/endImage use mediaId — NOT name.
+  // Google 400: Unknown name "name" at 'requests[0].end_image' / start_image.
   const req: Record<string, unknown> = {
     aspectRatio: mapVideoAspectRatio(opts.aspectRatio),
     seed: randomVideoSeed(),
     textInput: structuredVideoText(opts.prompt),
     videoModelKey: model,
-    startImage: { name: opts.startMediaId },
+    startImage: { mediaId: opts.startMediaId },
     metadata: {},
   };
   if (hasEnd) {
-    req.endImage = { name: opts.endMediaId };
+    req.endImage = { mediaId: opts.endMediaId };
   }
 
   const endpoint = hasEnd
@@ -453,7 +455,7 @@ export function buildVideoI2VBody(opts: {
       mediaGenerationContext: buildMediaGenerationContext(),
       clientContext,
       requests: [req],
-      ...(hasEnd ? { useV2ModelConfig: true } : {}),
+      useV2ModelConfig: true,
     },
     captchaAction: 'VIDEO_GENERATION',
   };
@@ -482,15 +484,16 @@ export function buildVideoIngredientsBody(opts: {
   void durationSec;
 
   const clientContext = buildClientContext(opts.projectId, '');
+  // Video R2V (Phoma/Flow live): referenceImages[{ mediaId, imageUsageType }].
+  // imageInputs[{ name, IMAGE_INPUT_TYPE_* }] is the IMAGE (T2I) schema — wrong on video endpoint.
   const req: Record<string, unknown> = {
     aspectRatio: mapVideoAspectRatio(opts.aspectRatio),
     seed: randomVideoSeed(),
     textInput: structuredVideoText(opts.prompt),
     videoModelKey: model,
-    // Flow ingredients: mediaId refs only (do not send imageInputs — upload schema changed 2026)
-    imageInputs: ids.map((name) => ({
-      name,
-      imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE',
+    referenceImages: ids.map((mediaId) => ({
+      mediaId,
+      imageUsageType: 'IMAGE_USAGE_TYPE_ASSET',
     })),
     metadata: {},
   };

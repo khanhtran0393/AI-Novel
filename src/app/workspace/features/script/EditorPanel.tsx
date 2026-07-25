@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
-import { ShieldAlert, ShieldCheck, RefreshCw, AlertTriangle, Wand2 } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, RefreshCw, AlertTriangle, Wand2, X } from 'lucide-react';
 
 interface EditorPanelProps {
   chapterIndex: number;
@@ -28,6 +28,10 @@ export default function EditorPanel({
     dims.length > 0
       ? Math.round(dims.reduce((acc: number, dim: { score: number }) => acc + dim.score, 0) / dims.length)
       : 0;
+
+  const dismiss = () => {
+    useNovelStore.getState().dismissEditorReview(chapterIndex);
+  };
 
   return (
     <div
@@ -57,32 +61,53 @@ export default function EditorPanel({
           </h4>
         </div>
 
-        {verdict !== 'accept' && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onRevise}
-              disabled={isRewriting}
-              className="flex items-center gap-1.5 rounded bg-amber-500/20 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
-            >
-              {isRewriting ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Wand2 className="h-3.5 w-3.5" />
-              )}
-              {verdict === 'polish' ? 'TRAU CHUỐT THEO NHẬN XÉT' : 'SỬA THEO NHẬN XÉT'}
-            </button>
-            <button
-              type="button"
-              onClick={onFullRewrite}
-              disabled={isRewriting}
-              className="flex items-center gap-1.5 rounded bg-red-500/20 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              VIẾT LẠI TỪ ĐẦU
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {verdict !== 'accept' && (
+            <>
+              <button
+                type="button"
+                onClick={onRevise}
+                disabled={isRewriting}
+                className="flex items-center gap-1.5 rounded bg-amber-500/20 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+              >
+                {isRewriting ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5" />
+                )}
+                {verdict === 'polish' ? 'TRAU CHUỐT THEO NHẬN XÉT' : 'SỬA THEO NHẬN XÉT'}
+              </button>
+              <button
+                type="button"
+                onClick={onFullRewrite}
+                disabled={isRewriting}
+                className="flex items-center gap-1.5 rounded bg-red-500/20 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                VIẾT LẠI TỪ ĐẦU
+              </button>
+              <button
+                type="button"
+                onClick={dismiss}
+                disabled={isRewriting}
+                title="Bỏ qua nhận xét — giữ bản hiện tại"
+                className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
+              >
+                BỎ QUA
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => useNovelStore.getState().clearEditorReview(chapterIndex)}
+            disabled={isRewriting}
+            aria-label="Đóng panel editor"
+            title="Đóng panel review"
+            className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 transition-colors disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <p className="text-sm text-zinc-300 mb-4 bg-black/40 p-2 rounded italic">&ldquo;{summary}&rdquo;</p>

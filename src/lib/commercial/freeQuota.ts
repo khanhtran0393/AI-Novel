@@ -23,6 +23,7 @@ import {
   trialWordCapMessage,
   clampFreeWordGoal,
   clampTrialWordGoal,
+  contentWordCeilingForTier,
   countContentWords,
   isFreeChapterOutOfRange,
   isTrialChapterOutOfRange,
@@ -326,7 +327,11 @@ export async function assertFreeWriteConstraints(
     ).trim();
     if (trialExisting) {
       const words = countContentWords(trialExisting);
-      if (words >= TRIAL_LIMITS.maxWordsPerChapter) {
+      // Absolute runaway only — do NOT cut mid-script at soft +20% while still bù cảnh
+      const softCeil = contentWordCeilingForTier('trial');
+      const hardRunaway = Math.round(TRIAL_LIMITS.maxWordsPerChapter * 1.35);
+      const forcing = Boolean(p.force_word_gate_continue);
+      if (words >= hardRunaway || (words >= softCeil && !forcing)) {
         throw new AppError(trialWordCapMessage(), {
           code: 'QUOTA',
           status: 403,
@@ -336,6 +341,8 @@ export async function assertFreeWriteConstraints(
             reason: 'max_words',
             words,
             maxWords: TRIAL_LIMITS.maxWordsPerChapter,
+            contentCeiling: softCeil,
+            hardRunaway,
           },
         });
       }
@@ -382,7 +389,12 @@ export async function assertFreeWriteConstraints(
   ).trim();
   if (freeExisting) {
     const words = countContentWords(freeExisting);
-    if (words >= FREE_LIMITS.maxWordsPerChapter) {
+    // Soft +20% is NOT mid-script cut; hard runaway = tier×1.35.
+    // force_word_gate_continue may still finish scenes past soft ceil.
+    const softCeil = contentWordCeilingForTier('free');
+    const hardRunaway = Math.round(FREE_LIMITS.maxWordsPerChapter * 1.35);
+    const forcing = Boolean(p.force_word_gate_continue);
+    if (words >= hardRunaway || (words >= softCeil && !forcing)) {
       throw new AppError(freeWordCapMessage(), {
         code: 'QUOTA',
         status: 403,
@@ -392,6 +404,8 @@ export async function assertFreeWriteConstraints(
           reason: 'max_words',
           words,
           maxWords: FREE_LIMITS.maxWordsPerChapter,
+          contentCeiling: softCeil,
+          hardRunaway,
         },
       });
     }
@@ -408,9 +422,7 @@ export function applyFreeWordGoalToPayload(
   payload.so_tu_chuong = wordGoal;
   payload.wordGoal = wordGoal;
   payload.targetWords = wordGoal;
-  if (payload.force_word_gate_continue) {
-    payload.force_word_gate_continue = false;
-  }
+  // Do NOT clear force_word_gate_continue — needed to finish full chapter (scenes/floor)
 }
 
 /** Outline / setup: clamp so_chuong in payload for Free / Trial */

@@ -54,6 +54,13 @@ function findCleanBrowser(): ResolvedBrowser | null {
   return null;
 }
 
+function resolveRedirectUrl(fromUrl: string, location: string): string {
+  const loc = String(location || '').trim();
+  if (!loc) throw new Error('Empty redirect Location');
+  if (/^https?:\/\//i.test(loc)) return loc;
+  return new URL(loc, fromUrl).href;
+}
+
 function httpGetBuffer(
   url: string,
   onProgress?: (received: number, total: number) => void,
@@ -64,12 +71,23 @@ function httpGetBuffer(
       reject(new Error('Quá nhiều redirect khi tải browser.'));
       return;
     }
+    if (!/^https?:\/\//i.test(url)) {
+      reject(new Error(`Invalid URL (relative not resolved): ${String(url).slice(0, 160)}`));
+      return;
+    }
     const lib = url.startsWith('https') ? https : http;
     const req = lib.get(url, { timeout: 120_000 }, (res) => {
       const code = res.statusCode || 0;
       if (code >= 300 && code < 400 && res.headers.location) {
         res.resume();
-        void httpGetBuffer(res.headers.location, onProgress, redirects + 1)
+        let next: string;
+        try {
+          next = resolveRedirectUrl(url, res.headers.location);
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error(String(e)));
+          return;
+        }
+        void httpGetBuffer(next, onProgress, redirects + 1)
           .then(resolve)
           .catch(reject);
         return;

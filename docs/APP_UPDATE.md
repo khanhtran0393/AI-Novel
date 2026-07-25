@@ -5,7 +5,8 @@
 1. Mở app (packaged) → check feed (~8s)  
 2. Có bản mới → **tự tải** (nền)  
 3. Đóng app → **không cài** (nếu đang tải dở → cố tải nốt)  
-4. **Lần mở sau** → tự cài (không hỏi)
+4. **Lần mở sau** → cài **im lặng** NSIS `/S` (không hiện cửa sổ Setup)  
+5. Sau khi mở lại → **chỉ** modal/thông báo changelog (`UpdateSuccessModal`)
 
 Code: `electron/updater.js` · Env: `resources/commercial/public.env`
 
@@ -112,7 +113,7 @@ npm run smoke:commercial          # static wiring updater
 2. `npm run pack:ship` (NSIS unsigned)  
 3. `npm run release:ship-update`  
 4. User **bản cũ hỏng updater**: cài tay 1 lần từ Releases  
-5. User **1.0.5+**: mở app → tự tải → **mở lại** → cài
+5. User **1.0.5+**: mở app → tự tải → **mở lại** → cài im lặng → modal changelog
 
 ## Troubleshooting
 
@@ -124,6 +125,7 @@ npm run smoke:commercial          # static wiring updater
 | Signature fail / `ERR_UPDATER_INVALID_SIGNATURE` | `AINOVEL_UPDATE_ALLOW_UNSIGNED=1` + code gán `verifyUpdateCodeSignature = async () => null` (không gán `false` — setter bỏ qua falsy). Hoặc ký Authenticode + `ALLOW_UNSIGNED=0` |
 | **Không tự cập nhật (GitHub)** | `npm run release:github:verify`. Release **bắt buộc** `latest.yml` + `.exe` (không draft). Thiếu yml → updater ném `ERR_UPDATER_CHANNEL_FILE_NOT_FOUND` |
 | App báo thiếu feed / không check | Packaged nạp `PROVIDER=github` + owner/repo từ `public.env`. Code cũ chỉ đọc `FEED_URL` → **cài tay một lần** bản có fix |
-| Có tải nhưng không cài | Policy: **lần mở app sau** mới cài. Đóng hẳn → mở lại. **NSIS** (`pack:commercial` / build desktop) ổn định hơn **portable** (`pack:unsigned:qa`) |
+| Có tải nhưng không cài | Policy: **lần mở app sau** mới cài **im lặng** (`/S`). Đóng hẳn → mở lại. **NSIS** ổn định hơn **portable** |
+| Vẫn thấy cửa sổ Setup | (1) Đang **cài tay** `.exe` (double-click) → luôn có UI; auto-update thì silent. (2) Bản app **cũ** khi apply update (code silent chỉ chạy trên bản đang mở). (3) NSIS assisted `oneClick:false` — ship ≥ **1.0.10** oneClick + `spawnSilentNsis` `/S`. Verify: `npx tsx scripts/smoke-update-silent.mts` |
 | User kẹt bản cũ | Gửi link release thủ công 1 lần; sau khi lên bản có fix + feed đủ yml/exe, các lần sau tự chạy |
 | package.json == version feed | `update-not-available` — phải **bump version** (1.0.4→1.0.5) rồi pack + publish |

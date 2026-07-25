@@ -1,7 +1,133 @@
 import { API } from '@/contracts';
 import type { StateStorage } from 'zustand/middleware';
+import type { PersistStorage, StorageValue } from 'zustand/middleware';
 
 export const STORE_KEY = 'novel_generator_v2_store';
+
+/**
+ * Bulk media jobs (TTS chương, gen all images/videos) call setState many times.
+ * Each call → partialize + JSON.stringify huge store → freezes Electron GUI.
+ * Mute skips stringify/write; end flushes one snapshot.
+ */
+let persistMuteDepth = 0;
+let mutedPending: { name: string; value: StorageValue<unknown> } | null = null;
+
+export function isPersistMuted(): boolean {
+  return persistMuteDepth > 0;
+}
+
+export function beginPersistMute(): void {
+  persistMuteDepth += 1;
+}
+
+export function endPersistMute(): void {
+  persistMuteDepth = Math.max(0, persistMuteDepth - 1);
+  if (persistMuteDepth > 0) return;
+  const pending = mutedPending;
+  mutedPending = null;
+  if (!pending) return;
+  // Defer heavy stringify off the batch completion stack (yield paint first)
+  scheduleStagedPersistStringify(pending.name, pending.value, false);
+}
+
+/** Run async work without per-setState stringify/IPC thrash; one flush at end. */
+export async function runWithPersistMuted<T>(fn: () => Promise<T>): Promise<T> {
+  beginPersistMute();
+  try {
+    return await fn();
+  } finally {
+    endPersistMute();
+  }
+}
+
+/**
+ * PersistStorage that can skip JSON.stringify during mute (unlike createJSONStorage).
+ * Wire as `storage` option on zustand persist — do not wrap with createJSONStorage.
+ *
+ * CRITICAL: never JSON.stringify the whole store on every setState — multi-MB
+ * stringify freezes Electron chrome even when dualStorage debounces disk write.
+ * Stage object → debounce stringify → dualStorage.
+ */
+let stagedPersist: { name: string; value: StorageValue<unknown> } | null = null;
+let stringifyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+/** Coalesce rapid media setState bursts before expensive stringify (was 450 — still janky). */
+const STRINGIFY_DEBOUNCE_MS = 700;
+
+function flushStagedPersistStringify(): void {
+  if (stringifyDebounceTimer) {
+    clearTimeout(stringifyDebounceTimer);
+    stringifyDebounceTimer = null;
+  }
+  const staged = stagedPersist;
+  stagedPersist = null;
+  if (!staged) return;
+  try {
+    dualStorage.setItem(staged.name, JSON.stringify(staged.value));
+  } catch (err) {
+    console.warn('[NovelStore] deferred stringify flush failed:', err);
+  }
+}
+
+function scheduleStagedPersistStringify(
+  name: string,
+  value: StorageValue<unknown>,
+  immediate = false,
+): void {
+  stagedPersist = { name, value };
+  if (immediate) {
+    flushStagedPersistStringify();
+    return;
+  }
+  if (stringifyDebounceTimer) clearTimeout(stringifyDebounceTimer);
+  stringifyDebounceTimer = setTimeout(() => {
+    stringifyDebounceTimer = null;
+    // Yield one frame so paint/input win over multi-MB stringify
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        setTimeout(() => flushStagedPersistStringify(), 0);
+      });
+    } else {
+      flushStagedPersistStringify();
+    }
+  }, STRINGIFY_DEBOUNCE_MS);
+}
+
+export function createDeferredPersistStorage(): PersistStorage<unknown> {
+  return {
+    getItem: async (name): Promise<StorageValue<unknown> | null> => {
+      const raw = await dualStorage.getItem(name);
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw) as StorageValue<unknown>;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (name, newValue): void => {
+      if (persistMuteDepth > 0) {
+        mutedPending = { name, value: newValue };
+        return;
+      }
+      scheduleStagedPersistStringify(name, newValue, false);
+    },
+    removeItem: (name): void => {
+      dualStorage.removeItem(name);
+    },
+  };
+}
+
+/** Yield so React can paint status before heavy sync work. */
+export function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        setTimeout(resolve, 0);
+      });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
 
 type AinovelPersistApi = {
   storeKey: string;
@@ -31,6 +157,9 @@ const MEDIA_SETTINGS_KEYS = [
   'videoProvider',
   'videoModel',
   'videoApiKey',
+  'videoApiBaseUrl',
+  'externalVideoApis',
+  'activeExternalVideoApiId',
   'videoAspectRatio',
   'videoDuration',
   'wpm',
@@ -62,8 +191,13 @@ function settingsRichness(state: Record<string, unknown> | null | undefined): nu
 }
 
 /** Score a raw zustand persist payload (sync, browser-safe). */
+/** Cache score by string identity — setItem path used to JSON.parse multi-MB every write. */
+let _scoreCacheRaw: string | null = null;
+let _scoreCacheVal = 0;
+
 export function scoreStoreRaw(raw: string | null | undefined): number {
   if (!raw || typeof raw !== 'string') return 0;
+  if (raw === _scoreCacheRaw) return _scoreCacheVal;
   try {
     const parsed = JSON.parse(raw);
     const state = parsed?.state || parsed;
@@ -104,7 +238,7 @@ export function scoreStoreRaw(raw: string | null | undefined): number {
       Object.keys(state?.generatedVideos || {}).length;
     const loreLen = String(state?.lorebook || '').trim().length;
     const outlineLen = String(state?.dan_y_tong_the || '').trim().length;
-    return (
+    const score =
       chapterContentChars +
       readyChapters * 5000 +
       keyCount * 1000 +
@@ -112,8 +246,10 @@ export function scoreStoreRaw(raw: string | null | undefined): number {
       (state?.giai_doan === 2 ? 2000 : 0) +
       Math.min(loreLen, 2000) +
       Math.min(outlineLen, 2000) +
-      settingsRichness(state)
-    );
+      settingsRichness(state);
+    _scoreCacheRaw = raw;
+    _scoreCacheVal = score;
+    return score;
   } catch {
     return 0;
   }
@@ -189,8 +325,8 @@ let intentionalResetUntil = 0;
 /** Debounce localStorage + durable writes — big JSON.stringify payloads freeze UI if every set() flushes. */
 let localPersistTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingLocalPersist: { name: string; value: string } | null = null;
-/** 1.2s coalesces typing/media bursts; was 450ms → disk thrash + GUI stutter. */
-const LOCAL_PERSIST_DEBOUNCE_MS = 1_200;
+/** 2s coalesces batch media/TTS bursts; shorter values thrash disk + freeze Electron. */
+const LOCAL_PERSIST_DEBOUNCE_MS = 2_000;
 /** Last value written to localStorage (skip identical setItem). */
 let lastLocalPersistedValue = '';
 /** Last value sent to IPC/HTTP durable (skip identical durableWrite). */
@@ -302,11 +438,7 @@ export function forceOverwriteAllDurables(value: string): void {
   }
 
   const api = getPersistApi();
-  try {
-    api?.setStoreSync?.(value);
-  } catch {
-    // ignore
-  }
+  // Async only — setStoreSync freezes main when payload is large
   try {
     void api?.setStore?.(value);
   } catch {
@@ -351,7 +483,7 @@ export function durableWrite(value: string, { sync = false } = {}) {
   if (!value || (!intentional && scoreStoreRaw(value) <= 0)) return;
   lastDiskPayload = value;
 
-  // Skip IPC/HTTP when identical payload already sent (unless forced sync leave/reset)
+  // Skip IPC/HTTP when identical payload already sent (unless forced leave/reset)
   if (!sync && !intentional && value === lastDurableSentValue) {
     return;
   }
@@ -359,11 +491,8 @@ export function durableWrite(value: string, { sync = false } = {}) {
   const api = getPersistApi();
   if (api) {
     try {
-      if (sync && api.setStoreSync) {
-        api.setStoreSync(value);
-      } else {
-        void api.setStore(value);
-      }
+      // Always async IPC — sync freezes Electron (even small payloads stack under burst).
+      void api.setStore(value);
       lastDurableSentValue = value;
     } catch {
       // fall through to HTTP
@@ -386,13 +515,18 @@ export function durableWrite(value: string, { sync = false } = {}) {
 }
 
 export function flushDurableNow() {
+  // Force any staged zustand object → string before local/durable flush
+  flushStagedPersistStringify();
   flushPendingLocalPersist();
   if (!lastDiskPayload || scoreStoreRaw(lastDiskPayload) <= 0) return;
   const api = getPersistApi();
+  // NEVER setStoreSync on flush path — multi-MB sync IPC freezes Electron chrome.
+  // beforeunload uses sendBeacon/async; intentional reset uses forceOverwrite.
+  const payload = lastDiskPayload;
   try {
-    api?.setStoreSync?.(lastDiskPayload);
+    void api?.setStore?.(payload);
   } catch {
-    // ignore
+    /* ignore */
   }
   try {
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
@@ -430,7 +564,8 @@ export const dualStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
     if (typeof window === 'undefined') return null;
 
-    const hardTimeoutMs = 4000;
+    // 1.5s — was 4s; boot must not hold hydrate spinner while main is busy
+    const hardTimeoutMs = 1500;
     const run = async (): Promise<string | null> => {
       let local: string | null = null;
       try {
@@ -542,14 +677,16 @@ export const dualStorage: StateStorage = {
     const intentional = isIntentionalStoreResetActive();
     try {
       if (!intentional) {
+        // Hot path: NEVER call getStoreSync() — sync IPC + huge JSON freezes Electron GUI
+        // on every media setState (chapter TTS, gen-all images/videos).
         const existing = window.localStorage.getItem(name);
         const existingScore = scoreStoreRaw(existing);
-        const ipcScore = scoreStoreRaw(getPersistApi()?.getStoreSync?.() || null);
-        const guardScore = Math.max(existingScore, ipcScore);
+        const durableScore = scoreStoreRaw(lastDiskPayload);
+        const guardScore = Math.max(existingScore, durableScore);
 
         if (guardScore > 500 && newScore < guardScore * 0.25 && newScore < 500) {
           console.warn(`[NovelStore] Blocked wipe score ${newScore} (guard ${guardScore}).`);
-          if (existing && existingScore >= ipcScore) durableWrite(existing);
+          if (existing && existingScore >= durableScore) durableWrite(existing);
           return;
         }
 

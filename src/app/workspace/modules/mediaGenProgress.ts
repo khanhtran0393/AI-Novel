@@ -1,7 +1,7 @@
 /**
  * Client progress for image/video gen — optimized to avoid UI jank.
  * - Flow: ONE shared poll of /api/flow/queue for all active gens
- * - Updates only when percent/phase actually changes (throttled)
+ * - Prefer server `progressMessage` / `step` (real captcha/submit/poll)
  * - Non-Flow: slow asymptotic estimate
  */
 import { API } from '@/contracts';
@@ -24,6 +24,36 @@ export function phaseForFlowProgress(
   return 'Hoàn tất';
 }
 
+/** Map queue step → short VN label when progressMessage missing. */
+export function phaseForFlowStep(
+  step: string | undefined,
+  kind: 'image' | 'video',
+  percent: number,
+): string {
+  switch (String(step || '')) {
+    case 'queued':
+      return 'Hàng đợi Flow…';
+    case 'account':
+      return 'Gắn profile Google…';
+    case 'captcha':
+      return 'Xác minh reCAPTCHA / chặn bot…';
+    case 'submit':
+      return kind === 'image' ? 'Gửi gen ảnh…' : 'Gửi gen video…';
+    case 'poll':
+      return kind === 'image' ? 'Google đang vẽ…' : 'Google đang render…';
+    case 'download':
+      return 'Tải file về máy…';
+    case 'saving':
+      return 'Lưu file vào app…';
+    case 'done':
+      return 'Xong';
+    case 'error':
+      return 'Lỗi';
+    default:
+      return phaseForFlowProgress(percent, kind);
+  }
+}
+
 type FlowTaskLite = {
   kind?: string;
   status?: string;
@@ -32,6 +62,11 @@ type FlowTaskLite = {
   sceneIndex?: number;
   promptIndex?: number;
   attempts?: number;
+  step?: string;
+  progressMessage?: string;
+  error?: string;
+  queueAhead?: number;
+  id?: string;
 };
 
 type FlowSub = {
@@ -62,8 +97,18 @@ async function tickFlowShared(): Promise<void> {
   if (flowInFlight || flowSubs.size === 0) return;
   flowInFlight = true;
   try {
-    const res = await fetch(API.flowQueue, { cache: 'no-store' });
-    const data = await res.json().catch(() => ({}));
+    // Off-GUI poll — Worker/utilityProcess so progress ticks don't freeze chrome
+    const { offThreadFetchResponse } = await import(
+      '@/lib/appWork/offThreadFetchCompat'
+    );
+    const res = await offThreadFetchResponse(API.flowQueue, {
+      method: 'GET',
+      cache: 'no-store',
+    } as RequestInit);
+    const data = (await res.json().catch(() => ({}))) as {
+      tasks?: FlowTaskLite[];
+      queue?: { tasks?: FlowTaskLite[] };
+    };
     const tasks: FlowTaskLite[] = Array.isArray(data.tasks)
       ? data.tasks
       : Array.isArray(data.queue?.tasks)
@@ -85,21 +130,55 @@ async function tickFlowShared(): Promise<void> {
       if (t.status === 'pending') percent = Math.max(percent, 3);
       if (t.status === 'running') percent = Math.max(percent, 8);
       if (t.status === 'done') percent = 100;
+      if (t.status === 'failed') percent = Math.min(percent || 0, 99);
       const attempt =
         typeof t.attempts === 'number' && t.attempts > 1
           ? ` · thử ${t.attempts}`
           : '';
+      const aheadN =
+        typeof t.queueAhead === 'number' && t.queueAhead > 0
+          ? t.queueAhead
+          : 0;
+      const aheadLabel =
+        t.status === 'pending' && aheadN > 0
+          ? ` · còn ${aheadN} trước bạn`
+          : '';
+      // Prefer server VN line (captcha / poll / error detail) over coarse % buckets
+      const serverMsg = String(t.progressMessage || t.error || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      let basePhase = '';
+      if (t.status === 'failed') {
+        basePhase = serverMsg
+          ? serverMsg.slice(0, 96)
+          : `Lỗi${attempt || ''}`;
+      } else if (t.status === 'pending') {
+        basePhase =
+          serverMsg ||
+          (aheadN > 0
+            ? `Hàng đợi Flow — còn ${aheadN} job trước bạn…`
+            : 'Hàng đợi…');
+      } else if (t.status === 'done') {
+        basePhase = 'Xong — đã lưu file';
+      } else {
+        basePhase =
+          serverMsg ||
+          phaseForFlowStep(t.step, sub.kind, percent);
+      }
+      if (
+        aheadLabel &&
+        t.status === 'pending' &&
+        !basePhase.includes('trước bạn')
+      ) {
+        basePhase = `${basePhase}${aheadLabel}`;
+      }
       const phase =
-        t.status === 'failed'
-          ? `Lỗi${attempt}`
-          : t.status === 'pending'
-            ? `Hàng đợi…${attempt}`
-            : t.status === 'done'
-              ? 'Xong'
-              : `${phaseForFlowProgress(percent, sub.kind)}${attempt}`;
+        t.status === 'failed' || t.status === 'done'
+          ? basePhase
+          : `${basePhase}${attempt}`;
       const next: MediaGenProgress = {
         percent: Math.round(percent),
-        phase,
+        phase: phase.slice(0, 120),
       };
       if (!shouldEmit(sub, next)) continue;
       sub.lastPercent = next.percent;
@@ -117,7 +196,7 @@ async function tickFlowShared(): Promise<void> {
   }
 }
 
-/** Poll cadence: 2s — chỉ slot đang gen nhận update, tránh jank workspace. */
+/** Poll cadence: 2s — enough for captcha/step UI; 1.2s re-render thrash on multi-slot gen. */
 export const MEDIA_GEN_PROGRESS_INTERVAL_MS = 2000;
 
 function ensureFlowTimer(): void {

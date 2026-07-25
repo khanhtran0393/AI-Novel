@@ -131,10 +131,19 @@ export function clearHeartbeatStamp(): void {
  *
  * Cryptographically valid AINOVEL2 token alone is NOT enough once ledger says none.
  */
+/** Soft ticket statuses — HWID may still be Pro; never permanent-revoke cache. */
+const TICKET_SOFT_STATUSES = new Set([
+  'token_mismatch',
+  'claims_mismatch',
+  'hwid_mismatch',
+  'ticket_stale',
+  'ticket_rebound',
+]);
+
 async function probeOnlineVerify(
   token: string,
   hwid: string,
-): Promise<'valid' | 'revoked' | 'offline'> {
+): Promise<'valid' | 'revoked' | 'stale' | 'offline'> {
   try {
     const base = resolvePinnedLicenseApiUrl();
     const endpoint = new URL('/api/cloud/license/verify', base).toString();
@@ -148,6 +157,7 @@ async function probeOnlineVerify(
     let payload: {
       valid?: boolean;
       ok?: boolean;
+      rebindToken?: string;
       cloud?: { revoked?: boolean; status?: string; checked?: boolean };
     } = {};
     try {
@@ -170,7 +180,20 @@ async function probeOnlineVerify(
     ) {
       return 'revoked';
     }
-    if (payload.valid === true || payload.ok === true) return 'valid';
+    // Rebound / soft accept from LICENSE_API = seat still valid
+    if (
+      payload.valid === true ||
+      payload.ok === true ||
+      cloudStatus === 'ticket_rebound' ||
+      cloudStatus === 'ticket_stale'
+    ) {
+      return 'valid';
+    }
+
+    // Ticket drift without hard ledger kill — do NOT cache as revoked
+    if (TICKET_SOFT_STATUSES.has(cloudStatus)) {
+      return 'stale';
+    }
 
     // Online response that is not valid = ledger denies (deleted id / no active row)
     // Do NOT treat as offline grace — that was the stale-PRO bug after Supabase delete.
@@ -178,6 +201,8 @@ async function probeOnlineVerify(
       return 'revoked';
     }
     if (res.status === 401 || res.status === 403) {
+      // Soft statuses sometimes arrive as 401 from older verify handlers
+      if (TICKET_SOFT_STATUSES.has(cloudStatus)) return 'stale';
       return 'revoked';
     }
     // Ambiguous 2xx without valid flag → offline soft
@@ -257,6 +282,24 @@ export async function enforcePackagedHeartbeat(
     });
     throw new AppError(
       'License không còn active trên sổ cái Supabase (đã xóa / revoke / hết hạn). App về Free.',
+      { code: 'AUTH', status: 403 },
+    );
+  }
+
+  if (online === 'stale') {
+    // Ticket drift only — never write revoked cache (would lock out until reinstall).
+    // Allow offline grace if this token previously verified; else soft deny (re-activate).
+    appendLicenseDenyEvent({
+      reason: 'ticket_stale',
+      detail: 'token_hash_or_exp_drift',
+    });
+    if (stamp && stamp.tokenHash === th && stamp.lastOkAt > 0 && !stamp.revoked) {
+      const age = now - stamp.lastOkAt;
+      if (age <= heartbeatGraceSec()) return;
+    }
+    throw new AppError(
+      'Ticket license lệch sổ cái Supabase (token_hash/exp). ' +
+        'Logo → Bản quyền: app sẽ tự rebind khi online, hoặc dán key mới từ seller.',
       { code: 'AUTH', status: 403 },
     );
   }

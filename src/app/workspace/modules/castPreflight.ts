@@ -286,7 +286,7 @@ export function runChapterCastPreflight(params: {
 
 export function formatChapterPreflightConfirm(
   ch: ChapterPreflightResult,
-  opts?: { onlyFailed?: boolean },
+  _opts?: Record<string, never>,
 ): string {
   // Rough ETA: ~4s/seg multi + 8s single overhead per scene
   const etaSec = Math.max(
@@ -296,7 +296,7 @@ export function formatChapterPreflightConfirm(
   const etaMin = Math.ceil(etaSec / 60);
 
   const lines: string[] = [
-    opts?.onlyFailed ? 'Gen lại cảnh lỗi — preflight:' : 'Gen TTS cả chương — preflight:',
+    'Gen TTS cả chương — preflight:',
     `• Chạy được: ${ch.runnable.length}/${ch.scenes.length} cảnh`,
     `• Multi: ${ch.multiScenes} cảnh · ~${ch.totalSegments} đoạn`,
     `• Ước tính: ~${ch.estimatedCredits} credit · ~${etaMin} phút`,

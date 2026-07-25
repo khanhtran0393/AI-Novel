@@ -37,12 +37,15 @@ interface SidebarProps {
   handleWriteChapter: (overwrite?: boolean, chapterNumber?: number) => Promise<void>;
   isStreaming: boolean;
   onImageZoom: (url: string) => void;
+  /** Clear Setup dismiss latch in page — always show modal when user clicks Setup */
+  onOpenSetup?: () => void;
 }
 
 export default function Sidebar({
   handleWriteChapter,
   isStreaming,
   onImageZoom,
+  onOpenSetup,
 }: SidebarProps) {
   const tenTacPham = useNovelStore(selectTenTacPham);
   const updateTenTacPham = useNovelStore(selectUpdateTenTacPham);
@@ -53,11 +56,13 @@ export default function Sidebar({
   const [isContinueOpen, setIsContinueOpen] = useState(false);
 
   const openClassicSetup = () => {
+    onOpenSetup?.();
     setSetupKind('classic');
     setGiaiDoan(1);
   };
 
   const openYoutubeSetup = () => {
+    onOpenSetup?.();
     setSetupKind('youtube');
     setGiaiDoan(1);
   };

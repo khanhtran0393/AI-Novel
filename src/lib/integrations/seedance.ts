@@ -608,22 +608,25 @@ const DEFAULT_EMOTION_FACE: Record<string, string> = {
 
 /**
  * Apply still director formula to character sheet outputs:
- * master prompt + angle_prompts + expression_prompts.
- * Keeps identity lock text; strips slop; locks framing per angle/emotion.
+ * master prompt + angle_prompts + expression_prompts + pose_prompts.
+ * Keeps identity lock text; strips slop; locks framing per angle/emotion/pose.
  */
 export function applyCharacterSheetFormulas(input: {
   name: string;
   prompt?: string;
   angle_prompts?: Record<string, string> | null;
   expression_prompts?: Record<string, string> | null;
+  pose_prompts?: Record<string, string> | null;
   styleHint?: string;
   genre?: string;
   angleFraming?: Record<string, string>;
   emotionFace?: Record<string, string>;
+  poseAction?: Record<string, string>;
 }): {
   prompt: string;
   angle_prompts: Record<string, string>;
   expression_prompts: Record<string, string>;
+  pose_prompts: Record<string, string>;
 } {
   const name = (input.name || 'character').trim();
   const style = requireDirectorStyle({
@@ -633,6 +636,7 @@ export function applyCharacterSheetFormulas(input: {
   const genre = String(input.genre || '').trim() || style;
   const angleFraming = { ...DEFAULT_ANGLE_FRAMING, ...(input.angleFraming || {}) };
   const emotionFace = { ...DEFAULT_EMOTION_FACE, ...(input.emotionFace || {}) };
+  const poseAction = { ...(input.poseAction || {}) };
 
   const masterRaw = (input.prompt || '').trim() || `${name} portrait identity lock`;
   const master = compileStillImagePrompt({
@@ -684,10 +688,33 @@ export function applyCharacterSheetFormulas(input: {
     expression_prompts[key] = directed.prompt;
   }
 
+  const pose_prompts: Record<string, string> = {};
+  const poseIn =
+    input.pose_prompts && typeof input.pose_prompts === 'object'
+      ? input.pose_prompts
+      : {};
+  const poseKeys = Object.keys(poseIn).length
+    ? Object.keys(poseIn)
+    : Object.keys(poseAction);
+  for (const key of poseKeys) {
+    const raw = (poseIn[key] || masterRaw).trim();
+    const action = poseAction[key] || 'full-body character action pose, consistent identity';
+    const directed = compileStillImagePrompt({
+      sceneText: `${raw}. ${action}`,
+      characterHints: [name],
+      styleHint: style,
+      genre,
+      shotScalePrefix:
+        'full-body character pose reference, same face lock marks outfit proportions, only action changes',
+    });
+    pose_prompts[key] = directed.prompt;
+  }
+
   return {
     prompt: master.prompt,
     angle_prompts,
     expression_prompts,
+    pose_prompts,
   };
 }
 

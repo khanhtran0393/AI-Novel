@@ -27,6 +27,13 @@ const required = [
   'vendor/FableCut/LICENSE',
   'vendor/FableCut/library/fonts/OFL.txt',
   'vendor/FableCut/library/fonts/SHA256SUMS.txt',
+  'tools/xinchao-cut/LICENSE',
+  'tools/xinchao-cut/package.json',
+  'tools/xinchao-cut/dist/index.html',
+  'tools/xinchao-cut/XinChao-Cut.exe',
+  'tools/xinchao-cut/backend/run-backend.bat',
+  'tools/xinchao-cut/backend/app/main.py',
+  'tools/xinchao-cut/src-tauri/tauri.conf.json',
   'python_core/ainovel_host_guard.py',
   'python_core/api_nav_subtitle.py',
   'python_core/cli_bg_remove.py',
@@ -61,6 +68,31 @@ const required = [
 ];
 for (const relative of required) {
   assert.ok(fs.existsSync(path.join(resources, relative)), `Missing ${relative}`);
+}
+
+const xinchaoRoot = path.join(resources, 'tools', 'xinchao-cut');
+const xinchaoExe = path.join(xinchaoRoot, 'XinChao-Cut.exe');
+const xinchaoBytes = fs.readFileSync(xinchaoExe);
+assert.ok(xinchaoBytes.length > 1_000_000, 'XinChao-Cut native runtime is unexpectedly small');
+assert.equal(
+  xinchaoBytes.subarray(0, 2).toString('ascii'),
+  'MZ',
+  'XinChao-Cut native runtime is not a Windows PE executable',
+);
+for (const generatedDir of [
+  'node_modules',
+  path.join('backend', '.pytest_cache'),
+  path.join('src-tauri', 'target'),
+  path.join('src-tauri', 'backend-bundle'),
+  path.join('src-tauri', 'gen'),
+  '.venv',
+  'venv',
+]) {
+  assert.equal(
+    fs.existsSync(path.join(xinchaoRoot, generatedDir)),
+    false,
+    `Generated XinChao-Cut directory leaked into package: ${generatedDir}`,
+  );
 }
 
 const capcutManifestPath = path.join(resources, 'capcut_api', 'capcut_runtime_manifest.json');
@@ -98,6 +130,7 @@ for (const expected of [
   'electron\\credentialVault.js',
   'electron\\securityPolicy.js',
   'electron\\updater.js',
+  'electron\\xinchaoRuntimeHost.cjs',
 ]) {
   assert.ok(normalized.includes(expected), `Missing ASAR entry ${expected}`);
 }
@@ -232,7 +265,7 @@ for (const secretName of [
   );
 }
 
-// resources/bin is reserved for ship TTS (la-studio-kokoro only) — not a free-for-all dump
+// resources/bin = ship TTS only (Kokoro-VI + Piper Free tier) — not a free-for-all dump
 const binRoot = path.join(resources, 'bin');
 if (fs.existsSync(binRoot)) {
   const binKids = fs
@@ -240,12 +273,13 @@ if (fs.existsSync(binRoot)) {
     .map((d) => d.name)
     .filter((n) => n !== '.' && n !== '..')
     .sort();
-  const allowedBin = new Set(['la-studio-kokoro']);
+  // la-studio-kokoro (Trial/Pro LA Studio) + piper runtime + piper_vn ONNX (Free TTS)
+  const allowedBin = new Set(['la-studio-kokoro', 'piper', 'piper_vn']);
   const leaked = binKids.filter((n) => !allowedBin.has(n));
   assert.deepEqual(
     leaked,
     [],
-    `Unapproved resources under resources/bin: ${JSON.stringify(leaked)} (only la-studio-kokoro allowed)`,
+    `Unapproved resources under resources/bin: ${JSON.stringify(leaked)} (allowed: la-studio-kokoro, piper, piper_vn)`,
   );
   const kokoroCli = path.join(
     binRoot,
@@ -266,6 +300,20 @@ if (fs.existsSync(binRoot)) {
   assert.ok(
     fs.existsSync(kokoroOnnx),
     'Packaged Kokoro-VI missing: bin/la-studio-kokoro/models/kokoro_vi.onnx',
+  );
+  const piperExe = path.join(binRoot, 'piper', 'piper.exe');
+  assert.ok(
+    fs.existsSync(piperExe),
+    'Packaged Piper missing: bin/piper/piper.exe',
+  );
+  const piperVn = path.join(binRoot, 'piper_vn');
+  assert.ok(fs.existsSync(piperVn), 'Packaged Piper VN models dir missing: bin/piper_vn');
+  const piperOnnx = fs
+    .readdirSync(piperVn)
+    .filter((n) => n.toLowerCase().endsWith('.onnx'));
+  assert.ok(
+    piperOnnx.length >= 1,
+    `Packaged Piper VN needs ≥1 .onnx under bin/piper_vn (got ${piperOnnx.length})`,
   );
 }
 // release notes for UpdateSuccessModal

@@ -10,10 +10,15 @@
 ## Cấp license
 
 ```powershell
-npm run license:issue -- --token --hwid <HWID> --plan pro --expDays 30
-npm run license:issue -- --token --hwid <HWID> --plan pro --expDays 365
-npm run license:issue -- --plan pro --count 1 --seats 3 --note 'team-3'
+$env:AINOVEL_LICENSE_API_URL='https://<license-api>'
+$env:AINOVEL_ENTITLEMENT_ADMIN_KEY='<admin-key>'
+npm run license:issue -- --hwid <HWID> --expDays 30
+npm run license:issue -- --hwid <HWID> --expDays 365
 ```
+
+CLI gọi API one-path; API chỉ trả token sau khi `licenses.token_hash`,
+`exp_at` và HWID đã được ghi thành công lên Supabase. Batch code dùng
+`POST /api/entitlement/codes`; mỗi mã chỉ dành cho 1 HWID.
 
 Pro trọn đời vẫn là `plan: pro`, dùng hạn dài theo chính sách seller.
 

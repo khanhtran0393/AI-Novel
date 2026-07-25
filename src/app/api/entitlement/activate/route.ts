@@ -16,6 +16,7 @@ import {
   verifyEntitlementToken,
 } from '@/lib/entitlement';
 import { redeemActivationCode } from '@/lib/commercial/activationVault';
+import { retireLocalTrialAfterPaidPro } from '@/lib/commercial/trial';
 import {
   assertLicenseSignerConfigured,
   isPackagedCustomerRuntime,
@@ -237,20 +238,35 @@ export async function POST(req: Request) {
             },
           );
         }
+        const remoteClaims = remote.payload.claims as
+          | { is_pro?: boolean; is_trial?: boolean }
+          | undefined;
+        if (
+          remoteClaims?.is_pro === true &&
+          remoteClaims.is_trial !== true
+        ) {
+          retireLocalTrialAfterPaidPro(hwid);
+        }
         return NextResponse.json(remote.payload, { status: remote.status });
       }
       assertLicenseSignerConfigured();
       if (isSupabaseAdminConfigured()) {
+        // Supabase authority: ledger only — never fall back to local vault.
         const cloud = await redeemCloudActivationCode({
           service: createServiceSupabase(),
           code,
           hwid,
         });
+        if (claimsArePaidPro(cloud.claims)) {
+          retireLocalTrialAfterPaidPro(hwid);
+        }
         return NextResponse.json({
           ok: true,
           kind: 'code',
           token: cloud.token,
           plan: cloud.claims.plan,
+          firstBind: !!cloud.firstBind,
+          alreadyRedeemedSameMachine: !!cloud.alreadyRedeemedSameMachine,
           claims: {
             is_pro: cloud.claims.is_pro,
             is_vip: false,
@@ -264,6 +280,7 @@ export async function POST(req: Request) {
           storeHint: 'Lưu token vào localStorage.ainovel.entitlementToken',
         });
       }
+      // Dev/seller without SERVICE_ROLE only — local vault redeem.
       const redeemed = redeemActivationCode(code, hwid);
       if (!redeemed.ok || !redeemed.token) {
         throw new AppError(redeemed.error || 'Redeem thất bại', {
@@ -329,20 +346,59 @@ export async function POST(req: Request) {
       });
     }
     const tokenHwid = (claimsAnyHwid.hwid || '').toLowerCase();
-    if (tokenHwid && tokenHwid !== machineHwid) {
+    if (!tokenHwid && (isSupabaseAdminConfigured() || isPackagedCustomerRuntime())) {
       throw new AppError(
-        `Key gắn HWID ${tokenHwid.toUpperCase()} — máy này là ${machineHwid.toUpperCase()}. ` +
+        'License thương mại phải được gắn HWID trước khi kích hoạt.',
+        { code: 'AUTH', status: 401 },
+      );
+    }
+    if (tokenHwid && tokenHwid !== hwid) {
+      throw new AppError(
+        `Key gắn HWID ${tokenHwid.toUpperCase()} — máy này là ${hwid.toUpperCase()}. ` +
           'Key chỉ kích hoạt đúng máy đã bấm «Đã thanh toán» / HWID gửi admin. Không dùng key máy khác.',
         { code: 'AUTH', status: 401 },
       );
     }
 
-    let claims = verifyEntitlementToken(token, { requireHwidMatch: true });
+    let claims = claimsAnyHwid;
     if (!claims || (!claims.is_pro && !claims.is_vip && !claims.is_trial)) {
       throw new AppError(
         'Token không khớp HWID máy này.',
         { code: 'AUTH', status: 401 },
       );
+    }
+
+    if (isPackagedCustomerRuntime()) {
+      const remote = await proxyLicenseApiPost('/api/entitlement/activate', {
+        token,
+        hwid,
+      });
+      if (remote.status < 200 || remote.status >= 300) {
+        throw new AppError(
+          String(
+            remote.payload.error ||
+              remote.payload.message ||
+              `Activation HTTP ${remote.status}`,
+          ),
+          {
+            code:
+              remote.status === 401 || remote.status === 403
+                ? 'AUTH'
+                : 'INFRA',
+            status: remote.status,
+          },
+        );
+      }
+      const remoteClaims = remote.payload.claims as
+        | { is_pro?: boolean; is_trial?: boolean }
+        | undefined;
+      if (
+        remoteClaims?.is_pro === true &&
+        remoteClaims.is_trial !== true
+      ) {
+        retireLocalTrialAfterPaidPro(hwid);
+      }
+      return NextResponse.json(remote.payload, { status: remote.status });
     }
 
     // Paid Pro token must never collapse to trial claims for the UI response
@@ -369,7 +425,7 @@ export async function POST(req: Request) {
           const promoted = await promoteHwidLicenseToPaidPro({
             service,
             token,
-            hwid: machineHwid,
+            hwid,
             exp: claims.exp,
           });
           if (!promoted.ok) {
@@ -385,7 +441,7 @@ export async function POST(req: Request) {
           // Trial / other: bind token to existing active row only
           const bound = await bindTokenToExistingLicense({
             token,
-            hwid: machineHwid,
+            hwid,
             exp: claims.exp,
             isTrial: claimsIsTrial(claims),
           });
@@ -393,7 +449,7 @@ export async function POST(req: Request) {
             const cloud = await verifyLicenseCloud({
               service,
               token,
-              hwid: machineHwid,
+              hwid,
             });
             if (cloud.cloud.revoked) {
               throw new AppError('License đã bị thu hồi trên Supabase.', {
@@ -410,7 +466,7 @@ export async function POST(req: Request) {
           const cloud = await verifyLicenseCloud({
             service,
             token,
-            hwid: machineHwid,
+            hwid,
           });
           if (cloud.valid && cloud.claims) {
             claims = cloud.claims;
@@ -427,6 +483,9 @@ export async function POST(req: Request) {
       }
     }
 
+    if (paidToken) {
+      retireLocalTrialAfterPaidPro(hwid);
+    }
     const trialOut = claimsIsTrial(claims);
     return NextResponse.json({
       ok: true,
@@ -440,7 +499,7 @@ export async function POST(req: Request) {
         exp: claims.exp,
         expIso: new Date(claims.exp * 1000).toISOString(),
       },
-      hwid: machineHwid.toUpperCase(),
+      hwid: hwid.toUpperCase(),
       licenseId,
       authority,
       storeHint: 'Lưu token vào localStorage.ainovel.entitlementToken',

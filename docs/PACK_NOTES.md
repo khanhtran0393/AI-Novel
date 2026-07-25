@@ -108,6 +108,7 @@ preflight:pack
   → brand:icons + brand:sync
   → with-crown-sealed-build (Next + crown seal)
   → build:capcut-runtime
+  → xinchao:build:verified (parity + frontend/backend tests + Tauri exe)
   → electron-builder (NSIS → dist-qa-unsigned)
        beforePack: brand + shell re-harden
        afterPack:  rcedit → crown → fuses

@@ -92,7 +92,8 @@ export function resolveRulesForProject(
     return {
       ...merged,
       chapterWordsMin: Math.round(goal * 0.92),
-      chapterWordsMax: Math.round(goal * 1.25),
+      // Ceiling = selected goal + 20% (same as wordBand WORD_CEILING_RATIO)
+      chapterWordsMax: Math.round(goal * 1.2),
       source: `${merged.source}+setupGoal:${goal}`,
     };
   }

@@ -132,9 +132,11 @@ AI Novel
 |-------|------|
 | UI | `workspace/features/project/*` (CapCut, Ship, Import) |
 | API | `api/export-capcut`, `api/ship-pack` |
-| Lib | `lib/shipPack`, `lib/integrations/fablecut` |
+| Lib | `lib/shipPack`, `lib/integrations/fablecut`, `lib/integrations/xinchaoCut` |
+| Desktop runtime | `workspace/hooks/useCapCutExport`, `workspace/modules/capCutModule`, `electron/xinchaoRuntimeHost.cjs`, `tools/xinchao-cut` (vendored Tauri app + backend) |
 
 **Server gate:** `assertProAccess` khi `ENTITLEMENT_MODE=enforce`.
+Nút CapCut chỉ mở runtime XinChao-Cut thuộc bản cài AI Novel; không nhận root từ renderer và không fallback về repo ngoài.
 
 ---
 

@@ -36,6 +36,46 @@ import {
   runStageBatch,
   readStageMeta,
 } from '@/lib/pipeline';
+import { scheduleAppWork } from '@/lib/appWork';
+
+/** Paid Pro (not trial) ignores local credit balance. Free + Trial meter. */
+function isUnlimitedCreditPlan(
+  store: ReturnType<typeof useNovelStore.getState>,
+): boolean {
+  return !!store.is_vip || (!!store.is_pro && !store.is_trial);
+}
+
+/**
+ * Batch preflight for GEN TẤT CẢ ẢNH / GEN TOÀN BỘ VIDEO.
+ * Unit costs: image=1, video=2 (match deductCredits in single-shot handlers).
+ * credits=0 → hard-stop with clear toast (no silent job queue of all-fail).
+ */
+function assertBatchCreditsOrToast(opts: {
+  unitCost: number;
+  itemCount: number;
+  kindLabel: string;
+}): boolean {
+  const st = useNovelStore.getState();
+  if (isUnlimitedCreditPlan(st)) return true;
+  const credits = Math.max(0, Number(st.credits) || 0);
+  const unit = Math.max(1, opts.unitCost);
+  const needTotal = unit * Math.max(1, opts.itemCount);
+  if (credits < unit) {
+    toast.error(
+      'Hết tín dụng',
+      `Cần ≥${unit} tín dụng để ${opts.kindLabel} (còn ${credits}). Nạp thêm hoặc kích hoạt Pro.`,
+    );
+    return false;
+  }
+  if (credits < needTotal) {
+    const maxItems = Math.floor(credits / unit);
+    toast.warn(
+      'Tín dụng không đủ cả lô',
+      `Cần ~${needTotal} cho ${opts.itemCount} ${opts.kindLabel}, còn ${credits}. Sẽ gen tối đa ~${maxItems} rồi dừng khi hết.`,
+    );
+  }
+  return true;
+}
 
 function hasImageCredentials(store: ReturnType<typeof useNovelStore.getState>): boolean {
   // Google Flow: credential = browser session (extension + ya29), not API key
@@ -471,7 +511,25 @@ export function useImagePromptActions() {
     }
   };
 
-  const handleGenerateAllImages = async (sceneIndex: number) => {
+  const handleGenerateAllImages = (sceneIndex: number) => {
+    // Detach from UI click — mute persist + yield paint on background flow
+    const ch = useNovelStore.getState().chuong_dang_chon;
+    const { promise } = scheduleAppWork({
+      kind: 'image',
+      title: `Gen all ảnh · Ch.${ch} · Cảnh ${sceneIndex + 1}`,
+      mutePersist: true,
+      yieldBeforeStart: true,
+      meta: { chapter: ch, sceneIndex },
+      run: async (ctl) => {
+        ctl.setMessage('Gen ảnh hàng loạt trên luồng nền…');
+        await handleGenerateAllImagesInner(sceneIndex);
+        ctl.setProgress(100, 'Xong gen ảnh');
+      },
+    });
+    return promise;
+  };
+
+  const handleGenerateAllImagesInner = async (sceneIndex: number) => {
     const st0 = useNovelStore.getState();
     const assetKey = sceneAssetKey(st0.chuong_dang_chon, sceneIndex);
     const promptsAsset = st0.generatedPrompts[assetKey] || [];
@@ -485,6 +543,17 @@ export function useImagePromptActions() {
         'Thiếu credential ảnh',
         'Flow: kết nối browser trong Ảnh/Video. Hoặc cấu hình API key / Cookie (legacy).',
       );
+      return;
+    }
+
+    // Free/Trial: unit cost 1/ảnh — credits=0 chặn trước khi xếp job (tránh silent all-fail)
+    if (
+      !assertBatchCreditsOrToast({
+        unitCost: 1,
+        itemCount: promptsAsset.length,
+        kindLabel: 'gen ảnh',
+      })
+    ) {
       return;
     }
 
@@ -610,6 +679,9 @@ export function useImagePromptActions() {
             prompt ||
             '',
         ).trim();
+        const hasStartImg = Boolean(
+          st.generatedImages?.[startKey] || st.generatedImages?.[endKey],
+        );
         const pf = evaluateMediaPreflight({
           stage: 'video',
           chapter: st.chuong_dang_chon,
@@ -620,8 +692,15 @@ export function useImagePromptActions() {
           wpm: Number(st.wpm),
           secondsPerBeat: Number(st.secondsPerBeat),
           hasVideoPrompt: Boolean(vp),
-          hasStartImage: Boolean(st.generatedImages?.[startKey] || st.generatedImages?.[endKey]),
+          hasStartImage: hasStartImg,
+          hasEndImage: Boolean(
+            st.generatedImages?.[startKey] &&
+              st.generatedImages?.[endKey] &&
+              String(st.generatedImages[startKey]).split('?')[0] !==
+                String(st.generatedImages[endKey]).split('?')[0],
+          ),
           videoProvider: st.videoProvider,
+          videoModel: st.videoModel,
           requireQualityGate: true,
         });
         assertMediaPreflight(pf);
@@ -652,10 +731,10 @@ export function useImagePromptActions() {
       const endPromptItem = promptsAsset[endPromptIndex];
       const startPromptItem = promptsAsset[startPromptIndex];
       const finalPrompt = (endPromptItem?.video_prompt || '').trim();
+      // Dual first+last ONLY when user bật Start+End (or explicit two indices from that path).
+      // Do NOT treat middle "Nối" legacy range as silent Start+End — that blocked Flow 1-still gen.
       const wantsEndFrame = Boolean(
-        endPromptItem?.use_end_frame ||
-          startPromptItem?.use_end_frame ||
-          (startPromptIndex !== endPromptIndex),
+        endPromptItem?.use_end_frame || startPromptItem?.use_end_frame,
       );
       const hasDualStills = Boolean(
         startImage &&
@@ -663,16 +742,26 @@ export function useImagePromptActions() {
           String(startImage).split('?')[0] !== String(endImage).split('?')[0],
       );
 
-      // Flow: T2V (text only) or I2V (1+ images). Legacy providers need 2 frames.
+      // Flow: T2V (text only) or I2V (1+ images). Legacy providers need 2 frames for interpol.
       const isFlow = st.videoProvider === 'flow';
       if (wantsEndFrame && !hasDualStills) {
         throw new Error(
           'Keyframe Start+End: cần 2 ảnh khác nhau (start + end). Gen đủ 2 still rồi thử lại — app không fallback 1 frame.',
         );
       }
-      if (!isFlow && (!startImage || !endImage)) {
+      // Legacy dual-index without Start+End checkbox: still need 2 stills for interpol path
+      if (
+        !isFlow &&
+        startPromptIndex !== endPromptIndex &&
+        (!startImage || !endImage || !hasDualStills)
+      ) {
         throw new Error(
           'Cần sinh ảnh cho cả 2 Prompt trước khi tạo Video nội suy (provider legacy)!',
+        );
+      }
+      if (!isFlow && startPromptIndex === endPromptIndex && !startImage && !endImage) {
+        throw new Error(
+          'Cần sinh ảnh trước khi tạo Video (provider legacy)!',
         );
       }
       if (!finalPrompt) {
@@ -681,7 +770,7 @@ export function useImagePromptActions() {
 
       // Sibling first+last model when dual stills (not provider swap — B10-safe FL variant)
       let videoModelResolved = String(st.videoModel || '').trim();
-      if (isFlow && hasDualStills && videoModelResolved) {
+      if (isFlow && hasDualStills && wantsEndFrame && videoModelResolved) {
         try {
           const { resolveFirstLastModel } = await import(
             '@/lib/flow-bridge/modelCatalog'
@@ -693,13 +782,41 @@ export function useImagePromptActions() {
         }
       }
 
-      const promptDuration = parsePromptDuration(endPromptItem?.timestamp);
+      // Flow Veo only accepts 4|6|8. Timestamp shot length (TTS band) often ≠ that —
+      // prefer Media Config videoDuration, else nearest legal (toast once).
+      let promptDuration = parsePromptDuration(endPromptItem?.timestamp);
+      if (isFlow && ![4, 6, 8].includes(promptDuration)) {
+        const configured = Number(st.videoDuration);
+        if ([4, 6, 8].includes(configured)) {
+          promptDuration = configured;
+        } else {
+          const { clampFlowVideoDuration } = await import(
+            '@/lib/flow-bridge/modelCatalog'
+          );
+          promptDuration = clampFlowVideoDuration(
+            promptDuration,
+            videoModelResolved || st.videoModel,
+          );
+        }
+        if (!silentError) {
+          toast.info(
+            'Flow · thời lượng',
+            `Shot ${promptDuration}s (Flow chỉ 4/6/8 — đã lấy từ Cấu hình / nearest).`,
+          );
+        }
+      }
       const characterHints = [
         ...(st.nhan_vat || []),
         ...Object.keys(st.nhan_vat_prompts || {}),
       ].filter(Boolean);
 
-      // B — auto cast concept sheets as ingredients (max 3)
+      /**
+       * Flow path rules (locked product logic):
+       * - Start+End (2 ảnh liền kề khác nhau) → I2V first+last (startImage+endImage, mode auto).
+       *   KHÔNG nhét start/end vào ingredients (R2V) — tránh MODEL_MISMATCH / sai endpoint.
+       * - R2V/Ingredients chỉ khi UI model nhánh reference, hoặc cast sheet + model R2V.
+       * - 1 still → I2V pure (start only).
+       */
       const castPaths = resolveCastIngredientPaths({
         prompt: finalPrompt,
         sentence: endPromptItem?.sentence || endPromptItem?.script_prompt || '',
@@ -708,18 +825,52 @@ export function useImagePromptActions() {
         generatedImages: st.generatedImages || {},
         max: 3,
       });
-      const ingredientPaths = [...castPaths];
-      for (const p of [startImage, endImage]) {
-        if (p && !ingredientPaths.includes(p.split('?')[0])) {
-          ingredientPaths.push(p);
+      let videoMode: 'auto' | 't2v' | 'i2v' | 'ingredients' | 'extend' = 'auto';
+      let ingredientPaths: string[] = [];
+      if (isFlow) {
+        let modelFamily = '';
+        try {
+          const { findFlowModel } = await import('@/lib/flow-bridge/modelCatalog');
+          modelFamily = String(
+            findFlowModel(videoModelResolved || st.videoModel)?.family || '',
+          );
+        } catch {
+          modelFamily = '';
         }
-      }
-      const videoMode =
-        ingredientPaths.length >= 2
-          ? 'ingredients'
-          : castPaths.length >= 1
+        const wantsR2v = modelFamily === 'reference';
+        if (wantsEndFrame && hasDualStills) {
+          // Adjacent stills = first+last I2V (checkbox Start+End only)
+          videoMode = 'auto';
+          ingredientPaths = [];
+        } else if (wantsR2v) {
+          const seen = new Set<string>();
+          for (const p of [...castPaths, startImage, endImage]) {
+            const n = p ? String(p).split('?')[0] : '';
+            if (n && !seen.has(n)) {
+              seen.add(n);
+              ingredientPaths.push(n);
+            }
+          }
+          videoMode = ingredientPaths.length >= 1 ? 'ingredients' : 'auto';
+        } else {
+          // Single still / T2V — cast alone does not force R2V (needs R2V model in Cấu hình)
+          videoMode = 'auto';
+          ingredientPaths = [];
+        }
+      } else {
+        // Legacy providers: keep prior multi-ref packing
+        ingredientPaths = [...castPaths];
+        for (const p of [startImage, endImage]) {
+          const n = p ? String(p).split('?')[0] : '';
+          if (n && !ingredientPaths.includes(n)) ingredientPaths.push(n);
+        }
+        videoMode =
+          ingredientPaths.length >= 2
             ? 'ingredients'
-            : 'auto';
+            : castPaths.length >= 1
+              ? 'ingredients'
+              : 'auto';
+      }
 
       const data = await generateVideoAction(
         {
@@ -729,7 +880,9 @@ export function useImagePromptActions() {
           prompt: finalPrompt,
           duration: promptDuration,
           startImage: startImage || undefined,
-          endImage: hasDualStills ? endImage || undefined : undefined,
+          // First+last only when Start+End intentionally on + 2 different stills
+          endImage:
+            wantsEndFrame && hasDualStills ? endImage || undefined : undefined,
           model: videoModelResolved || st.videoModel,
           videoProvider: st.videoProvider,
           videoApiKey: resolveVideoApiKey(st),
@@ -737,7 +890,9 @@ export function useImagePromptActions() {
           useGpuAcceleration: st.useGpuAcceleration,
           characterHints,
           environmentHint: st.visualDnaPrompt || st.mediaStylePreset,
-          ingredientPaths: ingredientPaths.slice(0, 3),
+          ingredientPaths: ingredientPaths.length
+            ? ingredientPaths.slice(0, 3)
+            : undefined,
           videoMode,
           camera: cameraFromScaleIndex(endPromptIndex % 6),
         },
@@ -933,7 +1088,24 @@ export function useImagePromptActions() {
     }
   };
 
-  const handleGenerateAllVideos = async (sceneIndex: number) => {
+  const handleGenerateAllVideos = (sceneIndex: number) => {
+    const ch = useNovelStore.getState().chuong_dang_chon;
+    const { promise } = scheduleAppWork({
+      kind: 'video',
+      title: `Gen all video · Ch.${ch} · Cảnh ${sceneIndex + 1}`,
+      mutePersist: true,
+      yieldBeforeStart: true,
+      meta: { chapter: ch, sceneIndex },
+      run: async (ctl) => {
+        ctl.setMessage('Gen video hàng loạt trên luồng nền…');
+        await handleGenerateAllVideosInner(sceneIndex);
+        ctl.setProgress(100, 'Xong gen video');
+      },
+    });
+    return promise;
+  };
+
+  const handleGenerateAllVideosInner = async (sceneIndex: number) => {
     const st0 = useNovelStore.getState();
     const assetKey = sceneAssetKey(st0.chuong_dang_chon, sceneIndex);
     const promptsAsset = st0.generatedPrompts[assetKey] || [];
@@ -946,11 +1118,26 @@ export function useImagePromptActions() {
       return;
     }
 
-    // Flow: each prompt can be T2V alone; legacy: adjacent pairs for I2V
+    // Flow: mỗi prompt 1 clip; bật Start+End → 2 ảnh liền kề (resolveVideoKeyframeRange)
+    // Legacy: adjacent pairs I2V
     const pairs: Array<[number, number]> = [];
     if (st0.videoProvider === 'flow') {
+      const { resolveVideoKeyframeRange } = await import(
+        '@/lib/projectProgress'
+      );
       for (let i = 0; i < promptsAsset.length; i++) {
-        pairs.push([i, i]);
+        const item = promptsAsset[i];
+        // Flow: 1 clip/prompt; dual only when Start+End (singleClipPerPrompt default true)
+        const range = resolveVideoKeyframeRange({
+          promptIndex: i,
+          promptsLen: promptsAsset.length,
+          useEndFrame: !!item?.use_end_frame,
+          endImageKey: item?.end_image_key,
+          chapter: st0.chuong_dang_chon,
+          sceneIndex,
+          singleClipPerPrompt: true,
+        });
+        pairs.push([range.startPromptIndex, range.endPromptIndex]);
       }
     } else if (promptsAsset.length === 1) {
       pairs.push([0, 0]);
@@ -958,6 +1145,17 @@ export function useImagePromptActions() {
       for (let i = 1; i < promptsAsset.length; i++) {
         pairs.push([i - 1, i]);
       }
+    }
+
+    // Free/Trial: unit cost 2/clip — credits=0 chặn trước khi xếp job
+    if (
+      !assertBatchCreditsOrToast({
+        unitCost: 2,
+        itemCount: pairs.length,
+        kindLabel: 'gen video',
+      })
+    ) {
+      return;
     }
 
     const isFlowV = st0.videoProvider === 'flow';

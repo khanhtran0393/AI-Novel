@@ -127,9 +127,13 @@ export function completeMediaGenProgress(
   } else {
     write(key, {
       generating: false,
-      progress: { percent: 0, phase: (errPhase || 'Lỗi').slice(0, 48) },
+      progress: {
+        percent: 0,
+        phase: (errPhase || 'Lỗi').replace(/\s+/g, ' ').trim().slice(0, 120),
+      },
     });
-    window.setTimeout(() => write(key, empty), 1400);
+    // Keep error visible longer so user can read captcha/model messages
+    window.setTimeout(() => write(key, empty), 4500);
   }
 }
 

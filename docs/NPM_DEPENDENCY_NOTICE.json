@@ -1,6 +1,6 @@
 {
   "app": "ai-novel-script-generator",
-  "version": "1.0.5",
+  "version": "1.0.12",
   "packages": [
     {
       "name": "@babel/code-frame",

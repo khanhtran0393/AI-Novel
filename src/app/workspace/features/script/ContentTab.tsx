@@ -85,15 +85,186 @@ interface ContentTabProps {
   setExpandedScene: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
-/** Only this leaf re-renders on typewriter ticks. */
+/**
+ * Live write stream: split by [CẢNH N] into collapsible frames.
+ * - Cảnh vừa xong (có cảnh mới phía sau) → tự thu gọn
+ * - Cảnh đang gen (cuối) → mở + con trỏ
+ * - User vẫn bấm Mở/Thu gọn tay — chỉ UI, không đụng store/TTS/media
+ */
 function StreamingScriptView() {
   const streamText = useStreamUi((s) => s.streamText);
-  return (
-    <div className="flex flex-col">
-      <div className="whitespace-pre-line bg-zinc-950/30 border border-zinc-900/50 rounded-lg p-6 text-md leading-loose font-sans">
-        {streamText}
-        <span className="inline-block h-4 w-2 bg-amber-500 animate-blink ml-1">▋</span>
+  const scenes = useMemo(() => parseScenes(streamText || ''), [streamText]);
+  const sceneCount = scenes.length;
+  const lastIdx = Math.max(0, sceneCount - 1);
+
+  /** openMap[i] === true → body visible; missing → default last open */
+  const [openMap, setOpenMap] = useState<Record<number, boolean>>({});
+  const prevCountRef = useRef(0);
+
+  // When a new scene tag appears, auto-collapse completed ones; keep only last open
+  useEffect(() => {
+    if (sceneCount <= 0) return;
+    if (sceneCount > prevCountRef.current) {
+      setOpenMap(() => {
+        const next: Record<number, boolean> = {};
+        for (let i = 0; i < sceneCount; i++) {
+          next[i] = i === sceneCount - 1;
+        }
+        return next;
+      });
+      prevCountRef.current = sceneCount;
+    }
+  }, [sceneCount]);
+
+  const isOpen = useCallback(
+    (i: number) => {
+      if (openMap[i] !== undefined) return openMap[i];
+      return i === lastIdx;
+    },
+    [openMap, lastIdx],
+  );
+
+  const toggle = useCallback((i: number) => {
+    setOpenMap((prev) => {
+      const cur =
+        prev[i] !== undefined ? prev[i] : i === lastIdx;
+      return { ...prev, [i]: !cur };
+    });
+  }, [lastIdx]);
+
+  if (!streamText?.trim()) {
+    return (
+      <div className="rounded-lg border border-zinc-900/50 bg-zinc-950/30 p-6 text-sm text-zinc-500">
+        Đang chờ nội dung stream…
+        <span className="ml-1 inline-block h-4 w-2 animate-blink bg-amber-500">▋</span>
       </div>
+    );
+  }
+
+  // No [CẢNH] tags yet — single live panel
+  if (sceneCount <= 1 && !/\[CẢNH\s+\d+\s*:/i.test(streamText)) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="px-0.5 text-[10px] text-zinc-500">
+          Đang gen kịch bản · khung cảnh sẽ tách khi xuất hiện tag{' '}
+          <code className="text-zinc-400">[CẢNH N: …]</code>
+        </p>
+        <div className="whitespace-pre-line rounded-lg border border-amber-900/40 bg-zinc-950/40 p-5 font-sans text-md leading-loose">
+          {streamText}
+          <span className="ml-1 inline-block h-4 w-2 animate-blink bg-amber-500">▋</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+        <p className="text-[10px] text-zinc-500">
+          Đang gen · <span className="tabular-nums text-zinc-400">{sceneCount}</span> khung
+          · cảnh xong tự thu gọn · bấm tiêu đề để mở lại
+        </p>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            className="rounded border border-zinc-700 bg-zinc-900/80 px-2 py-0.5 text-[9px] font-bold uppercase text-zinc-400 hover:text-zinc-200"
+            onClick={() => {
+              const next: Record<number, boolean> = {};
+              for (let i = 0; i < sceneCount; i++) next[i] = false;
+              setOpenMap(next);
+            }}
+          >
+            Thu gọn hết
+          </button>
+          <button
+            type="button"
+            className="rounded border border-zinc-700 bg-zinc-900/80 px-2 py-0.5 text-[9px] font-bold uppercase text-zinc-400 hover:text-zinc-200"
+            onClick={() => {
+              const next: Record<number, boolean> = {};
+              for (let i = 0; i < sceneCount; i++) next[i] = true;
+              setOpenMap(next);
+            }}
+          >
+            Mở hết
+          </button>
+        </div>
+      </div>
+
+      {scenes.map((sc, i) => {
+        const open = isOpen(i);
+        const isLive = i === lastIdx;
+        const words = (sc.content || '').trim()
+          ? sc.content.trim().split(/\s+/).filter(Boolean).length
+          : 0;
+        return (
+          <div
+            key={`stream-sc-${i}-${sc.title.slice(0, 24)}`}
+            className={`overflow-hidden rounded-xl border transition-colors ${
+              isLive
+                ? 'border-amber-600/50 bg-zinc-950/50 shadow-[0_0_12px_rgba(245,158,11,0.12)]'
+                : 'border-zinc-800/90 bg-zinc-950/30'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => toggle(i)}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-zinc-900/50"
+              aria-expanded={open}
+              title={open ? 'Thu gọn khung cảnh' : 'Mở khung cảnh'}
+            >
+              {open ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              )}
+              <span
+                className={`min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-wide ${
+                  isLive ? 'text-amber-400' : 'text-zinc-300'
+                }`}
+              >
+                {sc.title || `Cảnh ${i + 1}`}
+              </span>
+              <span className="shrink-0 text-[9px] tabular-nums text-zinc-500">
+                {words > 0 ? `${words} từ` : '…'}
+              </span>
+              {isLive ? (
+                <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">
+                  Đang gen
+                </span>
+              ) : (
+                <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-500">
+                  Xong
+                </span>
+              )}
+              <span className="shrink-0 text-[9px] font-bold uppercase text-zinc-500">
+                {open ? 'Thu gọn' : 'Mở'}
+              </span>
+            </button>
+            {open ? (
+              <div className="border-t border-zinc-900/80 px-4 py-3">
+                <div className="whitespace-pre-line font-sans text-md leading-loose text-zinc-200">
+                  {sc.content || (
+                    <span className="text-zinc-600 italic">Đang chờ nội dung…</span>
+                  )}
+                  {isLive ? (
+                    <span className="ml-1 inline-block h-4 w-2 animate-blink bg-amber-500">
+                      ▋
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="border-t border-zinc-900/40 px-3 py-1.5">
+                <p className="line-clamp-1 text-[11px] text-zinc-600">
+                  {(sc.content || '').replace(/\s+/g, ' ').trim().slice(0, 120) ||
+                    '— đã thu gọn —'}
+                  {(sc.content || '').length > 120 ? '…' : ''}
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -218,6 +389,7 @@ export default function ContentTab(props: ContentTabProps) {
   }, [isHydrated, chapterNum, hookContent, coldOpenIdx, scenes]);
 
   // Auto-select first body scene ONCE per chapter — never re-run when user collapses Phần
+  // Skipped right after write stream ends (see collapse-all effect below).
   useEffect(() => {
     if (!chapterContent?.trim()) return;
     if (didAutoSelectChapterRef.current === chapterNum) return;
@@ -246,6 +418,34 @@ export default function ContentTab(props: ContentTabProps) {
       prev[g.phan] === true ? prev : { ...prev, [g.phan]: true },
     );
   }, [expandedScene, phanGroups, HOOK]);
+
+  /**
+   * Sau gen xong (stream true → false): thu gọn hết SceneCard + Phần.
+   * Chỉ UI — không đụng store/TTS/media. Chặn auto-mở Hook trong cùng lần.
+   */
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isStreaming) {
+      wasStreamingRef.current = true;
+      return;
+    }
+    if (!wasStreamingRef.current) return;
+    wasStreamingRef.current = false;
+
+    didAutoSelectChapterRef.current = chapterNum;
+    skipAutoOpenPhanRef.current = true;
+    setExpandedScene(null);
+    setPhanOpenMap((prev) => {
+      const next: Record<number, boolean> = {};
+      for (const k of Object.keys(prev)) {
+        next[Number(k)] = false;
+      }
+      for (const g of phanGroups) {
+        next[g.phan] = false;
+      }
+      return next;
+    });
+  }, [isStreaming, chapterNum, setExpandedScene, phanGroups]);
 
   if (isStreaming) {
     return <StreamingScriptView />;
@@ -451,7 +651,7 @@ export default function ContentTab(props: ContentTabProps) {
                 </span>
               ) : null}
             </div>
-            <div className="flex gap-1.5 shrink-0">
+            <div className="flex gap-1.5 shrink-0 items-center">
               <button
                 type="button"
                 disabled={isStreaming}
@@ -466,6 +666,31 @@ export default function ContentTab(props: ContentTabProps) {
                 className="rounded bg-amber-500 px-2.5 py-1 text-[10px] font-bold uppercase text-black hover:bg-amber-400 disabled:opacity-40"
               >
                 Sửa theo nhận xét
+              </button>
+              <button
+                type="button"
+                disabled={isStreaming}
+                title="Bỏ qua nhận xét — giữ bản hiện tại, không sửa"
+                onClick={() => {
+                  useNovelStore.getState().dismissEditorReview(chapterNum);
+                }}
+                className="rounded border border-zinc-600 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-bold uppercase text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-40"
+              >
+                Bỏ qua
+              </button>
+              <button
+                type="button"
+                disabled={isStreaming}
+                aria-label="Đóng banner editor"
+                title="Đóng banner (bỏ qua yêu cầu sửa)"
+                onClick={() => {
+                  useNovelStore.getState().dismissEditorReview(chapterNum);
+                }}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white disabled:opacity-40"
+              >
+                <span className="block leading-none text-sm" aria-hidden>
+                  ×
+                </span>
               </button>
             </div>
           </div>

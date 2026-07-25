@@ -58,21 +58,32 @@ export async function handleIdeas(
       typeof payload?.similarity_target === 'number'
         ? Math.max(10, Math.min(100, Math.round(payload.similarity_target)))
         : 80;
+    // captions (default) | metadata (title+description when YouTube blocks captions)
+    const sourceKindRaw = String(
+      payload?.source_kind || payload?.sourceKind || '',
+    ).toLowerCase();
+    const isMetadata =
+      sourceKindRaw === 'metadata' ||
+      source.trim().startsWith('[NGUỒN YOUTUBE — METADATA');
     const excerpt = source.trim().slice(0, 12000);
     if (excerpt.length < 40) {
       return NextResponse.json(
         {
-          error:
-            'Thiếu bản chép lời (phụ đề) để phân tích cốt truyện — không dùng mô tả video.',
+          error: isMetadata
+            ? 'Thiếu tiêu đề/mô tả video để gợi ý cốt truyện. Gõ tay ô 3. Cốt truyện rồi Sinh kịch bản.'
+            : 'Thiếu bản chép lời (phụ đề) để phân tích cốt truyện — gõ tay ô 3 hoặc thử video khác có CC.',
         },
         { status: 400 },
       );
     }
-    const prompt = `Bạn là biên kịch chuyên phân tích BẢN CHÉP LỜI / PHỤ ĐỀ video YouTube để viết lại kịch bản MỚI nhưng tương tự.
+    const sourceLabel = isMetadata
+      ? 'METADATA (tiêu đề + mô tả video — KHÔNG phải phụ đề; độ tin cậy thấp hơn captions)'
+      : 'BẢN CHÉP LỜI (captions/transcript)';
+    const prompt = `Bạn là biên kịch chuyên phân tích nguồn YouTube để viết lại kịch bản MỚI nhưng tương tự.
 Tiêu đề video nguồn: "${title}"
 Mục tiêu độ bám ý tưởng mẫu khi viết lại sau này: ~${target}% (cấu trúc, xung đột, nhịp — KHÔNG copy lời).
 
-Nguồn = BẢN CHÉP LỜI (captions/transcript) — KHÔNG phải mô tả video:
+Nguồn = ${sourceLabel}:
 ---
 ${excerpt}
 ---
@@ -85,7 +96,11 @@ Nhiệm vụ: Bóc cốt truyện lõi thành 1 khối "mo_ta" tiếng Việt (h
 5) Tone / cảm xúc chủ đạo
 6) 3–5 "beat" bắt buộc giữ khi viết lại (ý tưởng, không nguyên văn)
 
-CẤM: copy nguyên câu phụ đề; CẤM tóm tắt kiểu spoiler list dài dòng.
+${
+  isMetadata
+    ? 'Nguồn chỉ là metadata — suy luận hợp lý từ tiêu đề/mô tả, CẤM bịa chi tiết như đã xem hết video; ghi rõ giả định nếu cần.'
+    : 'CẤM: copy nguyên câu phụ đề; CẤM tóm tắt kiểu spoiler list dài dòng.'
+}
 Chỉ trả về văn bản thuần (không markdown fence).`;
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
     const mo_ta = String(aiResponse || '').trim();
@@ -101,6 +116,7 @@ Chỉ trả về văn bản thuần (không markdown fence).`;
     return NextResponse.json({
       mo_ta,
       idea: mo_ta,
+      sourceKind: isMetadata ? 'metadata' : 'captions',
       usedApiKey: getLastWorkingApiKey(),
     });
   }

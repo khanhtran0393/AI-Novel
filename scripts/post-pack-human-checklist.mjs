@@ -59,6 +59,35 @@ const kokoro = path.join(
 );
 ok('Kokoro CLI shipped', fs.existsSync(kokoro));
 
+const piperExe = path.join(unpacked, 'resources', 'bin', 'piper', 'piper.exe');
+ok('Piper exe shipped', fs.existsSync(piperExe));
+const piperVnDir = path.join(unpacked, 'resources', 'bin', 'piper_vn');
+const piperOnnxCount = fs.existsSync(piperVnDir)
+  ? fs.readdirSync(piperVnDir).filter((n) => n.toLowerCase().endsWith('.onnx'))
+      .length
+  : 0;
+ok('Piper VN ONNX shipped', piperOnnxCount >= 1, `onnx=${piperOnnxCount}`);
+
+const xinchaoRoot = path.join(unpacked, 'resources', 'tools', 'xinchao-cut');
+const xinchaoExe = path.join(xinchaoRoot, 'XinChao-Cut.exe');
+ok(
+  'XinChao-Cut native runtime shipped',
+  fs.existsSync(xinchaoExe) && fs.statSync(xinchaoExe).size > 1_000_000,
+  xinchaoExe,
+);
+ok(
+  'XinChao-Cut frontend shipped',
+  fs.existsSync(path.join(xinchaoRoot, 'dist', 'index.html')),
+);
+ok(
+  'XinChao-Cut backend shipped',
+  fs.existsSync(path.join(xinchaoRoot, 'backend', 'run-backend.bat')),
+);
+ok(
+  'XinChao-Cut runtime has no external node_modules',
+  !fs.existsSync(path.join(xinchaoRoot, 'node_modules')),
+);
+
 const keys = path.join(unpacked, 'resources', 'license', 'public-keys');
 ok(
   'public-keys dir',

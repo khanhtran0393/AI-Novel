@@ -85,11 +85,23 @@ export function countSceneTags(text: string): number {
 export interface WordGateResult {
   wordCount: number;
   sceneCount: number;
+  /** Full-chapter target = Setup so_tu_chuong (entire script body) */
   wordGoal: number;
+  /** Floor 92% of goal — chapter still incomplete below this */
   wordMin: number;
+  /** Hard ceiling +20% of goal — do not auto-continue / pad past this */
+  wordMax: number;
   wordsOk: boolean;
   scenesOk: boolean;
+  /**
+   * Need more content only when under floor or under scenes,
+   * AND still under hard ceiling (tránh 200%+ so_tu).
+   */
   needsContinue: boolean;
+  /** wordCount > wordMax — UI đỏ / quality warning */
+  overSoftMax: boolean;
+  /** wordCount >= wordGoal — đã đạt mục tiêu Setup */
+  atOrOverGoal: boolean;
 }
 
 export function evaluateWordGate(
@@ -97,20 +109,38 @@ export function evaluateWordGate(
   wordGoal: number = DEFAULT_WORD_GOAL,
   minScenes: number = MIN_SCENE_COUNT,
 ): WordGateResult {
-  const goal = wordGoal > 0 ? wordGoal : DEFAULT_WORD_GOAL;
+  // Goal = full chapter target (user so_tu_chuong). Fallback DEFAULT only if invalid.
+  const goal = wordGoal > 0 ? Math.round(wordGoal) : DEFAULT_WORD_GOAL;
   const wordMin = Math.round(goal * 0.92);
+  const wordMax = Math.round(goal * 1.2);
   const wordCount = getWordCount(text);
   const sceneCount = countSceneTags(text);
   const wordsOk = wordCount >= wordMin;
   const scenesOk = sceneCount >= minScenes;
+  const overSoftMax = wordCount > wordMax;
+  const atOrOverGoal = wordCount >= goal;
+  /**
+   * Continue only when chapter incomplete AND still room under hard max (+20%).
+   * - Dưới sàn hoặc thiếu cảnh → bù (nếu < wordMax)
+   * - Đã ≥ goal và đủ cảnh → xong
+   * - Vượt wordMax → dừng (tránh 200%+ so_tu)
+   */
+  const needsContinue =
+    !overSoftMax &&
+    !(atOrOverGoal && scenesOk) &&
+    (!wordsOk || !scenesOk);
+
   return {
     wordCount,
     sceneCount,
     wordGoal: goal,
     wordMin,
+    wordMax,
     wordsOk,
     scenesOk,
-    needsContinue: !wordsOk || !scenesOk,
+    needsContinue,
+    overSoftMax,
+    atOrOverGoal,
   };
 }
 

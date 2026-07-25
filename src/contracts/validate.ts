@@ -130,6 +130,9 @@ export const CORE_PAYLOAD_SCHEMAS: Record<
       transcript: z.string().optional(),
       title: z.string().optional(),
       similarity_target: z.number().optional(),
+      /** captions | metadata — when YouTube blocks captions */
+      source_kind: z.string().optional(),
+      sourceKind: z.string().optional(),
     })
     .passthrough(),
   GENERATE_IMAGE_PROMPT: imagePromptPayloadSchema,

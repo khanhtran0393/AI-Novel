@@ -6,8 +6,20 @@ export function ResourceMonitor() {
 
   useEffect(() => {
     let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    /** 8s when visible; pause when tab hidden — was 3s (IPC/resources thrash). */
+    const INTERVAL_MS = 8_000;
+
     const poll = async () => {
+      if (!active) return;
       try {
+        if (
+          typeof document !== 'undefined' &&
+          document.visibilityState === 'hidden'
+        ) {
+          if (active) timer = setTimeout(poll, INTERVAL_MS);
+          return;
+        }
         const r = await fetch('/api/flow/resources', { cache: 'no-store' });
         if (r.ok) {
           const data = await r.json();
@@ -27,13 +39,16 @@ export function ResourceMonitor() {
             });
           }
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
-      if (active) setTimeout(poll, 3000);
+      if (active) timer = setTimeout(poll, INTERVAL_MS);
     };
-    poll();
-    return () => { active = false; };
+    void poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   if (!res) return null;

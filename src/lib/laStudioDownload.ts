@@ -182,17 +182,53 @@ function setJob(familyId: string, patch: Partial<DownloadJob>): DownloadJob {
   return next;
 }
 
+/**
+ * HF/GitHub often return relative Location (/api/resolve-cache/...).
+ * Node https.get(relative) → TypeError: Invalid URL — must resolve against current URL.
+ */
+function resolveRedirectUrl(fromUrl: string, location: string): string {
+  const loc = String(location || '').trim();
+  if (!loc) throw new Error('Empty redirect Location header');
+  if (/^https?:\/\//i.test(loc)) return loc;
+  try {
+    return new URL(loc, fromUrl).href;
+  } catch (e) {
+    throw new Error(
+      `Invalid redirect URL: location=${loc.slice(0, 120)} from=${fromUrl.slice(0, 120)} (${e instanceof Error ? e.message : String(e)})`,
+    );
+  }
+}
+
 function downloadFile(
   url: string,
   dest: string,
   onProgress?: (received: number, total: number) => void,
+  redirectDepth = 0,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (redirectDepth > 12) {
+      reject(new Error(`Too many redirects downloading ${url.slice(0, 160)}`));
+      return;
+    }
+    let absoluteUrl: string;
+    try {
+      absoluteUrl = /^https?:\/\//i.test(url)
+        ? url
+        : new URL(url).href; // throws Invalid URL if relative without base
+    } catch {
+      reject(
+        new Error(
+          `Invalid URL (relative redirect not resolved): ${String(url).slice(0, 160)}`,
+        ),
+      );
+      return;
+    }
+
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const file = fs.createWriteStream(dest);
-    const lib = url.startsWith('https') ? https : http;
+    const lib = absoluteUrl.startsWith('https') ? https : http;
     const req = lib.get(
-      url,
+      absoluteUrl,
       {
         headers: {
           'User-Agent': 'AI-Novel-FamilyDownload',
@@ -213,12 +249,28 @@ function downloadFile(
           } catch {
             /* ignore */
           }
-          downloadFile(res.headers.location, dest, onProgress).then(resolve, reject);
+          let next: string;
+          try {
+            next = resolveRedirectUrl(absoluteUrl, res.headers.location);
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+            res.resume();
+            return;
+          }
+          downloadFile(next, dest, onProgress, redirectDepth + 1).then(
+            resolve,
+            reject,
+          );
           return;
         }
         if (res.statusCode !== 200) {
           file.close();
-          reject(new Error(`HTTP ${res.statusCode} ${url}`));
+          try {
+            fs.unlinkSync(dest);
+          } catch {
+            /* ignore */
+          }
+          reject(new Error(`HTTP ${res.statusCode} ${absoluteUrl}`));
           res.resume();
           return;
         }
@@ -235,6 +287,11 @@ function downloadFile(
     req.on('error', (e) => {
       try {
         file.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        fs.unlinkSync(dest);
       } catch {
         /* ignore */
       }

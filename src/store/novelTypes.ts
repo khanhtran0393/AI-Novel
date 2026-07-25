@@ -233,6 +233,18 @@ export interface NovelState {
   imageCount: number;
   videoProvider: string;
   videoApiKey: string;
+  /**
+   * Optional base URL for external video API (HeyGen/custom).
+   * Empty → catalog default for provider.
+   */
+  videoApiBaseUrl: string;
+  /**
+   * Saved external video API entries (auto-detected or manual).
+   * Active selection drives videoProvider + videoApiKey when used.
+   */
+  externalVideoApis: import('@/lib/video-api').ExternalVideoApiEntry[];
+  /** Active external video API id (optional) */
+  activeExternalVideoApiId: string;
   videoAspectRatio: string;
   videoDuration: number;
   wpm?: number;
@@ -443,6 +455,17 @@ export interface NovelActions {
     opts?: { mirrorChannel?: boolean },
   ) => void;
   setVideoApiKey: (key: string) => void;
+  setVideoApiBaseUrl: (url: string) => void;
+  setExternalVideoApis: (
+    entries: import('@/lib/video-api').ExternalVideoApiEntry[],
+  ) => void;
+  upsertExternalVideoApi: (
+    entry: import('@/lib/video-api').ExternalVideoApiEntry,
+  ) => void;
+  removeExternalVideoApi: (id: string) => void;
+  setActiveExternalVideoApiId: (id: string) => void;
+  /** Apply a saved external API as active video provider + key */
+  applyExternalVideoApi: (id: string) => void;
   setVideoAspectRatio: (
     ratio: string,
     opts?: { mirrorChannel?: boolean },
@@ -453,6 +476,23 @@ export interface NovelActions {
   ) => void;
   setWpm: (wpm: number) => void;
   setSecondsPerBeat: (secs: number) => void;
+  /**
+   * Drop store media keys whose files are missing on disk (ghost paths).
+   * Returns counts for UI toast.
+   */
+  reconcileMissingMediaAssets: (options?: {
+    discoverChapterNum?: number;
+    discoverSceneIndices?: number[];
+  }) => Promise<{
+    changed: boolean;
+    removedAudio: number;
+    removedImage: number;
+    removedVideo: number;
+    addedAudio: number;
+    addedImage: number;
+    addedVideo: number;
+    summary: string;
+  }>;
 
   // Actions cho thương mại (FREE/TRIAL/PRO)
   /** is_vip là tham số tương thích dữ liệu cũ; code mới luôn truyền false. */
@@ -507,6 +547,10 @@ export interface NovelActions {
   setScriptMode: (mode: import('@/lib/scriptMode').ScriptMode) => void;
   updateUserRules: (rules: Partial<NovelState['userRules']>) => void;
   updateEditorReview: (chapterIndex: number, review: NovelState['editorReviews'][number]) => void;
+  /** User hủy banner/nút sửa — giữ điểm review, verdict → accept (bỏ chặn TTS/gate) */
+  dismissEditorReview: (chapterIndex: number) => void;
+  /** Xóa hẳn review chương (panel + banner biến mất) */
+  clearEditorReview: (chapterIndex: number) => void;
   setCungHienTai: (arc: number) => void;
   addChuongMoi: (chuongList: Chuong[]) => void; // Architect th�m chuong v�o cu?i
 

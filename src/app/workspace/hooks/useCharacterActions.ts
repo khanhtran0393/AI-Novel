@@ -15,6 +15,7 @@ import {
   generateCharPromptAction,
   regenerateCharPromptOnlyAction,
   generateCharImageAction,
+  toServeImageUrl,
 } from '../modules/characterModule';
 import { toast } from '@/lib/toastBus';
 import { appConfirm } from '@/lib/confirmDialog';
@@ -23,6 +24,7 @@ import {
   getCachedConceptPromptDurable,
   setCachedConceptPrompt,
 } from '@/lib/conceptPromptCache';
+import { scheduleAppWork } from '@/lib/appWork';
 
 export function useCharacterActions() {
   // getState only — parent CharacterRoster selects data slices
@@ -56,12 +58,30 @@ export function useCharacterActions() {
           ...(prev.expression_prompts || {}),
           ...(partial.expression_prompts || {}),
         },
+        pose_prompts: {
+          ...(prev.pose_prompts || {}),
+          ...(partial.pose_prompts || {}),
+        },
         wardrobe_variants:
           partial.wardrobe_variants !== undefined
             ? partial.wardrobe_variants
             : prev.wardrobe_variants,
       }),
     );
+  };
+
+  /**
+   * Re-bind sheet preview from face_ref if generatedImages lost the map entry
+   * (reload / overwrite bug legacy). Does not re-gen — only restores pointer.
+   */
+  const restoreSheetFromFaceRef = (char: string) => {
+    const key = characterImageKey(char);
+    const existing = store().generatedImages?.[key];
+    if (existing && String(existing).trim()) return;
+    const face = store().nhan_vat_prompts?.[char]?.face_ref;
+    if (!face || !String(face).trim()) return;
+    const serve = toServeImageUrl(String(face));
+    if (serve) store().addGeneratedImage(key, serve);
   };
 
   const handleCharTagClick = (char: string) => {
@@ -71,6 +91,7 @@ export function useCharacterActions() {
       setEditingChar(char);
       setRenameDraft(char);
       setProfileDraft(normalizeNhanVatProfile(store().nhan_vat_prompts?.[char]));
+      restoreSheetFromFaceRef(char);
     }
   };
 
@@ -151,10 +172,17 @@ export function useCharacterActions() {
           ...(profileDraft.expression_prompts || {}),
           ...((data.expression_prompts as object) || {}),
         },
+        pose_prompts: {
+          ...(profileDraft.pose_prompts || {}),
+          ...((data.pose_prompts as object) || {}),
+        },
       });
       setProfileDraft(merged);
       persistProfile(char, merged);
-      toast.success('Hồ sơ NV', `Đã sinh identity lock + góc/biểu cảm cho "${char}"`);
+      toast.success(
+        'Hồ sơ NV',
+        `Đã sinh bible: identity + 4 góc + 8 biểu cảm + 7 pose + phụ kiện/chiều cao cho "${char}"`,
+      );
     } catch (err: unknown) {
       toast.error('Lỗi hồ sơ NV', err instanceof Error ? err.message : String(err));
     } finally {
@@ -202,76 +230,97 @@ export function useCharacterActions() {
     }
 
     setGeneratingAllCharPrompts(true);
-    let ok = 0;
-    let fail = 0;
-    const failNames: string[] = [];
-
-    try {
-      for (let i = 0; i < chars.length; i++) {
-        const char = chars[i];
-        setGenAllProgress({ current: i + 1, total: chars.length, name: char });
+    // Detach batch from UI stack — mute persist + yield between NV
+    const { promise } = scheduleAppWork({
+      kind: 'character',
+      title: `Gen prompt ${chars.length} NV`,
+      mutePersist: true,
+      yieldBeforeStart: true,
+      run: async (ctl) => {
+        let ok = 0;
+        let fail = 0;
+        const failNames: string[] = [];
         try {
-          const base =
-            editingChar === char
-              ? profileDraft
-              : normalizeNhanVatProfile(useNovelStore.getState().nhan_vat_prompts?.[char]);
+          for (let i = 0; i < chars.length; i++) {
+            if (ctl.isCancelled()) break;
+            const char = chars[i];
+            setGenAllProgress({ current: i + 1, total: chars.length, name: char });
+            ctl.setProgress(
+              Math.round(((i + 1) / chars.length) * 100),
+              `NV ${i + 1}/${chars.length}: ${char}`,
+            );
+            await ctl.yieldUi();
+            try {
+              const base =
+                editingChar === char
+                  ? profileDraft
+                  : normalizeNhanVatProfile(
+                      useNovelStore.getState().nhan_vat_prompts?.[char],
+                    );
 
-          const data = await generateCharPromptAction({
-            char,
-            dan_y_tong_the: store().dan_y_tong_the,
-            lorebook: store().lorebook,
-            profile: base,
-          });
+              const data = await generateCharPromptAction({
+                char,
+                dan_y_tong_the: store().dan_y_tong_the,
+                lorebook: store().lorebook,
+                profile: base,
+              });
 
-          const merged = normalizeNhanVatProfile({
-            ...base,
-            ...data,
-            tts_voice: base.tts_voice || '',
-            angle_prompts: {
-              ...(base.angle_prompts || {}),
-              ...(data.angle_prompts || {}),
-            },
-            expression_prompts: {
-              ...(base.expression_prompts || {}),
-              ...(data.expression_prompts || {}),
-            },
-          });
+              const merged = normalizeNhanVatProfile({
+                ...base,
+                ...data,
+                tts_voice: base.tts_voice || '',
+                angle_prompts: {
+                  ...(base.angle_prompts || {}),
+                  ...(data.angle_prompts || {}),
+                },
+                expression_prompts: {
+                  ...(base.expression_prompts || {}),
+                  ...(data.expression_prompts || {}),
+                },
+                pose_prompts: {
+                  ...(base.pose_prompts || {}),
+                  ...(data.pose_prompts || {}),
+                },
+              });
 
-          store().updateNhanVatPrompt(char, merged);
-          if (editingChar === char) {
-            setProfileDraft(merged);
+              store().updateNhanVatPrompt(char, merged);
+              if (editingChar === char) {
+                setProfileDraft(merged);
+              }
+              ok += 1;
+            } catch (err) {
+              fail += 1;
+              failNames.push(
+                `${char}: ${err instanceof Error ? err.message : String(err)}`,
+              );
+              console.error(`[GenAllCharPrompts] ${char}:`, err);
+            }
           }
-          ok += 1;
-        } catch (err) {
-          fail += 1;
-          failNames.push(
-            `${char}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          console.error(`[GenAllCharPrompts] ${char}:`, err);
-        }
-      }
 
-      let castUpdated = 0;
-      void opts?.applyCastVoices;
+          const castUpdated = 0;
+          void opts?.applyCastVoices;
 
-      if (!opts?.silent) {
-        const castNote =
-          opts?.applyCastVoices !== false
-            ? ` · cast ${castUpdated} role`
-            : '';
-        toast.success(
-          'Gen all NV',
-          `${ok}/${chars.length} OK${fail ? `, ${fail} lỗi` : ''}${castNote}`,
-        );
-        if (failNames.length) {
-          toast.warn('NV lỗi', failNames.slice(0, 5).join(' · '));
+          if (!opts?.silent) {
+            const castNote =
+              opts?.applyCastVoices !== false
+                ? ` · cast ${castUpdated} role`
+                : '';
+            toast.success(
+              'Gen all NV',
+              `${ok}/${chars.length} OK${fail ? `, ${fail} lỗi` : ''}${castNote}`,
+            );
+            if (failNames.length) {
+              toast.warn('NV lỗi', failNames.slice(0, 5).join(' · '));
+            }
+          }
+          return { ok, fail, castUpdated };
+        } finally {
+          setGeneratingAllCharPrompts(false);
+          setGenAllProgress(null);
         }
-      }
-      return { ok, fail, castUpdated };
-    } finally {
-      setGeneratingAllCharPrompts(false);
-      setGenAllProgress(null);
-    }
+      },
+    });
+    return promise;
   };
 
   const handleRegenerateCharPromptOnly = async (char: string) => {
@@ -315,6 +364,7 @@ export function useCharacterActions() {
 
   /**
    * Gen 1 ảnh sheet gộp: chân dung front + 4 chiều + biểu cảm khuôn mặt.
+   * Auto-persist: generatedImages[char_Name] + face_ref durable (không cần bấm Lưu hồ sơ).
    */
   const handleGenerateCharImage = async (char: string) => {
     if (!profileDraft.prompt?.trim() && !profileDraft.ngoai_hinh?.trim() && !profileDraft.dac_diem_nhan_dang?.trim()) {
@@ -323,19 +373,36 @@ export function useCharacterActions() {
     }
     setGeneratingCharImage(true);
     const charKey = characterImageKey(char);
-    store().addGeneratedImage(charKey, '');
+    // CẤM addGeneratedImage(key, '') — empty placeholder ghi đè sheet cũ khi persist/reload
     try {
       persistProfile(char, profileDraft);
-      const sheetPrompt = composeCharacterReferenceSheetPrompt(profileDraft, char);
+      const styleHint = String(
+        store().visualDnaPrompt || store().mediaStylePreset || '',
+      ).trim();
+      const genre = [store().setup?.chu_de, store().setup?.phong_cach]
+        .filter(Boolean)
+        .join(' / ')
+        .trim();
+      const sheetPrompt = composeCharacterReferenceSheetPrompt(
+        profileDraft,
+        char,
+        { styleHint, genre },
+      );
       const data = await generateCharImageAction({
         char,
         charPrompt: sheetPrompt,
         profile: profileDraft,
         ...imageCtx(),
       });
+      if (!data.imagePath) {
+        throw new Error('API không trả path ảnh sheet.');
+      }
       applyImageResult(charKey, data.imagePath, data.projectUrl);
-      // Face-lock path for identity on scene gen
-      const facePath = String(data.imagePath || '').split('?')[0];
+      // face_ref = durable absolute path (save folder) when available; else serve URL file
+      const facePath =
+        String(data.durablePath || data.imagePath || '')
+          .split('?')[0]
+          .trim();
       if (facePath) {
         const next = normalizeNhanVatProfile({
           ...profileDraft,
@@ -343,9 +410,13 @@ export function useCharacterActions() {
           identity_lock: `sheet:${char}`,
         } as NhanVatProfile);
         setProfileDraft(next);
+        // Auto-save hồ sơ ngay sau gen — user không cần bấm "Lưu hồ sơ"
         persistProfile(char, next);
       }
-      toast.success('Ảnh concept', `Sheet tham chiếu cho ${char}`);
+      toast.success(
+        'Ảnh concept',
+        `Đã gen + lưu sheet tham chiếu cho ${char}`,
+      );
     } catch (err: unknown) {
       toast.error(
         'Ảnh concept',
@@ -388,7 +459,7 @@ export function useCharacterActions() {
     setGeneratingCharImage(true);
     const wKey =
       w.image_key?.trim() || characterWardrobeImageKey(char, wardrobeId);
-    store().addGeneratedImage(wKey, '');
+    // CẤM empty placeholder — giữ ảnh wardrobe cũ nếu gen fail
     try {
       persistProfile(char, profileDraft);
       const sheetPrompt = composeWardrobeSheetPrompt(profileDraft, w, char);
@@ -399,10 +470,13 @@ export function useCharacterActions() {
           ...profileDraft,
           active_wardrobe_id: wardrobeId,
         },
+        wardrobeId,
         ...imageCtx(),
       });
+      if (!data.imagePath) {
+        throw new Error('API không trả path ảnh wardrobe.');
+      }
       applyImageResult(wKey, data.imagePath, data.projectUrl);
-      const facePath = String(data.imagePath || '').split('?')[0];
       const nextList: WardrobeVariant[] = list.map((item) =>
         item.id === wardrobeId
           ? { ...item, image_key: wKey }
@@ -415,12 +489,7 @@ export function useCharacterActions() {
       });
       setProfileDraft(next);
       persistProfile(char, next);
-      toast.success(
-        'Wardrobe',
-        facePath
-          ? `Đã gen "${w.name}" → ${wKey}`
-          : `Đã gán key ${wKey}`,
-      );
+      toast.success('Wardrobe', `Đã gen + lưu "${w.name}" → ${wKey}`);
     } catch (err: unknown) {
       toast.error(
         'Wardrobe',

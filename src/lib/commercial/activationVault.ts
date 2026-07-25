@@ -150,6 +150,8 @@ export function redeemActivationCode(
   plan?: 'pro';
   error?: string;
   alreadyRedeemedSameMachine?: boolean;
+  /** Present when another machine already owns this single-seat code */
+  alreadyBoundHwid?: string;
   seatsUsed?: number;
   maxSeats?: number;
 } {
@@ -190,14 +192,19 @@ export function redeemActivationCode(
   }
 
   if (seats.length >= maxSeats) {
+    const bound = seats[0] || rec.redeemedHwid || '';
+    const boundShort = bound
+      ? bound.toUpperCase().slice(0, 16) + (bound.length > 16 ? '…' : '')
+      : '?';
     return {
       ok: false,
       error:
         maxSeats <= 1
-          ? 'Mã đã gắn máy khác. Liên hệ seller để chuyển license (1 máy).'
-          : `Mã đã đủ ${maxSeats} máy. Liên hệ seller để chuyển seat / nâng max seats.`,
+          ? `Mã đã được nhập rồi — gắn máy HWID ${boundShort}. Mỗi mã chỉ 1 HWID. Liên hệ seller nếu cần chuyển máy.`
+          : `Mã đã đủ ${maxSeats} máy (đã gắn ${boundShort}…). Liên hệ seller để chuyển seat / nâng max seats.`,
       seatsUsed: seats.length,
       maxSeats,
+      alreadyBoundHwid: bound || undefined,
     };
   }
 
@@ -284,4 +291,63 @@ export function listActivationCodes(limit = 50): ActivationCodeRecord[] {
     .map((c) => syncLegacyFields({ ...c }))
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, Math.max(1, Math.min(500, limit)));
+}
+
+/** Human label for expSeconds (seller messages). */
+export function formatExpSecondsLabel(expSeconds: number): string {
+  const s = Math.max(0, Math.floor(expSeconds));
+  const day = 60 * 60 * 24;
+  if (s >= day * 365 * 40) return 'trọn đời (~50 năm)';
+  if (s >= day * 365) {
+    const y = Math.round(s / (day * 365));
+    return y <= 1 ? '1 năm' : `${y} năm`;
+  }
+  if (s >= day) {
+    const d = Math.round(s / day);
+    return d <= 1 ? '1 ngày' : `${d} ngày`;
+  }
+  if (s >= 3600) {
+    const h = Math.round(s / 3600);
+    return h <= 1 ? '1 giờ' : `${h} giờ`;
+  }
+  return `${s}s`;
+}
+
+/**
+ * Parse duration tokens used by Telegram/admin CLI:
+ * month|year|lifetime | 30d | 12h | 90 (days if bare number ≥1)
+ */
+export function parseDurationToExpSeconds(
+  raw: string | undefined | null,
+): number | null {
+  const t = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (!t) return null;
+  if (t === 'month' || t === 'm' || t === '1m' || t === 'thang' || t === 'tháng') {
+    return 60 * 60 * 24 * 30;
+  }
+  if (t === 'year' || t === 'y' || t === '1y' || t === 'nam' || t === 'năm') {
+    return 60 * 60 * 24 * 365;
+  }
+  if (
+    t === 'lifetime' ||
+    t === 'life' ||
+    t === 'lt' ||
+    t === 'tron' ||
+    t === 'trọn' ||
+    t === 'vĩnh' ||
+    t === 'forever'
+  ) {
+    return 60 * 60 * 24 * 365 * 50;
+  }
+  const m = t.match(/^(\d+)\s*([dhm])?$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 1) return null;
+  const unit = (m[2] || 'd').toLowerCase();
+  if (unit === 'h') return Math.min(n, 24 * 365 * 50) * 3600;
+  if (unit === 'm') return Math.min(n, 60 * 24 * 365 * 50) * 60;
+  // days (default)
+  return Math.min(n, 365 * 50) * 60 * 60 * 24;
 }

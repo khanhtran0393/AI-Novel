@@ -4,12 +4,13 @@ const { parse } = require('url');
 const next = require('next');
 const path = require('path');
 const fs = require('fs');
-const { execSync, spawn } = require('child_process');
+const { execFile, execSync, spawn } = require('child_process');
 const http = require('http');
 const os = require('os');
 
 const durable = require('./electron/durableStore');
 const credentialVault = require('./electron/credentialVault');
+const workBridge = require('./electron/workBridge');
 const {
   isExactOriginUrl,
   isTrustedNavigationUrl,
@@ -22,6 +23,7 @@ const {
 } = require('./electron/splashBrand');
 const { ZUSTAND_STORE_KEY } = durable;
 const appUpdater = require('./electron/updater');
+const xinchaoRuntimeHost = require('./electron/xinchaoRuntimeHost.cjs');
 
 const STABLE_PORT = Number(process.env.AI_NOVEL_PORT || process.env.PORT || 3000);
 const dev = !app.isPackaged;
@@ -135,6 +137,79 @@ function shutdownHttpServer() {
 }
 
 /** Full teardown so parent `npm` / CMD exits when user closes the window */
+/**
+ * Flow Chrome is spawned detached+unref (see chromeSession.launchChrome).
+ * Without this, closing Ai Novel leaves "Google Flow – Studio" on the taskbar.
+ * Only kill browsers whose --user-data-dir lives under this install's profile roots
+ * (accounts_data / scratch/flow-profiles / browser-profiles) — never personal Chrome.
+ */
+function killFlowBrowsersOnAppQuit(reason) {
+  const roots = [];
+  try {
+    if (process.env.AI_NOVEL_ROOT) roots.push(process.env.AI_NOVEL_ROOT);
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (appDir) roots.push(appDir);
+  } catch {
+    /* ignore */
+  }
+  try {
+    roots.push(process.cwd());
+  } catch {
+    /* ignore */
+  }
+  const uniq = [...new Set(roots.map((r) => path.resolve(String(r || ''))).filter(Boolean))];
+  const needles = [];
+  for (const r of uniq) {
+    needles.push(path.join(r, 'accounts_data'));
+    needles.push(path.join(r, 'scratch', 'flow-profiles'));
+    needles.push(path.join(r, 'browser-profiles'));
+  }
+  if (needles.length === 0) return 0;
+
+  if (process.platform !== 'win32') {
+    console.log(`[Shutdown] killFlowBrowsers skip (non-win32) reason=${reason || '?'}`);
+    return 0;
+  }
+
+  const likeParts = needles
+    .map((n) => n.replace(/'/g, "''"))
+    .map((n) => `($_.CommandLine -like '*${n}*')`)
+    .join(' -or ');
+  const ps = [
+    `$n=0;`,
+    `Get-CimInstance Win32_Process -EA SilentlyContinue |`,
+    `Where-Object { ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe' -or $_.Name -eq 'chromium.exe') -and $_.CommandLine -and (${likeParts}) } |`,
+    `ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -EA Stop; $n++ } catch {} };`,
+    `Write-Output $n`,
+  ].join(' ');
+
+  try {
+    const out = execSync(
+      `powershell -NoProfile -NonInteractive -Command "${ps}"`,
+      {
+        encoding: 'utf8',
+        timeout: 25_000,
+        windowsHide: true,
+      },
+    );
+    const n = Number(String(out).trim().split(/\r?\n/).filter(Boolean).pop());
+    const killed = Number.isFinite(n) ? n : 0;
+    console.log(
+      `[Shutdown] killFlowBrowsers reason=${reason || '?'} killed=${killed} roots=${uniq.length}`,
+    );
+    return killed;
+  } catch (e) {
+    console.warn(
+      '[Shutdown] killFlowBrowsers failed',
+      e && e.message ? e.message : e,
+    );
+    return 0;
+  }
+}
+
 function quitAppFully(reason) {
   if (isQuitting) return;
   isQuitting = true;
@@ -151,6 +226,22 @@ function quitAppFully(reason) {
   if (writeTimer) {
     clearTimeout(writeTimer);
     writeTimer = null;
+  }
+  // Kill detached Flow/TikTok browsers BEFORE dropping Next / exiting
+  try {
+    killFlowBrowsersOnAppQuit(reason || 'quitAppFully');
+  } catch {
+    /* ignore */
+  }
+  try {
+    workBridge.shutdownWorkHost();
+  } catch {
+    /* ignore */
+  }
+  try {
+    shutdownXinChaoRuntime();
+  } catch {
+    /* ignore */
   }
   shutdownHttpServer();
   // Always free desktop port on full quit so next Khoi_Dong is clean
@@ -451,16 +542,22 @@ function commitWrite(raw, { history = true, force = false } = {}) {
   return result;
 }
 
+/**
+ * Debounced durable write. Intermediate ticks skip history rotation
+ * (4× writeFileSync + history freezes Electron chrome under batch media/TTS).
+ * History only on flushPending / app quit.
+ */
 function scheduleWrite(raw) {
   pendingWrite = raw;
   if (writeTimer) clearTimeout(writeTimer);
   writeTimer = setTimeout(() => {
     writeTimer = null;
     if (pendingWrite) {
-      commitWrite(pendingWrite, { history: true });
+      // history:false — mirrors only; avoids history thrash freeze
+      commitWrite(pendingWrite, { history: false });
       pendingWrite = null;
     }
-  }, 400);
+  }, 1200);
 }
 
 function flushPending() {
@@ -477,18 +574,78 @@ function flushPending() {
 }
 
 /**
- * Boot recovery: disk multi-path + LevelDB binary scan.
- * Returns best payload for preload to inject into localStorage.
+ * Boot recovery: disk multi-path + optional LevelDB scan.
+ *
+ * CRITICAL (GUI freeze root cause):
+ * Next HTTP server runs on Electron **main** process. Preload uses sendSync(boot).
+ * Any sync multi-file write / LevelDB full scan here blocks the event loop →
+ * :3000 stops accepting → workspace load hangs → window Not Responding.
+ *
+ * Rules:
+ * - Cache result (preload re-runs on every navigation)
+ * - Skip LevelDB when disk already has a usable snapshot
+ * - NEVER commitWrite/writeFileSync on the hot sendSync path — scheduleWrite only
  */
-function resolveBootStore() {
+let bootStoreCache = null;
+let bootStoreCacheAt = 0;
+const BOOT_STORE_CACHE_MS = 60_000;
+/** Disk score high enough that LevelDB binary scan is wasteful. */
+const BOOT_SKIP_LEVELDB_SCORE = 500;
+
+function emptyBootResult() {
+  if (!paths) initPaths();
+  return {
+    raw: null,
+    summary: { score: 0 },
+    source: null,
+    paths: {
+      primary: paths.primary,
+      documents: paths.documents,
+      secrets: paths.secrets,
+    },
+  };
+}
+
+function resolveBootStore(opts = {}) {
+  const force = opts.force === true;
+  const allowLevelDb = opts.allowLevelDb !== false;
+  const mirror = opts.mirror === true; // only whenReady cold start may schedule write
+
   if (!paths) initPaths();
 
+  if (
+    !force &&
+    bootStoreCache &&
+    Date.now() - bootStoreCacheAt < BOOT_STORE_CACHE_MS
+  ) {
+    return bootStoreCache;
+  }
+
+  const t0 = Date.now();
   const diskBest = durable.readBest(paths);
-  const levelDbBest = durable.recoverFromLevelDb(app.getPath('userData'));
+  const diskScore = diskBest?.summary?.score || 0;
+
+  let levelDbBest = null;
+  // Full LevelDB latin1+utf8 scan freezes main under pack/disk load — only if disk thin
+  if (allowLevelDb && diskScore < BOOT_SKIP_LEVELDB_SCORE) {
+    try {
+      levelDbBest = durable.recoverFromLevelDb(app.getPath('userData'));
+    } catch (err) {
+      console.warn(
+        '[DurableStore] LevelDB recover skipped:',
+        err?.message || err,
+      );
+    }
+  }
 
   const best = durable.pickBestAmong([
     diskBest
-      ? { raw: diskBest.raw, summary: diskBest.summary, source: diskBest.source, mtimeMs: diskBest.mtimeMs }
+      ? {
+          raw: diskBest.raw,
+          summary: diskBest.summary,
+          source: diskBest.source,
+          mtimeMs: diskBest.mtimeMs,
+        }
       : null,
     levelDbBest
       ? {
@@ -508,17 +665,23 @@ function resolveBootStore() {
       : null,
   ]);
 
+  let result = emptyBootResult();
+
   if (best?.raw) {
-    const safeRaw = credentialVault.migrateFromRaw(
-      app.getPath('userData'),
-      best.raw,
-      paths.secrets,
-    );
+    let safeRaw = best.raw;
+    try {
+      safeRaw = credentialVault.migrateFromRaw(
+        app.getPath('userData'),
+        best.raw,
+        paths.secrets,
+      );
+    } catch (err) {
+      console.warn('[DurableStore] migrate boot raw failed:', err?.message || err);
+      safeRaw = durable.stripSecretsFromRaw(best.raw);
+    }
     const safeSummary = durable.scorePersistedStore(safeRaw);
     lastGoodRaw = safeRaw;
-    // Ensure multi-path mirrors exist even if we recovered from LevelDB only
-    commitWrite(safeRaw, { history: false, force: false });
-    return {
+    result = {
       raw: safeRaw,
       summary: safeSummary,
       source: best.source,
@@ -528,18 +691,21 @@ function resolveBootStore() {
         secrets: paths.secrets,
       },
     };
+    // Debounced async mirror only — never sync writeAll on boot/sendSync
+    if (mirror && safeRaw) {
+      scheduleWrite(safeRaw);
+    }
   }
 
-  return {
-    raw: null,
-    summary: { score: 0 },
-    source: null,
-    paths: {
-      primary: paths.primary,
-      documents: paths.documents,
-      secrets: paths.secrets,
-    },
-  };
+  bootStoreCache = result;
+  bootStoreCacheAt = Date.now();
+  const ms = Date.now() - t0;
+  if (ms > 80) {
+    console.warn(
+      `[DurableStore] resolveBootStore slow ${ms}ms score=${result.summary?.score || 0} src=${result.source || 'none'} leveldb=${diskScore < BOOT_SKIP_LEVELDB_SCORE}`,
+    );
+  }
+  return result;
 }
 
 function isTrustedIpcEvent(event) {
@@ -559,6 +725,13 @@ function assertTrustedIpc(event) {
 }
 
 function registerIpc() {
+  // Off-GUI HTTP work host (utilityProcess) — gen media batches never block BrowserWindow
+  try {
+    workBridge.registerWorkIpc(assertTrustedIpc);
+  } catch (err) {
+    console.warn('[workBridge] register failed:', err?.message || err);
+  }
+
   ipcMain.on('ainovel-credentials-migrate-raw', (event, raw) => {
     try {
       assertTrustedIpc(event);
@@ -596,11 +769,23 @@ function registerIpc() {
 
   ipcMain.on('ainovel-persist-boot', (event) => {
     try {
-      assertTrustedIpc(event);
-      event.returnValue = resolveBootStore();
+      // Preload sendSync — must stay <~50ms. Use cache; no LevelDB; no disk write.
+      // Trust: boot may run before origin settles — still require mainWindow sender.
+      if (!event?.sender || !mainWindow || mainWindow.isDestroyed()) {
+        event.returnValue = emptyBootResult();
+        return;
+      }
+      if (event.sender.id !== mainWindow.webContents.id) {
+        event.returnValue = emptyBootResult();
+        return;
+      }
+      event.returnValue = resolveBootStore({
+        allowLevelDb: false,
+        mirror: false,
+      });
     } catch (err) {
       console.warn('[DurableStore] boot failed:', err?.message || err);
-      event.returnValue = { raw: null, summary: { score: 0 }, source: null, paths: null };
+      event.returnValue = emptyBootResult();
     }
   });
 
@@ -612,7 +797,12 @@ function registerIpc() {
   ipcMain.on('ainovel-persist-get-sync', (event) => {
     try {
       assertTrustedIpc(event);
-      const boot = resolveBootStore();
+      // Prefer memory/cache — never re-scan LevelDB on sync IPC
+      if (lastGoodRaw) {
+        event.returnValue = lastGoodRaw;
+        return;
+      }
+      const boot = resolveBootStore({ allowLevelDb: false, mirror: false });
       event.returnValue = boot.raw;
     } catch {
       event.returnValue = lastGoodRaw;
@@ -622,7 +812,9 @@ function registerIpc() {
   ipcMain.on('ainovel-persist-set-sync', (event, raw) => {
     try {
       assertTrustedIpc(event);
-      event.returnValue = commitWrite(raw, { history: true });
+      // Do not block event loop with 4× writeFileSync — schedule + ack
+      scheduleWrite(typeof raw === 'string' ? raw : '');
+      event.returnValue = { ok: true, scheduled: true };
     } catch (err) {
       event.returnValue = { ok: false, error: err?.message || String(err) };
     }
@@ -633,9 +825,12 @@ function registerIpc() {
     scheduleWrite(raw);
   });
 
+  // Always schedule — never sync-block main with multi-path writeFileSync on hot path.
+  // Renderer flush / beforeunload calls ainovel-persist-flush for durable history.
   ipcMain.handle('ainovel-persist-set', async (event, raw) => {
     assertTrustedIpc(event);
-    return commitWrite(raw, { history: true });
+    scheduleWrite(raw);
+    return { ok: true, scheduled: true };
   });
 
   ipcMain.handle('ainovel-persist-flush', async (event) => {
@@ -657,9 +852,10 @@ function registerIpc() {
       const subdir = String(payload?.subdir || 'reports').replace(/[^a-zA-Z0-9_-]/g, '') || 'reports';
       const name = path.basename(String(payload?.relativePath || 'report.txt'));
       const dir = path.join(userData, subdir);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      await fs.promises.mkdir(dir, { recursive: true });
       const full = path.join(dir, name);
-      fs.writeFileSync(full, String(payload?.content ?? ''), 'utf8');
+      // Async write — never writeFileSync on main (freezes window chrome)
+      await fs.promises.writeFile(full, String(payload?.content ?? ''), 'utf8');
       console.log('[ainovelTools] wrote', full);
       return { ok: true, path: full };
     } catch (err) {
@@ -672,7 +868,8 @@ function registerIpc() {
       assertTrustedIpc(event);
       const userData = app.getPath('userData');
       const full = path.join(userData, 'tts-chapter-queue.json');
-      fs.writeFileSync(full, JSON.stringify(snapshot ?? {}, null, 2), 'utf8');
+      // Async write — writeFileSync on main freezes Electron window chrome
+      await fs.promises.writeFile(full, JSON.stringify(snapshot ?? {}), 'utf8');
       return { ok: true, path: full };
     } catch (err) {
       return { ok: false, error: err?.message || String(err) };
@@ -684,8 +881,12 @@ function registerIpc() {
       assertTrustedIpc(event);
       const userData = app.getPath('userData');
       const full = path.join(userData, 'tts-chapter-queue.json');
-      if (!fs.existsSync(full)) return null;
-      const raw = fs.readFileSync(full, 'utf8');
+      try {
+        await fs.promises.access(full);
+      } catch {
+        return null;
+      }
+      const raw = await fs.promises.readFile(full, 'utf8');
       return JSON.parse(raw);
     } catch {
       return null;
@@ -726,6 +927,500 @@ function registerIpc() {
       return { ok: false, error: err?.message || String(err) };
     }
   });
+
+  /** Open full XinChao-Cut editor (tools/xinchao-cut) + reveal media pack */
+  ipcMain.handle('ainovel-open-xinchao', async (event, payload) => {
+    try {
+      assertTrustedIpc(event);
+      return await openXinChaoEditor(payload || {});
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+}
+
+/** Track single XinChao-Cut BrowserWindow + optional vite child process */
+let xinchaoWindow = null;
+let xinchaoViteProc = null;
+let xinchaoNativeProc = null;
+const XINCHAO_DEV_PORT = Number(process.env.AINOVEL_XINCHAO_PORT || 5173);
+/** Max time IPC may wait for Vite / loadURL — never freeze main window. */
+const XINCHAO_VITE_WAIT_MS = 12_000;
+const XINCHAO_LOAD_TIMEOUT_MS = 15_000;
+
+function shutdownXinChaoRuntime() {
+  if (xinchaoViteProc && !xinchaoViteProc.killed) {
+    try {
+      xinchaoViteProc.kill();
+    } catch {
+      /* ignore */
+    }
+  }
+  xinchaoViteProc = null;
+  void xinchaoRuntimeHost.stopXinChaoRuntimeHost();
+}
+
+function resolveXinChaoRootFromDisk() {
+  return xinchaoRuntimeHost.resolveXinChaoRoot({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appDir,
+    cwd: process.cwd(),
+  });
+}
+
+function httpPing(url, timeoutMs = 800) {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(url);
+      const req = http.request(
+        {
+          hostname: u.hostname,
+          port: u.port || (u.protocol === 'https:' ? 443 : 80),
+          path: u.pathname || '/',
+          method: 'GET',
+          timeout: timeoutMs,
+        },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode && res.statusCode < 500);
+        },
+      );
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        try {
+          req.destroy();
+        } catch {
+          /* ignore */
+        }
+        resolve(false);
+      });
+      req.end();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+function revealXinChaoMedia(mediaDir, packRoot) {
+  // Fire-and-forget: shell.openPath must never block open-editor IPC
+  setImmediate(() => {
+    try {
+      const { shell } = require('electron');
+      if (mediaDir && fs.existsSync(mediaDir) && isAllowedShellOpenPath(mediaDir)) {
+        void shell.openPath(mediaDir);
+      } else if (packRoot && fs.existsSync(packRoot) && isAllowedShellOpenPath(packRoot)) {
+        void shell.openPath(packRoot);
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+async function ensureXinChaoVite(root) {
+  const url = `http://127.0.0.1:${XINCHAO_DEV_PORT}/`;
+  if (await httpPing(url, 600)) return { url, mode: 'existing' };
+
+  const pkg = path.join(root, 'package.json');
+  if (!fs.existsSync(pkg)) {
+    return { error: `XinChao-Cut không có package.json tại ${root}` };
+  }
+  const nodeModules = path.join(root, 'node_modules');
+  if (!fs.existsSync(nodeModules)) {
+    return {
+      error: `Chưa cài deps editor CapCut. Chạy: npm run xinchao:install`,
+    };
+  }
+
+  if (!(xinchaoViteProc && !xinchaoViteProc.killed)) {
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    try {
+      xinchaoViteProc = spawn(
+        npmCmd,
+        ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(XINCHAO_DEV_PORT)],
+        {
+          cwd: root,
+          env: { ...process.env, BROWSER: 'none' },
+          windowsHide: true,
+          stdio: 'ignore',
+          detached: false,
+        },
+      );
+      xinchaoViteProc.on('exit', () => {
+        xinchaoViteProc = null;
+      });
+      xinchaoViteProc.on('error', (err) => {
+        console.warn('[xinchao] vite spawn error', err?.message || err);
+        xinchaoViteProc = null;
+      });
+    } catch (e) {
+      return { error: `Không spawn Vite: ${e?.message || e}` };
+    }
+  }
+
+  const deadline = Date.now() + XINCHAO_VITE_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (await httpPing(url, 500)) return { url, mode: 'started' };
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return {
+    error:
+      `XinChao-Cut Vite timeout (${XINCHAO_VITE_WAIT_MS / 1000}s, port ${XINCHAO_DEV_PORT}). ` +
+      `Chạy npm run xinchao:dev thủ công rồi bấm lại.`,
+  };
+}
+
+function buildXinChaoLoadingHtml(statusLine) {
+  const msg = String(statusLine || 'Đang mở CapCut…')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return (
+    'data:text/html;charset=utf-8,' +
+    encodeURIComponent(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>CapCut</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0a0a;color:#e4e4e7;font-family:system-ui,sans-serif;
+  display:flex;align-items:center;justify-content:center}
+  .box{text-align:center;max-width:28rem;padding:1.5rem}
+  h1{font-size:1.1rem;margin:0 0 .5rem;color:#38bdf8}
+  p{opacity:.8;font-size:.9rem;line-height:1.45;white-space:pre-wrap}
+  .spin{width:28px;height:28px;border:3px solid #3f3f46;border-top-color:#38bdf8;
+  border-radius:50%;margin:0 auto 1rem;animation:s .8s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style></head><body><div class="box"><div class="spin"></div>
+<h1>CapCut</h1><p id="s">${msg}</p></div></body></html>`)
+  );
+}
+
+function attachXinChaoWindowGuards(win) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.on('unresponsive', () => {
+    console.warn('[xinchao] BrowserWindow renderer unresponsive — keep main app alive');
+    try {
+      win.setTitle('CapCut — đang xử lý (không đóng AI Novel chính)');
+    } catch {
+      /* ignore */
+    }
+  });
+  win.webContents.on('responsive', () => {
+    try {
+      win.setTitle('CapCut — AI Novel');
+    } catch {
+      /* ignore */
+    }
+  });
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.warn('[capcut-editor] render-process-gone', details?.reason || details);
+  });
+}
+
+async function loadXinChaoUrl(win, loadUrl) {
+  if (!win || win.isDestroyed()) throw new Error('window destroyed');
+  await Promise.race([
+    win.loadURL(loadUrl),
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`loadURL timeout ${XINCHAO_LOAD_TIMEOUT_MS}ms`)),
+        XINCHAO_LOAD_TIMEOUT_MS,
+      );
+    }),
+  ]);
+}
+
+function ensureXinChaoBrowserWindow() {
+  if (xinchaoWindow && !xinchaoWindow.isDestroyed()) return xinchaoWindow;
+  xinchaoWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
+    title: 'CapCut — AI Novel',
+    autoHideMenuBar: true,
+    backgroundColor: '#0a0a0a',
+    show: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      backgroundThrottling: false,
+      // Editor multi-track may need COOP/COEP; Vite sets headers in dev.
+      devTools: !app.isPackaged,
+    },
+  });
+  attachXinChaoWindowGuards(xinchaoWindow);
+  xinchaoWindow.on('closed', () => {
+    xinchaoWindow = null;
+  });
+  return xinchaoWindow;
+}
+
+function xinChaoNativeWindowReady(pid) {
+  if (process.platform !== 'win32' || !Number.isInteger(pid) || pid <= 0) {
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).MainWindowHandle`,
+      ],
+      { encoding: 'utf8', timeout: 2_000, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          resolve(false);
+          return;
+        }
+        resolve(Number(String(stdout || '').trim()) > 0);
+      },
+    );
+  });
+}
+
+async function waitForXinChaoNativeReady(child, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.killed) {
+      throw new Error(
+        `Runtime CapCut đã thoát trước khi tạo cửa sổ (exit=${child.exitCode ?? 'unknown'})`,
+      );
+    }
+    if (await xinChaoNativeWindowReady(child.pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Runtime CapCut không tạo cửa sổ trong ${timeoutMs / 1000}s`);
+}
+
+async function launchXinChaoNative(root, packRoot) {
+  const nativeExe = path.join(root, 'XinChao-Cut.exe');
+  if (!fs.existsSync(nativeExe)) {
+    throw new Error(`Thiếu runtime desktop nội bộ: ${nativeExe}`);
+  }
+  const args = packRoot ? ['--ainovel-pack', packRoot] : [];
+  if (
+    xinchaoNativeProc &&
+    xinchaoNativeProc.exitCode === null &&
+    !xinchaoNativeProc.killed
+  ) {
+    // Forward a new AI Novel pack through XinChao-Cut's single-instance IPC.
+    // Returning the existing PID alone would focus the editor but silently drop
+    // every subsequent real-media pack.
+    if (packRoot) {
+      const forwarder = spawn(nativeExe, args, {
+        cwd: root,
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore',
+      });
+      await new Promise((resolve, reject) => {
+        forwarder.once('spawn', resolve);
+        forwarder.once('error', reject);
+      });
+      forwarder.unref();
+    }
+    await waitForXinChaoNativeReady(xinchaoNativeProc, 5_000);
+    return nativeExe;
+  }
+  const child = spawn(nativeExe, args, {
+    cwd: root,
+    windowsHide: false,
+    detached: true,
+    stdio: 'ignore',
+  });
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', reject);
+  });
+  xinchaoNativeProc = child;
+  child.once('exit', () => {
+    if (xinchaoNativeProc === child) xinchaoNativeProc = null;
+  });
+  try {
+    await waitForXinChaoNativeReady(child);
+  } catch (error) {
+    try {
+      child.kill();
+    } catch {
+      /* ignore cleanup failure */
+    }
+    throw error;
+  }
+  child.unref();
+  return nativeExe;
+}
+
+async function openXinChaoEditor(payload) {
+  const packRoot = payload?.packRoot ? path.resolve(String(payload.packRoot)) : '';
+  const mediaDir = payload?.mediaDir
+    ? path.resolve(String(payload.mediaDir))
+    : packRoot
+      ? path.join(packRoot, 'media')
+      : '';
+  const openExplorer = payload?.openExplorer !== false;
+  // Renderer data is untrusted. Always resolve the editor owned by this
+  // installation so the CapCut button can never revive an external/legacy repo.
+  const root = resolveXinChaoRootFromDisk();
+
+  const revealIfNeeded = () => {
+    if (openExplorer) revealXinChaoMedia(mediaDir, packRoot);
+  };
+
+  if (!root || !fs.existsSync(path.join(root, 'package.json'))) {
+    revealIfNeeded();
+    return {
+      ok: false,
+      packOpened: openExplorer,
+      editorOpened: false,
+      error:
+        'Không tìm thấy editor CapCut (tools/xinchao-cut). Chạy npm run xinchao:install.',
+      packRoot: packRoot || null,
+      mediaDir: mediaDir || null,
+    };
+  }
+
+  // Native is the only default runtime. Web is an explicit development mode.
+  const requestedMode = String(process.env.AINOVEL_XINCHAO_MODE || 'native')
+    .trim()
+    .toLowerCase();
+  const nativeExe = path.join(root, 'XinChao-Cut.exe');
+  if (requestedMode !== 'web') {
+    if (!fs.existsSync(nativeExe)) {
+      revealIfNeeded();
+      return {
+        ok: false,
+        editorOpened: false,
+        packOpened: openExplorer,
+        mode: 'native',
+        error:
+          `Runtime desktop CapCut nội bộ chưa được build: ${nativeExe}. ` +
+          'Chạy npm run xinchao:build:native.',
+        packRoot: packRoot || null,
+        mediaDir: mediaDir || null,
+      };
+    }
+    try {
+      const launchedExe = await launchXinChaoNative(root, packRoot);
+      revealIfNeeded();
+      return {
+        ok: true,
+        editorOpened: true,
+        packOpened: openExplorer,
+        mode: 'native',
+        nativeExe: launchedExe,
+        packRoot: packRoot || null,
+        mediaDir: mediaDir || null,
+      };
+    } catch (error) {
+      revealIfNeeded();
+      return {
+        ok: false,
+        editorOpened: false,
+        packOpened: openExplorer,
+        mode: 'native',
+        error: error?.message || String(error),
+        packRoot: packRoot || null,
+        mediaDir: mediaDir || null,
+      };
+    }
+  }
+
+  const distIndex = path.join(root, 'dist', 'index.html');
+  let loadUrl = null;
+  let mode = 'vite';
+  if (fs.existsSync(distIndex)) {
+    const hosted = await xinchaoRuntimeHost.startXinChaoRuntimeHost(root);
+    loadUrl = hosted.url;
+    mode = hosted.mode;
+  } else {
+    // Show lightweight shell immediately so Windows never reports a blank hung frame
+    const winEarly = ensureXinChaoBrowserWindow();
+    try {
+      await winEarly.loadURL(
+        buildXinChaoLoadingHtml('Đang khởi động editor CapCut (tối đa 12s)…'),
+      );
+    } catch {
+      /* ignore loading-page failure */
+    }
+    const vite = await ensureXinChaoVite(root);
+    if (vite.error) {
+      revealIfNeeded();
+      try {
+        if (!winEarly.isDestroyed()) {
+          await winEarly.loadURL(
+            buildXinChaoLoadingHtml(
+              `${vite.error}\n\nPack media đã mở (Explorer) — kéo thả vào editor sau khi cài deps.`,
+            ),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      // Missing editor runtime is a real failure; the media pack remains on disk.
+      return {
+        ok: false,
+        packOpened: openExplorer,
+        editorOpened: false,
+        error: vite.error,
+        packRoot: packRoot || null,
+        mediaDir: mediaDir || null,
+      };
+    }
+    loadUrl = vite.url;
+    mode = vite.mode || 'vite';
+  }
+
+  const win = ensureXinChaoBrowserWindow();
+  try {
+    await loadXinChaoUrl(win, loadUrl);
+    try {
+      win.setTitle('CapCut — AI Novel');
+      win.focus();
+    } catch {
+      /* ignore */
+    }
+  } catch (e) {
+    const msg = e?.message || String(e);
+    try {
+      if (!win.isDestroyed()) {
+        await win.loadURL(
+          buildXinChaoLoadingHtml(
+            `Không load được editor: ${msg}\nURL: ${loadUrl}\nMedia pack vẫn mở được bên Explorer.`,
+          ),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    revealIfNeeded();
+    return {
+      ok: false,
+      packOpened: openExplorer,
+      editorOpened: false,
+      error: `loadURL failed: ${msg}`,
+      url: loadUrl,
+      packRoot: packRoot || null,
+      mediaDir: mediaDir || null,
+    };
+  }
+
+  // Reveal media AFTER editor is up — avoids Explorer + heavy SPA competing on open
+  revealIfNeeded();
+
+  return {
+    ok: true,
+    editorOpened: true,
+    packOpened: openExplorer,
+    url: loadUrl,
+    mode,
+    packRoot: packRoot || null,
+    mediaDir: mediaDir || null,
+  };
 }
 
 /** Reject shell-open into system-protected trees; allow user project/media paths. */
@@ -782,25 +1477,34 @@ async function snapshotFromRenderer() {
       true,
     );
     if (raw && durable.scorePersistedStore(raw).score > 0) {
-      commitWrite(raw, { history: false });
+      // scheduleWrite only — commitWrite (4× atomicWrite) freezes :3000 HTTP
+      scheduleWrite(raw);
     }
   } catch (err) {
     console.warn('[DurableStore] renderer snapshot failed:', err?.message || err);
   }
 }
 
+/** Prevent reload thrash if recovery inject runs more than once per session. */
+let restoreInjectedOnce = false;
+
 async function restoreIntoRendererIfNeeded() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (restoreInjectedOnce) return;
   try {
     const currentRaw = await mainWindow.webContents.executeJavaScript(
       `localStorage.getItem(${JSON.stringify(ZUSTAND_STORE_KEY)})`,
       true,
     );
     const currentScore = durable.scorePersistedStore(currentRaw).score;
-    const boot = resolveBootStore();
+    // Cache only — no LevelDB re-scan, no sync write on navigation
+    const boot = resolveBootStore({ allowLevelDb: false, mirror: false });
     if (!boot.raw) return;
     if (boot.summary.score <= currentScore) return;
+    // Only inject when local is catastrophically empty vs disk
+    if (currentScore > 200 && boot.summary.score < currentScore * 2) return;
 
+    restoreInjectedOnce = true;
     console.log(
       `[Recovery] Inject store (${boot.source}) score ${boot.summary.score} > local ${currentScore}`,
     );
@@ -1261,10 +1965,12 @@ function createMainWindow(opts = {}) {
   });
 
   if (!backupInterval) {
+    // 60s — was 30s; flushPending does history rotation (heavy)
     backupInterval = setInterval(() => {
       snapshotFromRenderer();
-      flushPending();
-    }, 30_000);
+      // Only flush pending write, avoid extra history thrash every tick
+      if (pendingWrite) flushPending();
+    }, 60_000);
   }
 
   mainWindow.on('close', () => {
@@ -1332,6 +2038,8 @@ app.on('second-instance', () => {
 /**
  * Start LA Studio desktop engine hidden (API :3900 + Kokoro pack).
  * Best-effort — does not block boot if missing.
+ * Runs on Electron ready so TTS is warm before user opens «Cấu hình giọng».
+ * Never Start-Process again if LA Studio.exe is already running.
  */
 function ensureLaStudioBackgroundEngine() {
   try {
@@ -1339,6 +2047,26 @@ function ensureLaStudioBackgroundEngine() {
       console.log('[LA Studio] autostart disabled (AINOVEL_LA_STUDIO_AUTOSTART=0)');
       return;
     }
+
+    let processAlreadyRunning = false;
+    try {
+      const { execSync } = require('child_process');
+      for (const image of ['LA Studio.exe', 'LAStudio.exe']) {
+        const out = execSync(`tasklist /FI "IMAGENAME eq ${image}" /FO CSV /NH`, {
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 4000,
+        });
+        if (out && !/INFO:/i.test(out) && out.toLowerCase().includes(image.toLowerCase())) {
+          processAlreadyRunning = true;
+          console.log('[LA Studio] process already running — will hide UI, skip spawn');
+          break;
+        }
+      }
+    } catch {
+      /* ignore tasklist */
+    }
+
     const settingsPath = path.join(os.homedir(), '.lastudio', 'settings.ini');
     try {
       let raw = fs.existsSync(settingsPath)
@@ -1371,7 +2099,7 @@ function ensureLaStudioBackgroundEngine() {
     ].filter(Boolean);
 
     const exe = candidates.find((p) => p && fs.existsSync(p));
-    if (!exe) {
+    if (!exe && !processAlreadyRunning) {
       console.warn('[LA Studio] exe not found — skip background spawn');
       return;
     }
@@ -1413,21 +2141,41 @@ function ensureLaStudioBackgroundEngine() {
       }
     };
 
+    const keepHiding = (times, everyMs) => {
+      hideLaStudioUi();
+      let n = 0;
+      const t = setInterval(() => {
+        hideLaStudioUi();
+        if (++n >= times) clearInterval(t);
+      }, everyMs);
+    };
+
+    // Process up but API cold — only hide, never second Start-Process
+    if (processAlreadyRunning) {
+      keepHiding(40, 800);
+    }
+
     // Probe health first — if already online, just hide the GUI
     const probe = http.get('http://127.0.0.1:3900/health', { timeout: 1500 }, (res) => {
       res.resume();
       if (res.statusCode === 200) {
         console.log('[LA Studio] API already online :3900 — hide UI');
-        hideLaStudioUi();
-        // Re-hide for a bit in case Qt redraws
-        let n = 0;
-        const t = setInterval(() => {
-          hideLaStudioUi();
-          if (++n >= 25) clearInterval(t);
-        }, 800);
+        keepHiding(25, 800);
+      } else if (processAlreadyRunning) {
+        console.log('[LA Studio] process up, API not ready yet — wait (no re-spawn)');
+        keepHiding(60, 800);
       }
     });
     probe.on('error', () => {
+      if (processAlreadyRunning) {
+        console.log('[LA Studio] process running, API not listening yet — hide only');
+        keepHiding(60, 800);
+        return;
+      }
+      if (!exe) {
+        console.warn('[LA Studio] exe not found — cannot spawn');
+        return;
+      }
       try {
         const escaped = String(exe).replace(/'/g, "''");
         const workDir = path.dirname(exe).replace(/'/g, "''");
@@ -1444,12 +2192,7 @@ function ensureLaStudioBackgroundEngine() {
           { detached: true, stdio: 'ignore', windowsHide: true },
         ).unref();
         console.log(`[LA Studio] spawned minimized+hidden: ${exe}`);
-        hideLaStudioUi();
-        let n = 0;
-        const t = setInterval(() => {
-          hideLaStudioUi();
-          if (++n >= 90) clearInterval(t); // ~72s while cold-start / model load
-        }, 800);
+        keepHiding(90, 800); // ~72s while cold-start / model load
       } catch (e) {
         console.warn('[LA Studio] spawn failed', e?.message || e);
       }
@@ -1486,7 +2229,8 @@ app.whenReady().then(async () => {
     console.warn('[Updater] init skipped', e?.message || e);
   }
 
-  const boot = resolveBootStore();
+  // Cold start only: allow LevelDB if disk thin; mirror via scheduleWrite (async)
+  const boot = resolveBootStore({ allowLevelDb: true, mirror: true, force: true });
   console.log(
     `[DurableStore] Boot source=${boot.source || 'none'} score=${boot.summary?.score || 0} primary=${paths.primary}`,
   );
@@ -1606,6 +2350,21 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  try {
+    killFlowBrowsersOnAppQuit('before-quit');
+  } catch {
+    /* ignore */
+  }
+  try {
+    workBridge.shutdownWorkHost();
+  } catch {
+    /* ignore */
+  }
+  try {
+    shutdownXinChaoRuntime();
+  } catch {
+    /* ignore */
+  }
   isQuitting = true;
   try {
     flushPending();

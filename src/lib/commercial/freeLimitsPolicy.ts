@@ -71,6 +71,66 @@ export function maxWordsForTier(tier: string): number {
 }
 
 /**
+ * Content hard-stop for write/continue = selected (clamped) goal + 20%.
+ * Matches wordBand ceiling so Free/Trial don't toast at exact 600/3000 while
+ * Quality Gate still asks for more within the +20% band.
+ */
+export const TIER_WORD_HEADROOM_RATIO = 1.2;
+
+/** Ceiling words allowed on disk for a metered tier (goal×1.2 of tier max). */
+export function contentWordCeilingForTier(tier: string): number {
+  const max = maxWordsForTier(tier);
+  if (!Number.isFinite(max)) return Number.POSITIVE_INFINITY;
+  return Math.round(max * TIER_WORD_HEADROOM_RATIO);
+}
+
+/**
+ * Effective Setup word goal for Quality Gate / write UI — always clamp Free/Trial
+ * so badge never demands 4250 while Free caps at 600.
+ * Authority = user's so_tu_chuong (not a fixed constant).
+ */
+export function effectiveSetupWordGoal(
+  so_tu_chuong: unknown,
+  flags: { is_pro?: boolean; is_trial?: boolean; is_vip?: boolean },
+): number {
+  const tier = resolveMeteredTierFromFlags(flags);
+  return normalizeSetupScaleForTier(1, so_tu_chuong, tier).so_tu_chuong;
+}
+
+/**
+ * Full write plan before gen kịch bản:
+ * - goal = so_tu user đã set (clamp gói)
+ * - min/max = band 0.92 / 1.20 of goal
+ * Dùng preflight + continue + quality — cấm hardcode 4250.
+ */
+export type WriteWordPlan = {
+  tier: 'free' | 'trial' | 'pro';
+  /** User Setup so_tu_chuong after tier clamp */
+  goal: number;
+  min: number;
+  max: number;
+  source: string;
+};
+
+export function resolveWriteWordPlan(
+  so_tu_chuong: unknown,
+  flags: { is_pro?: boolean; is_trial?: boolean; is_vip?: boolean },
+): WriteWordPlan {
+  const tier = resolveMeteredTierFromFlags(flags);
+  const goal = normalizeSetupScaleForTier(1, so_tu_chuong, tier).so_tu_chuong;
+  // Inline band math — avoid importing pipeline into commercial (cycle risk)
+  const min = Math.round(goal * 0.92);
+  const max = Math.round(goal * 1.2);
+  return {
+    tier,
+    goal,
+    min,
+    max,
+    source: `setup.so_tu_chuong=${goal}·tier=${tier}`,
+  };
+}
+
+/**
  * Free matrix features that share the same daily budget shape.
  * Matches Free group in PRICING_PLANS / FEATURE_MATRIX (minTier free).
  * Trial meters the same buckets (higher daily limit).
@@ -312,15 +372,17 @@ export function freeQuotaExhaustedMessage(
 }
 
 export function freeWordCapMessage(): string {
+  const goal = FREE_LIMITS.maxWordsPerChapter;
   return (
-    `Gói Free: mỗi chương tối đa ${FREE_LIMITS.maxWordsPerChapter} từ. ` +
+    `Gói Free: cổng từ toàn chương tối đa ~${goal} từ (Setup số từ/chương). ` +
     `Nâng Trial (≤${TRIAL_LIMITS.maxWordsPerChapter} từ) hoặc Pro. Nhấp logo → Bản quyền.`
   );
 }
 
 export function trialWordCapMessage(): string {
+  const goal = TRIAL_LIMITS.maxWordsPerChapter;
   return (
-    `Gói Trial: mỗi chương tối đa ${TRIAL_LIMITS.maxWordsPerChapter} từ. ` +
+    `Gói Trial: cổng từ toàn chương tối đa ~${goal} từ (Setup số từ/chương). ` +
     `Nâng Pro để không giới hạn. Nhấp logo → Bản quyền.`
   );
 }

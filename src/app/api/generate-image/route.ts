@@ -5,6 +5,7 @@ import {
   generateImageBodySchema,
   localImageFilename,
   parseOrThrow,
+  sanitizeAssetFilename,
 } from '@/contracts';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 import {
@@ -35,7 +36,12 @@ export async function POST(req: Request) {
     const ten_tac_pham = body.ten_tac_pham || '';
     const cookie = body.cookie || '';
     const characterPrompt = body.characterPrompt || '';
-    const model = body.model || 'imagen3';
+    // Prefer body.model; accept imageModel alias (Media Config / older clients)
+    const model = String(
+      body.model ||
+        (body as { imageModel?: string }).imageModel ||
+        '',
+    ).trim() || 'imagen3';
     const imageProvider = body.imageProvider;
 
     slog({
@@ -100,7 +106,12 @@ export async function POST(req: Request) {
       }
     }
 
-    const filename = localImageFilename(chapterNum, sceneIndex, promptIndex);
+    // Character sheets: client may pass assetFilename (char_sheet_Name.png) so NV
+    // do not overwrite shared chapter_0_scene_999_prompt_999.png
+    const filename =
+      sanitizeAssetFilename(
+        (body as { assetFilename?: string }).assetFilename,
+      ) || localImageFilename(chapterNum, sceneIndex, promptIndex);
     const publicImageDir = path.join(process.cwd(), 'public', 'images');
     console.log(
       `[generate-image] Start real generation for c${chapterNum}-${promptIndex + 1} | Provider: ${imageProvider} | Model: ${model}`,

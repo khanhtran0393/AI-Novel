@@ -2,7 +2,8 @@
  * Issue Ed25519 entitlement token (seller / backend only).
  *
  * enforce mode: AINOVEL_ENTITLEMENT_ADMIN_KEY required on every request.
- * Body: { expSeconds?, hwid?, adminKey }
+ * Body: { expSeconds?, hwid, adminKey }
+ * Supabase ledger persistence is mandatory.
  */
 import { NextResponse } from 'next/server';
 import {
@@ -10,6 +11,9 @@ import {
   getEntitlementPublicStatus,
   issueEntitlementToken,
 } from '@/lib/entitlement';
+import { persistIssuedProToken } from '@/lib/cloud/licenseBridge';
+import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
+import { createServiceSupabase } from '@/lib/supabase/server';
 import {
   assertLicenseSignerConfigured,
   assertSellerRuntime,
@@ -22,6 +26,12 @@ export async function POST(req: Request) {
   try {
     assertSellerRuntime();
     assertLicenseSignerConfigured();
+    if (!isSupabaseAdminConfigured()) {
+      throw new AppError(
+        'Supabase SERVICE_ROLE bắt buộc để cấp license. Không phát hành token-only.',
+        { code: 'INFRA', status: 503 },
+      );
+    }
     const body = (await req.json().catch(() => ({}))) as {
       expSeconds?: number;
       hwid?: string;
@@ -52,13 +62,27 @@ export async function POST(req: Request) {
       });
     }
 
-    const hwid = typeof body.hwid === 'string' ? body.hwid.trim() : '';
+    const hwid =
+      typeof body.hwid === 'string' ? body.hwid.trim().toLowerCase() : '';
+    if (hwid.length < 8) {
+      throw new AppError('Cần HWID hợp lệ (tối thiểu 8 ký tự).', {
+        code: 'VALIDATION',
+        status: 400,
+      });
+    }
     const token = issueEntitlementToken({
       is_pro: true,
       is_vip: false,
       plan: 'pro',
       expSeconds: body.expSeconds,
-      ...(hwid ? { hwid } : {}),
+      hwid,
+    });
+    const persisted = await persistIssuedProToken({
+      service: createServiceSupabase(),
+      token,
+      hwid,
+      actorId: 'entitlement-issue',
+      source: 'api.entitlement.issue',
     });
 
     const claimsPreview = {
@@ -73,11 +97,11 @@ export async function POST(req: Request) {
       ok: true,
       mode,
       token,
+      licenseId: persisted.licenseId,
+      authority: 'supabase',
       header: 'x-ainovel-entitlement',
       claims: claimsPreview,
-      hint: hwid
-        ? 'Token gắn HWID — chỉ máy khớp mới verify được.'
-        : 'Token không gắn HWID — dùng được mọi máy (ít an toàn hơn).',
+      hint: 'Token gắn HWID và đã ghi Supabase ledger.',
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {

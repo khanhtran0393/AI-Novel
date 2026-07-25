@@ -1,4 +1,4 @@
-import { postGenerate, postJson, API } from './apiClient';
+import { postGenerate, postJson, API, buildClientApiHeaders } from './apiClient';
 /**
  * Module thiết lập ban đầu & Dàn ý tác phẩm (Novel Setup & Outline Generator)
  */
@@ -116,31 +116,99 @@ export type YoutubeSourcePayload = {
   transcript?: string;
   wordCount?: number;
   source?: string;
+  /** server chain: meta > python > timedtext > ytdlp */
+  chain?: string[];
   rewriteBrief?: string;
   error?: string;
   errorCode?: string;
 };
 
-/** Lấy tiêu đề / mô tả / phụ đề YouTube để seed mo_ta (viết lại kịch bản tương tự). */
+/**
+ * Lấy tiêu đề / mô tả / phụ đề YouTube.
+ * 422 (captions fail) → trả object success:false + title/description (không throw),
+ * để client soft-seed cốt truyện khi YouTube chặn phụ đề.
+ * Chỉ throw khi mạng/HTTP 5xx / body rỗng.
+ */
 export async function fetchYoutubeSourceAction(params: {
   url: string;
   preferredLangs?: string[];
 }): Promise<YoutubeSourcePayload> {
-  return postJson<YoutubeSourcePayload>(API.youtubeSource, {
-    url: params.url,
-    preferredLangs: params.preferredLangs,
+  const res = await fetch(API.youtubeSource, {
+    method: 'POST',
+    headers: buildClientApiHeaders(),
+    body: JSON.stringify({
+      url: params.url,
+      preferredLangs: params.preferredLangs,
+    }),
   });
+  const data = (await res.json().catch(() => ({}))) as YoutubeSourcePayload & {
+    error?: string;
+  };
+
+  if (res.ok) {
+    return {
+      ...data,
+      success: data.success !== false,
+      ok: data.ok !== false,
+    };
+  }
+
+  // Captions unavailable / rate-limit / bad URL — structured fail for soft-seed
+  if (res.status === 400 || res.status === 422) {
+    return {
+      success: false,
+      ok: false,
+      error: String(data.error || `HTTP ${res.status}`),
+      errorCode: data.errorCode,
+      videoId: data.videoId,
+      url: data.url || params.url,
+      title: data.title || '',
+      channel: data.channel || '',
+      description: data.description || '',
+      transcript: data.transcript || '',
+    };
+  }
+
+  throw new Error(
+    String(data.error || `HTTP ${res.status} youtube-source`).trim() ||
+      'Không gọi được /api/youtube-source.',
+  );
+}
+
+/** Ghép title+mô tả thành seed phân tích khi không lấy được phụ đề. */
+export function buildYoutubeMetadataSeed(meta: {
+  title?: string;
+  description?: string;
+  channel?: string;
+  url?: string;
+}): string {
+  const title = String(meta.title || '').trim();
+  const channel = String(meta.channel || '').trim();
+  const description = String(meta.description || '').trim();
+  const url = String(meta.url || '').trim();
+  const parts = [
+    '[NGUỒN YOUTUBE — METADATA, KHÔNG PHẢI PHỤ ĐỀ]',
+    'Lưu ý: Phụ đề (captions) không lấy được. Chỉ có tiêu đề + mô tả video — bóc cốt truyện gợi ý, không bịa phụ đề.',
+    title ? `Tiêu đề: ${title}` : '',
+    channel ? `Kênh: ${channel}` : '',
+    url ? `URL: ${url}` : '',
+    description ? `Mô tả video:\n${description.slice(0, 6000)}` : '',
+  ].filter(Boolean);
+  return parts.join('\n\n').trim();
 }
 
 export async function analyzeYoutubePlotAction(params: {
   sourceText: string;
   title?: string;
   similarityTarget?: number;
+  /** captions (default) | metadata when YouTube chặn phụ đề */
+  sourceKind?: 'captions' | 'metadata';
 }): Promise<string> {
   const data = await postGenerate('ANALYZE_YOUTUBE_PLOT', {
     source_text: params.sourceText,
     title: params.title || '',
     similarity_target: params.similarityTarget ?? 80,
+    source_kind: params.sourceKind || 'captions',
   });
   const mo =
     (typeof data.mo_ta === 'string' && data.mo_ta) ||

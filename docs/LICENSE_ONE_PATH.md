@@ -37,7 +37,7 @@ App: public verify ────────┤
 1. Logo → **Bản quyền** (`LicenseModal`).
 2. Copy **HWID**.
 3. **Seller/admin issue** → **phải có row `licenses` active** trên Supabase (Telegram/admin/order).
-4. **Trial** (cloud) hoặc dán **`AINOVEL2…`** / mã `AINOVEL-…` → bind token_hash lên row có sẵn.
+4. **Trial** (cloud) hoặc dán **`AINOVEL2…`** / mã `AINOVEL-…` → bind `token_hash`, `exp_at`, plan và HWID lên đúng row có sẵn.
 5. `POST /api/entitlement/activate` → token → `localStorage.ainovel.entitlementToken`.
 6. Mọi API gửi `x-ainovel-entitlement`.
 7. Badge: `GET /api/commercial/status` → **chỉ đọc** `licenses` theo HWID → `useEntitlementSync` (TRIAL → PRO → FREE).
@@ -51,6 +51,13 @@ App: public verify ────────┤
 | Token `AINOVEL2…` crypto vẫn verify | **Không đủ** — chỉ là vé; không có row active = Free |
 
 Token Ed25519 local **không** tự INSERT / self-heal Pro. Heartbeat packaged: `valid:false` / status `none` = thu hồi (không còn “missing row = offline OK”).
+
+Khi client gửi token, `token_hash`, HWID, Trial/Pro và `exp_at` phải khớp
+ledger để ticket được coi là còn mới. Nếu ticket cũ lệch hash/hạn nhưng HWID
+vẫn có row active, app xóa ticket cũ và tiếp tục lấy quyền từ ledger HWID; người
+dùng kích hoạt lại để nhận ticket đồng bộ. Row `revoked`/`expired`/bị xóa vẫn
+về Free ngay. Mọi đường cấp key phải fail-closed: lỗi ghi ledger thì
+Telegram/API không được trả token cho seller hoặc khách.
 
 **Cấm** đường thứ hai: card settings tự set `is_pro`, HMAC `eyJ…` cũ, derive module key từ token, offline token re-create ledger.
 

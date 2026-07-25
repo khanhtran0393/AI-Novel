@@ -59,8 +59,10 @@ export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
               gioi_tinh: c.gioi_tinh || '',
               tuoi: c.tuoi || '',
               dang_nguoi: c.dang_nguoi || '',
+              chieu_cao: c.chieu_cao || '',
               vai_tro: c.vai_tro || '',
               quan_ao: c.quan_ao || '',
+              phu_kien: c.phu_kien || '',
               so_thich: c.so_thich || '',
               thoi_quen: c.thoi_quen || '',
               dong_co: c.dong_co || '',
@@ -68,9 +70,11 @@ export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
               ngoai_hinh: c.ngoai_hinh || '',
               dac_diem_nhan_dang: c.dac_diem_nhan_dang || '',
               khuet_tat: c.khuet_tat || '',
+              mau_sac: c.mau_sac || '',
               prompt: c.prompt || '',
               angle_prompts: c.angle_prompts || {},
               expression_prompts: c.expression_prompts || {},
+              pose_prompts: c.pose_prompts || {},
             });
           });
         }

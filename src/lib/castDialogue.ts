@@ -58,7 +58,15 @@ export function parseCastDialogue(params: {
   const raw: ParsedCastLine[] = [];
 
   for (const line of lines) {
-    if (/^\[?CẢNH\s+\d+/i.test(line)) continue;
+    // Scene headers must never become cast lines (NFC + optional brackets / markdown)
+    // e.g. [CẢNH 2: NỘI CẢNH…], CẢNH 1:, **[Cảnh 0: COLD OPEN]**
+    const stripped = line.replace(/^\*+|\*+$/g, '').trim();
+    if (
+      /^\[?\s*cảnh\s*\d+/iu.test(stripped) ||
+      /^\[[^\]]*cảnh\s*\d+[^\]]*\]\s*$/iu.test(stripped)
+    ) {
+      continue;
+    }
 
     // 1) Classic "Name: body"
     let matchedPrefix = false;

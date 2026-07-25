@@ -124,13 +124,19 @@ export interface SceneAutomationOptions {
 
 export interface ChapterTTSOptions {
   includeHook?: boolean;
-  /** Skip scenes that already have audioPath */
+  /** Skip scenes that already have audioPath (ignored when force) */
   skipExisting?: boolean;
-  /** Only re-run scenes recorded as failed in last chapter batch */
-  onlyFailed?: boolean;
-  /** Force re-gen even if audio exists (overrides skipExisting) */
+  /**
+   * Force re-gen even if audio exists (overrides skipExisting).
+   * Button chính: mặc định true.
+   */
   force?: boolean;
   silent?: boolean;
   /** Skip YouTube editor hard-block (user confirmed) */
   bypassYoutubeGate?: boolean;
+  /**
+   * After gen: concat all scene TTS → 1 MP3 + SRT into channel output folder.
+   * Default true for chapter button.
+   */
+  exportFull?: boolean;
 }

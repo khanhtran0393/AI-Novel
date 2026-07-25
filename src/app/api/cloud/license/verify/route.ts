@@ -47,6 +47,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: result.valid,
       valid: result.valid,
+      /** Client may store this when ticket drifted but HWID still active */
+      rebindToken: result.rebindToken || null,
       claims: result.claims
         ? {
             is_pro: result.claims.is_pro,

@@ -21,6 +21,7 @@ export type FlowSessionSnapshot = {
     flowKeyPresent?: boolean;
     sessionVerified?: boolean;
     email?: string;
+    status?: string;
   }>;
 };
 
@@ -61,9 +62,13 @@ async function fetchFlowStatus(): Promise<FlowSessionSnapshot> {
   return data;
 }
 
-function hasLoggedInProfile(st: FlowSessionSnapshot): boolean {
+function activeAccount(st: FlowSessionSnapshot) {
   const accounts = Array.isArray(st.accounts) ? st.accounts : [];
-  const active = accounts.find((a) => a.id === st.activeAccountId);
+  return accounts.find((a) => a.id === st.activeAccountId) || accounts[0];
+}
+
+function hasLoggedInProfile(st: FlowSessionSnapshot): boolean {
+  const active = activeAccount(st);
   return Boolean(
     active?.flowKeyPresent &&
       active.sessionVerified &&
@@ -72,16 +77,32 @@ function hasLoggedInProfile(st: FlowSessionSnapshot): boolean {
   );
 }
 
+/** Token/key paint without real Google email — must re-login. */
+function hasStaleTokenNoEmail(st: FlowSessionSnapshot): boolean {
+  const active = activeAccount(st);
+  if (!active) return false;
+  const hasKey = Boolean(active.flowKeyPresent || st.flowKeyPresent);
+  const hasEmail = Boolean(active.email && String(active.email).includes('@'));
+  return hasKey && !hasEmail;
+}
+
 function isSessionReady(st: FlowSessionSnapshot): boolean {
   // Extension + token + real Google login (email). Token stale ≠ ready.
-  const accounts = Array.isArray(st.accounts) ? st.accounts : [];
-  const active = accounts.find((account) => account.id === st.activeAccountId);
+  const active = activeAccount(st);
   return Boolean(active?.extensionConnected && hasLoggedInProfile(st));
 }
+
+const LOGIN_GUIDE =
+  'Extension đã nối nhưng CHƯA đăng nhập Google trong trình duyệt CỦA APP.\n' +
+  '① Mở Media Config (Ảnh/Video)\n' +
+  '② Card profile → bấm «Đăng nhập»\n' +
+  '③ Đăng nhập Google TRONG cửa sổ app mở ra (không dùng Chrome cá nhân)\n' +
+  '④ Đợi email hiện trên card + badge sẵn sàng → gen lại';
 
 /**
  * Preflight Flow trước gen ảnh/video.
  * - Lần đầu / extension offline → POST bootstrap + mở browser
+ * - Chờ login đủ lâu để user kịp OAuth
  * - Toast từng bước + lỗi login rõ ràng
  */
 export async function ensureFlowSessionReady(
@@ -114,13 +135,19 @@ export async function ensureFlowSessionReady(
     };
   }
 
-  const needBrowser = opts.forceBrowser || !isSessionReady(st);
+  const staleKey = hasStaleTokenNoEmail(st);
+  const needBrowser = opts.forceBrowser || !isSessionReady(st) || staleKey;
 
   if (notify) {
     if (!st.extensionConnected) {
       toast.info(
         label,
         'Extension chưa nối — đang mở browser Chromium + load extension…',
+      );
+    } else if (staleKey || !hasLoggedInProfile(st)) {
+      toast.info(
+        label,
+        'Chưa đăng nhập Google trên browser app — đang mở cửa sổ đăng nhập (chờ ~2 phút)…',
       );
     } else if (!st.flowKeyPresent) {
       toast.info(
@@ -132,6 +159,9 @@ export async function ensureFlowSessionReady(
     }
   }
 
+  // Login OAuth needs far more than 25s — Media Config uses 180s
+  const waitLoginMs = needBrowser ? 120_000 : 40_000;
+
   const bootRes = await fetch(API.flowBootstrap, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -140,7 +170,7 @@ export async function ensureFlowSessionReady(
       accountId: st.activeAccountId || undefined,
       engine: 'auto',
       waitExtensionMs: 40_000,
-      waitLoginMs: 25_000,
+      waitLoginMs,
     }),
   });
 
@@ -166,9 +196,16 @@ export async function ensureFlowSessionReady(
       data.extensionConnected ??
       data.snapshot?.extensionConnected,
   );
+
   if (isSessionReady(after)) {
     if (notify) {
-      toast.success(label, 'Flow đã sẵn sàng — bắt đầu gen…');
+      const email = activeAccount(after)?.email || '';
+      toast.success(
+        label,
+        email
+          ? `Flow sẵn sàng (${email}) — bắt đầu gen…`
+          : 'Flow đã sẵn sàng — bắt đầu gen…',
+      );
     }
     return {
       ok: true,
@@ -181,30 +218,33 @@ export async function ensureFlowSessionReady(
     };
   }
 
-  // Token without Google email (stale paint) — force re-login
-  if (flowKeyPresent && !hasLoggedInProfile(after) && !hasLoggedInProfile(data.snapshot || {})) {
-    const msg =
-      'Profile có token nhưng chưa đăng nhập Google (thiếu email). Mở Ảnh/Video → bấm Đăng nhập trên card trình duyệt, đăng nhập Google, đợi badge «sẵn sàng» + email hiện ra.';
-    if (notify) toast.warn(label, msg);
-    throw new Error(`[Flow] ${msg}`);
+  // Token/key without Google email — must login in app browser
+  if (
+    hasStaleTokenNoEmail(after) ||
+    (flowKeyPresent && !hasLoggedInProfile(after))
+  ) {
+    const msg = LOGIN_GUIDE;
+    if (notify) toast.warn(label, msg.replace(/\n/g, ' · '));
+    throw new Error(`[Flow] ${msg.replace(/\n/g, ' ')}`);
   }
 
-  // Partial: browser opened but user must login
+  // Extension up, no token — browser must show Google login
   if (extensionConnected && !flowKeyPresent) {
     const msg =
-      data.message ||
-      'Browser/extension đã mở nhưng chưa có token. Đăng nhập Google trên cửa sổ Flow của app, đợi token xanh, rồi gen lại.';
+      data.message && !/Extension đã nối/.test(data.message)
+        ? data.message
+        : LOGIN_GUIDE;
     if (notify) {
-      toast.warn(label, msg);
+      toast.warn(label, msg.replace(/\n/g, ' · '));
     }
-    throw new Error(`[Flow] ${msg}`);
+    throw new Error(`[Flow] ${msg.replace(/\n/g, ' ')}`);
   }
 
   if (!extensionConnected) {
     const msg =
       data.message ||
       data.error ||
-      'Không kết nối được extension. Kiểm tra Chromium portable + Ảnh/Video → Engine Auto → Đăng nhập.';
+      'Không kết nối được extension. Media Config → Engine Auto → Đăng nhập (Chromium portable của app).';
     if (notify) {
       toast.error(label, msg);
     }
@@ -214,7 +254,7 @@ export async function ensureFlowSessionReady(
   const failMsg =
     data.message ||
     data.error ||
-    'Flow chưa sẵn sàng. Ảnh/Video → Engine Auto → Đăng nhập Google trên browser profile app.';
-  if (notify) toast.error(label, failMsg);
-  throw new Error(`[Flow] ${failMsg}`);
+    LOGIN_GUIDE;
+  if (notify) toast.error(label, failMsg.replace(/\n/g, ' · '));
+  throw new Error(`[Flow] ${failMsg.replace(/\n/g, ' ')}`);
 }

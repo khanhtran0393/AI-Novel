@@ -7,14 +7,19 @@ import { useNovelStore } from '@/store/useNovelStore';
 import { autoImportCookieAction, addCookieAction, removeCookieAction } from '../modules/cookieModule';
 import { toast } from '@/lib/toastBus';
 
-/** Lấy sessionid TikTok qua Chrome (dùng trong Cấu Hình Giọng Đọc Toàn Cục) */
-export async function autoImportTikTokSessionAction(slot?: number): Promise<string> {
+/** Lấy sessionid TikTok qua Chrome thật + CDP (Cấu Hình Giọng Đọc). */
+export async function autoImportTikTokSessionAction(
+  slot?: number,
+  opts?: { fresh?: boolean },
+): Promise<string> {
   try {
     const res = await fetch(API.getTiktokSession, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         slot: typeof slot === 'number' ? slot : undefined,
+        // Profile sạch — tránh kẹt login / session hỏng
+        fresh: opts?.fresh !== false,
       }),
     });
     if (!res.ok) {
@@ -35,7 +40,9 @@ export async function autoImportTikTokSessionAction(slot?: number): Promise<stri
     return sessionId;
   } catch (err: unknown) {
     throw new Error(
-      `Lỗi lấy Session TikTok: ${err instanceof Error ? err.message : String(err)}\n💡 Cần cài Google Chrome. Đăng nhập xong trong cửa sổ Chrome (không đóng sớm).`,
+      `Lỗi lấy Session TikTok: ${err instanceof Error ? err.message : String(err)}\n` +
+        '💡 Cài Google Chrome. Đăng nhập xong đợi For You — không đóng cửa sổ sớm.\n' +
+        '💡 Ưu tiên QR. Tắt VPN. Fallback: F12 → Cookies → sessionid → dán app.',
     );
   }
 }

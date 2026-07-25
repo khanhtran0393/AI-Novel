@@ -174,11 +174,11 @@ check(
   i2vBody,
 );
 check(
-  'I2V request matches FlowAgent structured prompt and media name shape',
+  'I2V request matches Flow live mediaId shape (not legacy name)',
   i2vReq?.textInput?.structuredPrompt?.parts?.[0]?.text ===
     'i2v parity prompt' &&
-    i2vReq?.startImage?.name === 'media-start' &&
-    !('mediaId' in (i2vReq?.startImage || {})),
+    i2vReq?.startImage?.mediaId === 'media-start' &&
+    !('name' in (i2vReq?.startImage || {})),
   i2vReq,
 );
 

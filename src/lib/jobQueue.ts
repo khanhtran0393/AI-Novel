@@ -2,7 +2,12 @@
  * Client-side batch job queue for image/TTS/media work.
  * Pause / cancel / retry-failed without One-click full chapter pipeline.
  * Each job/item carries correlationId for support + structured logs.
+ *
+ * GUI rule: runners must not block the Electron chrome — yield between items
+ * so React can paint; pair bulk setState with scheduleAppWork / persist mute.
  */
+
+import { yieldToUi } from '@/store/persistStorage';
 
 /** Local id mint — avoid pulling requestContext → @/secrets into lightweight clients/tests */
 function newCorrelationId(prefix = 'job'): string {
@@ -59,13 +64,41 @@ const abortFlags = new Map<string, { cancel: boolean; pause: boolean }>();
 /** Keep runner so Retry failed can re-run without re-creating the job */
 const runners = new Map<string, BatchJobRunner>();
 
-function emit() {
-  for (const fn of listeners) {
-    try {
-      fn();
-    } catch {
-      /* ignore */
+/** Throttle listener fan-out — each item status change used to re-render Jobs panel. */
+const EMIT_MIN_MS = 280;
+let lastEmitAt = 0;
+let emitTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emit(force = false) {
+  const now = Date.now();
+  const due = force || now - lastEmitAt >= EMIT_MIN_MS;
+  if (due) {
+    if (emitTimer) {
+      clearTimeout(emitTimer);
+      emitTimer = null;
     }
+    lastEmitAt = now;
+    for (const fn of listeners) {
+      try {
+        fn();
+      } catch {
+        /* ignore */
+      }
+    }
+    return;
+  }
+  if (!emitTimer) {
+    emitTimer = setTimeout(() => {
+      emitTimer = null;
+      lastEmitAt = Date.now();
+      for (const fn of listeners) {
+        try {
+          fn();
+        } catch {
+          /* ignore */
+        }
+      }
+    }, EMIT_MIN_MS);
   }
 }
 
@@ -199,7 +232,7 @@ export async function runBatchJob(
   const flags = abortFlags.get(jobId) || { cancel: false, pause: false };
   job.status = 'running';
   job.updatedAt = Date.now();
-  emit();
+  emit(true);
 
   // First run: only queued. Retry path may re-queue failed as queued.
   const queue = job.items.filter((i) => i.status === 'queued');
@@ -221,7 +254,7 @@ export async function runBatchJob(
 
       item.status = 'running';
       job.updatedAt = Date.now();
-      emit();
+      emit(); // throttled mid-batch
       try {
         await runner(item, job);
         if (flags.cancel) {
@@ -248,7 +281,9 @@ export async function runBatchJob(
         }
       }
       job.updatedAt = Date.now();
-      emit();
+      emit(); // throttled
+      // Let Electron paint between items (avoid long sync stretches freezing GUI)
+      await yieldToUi();
       // Anti-spam: quiet gap before next item (Flow / labs)
       const gap = Number(job.itemGapMs) || 0;
       if (gap > 0 && !flags.cancel) {
@@ -279,7 +314,7 @@ export async function runBatchJob(
     job.status = allDone ? (failed ? 'failed' : 'done') : 'paused';
   }
   job.updatedAt = Date.now();
-  emit();
+  emit(true); // force final badge/status
   return job;
 }
 

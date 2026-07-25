@@ -32,14 +32,22 @@ export function probeDurationSec(filePath: string, cwd = process.cwd()): number 
   }
 }
 
-function scratchPaths(cwd: string, tag: string) {
+function detectAudioExtension(buffer: Buffer): 'wav' | 'mp3' {
+  const isWave =
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WAVE';
+  return isWave ? 'wav' : 'mp3';
+}
+
+function scratchPaths(cwd: string, tag: string, extension: 'wav' | 'mp3') {
   const dir = path.join(cwd, 'public', 'audio', 'studio');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const id = `${tag}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   return {
     dir,
-    in: path.join(dir, `${id}_in.mp3`),
-    out: path.join(dir, `${id}_out.mp3`),
+    in: path.join(dir, `${id}_in.${extension}`),
+    out: path.join(dir, `${id}_out.${extension}`),
     bg: path.join(dir, `${id}_bg.mp3`),
   };
 }
@@ -72,7 +80,8 @@ export async function applyAudioStudioMix(
     return { buffer: inputBuffer, applied };
   }
 
-  const paths = scratchPaths(cwd, 'mix');
+  const outputExtension = detectAudioExtension(inputBuffer);
+  const paths = scratchPaths(cwd, 'mix', outputExtension);
   fs.writeFileSync(paths.in, inputBuffer);
   const dur = probeDurationSec(paths.in, cwd) || 30;
   const ffmpeg = resolveFfmpegCmd(cwd);
@@ -128,7 +137,11 @@ export async function applyAudioStudioMix(
     applied.push('loudnorm_mix');
 
     const fc = filters.join(';');
-    const cmd = `${ffmpeg} ${inputs.join(' ')} -filter_complex "${fc}" -map "[out]" -y "${paths.out}"`;
+    const outputCodec =
+      outputExtension === 'wav'
+        ? '-c:a pcm_s16le -ar 44100 -ac 1'
+        : '-c:a libmp3lame -b:a 192k -ar 44100 -ac 1';
+    const cmd = `${ffmpeg} ${inputs.join(' ')} -filter_complex "${fc}" -map "[out]" ${outputCodec} -y "${paths.out}"`;
     execSync(cmd, { encoding: 'utf-8', stdio: 'pipe' });
 
     const out = fs.readFileSync(paths.out);

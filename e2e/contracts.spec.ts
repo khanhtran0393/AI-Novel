@@ -361,7 +361,7 @@ test.describe('commercial media artifact contracts', () => {
     expect(route.match(/2024-11-06/g) || []).toHaveLength(2);
     expect(route).not.toContain('2024-09-13');
     expect(client).toContain('data.success !== true');
-    expect(client).toContain('!data.videoPath.trim()');
+    expect(client).toMatch(/!(?:String\()?data\.videoPath\)?\.trim\(\)/);
     expect(mediaConfig).toContain('sora: [4, 8, 12]');
   });
 });

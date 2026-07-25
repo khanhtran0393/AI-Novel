@@ -93,9 +93,15 @@ try {
   } catch {
     localRaw = null;
   }
-  if (localRaw) {
+  // Once per Chromium session — sendSync migrate on every navigation freezes boot
+  // when main also hosts Next.js HTTP.
+  if (localRaw && !globalThis.__ainovelCredMigrated) {
     try {
-      const migrated = ipcRenderer.sendSync('ainovel-credentials-migrate-raw', localRaw);
+      globalThis.__ainovelCredMigrated = true;
+      const migrated = ipcRenderer.sendSync(
+        'ainovel-credentials-migrate-raw',
+        localRaw,
+      );
       if (typeof migrated === 'string' && migrated) {
         localRaw = migrated;
         localStorage.setItem(STORE_KEY, migrated);
@@ -171,11 +177,43 @@ contextBridge.exposeInMainWorld('ainovelTools', {
   setTtsQueue: (snapshot) => ipcRenderer.invoke('ainovel-tts-queue-set', snapshot),
   getTtsQueue: () => ipcRenderer.invoke('ainovel-tts-queue-get'),
   openPath: (targetPath) => ipcRenderer.invoke('ainovel-open-path', targetPath),
+  /** Open vendored XinChao-Cut editor (tools/xinchao-cut) + optional pack folder */
+  openXinChao: (payload) => ipcRenderer.invoke('ainovel-open-xinchao', payload || {}),
   windowControls: {
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
     close: () => ipcRenderer.send('window-close'),
   }
+});
+
+/**
+ * Off-GUI work host (Electron utilityProcess).
+ * HTTP fetch/batch runs outside BrowserWindow main thread — GUI only applies results.
+ */
+contextBridge.exposeInMainWorld('ainovelWork', {
+  isElectron: true,
+  ping: () => ipcRenderer.invoke('ainovel-work-ping'),
+  fetch: (payload) => ipcRenderer.invoke('ainovel-work-fetch', payload),
+  batch: (payload) => ipcRenderer.invoke('ainovel-work-batch', payload),
+  cancel: (id) => ipcRenderer.invoke('ainovel-work-cancel', { id }),
+  onEvent: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const fn = (_e, payload) => {
+      try {
+        handler(payload);
+      } catch {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on('ainovel-work-event', fn);
+    return () => {
+      try {
+        ipcRenderer.removeListener('ainovel-work-event', fn);
+      } catch {
+        /* ignore */
+      }
+    };
+  },
 });
 
 /** Desktop auto-update (electron-updater) — github + generic dual-feed when packaged */

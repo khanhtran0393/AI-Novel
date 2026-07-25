@@ -26,6 +26,7 @@ import {
   evaluateChapterQuality,
   setChapterQuality,
 } from '@/lib/pipeline';
+import { effectiveSetupWordGoal } from '@/lib/commercial/freeLimitsPolicy';
 import { pushToast } from '@/lib/toastBus';
 
 
@@ -51,6 +52,22 @@ export type FinishChapterDeps = {
  * Does not call WRITE_CHAPTER API — that stays in useWriteChapter.handleWriteChapter.
  */
 export async function finishChapterWrite(
+  params: FinishChapterParams,
+  deps: FinishChapterDeps,
+): Promise<void> {
+  // Post-write many store writes — detach + mute persist (không đơ GUI sau gen dài)
+  const { scheduleAppWork } = await import('@/lib/appWork');
+  const { promise } = scheduleAppWork({
+    kind: 'write',
+    title: `Hoàn tất ch.${params.chapterNumber}`,
+    mutePersist: true,
+    yieldBeforeStart: true,
+    run: async () => finishChapterWriteInner(params, deps),
+  });
+  return promise;
+}
+
+async function finishChapterWriteInner(
   params: FinishChapterParams,
   deps: FinishChapterDeps,
 ): Promise<void> {
@@ -87,28 +104,64 @@ export async function finishChapterWrite(
       payload: {
         chapter: updatedChapter,
         overwrite: params.overwrite,
-        targetWords: liveState.setup.so_tu_chuong || 4250,
-        gate: evaluateWordGate(updatedChapter.noi_dung, liveState.setup.so_tu_chuong || 4250),
+        targetWords: effectiveSetupWordGoal(liveState.setup?.so_tu_chuong, {
+          is_pro: liveState.is_pro,
+          is_trial: liveState.is_trial,
+          is_vip: liveState.is_vip,
+        }),
+        gate: evaluateWordGate(
+          updatedChapter.noi_dung,
+          effectiveSetupWordGoal(liveState.setup?.so_tu_chuong, {
+            is_pro: liveState.is_pro,
+            is_trial: liveState.is_trial,
+            is_vip: liveState.is_vip,
+          }),
+        ),
       },
     });
 
     // P0 — Quality Gate (pre-memory snapshot; re-run after editor)
     {
       const live = useNovelStore.getState();
+      const wordGoal = effectiveSetupWordGoal(live.setup?.so_tu_chuong, {
+        is_pro: live.is_pro,
+        is_trial: live.is_trial,
+        is_vip: live.is_vip,
+      });
       const preQ = evaluateChapterQuality({
         chapter: params.chapterNumber,
         content: updatedChapter.noi_dung,
         characterNames: live.nhan_vat || [],
-        wordGoal: live.setup?.so_tu_chuong || 4250,
+        wordGoal,
         userRules: live.userRules,
+        scriptMode: live.scriptMode,
       });
       setChapterQuality(preQ);
       if (!preQ.mediaReady) {
+        const { formatQualityGateReasons, formatQualityGateTitle } = await import(
+          '@/lib/pipeline/qualityGate'
+        );
+        const detail = formatQualityGateReasons(preQ, {
+          maxErrors: 10,
+          maxWarnings: 4,
+          includeMeta: true,
+        });
+        const topErr =
+          preQ.findings
+            ?.filter((f) => f.severity === 'error')
+            .slice(0, 2)
+            .map((f) => f.message)
+            .join(' · ') || '';
         pushToast(
-          'warn',
-          `Quality Gate ch${params.chapterNumber}`,
-          `${preQ.hardErrors} lỗi · ${preQ.warnings} cảnh báo — media bị chặn đến khi đạt gate.`,
-          12_000,
+          'error',
+          formatQualityGateTitle(preQ),
+          `${preQ.hardErrors} lỗi · ${preQ.warnings} cảnh báo — media bị chặn đến khi đạt gate.${
+            topErr ? ` ${topErr}` : ''
+          } Mục tiêu ${wordGoal} từ (sàn ${Math.round(wordGoal * 0.92)} · trần ${Math.round(wordGoal * 1.2)} +20%). Bấm toast để xem nguyên nhân.`,
+          {
+            durationMs: 16_000,
+            detail,
+          },
         );
       }
     }
@@ -140,13 +193,19 @@ export async function finishChapterWrite(
       const chBody =
         live.danh_sach_chuong.find((c) => c.so_chuong === params.chapterNumber)?.noi_dung ||
         updatedChapter.noi_dung;
+      const wordGoal = effectiveSetupWordGoal(live.setup?.so_tu_chuong, {
+        is_pro: live.is_pro,
+        is_trial: live.is_trial,
+        is_vip: live.is_vip,
+      });
       const postQ = evaluateChapterQuality({
         chapter: params.chapterNumber,
         content: chBody,
         characterNames: live.nhan_vat || [],
-        wordGoal: live.setup?.so_tu_chuong || 4250,
+        wordGoal,
         userRules: live.userRules,
         editorVerdict: review?.verdict || live.editorReviews?.[params.chapterNumber]?.verdict,
+        scriptMode: live.scriptMode,
       });
       setChapterQuality(postQ);
       if (postQ.mediaReady) {

@@ -147,6 +147,60 @@ export function localImageFilename(
   return `${base}.png`;
 }
 
+/** Safe basename token for disk files (NFC, no path separators) */
+export function safeDiskToken(raw: string, fallback = 'asset'): string {
+  const s = String(raw || '')
+    .normalize('NFC')
+    .trim()
+    .replace(/[\/\\:\*\?"<>\|]/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  return s || fallback;
+}
+
+/**
+ * Character concept sheet on disk — UNIQUE per name.
+ * CẤM chapter_0_scene_999_prompt_999.png shared (ghi đè mọi NV).
+ * Example: char_sheet_Hàn_Dực.png
+ */
+export function localCharacterSheetFilename(characterName: string): string {
+  return `char_sheet_${safeDiskToken(characterName, 'nv')}.png`;
+}
+
+/**
+ * Wardrobe variant still on disk — unique per name + wardrobe id.
+ * Example: char_sheet_Hàn_Dực_wardrobe_battle.png
+ */
+export function localCharacterWardrobeFilename(
+  characterName: string,
+  wardrobeId: string,
+): string {
+  const safe = safeDiskToken(characterName, 'nv');
+  const wid = safeDiskToken(wardrobeId, 'default').slice(0, 48);
+  return `char_sheet_${safe}_wardrobe_${wid}.png`;
+}
+
+/**
+ * Validate optional client-supplied asset basename for /api/generate-image.
+ * Rejects path traversal; allows Unicode letters used in VN names.
+ */
+export function sanitizeAssetFilename(raw: unknown): string {
+  const base = String(raw || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    ?.split('?')[0]
+    ?.trim() || '';
+  if (!base || base === '.' || base === '..' || base.includes('..')) return '';
+  if (!/\.(png|jpe?g|webp)$/i.test(base)) return '';
+  // no separators after basename
+  if (/[\/\\]/.test(base)) return '';
+  return base;
+}
+
 /** Local animatic / scene video: chapter_1_scene_0_animatic.mp4 */
 export function localVideoFilename(chapter: number, sceneIndex: number): string {
   return `chapter_${Number(chapter)}_scene_${Number(sceneIndex)}_animatic.mp4`;

@@ -380,7 +380,11 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
     }
 
     const { buildClientApiHeaders } = await import('./apiClient');
-    const res = await fetch(API.generateImage, {
+    // Off-GUI: network wait runs in Electron utilityProcess / Web Worker — not BrowserWindow
+    const { offThreadFetchResponse } = await import(
+      '@/lib/appWork/offThreadFetchCompat'
+    );
+    const res = await offThreadFetchResponse(API.generateImage, {
       method: 'POST',
       headers: buildClientApiHeaders(),
       body: JSON.stringify({
@@ -408,13 +412,23 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
       })
     });
 
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     const correlationId =
       res.headers.get('x-correlation-id') ||
-      (typeof data?.correlationId === 'string' ? data.correlationId : '') ||
+      (typeof data.correlationId === 'string' ? data.correlationId : '') ||
       '';
     if (!res.ok) {
-      const msg = data.error || 'Image generation failed.';
+      const rawErr =
+        (typeof data.error === 'string' && data.error.trim()) ||
+        (typeof data.message === 'string' && data.message.trim()) ||
+        '';
+      const msg =
+        rawErr ||
+        (res.status === 503
+          ? 'Image provider chưa sẵn sàng (503) — kiểm tra Flow extension / đăng nhập.'
+          : res.status === 401 || res.status === 403
+            ? `Image provider từ chối quyền (HTTP ${res.status}).`
+            : `Sinh ảnh thất bại (HTTP ${res.status}).`);
       const e = new Error(
         correlationId ? `${msg} [cid=${correlationId}]` : msg,
       ) as Error & { correlationId?: string };
@@ -422,7 +436,18 @@ export async function generateImageAction(params: GenerateImageParams): Promise<
       throw e;
     }
 
-    return { ...data, correlationId: correlationId || data.correlationId };
+    return {
+      ...(data as {
+        imagePath: string;
+        imagePaths?: string[];
+        projectUrl?: string;
+        usedApiKey?: string;
+        method?: string;
+      }),
+      correlationId:
+        correlationId ||
+        (typeof data.correlationId === 'string' ? data.correlationId : undefined),
+    };
   };
 
   // Provider/model are explicit; multi-key/cookie rotation stays inside postImage / API.

@@ -8,9 +8,12 @@ import {
   generateOutlineAction,
   analyzeYoutubePlotAction,
   fetchYoutubeSourceAction,
+  buildYoutubeMetadataSeed,
   getFriendlyErrorMessage,
   summarizeSetupErrorForToast,
 } from '../modules/setupModule';
+import { yieldToUi } from '@/store/persistStorage';
+import { scheduleAppWork } from '@/lib/appWork';
 
 function isRawYoutubeMoTa(mo: string): boolean {
   const t = (mo || '').trim();
@@ -113,6 +116,7 @@ export function useSetupActions() {
    * 1) Lấy captions/chép lời → cache (youtubeSourceText) để đối chiếu % trùng
    * 2) AI bóc cốt truyện → điền ô «3. Cốt truyện» (mo_ta)
    * Không dump transcript thô vào mo_ta.
+   * Nếu YouTube chặn phụ đề: soft-seed từ tiêu đề + mô tả (metadata) — vẫn điền ô 3.
    */
   const handlePhanTichYoutube = async (urlOverride?: string) => {
     const store = getStore();
@@ -122,9 +126,24 @@ export function useSetupActions() {
       return;
     }
 
+    const hasKey = !!(
+      (store.apiKey || '').trim() ||
+      (store.apiKeys || []).some((k) => !!(k || '').trim())
+    );
+    if (!hasKey) {
+      failSetup(
+        'Phân tích YouTube',
+        '⚠️ Chưa có API Key LLM. Mở Cài đặt (⚙️) → dán Gemini/OpenAI key rồi thử lại.',
+      );
+      return;
+    }
+
     setPromptError('');
     setIsAnalyzingPlot(true);
-    toast.info('Phân tích YouTube', 'Đang lấy captions + bóc cốt truyện…');
+    toast.info(
+      'Phân tích YouTube',
+      'Đang lấy nội dung video (phụ đề → audio/Whisper nếu cần) + tóm cốt truyện theo % trùng… Có thể mất 1–3 phút.',
+    );
     try {
       const ngon = (store.setup.ngon_ngu || '').toLowerCase();
       const preferredLangs =
@@ -137,6 +156,9 @@ export function useSetupActions() {
       // Reuse cache if same URL already has captions
       let transcript = (store.youtubeSourceText || '').trim();
       let title = store.youtubeSourceTitle || '';
+      let sourceKind: 'captions' | 'metadata' = 'captions';
+      let contentSource = '';
+      let captionsBlockedNote = '';
       const cachedUrl = (store.youtubeRewriteUrl || '').trim();
       const canReuseCache =
         transcript.length >= 40 &&
@@ -146,31 +168,79 @@ export function useSetupActions() {
       if (!canReuseCache) {
         const data = await fetchYoutubeSourceAction({ url, preferredLangs });
         transcript = (data.transcript || '').trim();
-        if (transcript.length < 20) {
-          // Server already returns WHAT·WHERE·FIX; keep full text for promptError
-          throw new Error(
-            (data.error || '').trim() ||
-              '❌ Không lấy được bản chép lời (phụ đề).\n\n🔎 Vì sao: Video thiếu captions hoặc fetch Python fail.\n📍 Ở đâu: /api/youtube-source → youtube-transcript-api\n✅ Cách khắc phục: Bật CC trên video · pip install youtube-transcript-api · hoặc gõ cốt truyện tay ô 3.',
-          );
-        }
         title = data.title || title;
-        // Cache captions — dùng đối chiếu %; xóa khi sinh kịch bản xong
-        store.setYoutubeRewrite({
-          url: data.url || url,
-          sourceTitle: title,
-          sourceText: transcript,
-        });
+        contentSource = String(data.source || '');
+
+        if (transcript.length < 20) {
+          // Soft path cuối: metadata — chỉ khi audio/whisper cũng fail
+          const metaSeed = buildYoutubeMetadataSeed({
+            title: data.title || title,
+            description: data.description || '',
+            channel: data.channel || '',
+            url: data.url || url,
+          });
+          if (metaSeed.length >= 40) {
+            sourceKind = 'metadata';
+            transcript = metaSeed;
+            captionsBlockedNote =
+              (data.error || '').trim() ||
+              'Không lấy được lời thoại video — đang bóc cốt truyện từ tiêu đề + mô tả.';
+            store.setYoutubeRewrite({
+              url: data.url || url,
+              sourceTitle: title || data.title || '',
+              sourceText: '',
+            });
+            toast.info(
+              'Chưa có lời thoại',
+              'Đã thử phụ đề + audio. Dùng metadata tạm — % trùng sẽ lỏng. Gõ tay ô 3 nếu cần.',
+            );
+          } else {
+            throw new Error(
+              (data.error || '').trim() ||
+                '❌ Không lấy được nội dung video.\n\n🔎 Vì sao: YouTube chặn phụ đề và không tải/transcribe được audio.\n📍 Ở đâu: Bước «Phân tích»\n✅ Cách khắc phục: pip install yt-dlp openai-whisper · có ffmpeg · thử lại / gõ cốt truyện tay ô 3.',
+            );
+          }
+        } else {
+          // Cache lời thoại (CC hoặc Whisper) — bắt buộc cho canh % trùng
+          store.setYoutubeRewrite({
+            url: data.url || url,
+            sourceTitle: title,
+            sourceText: transcript,
+          });
+        }
       } else {
         store.setYoutubeRewrite({ url, sourceTitle: title || store.youtubeSourceTitle });
+        contentSource = 'cache';
       }
 
+      const sim = store.youtubeSimilarityTarget ?? 80;
       const mo_ta = await analyzeYoutubePlotAction({
         sourceText: transcript,
         title: title || store.youtubeSourceTitle || '',
-        similarityTarget: store.youtubeSimilarityTarget ?? 80,
+        similarityTarget: sim,
+        sourceKind,
       });
       store.setSetup({ mo_ta });
-      toast.success('Phân tích xong', 'Cốt truyện đã điền ô 3 — chỉnh rồi Sinh kịch bản.');
+      if (sourceKind === 'metadata') {
+        if (captionsBlockedNote) setPromptError(captionsBlockedNote);
+        toast.success(
+          'Cốt truyện gợi ý (metadata)',
+          `Ô 3 đã điền · mục tiêu ~${sim}% — chỉnh tay rồi Sinh kịch bản (chưa có cache lời thoại).`,
+        );
+      } else {
+        const via =
+          contentSource === 'audio_whisper'
+            ? 'audio+Whisper'
+            : contentSource === 'ytdlp_captions'
+              ? 'yt-dlp sub'
+              : contentSource === 'cache'
+                ? 'cache'
+                : 'phụ đề';
+        toast.success(
+          'Phân tích xong',
+          `Đã cache lời thoại (${via}) + cốt truyện ô 3 · mục tiêu trùng ~${sim}%. Chỉnh rồi Sinh kịch bản.`,
+        );
+      }
     } catch (err: unknown) {
       const friendly = getFriendlyErrorMessage(err);
       setPromptError(friendly);
@@ -225,10 +295,12 @@ export function useSetupActions() {
       return;
     }
 
-    // YouTube: bắt buộc đã có cốt truyện (bấm Phân tích) — không auto dump captions
+    // YouTube: cần cốt truyện (Phân tích hoặc gõ tay ô 3) — không auto dump captions
     if (ytMode && (!moTa || isRawYoutubeMoTa(moTa))) {
       failOutline(
-        '⚠️ Bấm «Phân tích» (cạnh link) để lấy chép lời + điền cốt truyện trước khi sinh kịch bản.',
+        isRawYoutubeMoTa(moTa)
+          ? '⚠️ Ô 3 đang chứa chép lời thô — bấm «Phân tích» để bóc cốt truyện gọn, hoặc xóa và gõ tóm tắt tay.'
+          : '⚠️ Điền cốt truyện ô 3 trước: bấm «Phân tích» (cạnh link) hoặc gõ tay tóm tắt rồi Sinh kịch bản.',
       );
       return;
     }
@@ -236,7 +308,7 @@ export function useSetupActions() {
     if (!moTa) {
       failOutline(
         ytMode
-          ? '⚠️ Bấm «Phân tích» để điền cốt truyện (ô 3) trước khi sinh kịch bản!'
+          ? '⚠️ Điền cốt truyện ô 3 (bấm «Phân tích» hoặc gõ tay) trước khi sinh kịch bản!'
           : '⚠️ Nhập mô tả cốt truyện (mục 3) hoặc bấm «AI ý tưởng» trước khi sinh kịch bản.',
       );
       return;
@@ -331,22 +403,6 @@ export function useSetupActions() {
         );
       }
 
-      store.updateTenTacPham(title);
-      store.updateDanYTongThe(outline);
-      store.updateNhanVat(characters);
-
-      if (data.lorebook) store.updateLorebook(data.lorebook as string);
-      if (data.tom_tat_cuon_chieu) {
-        store.updateTomTatCuonChieu(data.tom_tat_cuon_chieu as string);
-      }
-      if (data.tri_nho_ngan_han) {
-        store.updateTriNhoNganHan(data.tri_nho_ngan_han as string[]);
-      }
-      if (data.world_state) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        store.updateWorldState(data.world_state as any);
-      }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawChapters = Array.isArray(data.danh_sach_chuong)
         ? (data.danh_sach_chuong as any[])
@@ -386,15 +442,42 @@ export function useSetupActions() {
         };
       });
 
-      store.setDanhSachChuong(convertedChapters);
-      store.selectChuong(1);
+      // Apply outline on detached flow — many setState + stringify freezes Electron
+      await yieldToUi();
+      const { promise: applyOutlinePromise } = scheduleAppWork({
+        kind: 'outline',
+        title: 'Áp dàn ý vào store',
+        mutePersist: true,
+        yieldBeforeStart: false,
+        run: async () => {
+          store.updateTenTacPham(title);
+          store.updateDanYTongThe(outline);
+          store.updateNhanVat(characters);
 
-      // Xóa captions cache sau khi sinh kịch bản thành công
-      if (ytMode) {
-        store.setYoutubeRewrite({ sourceText: '' });
-      }
+          if (data.lorebook) store.updateLorebook(data.lorebook as string);
+          if (data.tom_tat_cuon_chieu) {
+            store.updateTomTatCuonChieu(data.tom_tat_cuon_chieu as string);
+          }
+          if (data.tri_nho_ngan_han) {
+            store.updateTriNhoNganHan(data.tri_nho_ngan_han as string[]);
+          }
+          if (data.world_state) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            store.updateWorldState(data.world_state as any);
+          }
 
-      store.setGiaiDoan(2);
+          store.setDanhSachChuong(convertedChapters);
+          store.selectChuong(1);
+
+          // Xóa captions cache sau khi sinh kịch bản thành công
+          if (ytMode) {
+            store.setYoutubeRewrite({ sourceText: '' });
+          }
+
+          store.setGiaiDoan(2);
+        },
+      });
+      await applyOutlinePromise;
       const { markOnboardingStep } = await import('@/lib/onboarding');
       markOnboardingStep('setup');
       markOnboardingStep('outline');

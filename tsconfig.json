@@ -37,6 +37,15 @@
     "ainovel-cli-main",
     "deploy",
     "scratch",
-    "scripts"
+    "scripts",
+    "tools",
+    "vendor",
+    "browser-profiles",
+    "dist",
+    "dist-qa-unsigned",
+    "dist-xinchao-qa",
+    "dist-xinchao-qa-clean",
+    "dist-xinchao-final-qa",
+    "dist-xinchao-parity-qa"
   ]
 }

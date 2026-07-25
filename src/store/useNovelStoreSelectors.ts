@@ -96,26 +96,20 @@ export function selectChapterImageProgress(state: NovelStore): {
   total: number;
   chapterNum: number;
 } {
-  const chapterNum = state.chuong_dang_chon;
-  const chapter = state.danh_sach_chuong.find((c) => c.so_chuong === chapterNum);
-  const content = chapter?.noi_dung || '';
-  // Lightweight scene count: [CẢNH n] tags (same convention as parseScenes)
-  const sceneMatches = content.match(/\[?\s*CẢNH\s+\d+/gi) || [];
-  const sceneCount = Math.max(sceneMatches.length, content.trim() ? 1 : 0);
-  const sceneIndices = [
-    YOUTUBE_HOOK_SCENE_INDEX,
-    ...Array.from({ length: sceneCount }, (_, i) => i),
-  ];
-
+  const chapterNum = Number(state.chuong_dang_chon) || 0;
+  // Key scan only — no parseScenes/content walk (cheap on every store tick)
+  const promptsMap = state.generatedPrompts || {};
+  const imagesMap = state.generatedImages || {};
   let total = 0;
   let success = 0;
-  for (const sceneIdx of sceneIndices) {
-    const assetKey = sceneAssetKey(chapterNum, sceneIdx);
-    const prompts = state.generatedPrompts[assetKey] || [];
-    total += prompts.length;
-    for (let promptIdx = 0; promptIdx < prompts.length; promptIdx++) {
-      const imageKey = imageAssetKey(chapterNum, sceneIdx, promptIdx);
-      if (state.generatedImages?.[imageKey]) success++;
+  for (const key of Object.keys(promptsMap)) {
+    const m = /^(\d+)_(\d+)$/.exec(key);
+    if (!m || Number(m[1]) !== chapterNum) continue;
+    const sceneIdx = Number(m[2]);
+    const list = promptsMap[key] || [];
+    total += list.length;
+    for (let promptIdx = 0; promptIdx < list.length; promptIdx++) {
+      if (imagesMap[imageAssetKey(chapterNum, sceneIdx, promptIdx)]) success += 1;
     }
   }
   return {

@@ -9,7 +9,7 @@ importScripts('tabGuard.js');
 
 // AI Novel Flow Bridge — ports offset from stock Flow Agent (9222/8100)
 const AGENT_WS_URL = 'ws://127.0.0.1:9223';
-const BRIDGE_BUILD = '2026-07-19-flow-parity-20';
+const BRIDGE_BUILD = '2026-07-24-video-xhr-sw-fallback';
 // NOTE: This is a browser-restricted public API key — safe to ship in extension bundles.
 const API_KEY = 'AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY';
 
@@ -76,7 +76,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
   if (alarm.name === 'token-harvest') {
     if (!flowKey) {
-      await forceTokenHarvest();
+      // Never open a new tab from alarm — user may be mid Google login
+      await forceTokenHarvest({ allowOpenTab: false, reloadIfMissing: false });
     } else {
       chrome.alarms.clear('token-harvest');
     }
@@ -93,6 +94,7 @@ let _openingFlowTab = false;
 let _initPromise = null;
 let _lastAuthReloadAt = 0;
 
+/** Captcha / bot interstitial only */
 async function queryGoogleChallengeTabs() {
   const tabs = await chrome.tabs.query({});
   return tabs.filter((tab) =>
@@ -102,9 +104,376 @@ async function queryGoogleChallengeTabs() {
   );
 }
 
+/**
+ * Soft-wake a tab/window for automation WITHOUT stealing OS focus.
+ * Login path parks Chromium off-screen / minimized — page XHR dies there.
+ * Normal gen must not flash the browser over the AI Novel window every shot.
+ *
+ * @param {number} tabId
+ * @param {{ stealFocus?: boolean }} opts  stealFocus=true only for human captcha /sorry/
+ */
+async function wakeTabForAutomation(tabId, { stealFocus = false } = {}) {
+  if (tabId == null) return false;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.windowId == null) return false;
+    let win = null;
+    try {
+      win = await chrome.windows.get(tab.windowId);
+    } catch {
+      win = null;
+    }
+    const left = Number(win?.left);
+    const top = Number(win?.top);
+    const offScreen =
+      (Number.isFinite(left) && left < -500) ||
+      (Number.isFinite(top) && top < -500);
+    const minimized = String(win?.state || '') === 'minimized';
+    const needsRestore = minimized || offScreen || !win;
+
+    if (needsRestore) {
+      // Restore on-screen but keep behind the user's app unless stealFocus.
+      await chrome.windows
+        .update(tab.windowId, {
+          focused: stealFocus === true,
+          state: 'normal',
+          left: 80,
+          top: 60,
+          width: 1100,
+          height: 820,
+        })
+        .catch(async () => {
+          await chrome.windows
+            .update(tab.windowId, {
+              focused: stealFocus === true,
+              state: 'normal',
+            })
+            .catch(() => {});
+        });
+    } else if (stealFocus) {
+      await chrome.windows
+        .update(tab.windowId, { focused: true, state: 'normal' })
+        .catch(() => {});
+    }
+    // Only force tab active when we intentionally surface the window
+    // (or when restoring — tab must be active for reliable page XHR).
+    if (stealFocus || needsRestore) {
+      await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Bring Chromium to foreground — human captcha /sorry/ only. */
+async function focusTabAndWindow(tabId) {
+  return wakeTabForAutomation(tabId, { stealFocus: true });
+}
+
+/**
+ * Best-effort click reCAPTCHA v2 checkbox on google.com/sorry (all frames).
+ * Low-risk sessions may pass; image challenges still need a human tick.
+ * Retries inside frames (iframe load lag is the usual miss).
+ */
+async function tryAutoClickRecaptcha(tabId) {
+  if (tabId == null) return { ok: false, error: 'NO_TAB' };
+  const runOnce = async () => {
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      world: 'MAIN',
+      func: () => {
+        const out = {
+          href: String(location.href || '').slice(0, 160),
+          actions: [],
+        };
+        try {
+          const tryClick = (el, tag) => {
+            if (!el) return false;
+            try {
+              el.dispatchEvent(
+                new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+              );
+              el.dispatchEvent(
+                new MouseEvent('mouseup', { bubbles: true, cancelable: true }),
+              );
+              el.click();
+              out.actions.push(tag);
+              return true;
+            } catch {
+              return false;
+            }
+          };
+
+          const anchor = document.querySelector('#recaptcha-anchor');
+          if (anchor) {
+            const checked = anchor.getAttribute('aria-checked') === 'true';
+            if (checked) {
+              out.actions.push('already_checked');
+              return out;
+            }
+            tryClick(anchor, 'clicked_recaptcha_anchor');
+            return out;
+          }
+          const border = document.querySelector(
+            '.recaptcha-checkbox-border, .recaptcha-checkbox, .rc-anchor-checkbox, #recaptcha-anchor-label',
+          );
+          if (border) {
+            tryClick(border, 'clicked_checkbox_class');
+            return out;
+          }
+          // Parent document: try labels / common checkbox UI text
+          const nodes = Array.from(
+            document.querySelectorAll(
+              'label, span, div, button, .recaptcha-checkbox-border',
+            ),
+          );
+          for (const el of nodes) {
+            const t = String(el.textContent || '').trim();
+            const aria = String(
+              el.getAttribute?.('aria-label') || '',
+            ).toLowerCase();
+            if (
+              t.length > 100 &&
+              !/tôi không phải là người máy|i.?m not a robot|not a robot/i.test(t)
+            ) {
+              continue;
+            }
+            if (
+              /tôi không phải là người máy|i.?m not a robot|not a robot/i.test(
+                t,
+              ) ||
+              /not a robot|người máy/i.test(aria)
+            ) {
+              tryClick(el, 'clicked_label_text');
+              break;
+            }
+          }
+          const iframe = document.querySelector(
+            'iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"], iframe[title*="recaptcha"]',
+          );
+          if (iframe) {
+            out.actions.push('found_recaptcha_iframe');
+            // Click iframe center — helps when checkbox is only inside frame chrome
+            try {
+              const r = iframe.getBoundingClientRect();
+              const cx = r.left + Math.min(28, r.width / 2);
+              const cy = r.top + Math.min(28, r.height / 2);
+              const hit = document.elementFromPoint(cx, cy);
+              if (hit && hit !== iframe) {
+                tryClick(hit, 'clicked_iframe_hit');
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        } catch (e) {
+          out.actions.push(
+            `err:${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+        return out;
+      },
+    });
+    return (injected || []).map((row) => row?.result).filter(Boolean);
+  };
+
+  try {
+    // Iframe often late on cold /sorry/
+    await sleep(600);
+    let frames = await runOnce();
+    let clicked = frames.some((f) =>
+      (f.actions || []).some(
+        (a) =>
+          String(a).startsWith('clicked_') || String(a) === 'already_checked',
+      ),
+    );
+    if (!clicked) {
+      await sleep(1400);
+      frames = await runOnce();
+      clicked = frames.some((f) =>
+        (f.actions || []).some(
+          (a) =>
+            String(a).startsWith('clicked_') || String(a) === 'already_checked',
+        ),
+      );
+    }
+    console.log(
+      '[AI Novel Flow] tryAutoClickRecaptcha',
+      JSON.stringify(frames).slice(0, 600),
+    );
+    return { ok: true, clicked, frames };
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    console.warn('[AI Novel Flow] tryAutoClickRecaptcha failed', err);
+    return { ok: false, error: err, clicked: false };
+  }
+}
+
+function broadcastChallengeStatus(payload) {
+  try {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: 'challenge_status',
+          ...payload,
+          at: Date.now(),
+        }),
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Resolve Google /sorry/ interstitial (checkbox / image reCAPTCHA).
+ * 1) Restore + focus Chromium window
+ * 2) Auto-click checkbox (best-effort)
+ * 3) Wait for human if still stuck (image challenge / high risk)
+ */
+async function resolveGoogleChallenge({
+  timeoutMs = 180_000,
+  autoClick = true,
+} = {}) {
+  const start = Date.now();
+  let tabs = await queryGoogleChallengeTabs();
+  if (!tabs.length) {
+    return { ok: true, resolved: false, reason: 'no_challenge', waitedMs: 0 };
+  }
+
+  const primaryId = tabs[0]?.id;
+  // Human may need to tick image captcha — only THIS path steals focus.
+  await focusTabAndWindow(primaryId);
+  broadcastChallengeStatus({
+    challengeRequired: true,
+    message:
+      'GOOGLE_SORRY_CHALLENGE — tick "Tôi không phải là người máy" trên cửa sổ Chromium (app đã đưa cửa sổ ra màn hình).',
+    tabId: primaryId,
+  });
+
+  // DOM / iframe load lag on cold /sorry/
+  await sleep(2200);
+
+  let clickMeta = null;
+  if (autoClick) {
+    clickMeta = await tryAutoClickRecaptcha(primaryId);
+    await sleep(3200);
+    // Second pass if first miss (iframe still loading)
+    if (!clickMeta?.clicked) {
+      clickMeta = await tryAutoClickRecaptcha(primaryId);
+      await sleep(2500);
+    }
+  }
+
+  // Poll until interstitial is gone (redirect back to Flow / labs)
+  let lastRefocus = 0;
+  let lastAutoClick = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    tabs = await queryGoogleChallengeTabs();
+    if (!tabs.length) {
+      await sleep(1500);
+      // Confirm still clear
+      tabs = await queryGoogleChallengeTabs();
+      if (!tabs.length) {
+        broadcastChallengeStatus({
+          challengeRequired: false,
+          message: 'challenge_cleared',
+          waitedMs: Date.now() - start,
+        });
+        console.log(
+          `[AI Novel Flow] Google /sorry/ cleared in ${Date.now() - start}ms`,
+        );
+        return {
+          ok: true,
+          resolved: true,
+          waitedMs: Date.now() - start,
+          autoClick: clickMeta,
+          method: 'auto_or_human',
+        };
+      }
+    }
+
+    const now = Date.now();
+    // Retry auto-click more often early (iframe lag); refocus less often (less flash)
+    if (autoClick && now - lastAutoClick > 5_000 && now - start < 90_000) {
+      lastAutoClick = now;
+      clickMeta = await tryAutoClickRecaptcha(tabs[0]?.id);
+    }
+    if (now - lastRefocus > 18_000) {
+      lastRefocus = now;
+      const tid = tabs[0]?.id;
+      await focusTabAndWindow(tid);
+      broadcastChallengeStatus({
+        challengeRequired: true,
+        message:
+          'Đang chờ tick reCAPTCHA trên google.com/sorry — cửa sổ Chromium đã được đưa ra phía trước. Nếu captcha ảnh: chọn đúng ảnh rồi Xác nhận.',
+        tabId: tid,
+        waitedMs: now - start,
+      });
+    }
+
+    await sleep(1800);
+  }
+
+  const stuck = await queryGoogleChallengeTabs();
+  if (stuck[0]?.id != null) await focusTabAndWindow(stuck[0].id);
+  broadcastChallengeStatus({
+    challengeRequired: true,
+    message: 'GOOGLE_CHALLENGE_TIMEOUT',
+    waitedMs: Date.now() - start,
+  });
+  return {
+    ok: false,
+    resolved: false,
+    error: 'GOOGLE_CHALLENGE_TIMEOUT',
+    message:
+      'Trang google.com/sorry vẫn còn sau thời gian chờ. Hãy tick "Tôi không phải là người máy" (và captcha ảnh nếu có) trên cửa sổ Chromium, rồi gen lại.',
+    waitedMs: Date.now() - start,
+    autoClick: clickMeta,
+  };
+}
+
+/**
+ * User is mid Google sign-in (OAuth / account chooser / password).
+ * The original Flow tab often navigates HERE — queryFlowTabs becomes empty.
+ * Opening a NEW Flow tab mid-login steals focus and confuses the user.
+ */
+function isGoogleAuthUrl(raw) {
+  const u = String(raw || '').toLowerCase();
+  if (!u) return false;
+  if (u.includes('google.com/sorry')) return true;
+  if (u.includes('accounts.google.com')) return true;
+  if (u.includes('accounts.youtube.com')) return true;
+  if (u.includes('google.com/signin')) return true;
+  if (u.includes('google.com/accountchooser')) return true;
+  if (u.includes('oauth') && u.includes('google.')) return true;
+  if (u.includes('googleapis.com/auth')) return true;
+  // Chrome identity intermediate
+  if (u.includes('chromewebdata') && u.includes('accounts')) return true;
+  return false;
+}
+
+async function queryGoogleAuthTabs() {
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter((tab) =>
+    [tab.url, tab.pendingUrl, tab.title].some((value) => isGoogleAuthUrl(value)),
+  );
+}
+
 async function reloadFlowTabForAuth(tabId) {
   const now = Date.now();
   if (now - _lastAuthReloadAt < 60_000) return false;
+  // Never reload a tab that is on Google login
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (isGoogleAuthUrl(tab?.url) || isGoogleAuthUrl(tab?.pendingUrl)) {
+      console.log('[AI Novel Flow] skip reload — tab is Google login');
+      return false;
+    }
+  } catch {
+    /* ignore */
+  }
   _lastAuthReloadAt = now;
   await chrome.tabs.reload(tabId);
   return true;
@@ -118,8 +487,10 @@ async function queryFlowTabs() {
     return signals.some(
       (value) =>
         value.includes('labs.google/fx/tools/flow') ||
-        value.includes('labs.google/fx/') && value.includes('/tools/flow') ||
-        value.includes('google flow - ai creative studio'),
+        (value.includes('labs.google/fx/') && value.includes('/tools/flow')) ||
+        value.includes('google flow - ai creative studio') ||
+        // broader: any Flow studio surface (project, home) counts as "already open"
+        (value.includes('labs.google') && value.includes('flow')),
     );
   });
 }
@@ -148,17 +519,66 @@ async function dedupeFlowTabs(tabs) {
 /**
  * Launcher and service-worker startup can race while Chromium is registering
  * the command-line Flow tab. Share one open attempt, wait, then de-duplicate.
+ *
+ * @param {{ active?: boolean, allowCreate?: boolean, resolveChallenge?: boolean, challengeTimeoutMs?: number }} opts
+ *   allowCreate=false → never open a new tab (login / init / status poll)
+ *   When Google auth tabs exist → NEVER create (user mid-login).
+ *   resolveChallenge=true → focus + auto-click + wait for /sorry/ clear (gen path).
  */
-async function ensureSingleFlowTab({ active = false } = {}) {
+async function ensureSingleFlowTab({
+  active = false,
+  allowCreate = true,
+  resolveChallenge = false,
+  challengeTimeoutMs = 180_000,
+} = {}) {
   if (_flowTabOpenPromise) return _flowTabOpenPromise;
   _flowTabOpenPromise = (async () => {
-    const challengeTabs = await queryGoogleChallengeTabs();
+    let challengeTabs = await queryGoogleChallengeTabs();
     if (challengeTabs.length) {
-      if (active && challengeTabs[0]?.id != null) {
-        await chrome.tabs.update(challengeTabs[0].id, { active: true }).catch(() => {});
+      if (resolveChallenge) {
+        // Human path: focus + auto-click + wait (only when gen needs it)
+        const resolved = await resolveGoogleChallenge({
+          timeoutMs: challengeTimeoutMs,
+          autoClick: true,
+        });
+        if (!resolved.ok) {
+          throw new Error(resolved.error || 'GOOGLE_CHALLENGE_REQUIRED');
+        }
+        challengeTabs = await queryGoogleChallengeTabs();
+      } else {
+        // Status poll: soft-wake + quick click — do NOT yank focus over the app
+        await wakeTabForAutomation(challengeTabs[0]?.id, {
+          stealFocus: false,
+        }).catch(() => {});
+        await tryAutoClickRecaptcha(challengeTabs[0]?.id).catch(() => {});
       }
-      throw new Error('GOOGLE_CHALLENGE_REQUIRED');
+      if (challengeTabs.length && !resolveChallenge) {
+        const existing = await dedupeFlowTabs(await queryFlowTabs());
+        if (existing.length) return existing;
+        throw new Error('GOOGLE_CHALLENGE_REQUIRED');
+      }
+      if ((await queryGoogleChallengeTabs()).length) {
+        throw new Error('GOOGLE_CHALLENGE_REQUIRED');
+      }
     }
+
+    // Mid Google login on this profile → never open a second Flow tab
+    const authTabs = await queryGoogleAuthTabs();
+    if (authTabs.length) {
+      console.log(
+        `[AI Novel Flow] Google login in progress (${authTabs.length} tab) — skip open new Flow tab`,
+      );
+      let tabs = await queryFlowTabs();
+      tabs = await dedupeFlowTabs(tabs);
+      // Prefer keeping focus on the login tab, not a background Flow tab
+      if (active && authTabs[0]?.id != null) {
+        await chrome.tabs
+          .update(authTabs[0].id, { active: true })
+          .catch(() => {});
+      }
+      return tabs;
+    }
+
     let tabs = await queryFlowTabs();
     if (!tabs.length) {
       await sleep(2500);
@@ -168,12 +588,26 @@ async function ensureSingleFlowTab({ active = false } = {}) {
         { attempts: 12, intervalMs: 250 },
       );
     }
-    if (!tabs.length) {
+    // Re-check auth after wait (user may have clicked Login during wait)
+    const authAfterWait = await queryGoogleAuthTabs();
+    if (authAfterWait.length) {
+      console.log(
+        '[AI Novel Flow] Google login appeared during wait — skip open new Flow tab',
+      );
+      return dedupeFlowTabs(await queryFlowTabs());
+    }
+
+    if (!tabs.length && allowCreate) {
+      console.log('[AI Novel Flow] No Flow tab — creating one (allowCreate)');
       const created = await chrome.tabs.create({ url: FLOW_TAB_URL, active });
       tabs = created ? [created] : [];
       await sleep(1500);
       const registered = await queryFlowTabs();
       if (registered.length) tabs = registered;
+    } else if (!tabs.length && !allowCreate) {
+      console.log(
+        '[AI Novel Flow] No Flow tab and allowCreate=false — not opening',
+      );
     }
     tabs = await dedupeFlowTabs(tabs);
     if (active && tabs[0]?.id != null) {
@@ -192,13 +626,19 @@ async function ensureSingleFlowTab({ active = false } = {}) {
  * Harvest session/token.
  * IMPORTANT: bare flowKey without labs session email is NOT "done" —
  * keep polling so Google login can complete (do not early-return on stale ya29).
+ * During Google login: poll only — never open/reload a second Flow tab.
  */
-async function forceTokenHarvest({ reloadIfMissing = true } = {}) {
-  console.log('[AI Novel Flow] forceTokenHarvest…');
+async function forceTokenHarvest({
+  reloadIfMissing = true,
+  allowOpenTab = true,
+} = {}) {
+  console.log('[AI Novel Flow] forceTokenHarvest…', {
+    reloadIfMissing,
+    allowOpenTab,
+  });
   let session = await pollSessionAndNotify();
   const hasEmail = !!(session?.email && String(session.email).includes('@'));
 
-  // Stale storage token without email: still open Flow tab to finish Google login
   if (flowKey && hasEmail) {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(
@@ -212,32 +652,69 @@ async function forceTokenHarvest({ reloadIfMissing = true } = {}) {
     return { ok: true, flowKeyPresent: true, email: session.email || '' };
   }
 
-  const tabs = await ensureSingleFlowTab({ active: true });
+  // User mid Google OAuth — only poll, do not open/focus a new Flow tab
+  const authTabs = await queryGoogleAuthTabs();
+  if (authTabs.length) {
+    console.log(
+      '[AI Novel Flow] forceTokenHarvest: login in progress — poll only',
+    );
+    for (let i = 0; i < 4; i++) {
+      session = await pollSessionAndNotify();
+      if (session?.email && String(session.email).includes('@')) break;
+      await sleep(1200);
+    }
+    return {
+      ok: true,
+      flowKeyPresent: !!flowKey,
+      email: session?.email || '',
+      loginInProgress: true,
+    };
+  }
+
+  let tabs = [];
+  try {
+    tabs = await ensureSingleFlowTab({
+      active: false, // never steal focus from user during harvest
+      allowCreate: allowOpenTab,
+    });
+  } catch (e) {
+    if (String(e?.message || e).includes('GOOGLE_CHALLENGE')) {
+      return {
+        ok: false,
+        flowKeyPresent: !!flowKey,
+        email: session?.email || '',
+        challengeRequired: true,
+      };
+    }
+    console.warn('[AI Novel Flow] ensureSingleFlowTab', e);
+  }
+
   if (!tabs.length) {
-    console.warn('[AI Novel Flow] Flow tab unavailable after startup guard');
+    console.warn(
+      '[AI Novel Flow] Flow tab unavailable (login may still be in progress)',
+    );
   } else {
     try {
-      if (!flowKey && reloadIfMissing && tabs[0]?.id != null) {
+      // Never reload during harvest if tab might be mid-auth navigation
+      const tabUrl = String(tabs[0].url || tabs[0].pendingUrl || '');
+      if (
+        !flowKey &&
+        reloadIfMissing &&
+        tabs[0]?.id != null &&
+        !isGoogleAuthUrl(tabUrl) &&
+        tabUrl.includes('labs.google')
+      ) {
         const reloaded = await reloadFlowTabForAuth(tabs[0].id);
         if (reloaded) await sleep(4500);
       }
-      await chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        files: ['content.js'],
-      });
+      if (tabs[0]?.id != null && !isGoogleAuthUrl(tabUrl)) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          files: ['content.js'],
+        });
+      }
     } catch {
       /* ignore */
-    }
-    // Soft reload once if no email yet (page may still be on accounts.google.com redirect)
-    if (!hasEmail) {
-      try {
-        const u = tabs[0].url || '';
-        if (u.includes('labs.google') && !u.includes('accounts.google')) {
-          /* keep */
-        }
-      } catch {
-        /* ignore */
-      }
     }
   }
 
@@ -245,9 +722,6 @@ async function forceTokenHarvest({ reloadIfMissing = true } = {}) {
   for (let i = 0; i < 4; i++) {
     session = await pollSessionAndNotify();
     if (session?.email && String(session.email).includes('@')) break;
-    if (session?.accessToken || flowKey) {
-      // token without email — keep waiting for Google
-    }
     await sleep(1200);
   }
 
@@ -276,9 +750,13 @@ async function init() {
     if (data.callbackSecret) callbackSecret = data.callbackSecret;
     connectToAgent();
     chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
-    // The command-line tab can appear after the worker starts. Wait for it and
-    // collapse every startup/OAuth duplicate before any token operation.
-    await ensureSingleFlowTab({ active: false });
+    // CLI already opens Flow URL — wait/dedupe only. NEVER create a 2nd tab on boot
+    // (creating here races with user login redirect → extra tab).
+    try {
+      await ensureSingleFlowTab({ active: false, allowCreate: false });
+    } catch (e) {
+      console.warn('[AI Novel Flow] init ensure tab', e?.message || e);
+    }
   })();
   try {
     return await _initPromise;
@@ -395,10 +873,25 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 async function captureTokenFromFlowTab() {
-  const tabs = await ensureSingleFlowTab({ active: false });
+  // Mid Google login — do not open a second Flow tab
+  const authTabs = await queryGoogleAuthTabs();
+  if (authTabs.length) {
+    console.log('[Flow Agent] token refresh skipped — Google login in progress');
+    await pollSessionAndNotify().catch(() => undefined);
+    return;
+  }
+  const tabs = await ensureSingleFlowTab({
+    active: false,
+    allowCreate: false,
+  });
   if (!tabs.length) {
+    // Only auto-open when NOT logging in (background token refresh after session ready)
     if (_openingFlowTab) {
       console.log('[Flow Agent] Flow tab already opening, skipping');
+      return;
+    }
+    if (await queryGoogleAuthTabs().then((t) => t.length > 0)) {
+      console.log('[Flow Agent] abort open — login started');
       return;
     }
     _openingFlowTab = true;
@@ -517,9 +1010,9 @@ function connectToAgent() {
           }
         }
         const challengeTabs = await queryGoogleChallengeTabs();
-        const currentFlowTabs = challengeTabs.length
-          ? []
-          : await ensureSingleFlowTab({ active: false });
+        const authTabs = await queryGoogleAuthTabs();
+        // Status must NEVER create tabs (was opening Flow while user logged in)
+        const currentFlowTabs = await dedupeFlowTabs(await queryFlowTabs());
         sendToAgent({
           id: msg.id,
           result: {
@@ -534,6 +1027,8 @@ function connectToAgent() {
             challengeTabIds: challengeTabs
               .map((tab) => tab.id)
               .filter((tabId) => Number.isInteger(tabId)),
+            loginInProgress: authTabs.length > 0,
+            authTabCount: authTabs.length,
             manualDisconnect,
             tokenAge: metrics.tokenCapturedAt ? Date.now() - metrics.tokenCapturedAt : null,
             metrics,
@@ -566,7 +1061,12 @@ function connectToAgent() {
         }
       } else if (msg.method === 'force_token_harvest') {
         try {
-          const harvest = await forceTokenHarvest();
+          const allowOpenTab = msg.params?.allowOpenTab !== false;
+          const reloadIfMissing = msg.params?.reloadIfMissing !== false;
+          const harvest = await forceTokenHarvest({
+            allowOpenTab,
+            reloadIfMissing,
+          });
           sendToAgent({
             id: msg.id,
             result: {
@@ -576,59 +1076,161 @@ function connectToAgent() {
               sessionReady: !!(
                 harvest?.email && String(harvest.email).includes('@')
               ),
+              loginInProgress: !!harvest?.loginInProgress,
             },
           });
         } catch (e) {
           sendToAgent({ id: msg.id, error: e.message || 'HARVEST_FAILED' });
         }
       } else if (msg.method === 'close_login_session') {
-        // AI Novel: after token captured — minimize; Node kills login process shortly after
-        console.log('[AI Novel Flow] close_login_session — minimize + blur windows');
+        // AI Novel: after token/email captured — hide windows; Node kills + relaunches background
+        console.log('[AI Novel Flow] close_login_session — minimize + off-screen');
         try {
           chrome.alarms.clear('token-harvest');
           const wins = await chrome.windows.getAll({ populate: false });
+          let minimized = 0;
           for (const w of wins) {
             try {
               await chrome.windows.update(w.id, {
                 state: 'minimized',
                 focused: false,
+                // off-screen backup if minimize is ignored by some Chromium builds
+                left: -32000,
+                top: -32000,
+                width: 900,
+                height: 700,
               });
+              minimized++;
             } catch (e) {
-              /* ignore */
+              try {
+                await chrome.windows.update(w.id, {
+                  state: 'minimized',
+                  focused: false,
+                });
+                minimized++;
+              } catch {
+                /* ignore */
+              }
             }
           }
-          sendToAgent({ id: msg.id, result: { ok: true, minimized: wins.length } });
+          sendToAgent({
+            id: msg.id,
+            result: { ok: true, minimized, windows: wins.length },
+          });
         } catch (e) {
           sendToAgent({ id: msg.id, error: e.message || 'CLOSE_FAILED' });
         }
-      } else if (msg.method === 'open_flow_tab') {
-        // Python bridge asks us to open/focus a Flow tab
-        console.log('[Flow Agent] Agent requested: open Flow tab');
-        const tabs = await ensureSingleFlowTab({ active: true });
-        if (tabs.length) {
-          // Tab exists — refresh it to trigger fresh API calls → token capture
-          await chrome.tabs.reload(tabs[0].id);
-          console.log('[Flow Agent] Refreshed existing Flow tab');
-        } else {
-          // No tab — open one (active so it loads properly)
-          throw new Error('FLOW_TAB_UNAVAILABLE_AFTER_STARTUP_GUARD');
+      } else if (msg.method === 'resolve_google_challenge') {
+        try {
+          const timeoutMs = Number(msg.params?.timeoutMs) || 180_000;
+          const autoClick = msg.params?.autoClick !== false;
+          const result = await resolveGoogleChallenge({ timeoutMs, autoClick });
+          if (!result.ok) {
+            sendToAgent({
+              id: msg.id,
+              error: result.error || 'GOOGLE_CHALLENGE_TIMEOUT',
+              result,
+            });
+          } else {
+            sendToAgent({ id: msg.id, result });
+          }
+        } catch (e) {
+          sendToAgent({
+            id: msg.id,
+            error: e?.message || 'RESOLVE_CHALLENGE_FAILED',
+          });
         }
-        // Wait for page to load and make API calls that trigger token capture
-        await sleep(5000);
-        // If token was captured by webRequest during page load, send it
-        if (flowKey && ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
-          console.log('[Flow Agent] Sent stored token after tab open');
-        } else {
-          // Try reading from storage as fallback
-          const data = await chrome.storage.local.get(['flowKey']);
-          if (data.flowKey) {
-            flowKey = data.flowKey;
-            if (ws?.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
-              console.log('[Flow Agent] Sent token from storage after tab open');
+      } else if (msg.method === 'open_flow_tab') {
+        // Warm Flow tab for gen — do NOT steal focus unless challenge / explicit
+        console.log('[Flow Agent] Agent requested: open Flow tab');
+        try {
+          const challengeTimeoutMs =
+            Number(msg.params?.challengeTimeoutMs) || 180_000;
+          const stealFocus = msg.params?.stealFocus === true;
+          // Clear /sorry/ first (only focuses when challenge page exists)
+          const challenge = await resolveGoogleChallenge({
+            timeoutMs: challengeTimeoutMs,
+            autoClick: msg.params?.autoClick !== false,
+          });
+          if (!challenge.ok) {
+            sendToAgent({
+              id: msg.id,
+              error: challenge.error || 'GOOGLE_CHALLENGE_TIMEOUT',
+              result: challenge,
+            });
+            return;
+          }
+
+          const tabs = await ensureSingleFlowTab({
+            // Default false: gen path must not yank OS focus every shot
+            active: stealFocus,
+            resolveChallenge: true,
+            challengeTimeoutMs,
+          });
+          if (tabs.length) {
+            const u = String(tabs[0].url || tabs[0].pendingUrl || '').toLowerCase();
+            // Soft-wake off-screen/minimized window without stealing focus
+            if (tabs[0]?.id != null) {
+              await wakeTabForAutomation(tabs[0].id, {
+                stealFocus:
+                  stealFocus || Boolean(challenge.resolved),
+              });
+            }
+            // Never reload a /sorry/ tab; only refresh real Flow surfaces.
+            // Skip reload when Bearer already live — hard reload + 5s sleep was
+            // timing out bridge open_flow_tab and stalling video/image gen.
+            const needReload =
+              msg.params?.forceReload === true || !flowKey;
+            if (
+              needReload &&
+              !u.includes('google.com/sorry') &&
+              tabs[0]?.id != null
+            ) {
+              await chrome.tabs.reload(tabs[0].id);
+              console.log('[Flow Agent] Refreshed existing Flow tab');
+              await sleep(2500);
+            } else {
+              console.log(
+                '[Flow Agent] Flow tab ready (skip reload, token=' +
+                  !!flowKey +
+                  ', stealFocus=' +
+                  stealFocus +
+                  ')',
+              );
+              await sleep(400);
+            }
+          } else {
+            throw new Error('FLOW_TAB_UNAVAILABLE_AFTER_STARTUP_GUARD');
+          }
+          // If token was captured by webRequest during page load, send it
+          if (flowKey && ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+            console.log('[Flow Agent] Sent stored token after tab open');
+          } else {
+            // Try reading from storage as fallback
+            const data = await chrome.storage.local.get(['flowKey']);
+            if (data.flowKey) {
+              flowKey = data.flowKey;
+              if (ws?.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'token_captured', flowKey }));
+                console.log('[Flow Agent] Sent token from storage after tab open');
+              }
             }
           }
+          sendToAgent({
+            id: msg.id,
+            result: {
+              ok: true,
+              challenge,
+              flowKeyPresent: !!flowKey,
+              tabId: tabs[0]?.id ?? null,
+            },
+          });
+        } catch (e) {
+          sendToAgent({
+            id: msg.id,
+            error: e?.message || 'OPEN_FLOW_FAILED',
+          });
         }
       } else if (msg.method === 'refresh_flow_tab') {
         // Python bridge asks us to refresh token
@@ -899,7 +1501,8 @@ async function requestCaptchaFromTab(tabId, requestId, pageAction) {
       target: { tabId },
       world: 'MAIN',
       func: async (siteKey, action) => {
-        const waitUntil = Date.now() + 12_000;
+        // Labs can be slow to inject enterprise grecaptcha after navigation
+        const waitUntil = Date.now() + 25_000;
         while (!window.grecaptcha?.enterprise?.execute) {
           if (Date.now() >= waitUntil) {
             return { error: 'GRECAPTCHA_NOT_AVAILABLE' };
@@ -910,7 +1513,7 @@ async function requestCaptchaFromTab(tabId, requestId, pageAction) {
           const token = await Promise.race([
             window.grecaptcha.enterprise.execute(siteKey, { action }),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('GRECAPTCHA_EXECUTE_TIMEOUT')), 15_000),
+              setTimeout(() => reject(new Error('GRECAPTCHA_EXECUTE_TIMEOUT')), 45_000),
             ),
           ]);
           return token
@@ -959,6 +1562,18 @@ async function requestCaptchaFromTab(tabId, requestId, pageAction) {
 }
 
 async function solveCaptcha(requestId, captchaAction) {
+  // /sorry/ interstitial blocks grecaptcha.enterprise — resolve first
+  const challenge = await resolveGoogleChallenge({
+    timeoutMs: 180_000,
+    autoClick: true,
+  });
+  if (!challenge.ok) {
+    return {
+      error: challenge.error || 'GOOGLE_CHALLENGE_TIMEOUT',
+      challenge,
+    };
+  }
+
   const tabs = await chrome.tabs.query({
     url: ['https://labs.google/fx/tools/flow*', 'https://labs.google/fx/*/tools/flow*'],
   });
@@ -966,8 +1581,30 @@ async function solveCaptcha(requestId, captchaAction) {
   if (!tabs.length) {
     // Auto-open Flow tab and wait briefly before returning error
     try {
-      await chrome.tabs.create({ url: 'https://labs.google/fx/tools/flow', active: false });
-      await sleep(3000);
+      // Prefer ensure path (de-dupe + challenge guard) over raw create
+      let openTabs = [];
+      try {
+        openTabs = await ensureSingleFlowTab({
+          active: false,
+          allowCreate: true,
+          resolveChallenge: true,
+          challengeTimeoutMs: 120_000,
+        });
+      } catch (e) {
+        return { error: e?.message || 'NO_FLOW_TAB' };
+      }
+      if (!openTabs.length) {
+        await chrome.tabs.create({
+          url: 'https://labs.google/fx/tools/flow',
+          active: false,
+        });
+        await sleep(3000);
+      } else {
+        if (openTabs[0]?.id != null) {
+          await wakeTabForAutomation(openTabs[0].id, { stealFocus: false });
+        }
+        await sleep(2000);
+      }
       // Retry tab query after opening
       const retryTabs = await chrome.tabs.query({
         url: ['https://labs.google/fx/tools/flow*', 'https://labs.google/fx/*/tools/flow*'],
@@ -975,7 +1612,8 @@ async function solveCaptcha(requestId, captchaAction) {
       if (!retryTabs.length) return { error: 'NO_FLOW_TAB' };
       const resp = await Promise.race([
         requestCaptchaFromTab(retryTabs[0].id, requestId, captchaAction),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('CAPTCHA_TIMEOUT')), 30000)),
+        // Captcha on cold tab often needs >30s — was CAPTCHA_TIMEOUT false fail
+        new Promise((_, rej) => setTimeout(() => rej(new Error('CAPTCHA_TIMEOUT')), 60_000)),
       ]);
       return resp;
     } catch (e) {
@@ -984,9 +1622,11 @@ async function solveCaptcha(requestId, captchaAction) {
   }
 
   try {
+    // Keep grecaptcha alive (unfreeze minimized) without stealing OS focus
+    await wakeTabForAutomation(tabs[0].id, { stealFocus: false });
     const resp = await Promise.race([
       requestCaptchaFromTab(tabs[0].id, requestId, captchaAction),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('CAPTCHA_TIMEOUT')), 30000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('CAPTCHA_TIMEOUT')), 60_000)),
     ]);
     return resp;
   } catch (e) {
@@ -1256,9 +1896,26 @@ async function handleUploadVideo(msg) {
   }
 }
 
+async function resolveApiRequestBody(params) {
+  // Large uploadImage body is stashed on bridge HTTP (avoid multi-MB WS + executeScript args)
+  const stashId = params?.bodyStashId ? String(params.bodyStashId).trim() : '';
+  if (stashId) {
+    const stashUrl = `http://127.0.0.1:8101/internal/body-stash/${encodeURIComponent(stashId)}`;
+    const res = await fetch(stashUrl, {
+      headers: { 'X-Callback-Secret': callbackSecret || '' },
+    });
+    if (!res.ok) {
+      throw new Error(`BODY_STASH_FETCH_FAILED HTTP ${res.status}`);
+    }
+    return await res.json();
+  }
+  return params?.body ?? null;
+}
+
 async function handleApiRequest(msg) {
   const { id, params } = msg;
-  const { url, method, headers, body, captchaAction } = params;
+  const { url, method, headers, captchaAction } = params;
+  let body = params?.body;
 
   if (!url) {
     sendToAgent({ id, error: 'MISSING_URL' });
@@ -1276,12 +1933,27 @@ async function handleApiRequest(msg) {
 
   const logId = id;
   const logType = _classifyApiUrl(url);
-  if (_VISIBLE_TYPES.has(logType)) {
-    const payloadSummary = body ? JSON.stringify(body).slice(0, 200) : null;
+  if (_VISIBLE_TYPES.has(logType) || logType === 'UPLOAD') {
+    const payloadSummary = body
+      ? JSON.stringify(body).slice(0, 200)
+      : params?.bodyStashId
+        ? `stash:${params.bodyStashId}`
+        : null;
     addRequestLog({ id: logId, type: logType, time: new Date().toISOString(), status: 'processing', error: null, outputUrl: null, url, payloadSummary });
   }
 
   try {
+    // Resolve stashed body early (uploadImage)
+    try {
+      body = await resolveApiRequestBody(params);
+    } catch (e) {
+      const em = e instanceof Error ? e.message : String(e);
+      sendToAgent({ id, error: em });
+      updateRequestLog(logId, { status: 'failed', error: em });
+      setState('idle');
+      return;
+    }
+
     // Step 1: Solve captcha if needed
     let captchaToken = null;
     if (captchaAction) {
@@ -1358,19 +2030,26 @@ async function handleApiRequest(msg) {
     const fetchHeaders = { ...(headers || {}) };
     fetchHeaders['authorization'] = `Bearer ${activeFlowKey}`;
 
-    // Step 4: FlowAgent emits frontend telemetry from the extension worker.
-    // That endpoint does not reliably finish as a page XHR. Media generation
-    // remains in the authenticated Flow MAIN world, which is proven for image
-    // generation and supplies the real page cookie/reCAPTCHA context.
+    // Step 4: API call
+    // - uploadImage / telemetry: service-worker fetch (Bearer) — avoids huge
+    //   executeScript args that caused Extension API timeout ~66s
+    // - gen with captcha: MAIN-world XHR (page cookies + recaptcha context)
     let responseStatus = 0;
     let responseText = '';
     const isFrontendTelemetry =
       url.includes('/v1/flow:batchLogFrontendEvents') ||
       url.includes('/v1:batchLog');
-    if (isFrontendTelemetry) {
+    const isUploadImage = url.includes('uploadImage');
+    if (isFrontendTelemetry || (isUploadImage && !hasCaptcha)) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 25_000);
+      const timer = setTimeout(
+        () => controller.abort(),
+        isUploadImage ? 120_000 : 25_000,
+      );
       try {
+        if (!fetchHeaders['Content-Type'] && !fetchHeaders['content-type']) {
+          fetchHeaders['Content-Type'] = 'application/json';
+        }
         const workerResponse = await fetch(url, {
           method: method || 'POST',
           headers: fetchHeaders,
@@ -1384,9 +2063,52 @@ async function handleApiRequest(msg) {
         clearTimeout(timer);
       }
     } else {
+      // Soft-wake only — do NOT steal OS focus on every image/video gen.
+      // Page XHR needs non-frozen window; user keeps AI Novel in front.
       const flowTabs = await ensureSingleFlowTab({ active: false });
       const flowTabId = flowTabs[0]?.id;
       if (flowTabId == null) throw new Error('NO_FLOW_TAB');
+      try {
+        await wakeTabForAutomation(flowTabId, { stealFocus: false });
+        await sleep(350);
+      } catch (e) {
+        console.warn('[AI Novel Flow] soft-wake Flow tab before XHR failed', e);
+      }
+      // Keep executeScript payload small: pass stash marker not multi-MB body
+      const pageBodyArg =
+        finalBody && JSON.stringify(finalBody).length > 80_000
+          ? { __tooLarge: true }
+          : finalBody;
+
+      const swFetchOnce = async (timeoutMs = 120_000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          if (!fetchHeaders['Content-Type'] && !fetchHeaders['content-type']) {
+            fetchHeaders['Content-Type'] = 'application/json';
+          }
+          const workerResponse = await fetch(url, {
+            method: method || 'POST',
+            headers: fetchHeaders,
+            credentials: 'include',
+            body: method === 'GET' ? undefined : JSON.stringify(finalBody),
+            signal: controller.signal,
+          });
+          return {
+            status: workerResponse.status,
+            text: await workerResponse.text(),
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+
+      if (pageBodyArg && pageBodyArg.__tooLarge) {
+        // Fallback: SW fetch even with captcha if body too large for executeScript
+        const sw = await swFetchOnce(120_000);
+        responseStatus = sw.status;
+        responseText = sw.text;
+      } else {
       const pageRequest = chrome.scripting.executeScript({
         target: { tabId: flowTabId },
         world: 'MAIN',
@@ -1396,7 +2118,8 @@ async function handleApiRequest(msg) {
               const xhr = new XMLHttpRequest();
               xhr.open(requestMethod || 'POST', requestUrl, true);
               xhr.withCredentials = true;
-              xhr.timeout = 80_000;
+              // Image/video gen on Labs often exceeds 80s under reCAPTCHA + queue
+              xhr.timeout = 160_000;
               for (const [name, value] of Object.entries(requestHeaders || {})) {
                 // The browser supplies these from the real page. Setting them in
                 // JS is forbidden and can abort the request before it is sent.
@@ -1415,20 +2138,52 @@ async function handleApiRequest(msg) {
               resolve({ error: error instanceof Error ? error.message : String(error) });
             }
           }),
-        args: [url, method || 'POST', fetchHeaders, finalBody],
+        args: [url, method || 'POST', fetchHeaders, pageBodyArg],
       });
-      const pageResults = await Promise.race([
-        pageRequest,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('AISANDBOX_PAGE_EXEC_TIMEOUT')), 85_000),
-        ),
-      ]);
-      const pageResult = pageResults?.[0]?.result;
-      if (!pageResult || pageResult.error) {
-        throw new Error(pageResult?.error || 'AISANDBOX_PAGE_XHR_NO_RESULT');
+      let pageResult;
+      try {
+        const pageResults = await Promise.race([
+          pageRequest,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('AISANDBOX_PAGE_EXEC_TIMEOUT')), 170_000),
+          ),
+        ]);
+        pageResult = pageResults?.[0]?.result;
+      } catch (e) {
+        pageResult = {
+          error: e instanceof Error ? e.message : String(e),
+        };
       }
-      responseStatus = Number(pageResult.status) || 0;
-      responseText = String(pageResult.text || '');
+      if (!pageResult || pageResult.error) {
+        const pageErr = pageResult?.error || 'AISANDBOX_PAGE_XHR_NO_RESULT';
+        console.warn(
+          '[AI Novel Flow] page XHR failed — SW fetch fallback:',
+          pageErr,
+        );
+        // Video/image often fails with PAGE_XHR_ERROR when window was minimized.
+        // Bearer + recaptcha token in body still works via SW (same as upload).
+        try {
+          const sw = await swFetchOnce(150_000);
+          responseStatus = sw.status;
+          responseText = sw.text;
+          console.log(
+            '[AI Novel Flow] SW fallback status=',
+            responseStatus,
+            'bytes=',
+            (responseText || '').length,
+          );
+        } catch (swErr) {
+          throw new Error(
+            `${pageErr}; SW_FALLBACK: ${
+              swErr instanceof Error ? swErr.message : String(swErr)
+            }`,
+          );
+        }
+      } else {
+        responseStatus = Number(pageResult.status) || 0;
+        responseText = String(pageResult.text || '');
+      }
+      }
     }
     const response = {
       status: responseStatus,

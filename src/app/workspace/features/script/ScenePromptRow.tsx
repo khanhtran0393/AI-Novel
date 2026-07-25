@@ -79,13 +79,14 @@ function GenImageButton({
 /** Nút Gen video — chỉ re-render khi progress của videoKey đổi. */
 function GenVideoButton({
   videoKey,
-  isEdge,
+  /** Start+End dual stills → label «Nối»; else «Gen» (Flow 1 clip/prompt). */
+  isJoinMode,
   onGen,
   onExtend,
   hasVideo,
 }: {
   videoKey: string;
-  isEdge: boolean;
+  isJoinMode: boolean;
   onGen: () => void;
   onExtend?: () => void;
   hasVideo?: boolean;
@@ -101,7 +102,9 @@ function GenVideoButton({
         title={
           generating && progress
             ? `${progress.percent}% · ${progress.phase}`
-            : undefined
+            : isJoinMode
+              ? 'Nối 2 still (Start+End) → first+last I2V'
+              : 'Gen video shot này (T2V / I2V từ ảnh start)'
         }
       >
         <RefreshCw className={`h-2.5 w-2.5 ${generating ? 'animate-spin' : ''}`} />
@@ -109,9 +112,9 @@ function GenVideoButton({
           ? progress
             ? `${progress.percent}%`
             : 'Đang sinh...'
-          : isEdge
-            ? '🎬 Gen Video'
-            : '🎬 Nối Video'}
+          : isJoinMode
+            ? '🎬 Nối Video'
+            : '🎬 Gen Video'}
       </button>
       {hasVideo && onExtend ? (
         <button
@@ -391,8 +394,6 @@ function ScenePromptRow({
   const scriptPromptText = promptItem.script_prompt || promptItem.sentence || '';
   const imagePromptText = promptItem.image_prompt || promptItem.prompt || '';
   const videoPromptText = promptItem.video_prompt || imagePromptText;
-  const isEdge = pIdx === 0 || pIdx === promptsLen - 1;
-
   const imageKey = useMemo(
     () => imageAssetKey(chapter, sceneIndex, pIdx),
     [chapter, sceneIndex, pIdx],
@@ -411,7 +412,12 @@ function ScenePromptRow({
   const generatedVideo = useNovelStore((state) => state.generatedVideos?.[videoKey]);
   const projectUrl = useNovelStore((state) => state.projectUrls?.[imageKey]);
   const patchGeneratedPrompt = useNovelStore((s) => s.patchGeneratedPrompt);
+  const videoProvider = useNovelStore((s) => s.videoProvider);
   const useEndFrame = !!promptItem.use_end_frame;
+  // Flow: luôn «Gen Video» trừ khi bật Start+End. Legacy middle: «Nối» (prev→current).
+  const isJoinMode =
+    useEndFrame ||
+    (videoProvider !== 'flow' && pIdx > 0 && pIdx < promptsLen - 1 && promptsLen > 1);
 
   return (
     <div
@@ -446,7 +452,7 @@ function ScenePromptRow({
             />
             <GenVideoButton
               videoKey={videoKey}
-              isEdge={isEdge}
+              isJoinMode={isJoinMode}
               onGen={onGenVideo}
               onExtend={onExtendVideo}
               hasVideo={!!generatedVideo}
@@ -458,7 +464,7 @@ function ScenePromptRow({
                   ? 'border-cyan-700/50 bg-cyan-950/40 text-cyan-300'
                   : 'border-zinc-800 bg-zinc-950/50 text-zinc-500 hover:text-zinc-300'
               }`}
-              title="Keyframe start+end frame (Printfilm P2). Duration vẫn theo timestamp/TTS. Thiếu ảnh end → hard-fail."
+              title="Start+End: tự lấy 2 ảnh still liền kề (shot này + shot kế/trước) làm first+last frame I2V. Cấu hình video → model I2V hoặc preset «Pipeline Start+End». Duration theo timestamp/TTS. Thiếu 1 trong 2 ảnh → hard-fail (không ép R2V)."
             >
               <input
                 type="checkbox"

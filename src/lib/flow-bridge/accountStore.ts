@@ -268,12 +268,62 @@ export function updateAccount(
   return list[i];
 }
 
+/**
+ * Remove account from store + hard purge browser profile on disk
+ * (accounts_data/<id>, legacy scratch, kill browser, drop session meta).
+ * Returns detail so API/UI can show what was cleaned.
+ */
 export function deleteAccount(id: string): boolean {
+  return deleteAccountHard(id).ok;
+}
+
+export function deleteAccountHard(id: string): {
+  ok: boolean;
+  accountId: string;
+  killed: number;
+  removed: string[];
+  errors: string[];
+} {
+  const accountId = String(id || '').trim();
+  const empty = {
+    ok: false,
+    accountId,
+    killed: 0,
+    removed: [] as string[],
+    errors: [] as string[],
+  };
+  if (!accountId) {
+    empty.errors.push('missing id');
+    return empty;
+  }
+
   const list = loadAccounts();
-  const next = list.filter((a) => a.id !== id);
-  if (next.length === list.length) return false;
-  saveAccounts(next);
-  return true;
+  const next = list.filter((a) => a.id !== accountId);
+  const wasInStore = next.length !== list.length;
+  if (wasInStore) {
+    saveAccounts(next);
+  }
+
+  let killed = 0;
+  let removed: string[] = [];
+  let errors: string[] = [];
+  try {
+    const { purgeAccountProfile } =
+      require('./chromeSession') as typeof import('./chromeSession');
+    const r = purgeAccountProfile(accountId);
+    killed = r.killed;
+    removed = r.removed;
+    errors = r.errors;
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+
+  // ok if removed from store OR disk cleaned (orphan purge by id)
+  const ok = wasInStore || removed.length > 0;
+  console.log(
+    `[FlowAccounts] deleteAccountHard id=${accountId} store=${wasInStore} killed=${killed} removed=${removed.length}`,
+  );
+  return { ok, accountId, killed, removed, errors };
 }
 
 /**

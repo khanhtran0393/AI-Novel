@@ -1,13 +1,12 @@
 /**
- * Seller admin: create / list activation codes.
+ * Seller admin: create / list Supabase-backed activation codes.
  * Requires adminKey in body (or enforce ADMIN_KEY).
  */
 import { NextResponse } from 'next/server';
-import {
-  createActivationCodes,
-  listActivationCodes,
-} from '@/lib/commercial/activationVault';
+import { issueUnboundProActivationCodes } from '@/lib/cloud/licenseBridge';
 import { getEntitlementMode } from '@/lib/entitlement';
+import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
+import { createServiceSupabase } from '@/lib/supabase/server';
 import {
   assertLicenseSignerConfigured,
   assertSellerRuntime,
@@ -48,23 +47,36 @@ export async function POST(req: Request) {
       maxSeats?: number;
     };
     assertAdmin(body);
-    const codes = createActivationCodes({
+    if (!isSupabaseAdminConfigured()) {
+      throw new AppError(
+        'Supabase SERVICE_ROLE bắt buộc để tạo mã kích hoạt.',
+        { code: 'INFRA', status: 503 },
+      );
+    }
+    if ((body.maxSeats ?? 1) !== 1) {
+      throw new AppError(
+        'One-path code chỉ hỗ trợ 1 HWID/mã. Dùng luồng seat-transfer cho nhiều máy.',
+        { code: 'VALIDATION', status: 400 },
+      );
+    }
+    const result = await issueUnboundProActivationCodes({
+      service: createServiceSupabase(),
       count: body.count,
-      plan: body.plan,
       expSeconds: body.expSeconds,
       note: body.note,
       orderId: body.orderId,
-      maxSeats: body.maxSeats,
     });
     return NextResponse.json({
       ok: true,
-      count: codes.length,
-      codes: codes.map((c) => ({
+      authority: 'supabase',
+      count: result.codes.length,
+      codes: result.codes.map((c) => ({
         code: c.code,
-        plan: c.plan,
+        plan: 'pro',
         expSeconds: c.expSeconds,
-        maxSeats: c.maxSeats ?? 1,
-        createdAt: c.createdAt,
+        maxSeats: 1,
+        licenseId: c.licenseId,
+        ledgerOk: c.ledgerOk,
       })),
     });
   } catch (err: unknown) {
@@ -80,20 +92,46 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const adminKey = url.searchParams.get('adminKey') || '';
     assertAdmin({ adminKey });
-    const list = listActivationCodes(100);
+    if (!isSupabaseAdminConfigured()) {
+      throw new AppError(
+        'Supabase SERVICE_ROLE bắt buộc để liệt kê mã kích hoạt.',
+        { code: 'INFRA', status: 503 },
+      );
+    }
+    const limit = Math.max(
+      1,
+      Math.min(100, Number(url.searchParams.get('limit') || 100) || 100),
+    );
+    const { data: list, error } = await createServiceSupabase()
+      .from('licenses')
+      .select('id,activation_code,plan,status,hwid,created_at,exp_at,token_hash')
+      .not('activation_code', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) {
+      throw new AppError(`Supabase licenses: ${error.message}`, {
+        code: 'INFRA',
+        status: 502,
+      });
+    }
     return NextResponse.json({
       ok: true,
-      count: list.length,
-      codes: list.map((c) => ({
-        code: c.code,
+      authority: 'supabase',
+      count: list?.length || 0,
+      codes: (list || []).map((c) => ({
+        code: c.activation_code,
         plan: c.plan,
-        redeemed: Boolean(c.redeemedAt) || (c.seats?.length ?? 0) > 0,
-        redeemedHwid: c.redeemedHwid || null,
-        maxSeats: c.maxSeats ?? 1,
-        seats: c.seats || [],
-        seatsUsed: c.seats?.length ?? (c.redeemedHwid ? 1 : 0),
-        orderId: c.orderId || null,
-        createdAt: c.createdAt,
+        status: c.status,
+        redeemed: !String(c.hwid || '').startsWith('unbound:'),
+        redeemedHwid: String(c.hwid || '').startsWith('unbound:')
+          ? null
+          : c.hwid,
+        maxSeats: 1,
+        seatsUsed: String(c.hwid || '').startsWith('unbound:') ? 0 : 1,
+        createdAt: c.created_at,
+        expAt: c.exp_at,
+        tokenBound: Boolean(c.token_hash),
+        licenseId: c.id,
       })),
     });
   } catch (err: unknown) {

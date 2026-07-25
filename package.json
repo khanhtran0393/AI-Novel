@@ -1,6 +1,6 @@
 {
   "name": "ai-novel-script-generator",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "description": "Ai Novel — Free, Trial and Pro desktop application",
   "author": "Ai Novel",
   "private": true,
@@ -17,6 +17,18 @@
     "test:e2e": "playwright test",
     "verify:ci": "npm run typecheck && npm run smoke:core && npm run test:e2e",
     "dev:desktop": "electron .",
+    "xinchao:dev": "npm --prefix tools/xinchao-cut run dev",
+    "xinchao:build": "npm --prefix tools/xinchao-cut run build",
+    "xinchao:install": "npm --prefix tools/xinchao-cut install",
+    "xinchao:verify": "node scripts/verify-xinchao-vendor.mjs",
+    "xinchao:build:runtime": "node scripts/build-xinchao-runtime.mjs",
+    "xinchao:build:native": "node scripts/build-xinchao-native.cjs",
+    "xinchao:test:backend": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/test-xinchao-backend.ps1",
+    "xinchao:qa": "npm run xinchao:verify && npm --prefix tools/xinchao-cut run typecheck && npm --prefix tools/xinchao-cut run lint && npm --prefix tools/xinchao-cut test -- --run && npm run xinchao:test:backend",
+    "xinchao:build:verified": "npm run xinchao:qa && npm run xinchao:build:native",
+    "smoke:xinchao": "npx tsx scripts/smoke-xinchao-export.mts",
+    "smoke:xinchao:runtime": "node scripts/smoke-xinchao-runtime.mjs",
+    "smoke:xinchao:native": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-xinchao-native.ps1",
     "test:desktop-release": "node scripts/test-desktop-update-release.mjs",
     "release:feed:provision": "node scripts/publish-desktop-update.mjs --provision",
     "release:feed:verify": "node scripts/publish-desktop-update.mjs --verify-feed",
@@ -27,7 +39,7 @@
     "crown:stub": "node scripts/lib/crown-ip-stub.cjs apply",
     "crown:restore": "node scripts/lib/crown-ip-stub.cjs restore",
     "smoke:crown-ip": "node scripts/smoke-crown-ip.cjs",
-    "build:desktop": "npm run prepare:la-studio-kokoro && npm run release:verify && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never",
+    "build:desktop": "npm run prepare:la-studio-kokoro && npm run release:verify && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && npm run xinchao:build:verified && electron-builder --win nsis --publish never",
     "release:publish": "node scripts/publish-desktop-update.mjs --publish --dir dist",
     "release:publish:unsigned": "node scripts/publish-desktop-update.mjs --publish --allow-unsigned --dir dist-qa-unsigned",
     "release:manifest": "node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned --strict",
@@ -45,10 +57,10 @@
     "assert:commercial-package": "node scripts/assert-commercial-package.mjs dist",
     "preflight:pack": "node scripts/preflight-pack.mjs --ship",
     "preflight:pack:signed": "node scripts/preflight-pack.mjs --signed",
-    "pack:commercial": "npm run preflight:pack:signed && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never && npm run audit:package -- dist/win-unpacked",
+    "pack:commercial": "npm run preflight:pack:signed && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && npm run xinchao:build:verified && electron-builder --win nsis --publish never && npm run audit:package -- dist/win-unpacked",
     "pack:ship": "npm run pack:unsigned:qa:verify",
-    "pack:unsigned:portable": "npm run preflight:pack && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false",
-    "pack:unsigned:qa": "npm run preflight:pack && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && electron-builder --win nsis --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.verifyUpdateCodeSignature=false && node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned --strict",
+    "pack:unsigned:portable": "npm run preflight:pack && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && npm run xinchao:build:verified && electron-builder --win portable --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false",
+    "pack:unsigned:qa": "npm run preflight:pack && npm run prepare:la-studio-kokoro && npm run brand:icons && npm run brand:sync && node scripts/with-crown-sealed-build.cjs npm run build && npm run build:capcut-runtime && npm run xinchao:build:verified && electron-builder --win nsis --publish never --config.directories.output=dist-qa-unsigned --config.forceCodeSigning=false --config.win.verifyUpdateCodeSignature=false && node scripts/generate-update-manifest.mjs --dir dist-qa-unsigned --strict",
     "pack:unsigned:qa:verify": "npm run pack:unsigned:qa && npm run audit:package -- dist-qa-unsigned/win-unpacked && npm run smoke:anti-tamper && npm run smoke:labyrinth && npm run smoke:re-harden && npm run smoke:crown-ip && npm run smoke:defense-pack && npm run postpack:checklist -- dist-qa-unsigned",
     "smoke:defense-pack": "npx tsx scripts/smoke-defense-pack.mts",
     "postpack:checklist": "node scripts/post-pack-human-checklist.mjs",
@@ -70,8 +82,8 @@
     "verify:all": "npm run verify:core && npm run rebuild:ship-packs && npm run test:e2e && npm run smoke:regen",
     "test:e2e:ui": "playwright test --project=ui",
     "test:e2e:api": "playwright test --project=api-and-contracts",
-    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-toolbox-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts && npx tsx scripts/smoke-telegram-admin.mts",
-    "smoke:telegram-admin": "npx tsx scripts/smoke-telegram-admin.mts",
+    "smoke:commercial": "node scripts/smoke-commercial.mjs && npx tsx scripts/smoke-commercial-ts.mts && node scripts/smoke-multiseat.mjs && npx tsx scripts/smoke-license-trust.mts && npx tsx scripts/smoke-anti-tamper.mts && npx tsx scripts/smoke-labyrinth.mts && npx tsx scripts/smoke-hardening-remaining.mts && npx tsx scripts/smoke-seedance-cloud-ip.mts && npx tsx scripts/smoke-nav-analyzer-cloud.mts && npx tsx scripts/smoke-toolbox-cloud-ip.mts && npx tsx scripts/smoke-license-one-path.mts && npx tsx scripts/smoke-license-ledger-integrity.mts && npx tsx scripts/smoke-telegram-admin.mts",
+    "smoke:telegram-admin": "npx tsx scripts/smoke-telegram-admin.mts && npx tsx scripts/smoke-telegram-buttons.mts && npx tsx scripts/smoke-telegram-pending-escape.mts",
     "smoke:credential-vault": "node scripts/run-electron-smoke.cjs scripts/smoke-credential-vault.cjs",
     "smoke:capcut-live": "npx tsx scripts/smoke-capcut-live.mts",
     "license:issue": "node scripts/issue-license.mjs",
@@ -105,6 +117,7 @@
     "smoke:re-harden": "node scripts/smoke-re-harden.cjs",
     "smoke:ip-catalog": "npx tsx scripts/smoke-ip-catalog.mts",
     "smoke:license-one-path": "npx tsx scripts/smoke-license-one-path.mts",
+    "smoke:license-ledger": "npx tsx scripts/smoke-license-ledger-integrity.mts",
     "smoke:seedance-cloud": "npx tsx scripts/smoke-seedance-cloud-ip.mts",
     "smoke:seedance-cloud-live": "npx tsx scripts/smoke-seedance-cloud-live.mts",
     "smoke:psych-cloud-live": "npx tsx scripts/smoke-psych-cloud-live.mts",
@@ -117,6 +130,8 @@
     "audit:tts-preview": "node scripts/audit-tts-preview-pipeline.mjs",
     "verify:agent-done": "node scripts/verify-agent-done-gate.mjs",
     "verify:script-mode-pacing": "npx tsx scripts/verify-script-mode-pacing.mts",
+    "smoke:character-bible": "npx tsx scripts/smoke-character-bible-sheet.mts",
+    "smoke:video-api-detect": "npx tsx scripts/smoke-video-api-detect.mts",
     "smoke:printfilm": "npx tsx scripts/smoke-printfilm-adoptions.mts && npm run verify:script-mode-pacing",
     "smoke:style-engine": "npx tsx scripts/smoke-style-engine.mts",
     "smoke:matrix": "npx tsx scripts/smoke-matrix-engine.mts",
@@ -165,9 +180,12 @@
       "verifyUpdateCodeSignature": true
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
+      "runAfterFinish": true,
       "shortcutName": "Ai Novel",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
@@ -337,6 +355,23 @@
         ]
       },
       {
+        "from": "tools/xinchao-cut",
+        "to": "tools/xinchao-cut",
+        "filter": [
+          "**/*",
+          "!node_modules/**",
+          "!.git/**",
+                       "!**/*.tsbuildinfo",
+                       "!**/__pycache__/**",
+                       "!**/.pytest_cache/**",
+                       "!src-tauri/backend-bundle/**",
+                       "!src-tauri/gen/**",
+                       "!.venv/**",
+          "!venv/**",
+          "!src-tauri/target/**"
+        ]
+      },
+      {
         "from": "resources/license",
         "to": "license",
         "filter": [
@@ -395,6 +430,26 @@
         "to": "bin/la-studio-kokoro",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "bin/piper",
+        "to": "bin/piper",
+        "filter": [
+          "piper.exe",
+          "*.dll",
+          "espeak-ng-data/**/*",
+          "!temp_*/**",
+          "!*.txt",
+          "!*.wav"
+        ]
+      },
+      {
+        "from": "bin/piper_vn",
+        "to": "bin/piper_vn",
+        "filter": [
+          "*.onnx",
+          "*.onnx.json"
         ]
       }
     ]

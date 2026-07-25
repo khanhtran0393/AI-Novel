@@ -167,7 +167,12 @@ export function computeProjectProgress(
 /**
  * Resolve start/end prompt indices for video gen (P2 keyframe optional).
  * - use_end_frame: prefer this shot as start + next (or prev) as end
- * - default: edge = single frame; middle = prev→current (legacy interpol)
+ * - singleClipPerPrompt (default **true**): one clip per prompt (Flow / modern) —
+ *   middle shots do NOT force prev→current dual stills
+ * - singleClipPerPrompt false: legacy middle = prev→current interpol
+ *
+ * Why default true: Flow path is «mỗi prompt 1 clip». Old middle dual forced
+ * `wantsEndFrame` without checkbox → hard-fail «cần 2 ảnh» khi chỉ có 1 still.
  */
 export function resolveVideoKeyframeRange(opts: {
   promptIndex: number;
@@ -176,6 +181,11 @@ export function resolveVideoKeyframeRange(opts: {
   endImageKey?: string;
   chapter: number;
   sceneIndex: number;
+  /**
+   * true (default): single frame unless use_end_frame.
+   * false: legacy middle prev→current dual interpol (non-Flow providers).
+   */
+  singleClipPerPrompt?: boolean;
 }): { startPromptIndex: number; endPromptIndex: number; dualFrame: boolean } {
   const pIdx = Math.max(0, Number(opts.promptIndex) || 0);
   const len = Math.max(0, Number(opts.promptsLen) || 0);
@@ -183,6 +193,7 @@ export function resolveVideoKeyframeRange(opts: {
     return { startPromptIndex: 0, endPromptIndex: 0, dualFrame: false };
   }
   const clamped = Math.min(pIdx, len - 1);
+  const singleClip = opts.singleClipPerPrompt !== false;
 
   if (opts.useEndFrame) {
     let endIdx = clamped + 1;
@@ -217,7 +228,16 @@ export function resolveVideoKeyframeRange(opts: {
     return { startPromptIndex: start, endPromptIndex: end, dualFrame: true };
   }
 
-  // Legacy SceneCard behavior
+  // Modern / Flow: one clip per prompt (edge and middle)
+  if (singleClip) {
+    return {
+      startPromptIndex: clamped,
+      endPromptIndex: clamped,
+      dualFrame: false,
+    };
+  }
+
+  // Legacy non-Flow: edge = single; middle = prev→current interpol
   if (clamped === 0 || clamped === len - 1) {
     return {
       startPromptIndex: clamped,

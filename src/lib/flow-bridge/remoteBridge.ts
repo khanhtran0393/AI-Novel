@@ -133,6 +133,64 @@ export async function remoteGenerateOne(
   };
 }
 
+/** Async enqueue on remote daemon (returns immediately with taskId). */
+export async function remoteEnqueueGenerateOne(
+  body: Record<string, unknown>,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  taskId?: string;
+  task?: unknown;
+  queueAhead?: number;
+}> {
+  const res = await fetch(`${base()}/api/enqueue-one`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    taskId?: string;
+    task?: unknown;
+    queueAhead?: number;
+  };
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: json.error || `remote enqueue-one HTTP ${res.status}`,
+    };
+  }
+  return {
+    ok: Boolean(json.ok),
+    error: json.error,
+    taskId: json.taskId,
+    task: json.task,
+    queueAhead: json.queueAhead,
+  };
+}
+
+export async function remoteGetTask(id: string): Promise<{
+  ok: boolean;
+  task?: unknown;
+  error?: string;
+}> {
+  const res = await fetch(
+    `${base()}/api/task?id=${encodeURIComponent(id)}`,
+    { signal: AbortSignal.timeout(8_000), cache: 'no-store' },
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    task?: unknown;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { ok: false, error: json.error || `HTTP ${res.status}` };
+  }
+  return { ok: true, task: json.task };
+}
+
 export async function remoteBootstrap(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {

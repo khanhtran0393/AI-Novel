@@ -32,8 +32,28 @@ function isComplete(dir: string): boolean {
   );
 }
 
-function downloadFile(url: string, dest: string): Promise<void> {
+/** Resolve relative Location (HF/CDN) — bare relative → TypeError Invalid URL. */
+function resolveRedirectUrl(fromUrl: string, location: string): string {
+  const loc = String(location || '').trim();
+  if (!loc) throw new Error('Empty redirect Location');
+  if (/^https?:\/\//i.test(loc)) return loc;
+  return new URL(loc, fromUrl).href;
+}
+
+function downloadFile(
+  url: string,
+  dest: string,
+  redirectDepth = 0,
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (redirectDepth > 12) {
+      reject(new Error(`Too many redirects: ${url.slice(0, 120)}`));
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      reject(new Error(`Invalid URL (relative not resolved): ${String(url).slice(0, 160)}`));
+      return;
+    }
     const file = fs.createWriteStream(dest);
     const lib = url.startsWith('https') ? https : http;
     const req = lib.get(
@@ -52,10 +72,24 @@ function downloadFile(url: string, dest: string): Promise<void> {
           } catch {
             /* ignore */
           }
-          downloadFile(res.headers.location, dest).then(resolve, reject);
+          let next: string;
+          try {
+            next = resolveRedirectUrl(url, res.headers.location);
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+            res.resume();
+            return;
+          }
+          downloadFile(next, dest, redirectDepth + 1).then(resolve, reject);
           return;
         }
         if (res.statusCode !== 200) {
+          file.close();
+          try {
+            fs.unlinkSync(dest);
+          } catch {
+            /* ignore */
+          }
           reject(new Error(`HTTP ${res.statusCode}`));
           res.resume();
           return;
@@ -64,7 +98,14 @@ function downloadFile(url: string, dest: string): Promise<void> {
         file.on('finish', () => file.close(() => resolve()));
       },
     );
-    req.on('error', reject);
+    req.on('error', (e) => {
+      try {
+        file.close();
+      } catch {
+        /* ignore */
+      }
+      reject(e);
+    });
   });
 }
 

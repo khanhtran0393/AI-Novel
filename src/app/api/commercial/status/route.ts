@@ -18,7 +18,10 @@ import {
   PRICING_PLANS,
   resolvePlanTier,
 } from '@/lib/commercial/featureMatrix';
-import { getTrialStatus } from '@/lib/commercial/trial';
+import {
+  getTrialStatus,
+  retireLocalTrialAfterPaidPro,
+} from '@/lib/commercial/trial';
 import { shouldGrantOwnerUnlimited } from '@/lib/commercial/ownerMode';
 import { getUpdatePublicStatus } from '@/lib/commercial/updateChannel';
 import { telegramConfigured } from '@/lib/commercial/telegramNotify';
@@ -27,7 +30,11 @@ import {
   supabaseConfigPublic,
 } from '@/lib/supabase/env';
 import { createServiceSupabase } from '@/lib/supabase/server';
-import { resolveLicenseByHwid } from '@/lib/cloud/licenseBridge';
+import {
+  rebindTicketToActiveHwidLicense,
+  resolveLicenseByHwid,
+  verifyLicenseCloud,
+} from '@/lib/cloud/licenseBridge';
 import { getLicenseTrustStatus } from '@/lib/commercial/licenseTrust';
 import { getAntiTamperPublicStatus } from '@/lib/commercial/antiTamper';
 import {
@@ -69,25 +76,62 @@ export async function GET(req: Request) {
   // ── Supabase licenses (HWID) = sole truth for UI tier ──
   // Cryptographically valid AINOVEL2 token is a ticket only.
   // Missing / revoked / expired / **deleted** row ⇒ Free. Never self-heal INSERT.
+  // Stale ticket (token_hash / exp drift) ⇒ clear local token, still read HWID ledger.
+  let ticketStale = false;
   if (isSupabaseAdminConfigured() && !ownerUnlimited) {
     try {
       const service = createServiceSupabase();
-      const cloud = await resolveLicenseByHwid(service, hwid);
       authority = 'supabase';
-      cloudStatus = cloud.status || null;
-
-      if (cloud.found && cloud.claims) {
-        claims = cloud.claims;
-        cloudLicenseId = cloud.licenseId || null;
-        cloudRevoked = false;
-      } else if (cloud.status === 'revoked') {
-        claims = null;
-        cloudRevoked = true;
+      if (token) {
+        const cloud = await verifyLicenseCloud({ service, token, hwid });
+        cloudStatus = cloud.cloud.status || null;
+        cloudLicenseId = cloud.cloud.licenseId || null;
+        cloudRevoked = cloud.cloud.revoked;
+        if (cloud.valid && cloud.claims) {
+          claims = cloud.claims;
+        } else {
+          const hardDeny =
+            cloud.cloud.revoked ||
+            cloud.cloud.status === 'none' ||
+            cloud.cloud.status === 'expired' ||
+            cloud.cloud.status === 'revoked';
+          if (hardDeny) {
+            claims = null;
+          } else {
+            // token_mismatch | claims_mismatch | hwid_mismatch | unknown
+            ticketStale = true;
+            const byHwid = await resolveLicenseByHwid(service, hwid);
+            cloudStatus = byHwid.status || cloud.cloud.status || 'token_mismatch';
+            if (byHwid.found && byHwid.claims) {
+              claims = byHwid.claims;
+              cloudLicenseId = byHwid.licenseId || null;
+              cloudRevoked = false;
+            } else if (byHwid.status === 'revoked') {
+              claims = null;
+              cloudRevoked = true;
+            } else {
+              claims = null;
+              cloudRevoked = false;
+              cloudStatus = byHwid.status || 'none';
+            }
+          }
+        }
       } else {
-        // none | expired | deleted — Free until seller re-issues licenses row
-        claims = null;
-        cloudRevoked = false;
-        cloudStatus = cloud.status || 'none';
+        const cloud = await resolveLicenseByHwid(service, hwid);
+        cloudStatus = cloud.status || null;
+        if (cloud.found && cloud.claims) {
+          claims = cloud.claims;
+          cloudLicenseId = cloud.licenseId || null;
+          cloudRevoked = false;
+        } else if (cloud.status === 'revoked') {
+          claims = null;
+          cloudRevoked = true;
+        } else {
+          // none | expired | deleted — Free until seller re-issues licenses row
+          claims = null;
+          cloudRevoked = false;
+          cloudStatus = cloud.status || 'none';
+        }
       }
     } catch {
       // Fail closed: cannot read ledger → Free (do not trust offline Pro)
@@ -127,11 +171,23 @@ export async function GET(req: Request) {
     !tokenIsTrial &&
     !!(claims.is_pro || claims.is_vip);
 
+  // Paid Pro on ledger wins: close leftover local Trial so offline cannot resurrect TRIAL.
+  if (paidPro || (ownerUnlimited && !tokenIsTrial)) {
+    try {
+      retireLocalTrialAfterPaidPro(hwid);
+    } catch {
+      /* ignore vault IO */
+    }
+  }
+
+  // Re-read after possible retire
+  const trialAfter = paidPro ? getTrialStatus(hwid) : trial;
+
   // Local vault trial ONLY when Supabase is NOT authority (dev without SERVICE_ROLE).
   // When authority=supabase: sole truth = licenses row — vault never grants TRIAL badge.
   const vaultTrial =
     authority !== 'supabase' &&
-    trial.active &&
+    trialAfter.active &&
     !paidPro &&
     !tokenIsTrial;
 
@@ -154,6 +210,37 @@ export async function GET(req: Request) {
             (claims.is_pro || claims.is_vip || claimsIsTrial(claims)),
         )
       : Boolean(claims) || vaultTrial;
+
+  // Stale ticket (hash/exp drift): rebind when signer available so client gets
+  // a matching token_hash; only clear local ticket if rebind fails/unavailable.
+  let rebindToken: string | null = null;
+  if (
+    authority === 'supabase' &&
+    isSupabaseAdminConfigured() &&
+    (ticketStale || (Boolean(token) && !tokenValid)) &&
+    (paidPro || tokenIsTrial || Boolean(claims && claimsIsTrial(claims)))
+  ) {
+    try {
+      const rebound = await rebindTicketToActiveHwidLicense({
+        service: createServiceSupabase(),
+        hwid,
+      });
+      if (rebound.ok && rebound.token) {
+        rebindToken = rebound.token;
+        ticketStale = false;
+        cloudStatus = 'ticket_rebound';
+        if (rebound.licenseId) cloudLicenseId = rebound.licenseId;
+        if (rebound.claims) claims = rebound.claims;
+      }
+    } catch {
+      /* keep stale path */
+    }
+  }
+
+  const clearStaleTicket =
+    !rebindToken &&
+    (ticketStale ||
+      (authority === 'supabase' && Boolean(token) && !tokenValid));
 
   const licenseTrust = getLicenseTrustStatus();
   const antiTamper = getAntiTamperPublicStatus();
@@ -237,10 +324,22 @@ export async function GET(req: Request) {
             expIso: new Date(trial.record.endsAt * 1000).toISOString(),
           }
         : null,
-    tokenPresent: Boolean(token),
-    tokenValid,
-    /** True when UI should drop localStorage token (no active cloud license) */
-    clearLocalToken: authority === 'supabase' && !tokenValid,
+    tokenPresent: Boolean(token) || Boolean(rebindToken),
+    tokenValid: Boolean(rebindToken) || tokenValid,
+    /**
+     * Fresh AINOVEL2 matching ledger after soft drift (store into localStorage).
+     */
+    rebindToken,
+    /**
+     * Drop localStorage ticket when:
+     * - no active ledger claims (tokenValid false), or
+     * - ticket hash/exp drifted and rebind failed
+     * When rebindToken is set, client should REPLACE ticket (not go Free).
+     */
+    clearLocalToken:
+      !rebindToken &&
+      ((authority === 'supabase' && !tokenValid) || clearStaleTicket),
+    ticketStale: Boolean(rebindToken) ? false : ticketStale,
     cloudRevoked,
     supabase: sb,
     features: FEATURE_MATRIX,

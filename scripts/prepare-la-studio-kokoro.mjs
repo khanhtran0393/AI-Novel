@@ -76,15 +76,42 @@ function findLastudioPack() {
   return null;
 }
 
-function downloadFile(url, dest) {
+function resolveRedirectUrl(fromUrl, location) {
+  const loc = String(location || '').trim();
+  if (!loc) throw new Error('Empty redirect Location');
+  if (/^https?:\/\//i.test(loc)) return loc;
+  return new URL(loc, fromUrl).href;
+}
+
+function downloadFile(url, dest, redirectDepth = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectDepth > 12) {
+      reject(new Error(`Too many redirects: ${String(url).slice(0, 120)}`));
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      reject(new Error(`Invalid URL (relative not resolved): ${String(url).slice(0, 160)}`));
+      return;
+    }
     const file = fs.createWriteStream(dest);
     const lib = url.startsWith('https') ? https : http;
     const req = lib.get(url, { headers: { 'User-Agent': 'AI-Novel-Prepare' } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         file.close();
-        fs.unlinkSync(dest);
-        downloadFile(res.headers.location, dest).then(resolve, reject);
+        try {
+          fs.unlinkSync(dest);
+        } catch {
+          /* ignore */
+        }
+        let next;
+        try {
+          next = resolveRedirectUrl(url, res.headers.location);
+        } catch (e) {
+          reject(e);
+          res.resume();
+          return;
+        }
+        downloadFile(next, dest, redirectDepth + 1).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {

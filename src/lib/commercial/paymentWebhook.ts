@@ -1,5 +1,5 @@
 /**
- * Payment webhook → activation code (or direct token).
+ * Payment webhook → Supabase-backed activation code (or direct token).
  * Providers: generic HMAC, stripe-compatible shape, lemon-compatible shape.
  *
  * Env:
@@ -8,9 +8,15 @@
  */
 
 import crypto from 'crypto';
-import { createActivationCodes } from './activationVault';
 import { appendSellerLog } from './sellerLog';
-import { getHwid, issueEntitlementToken } from '@/lib/entitlement';
+import { issueEntitlementToken } from '@/lib/entitlement';
+import {
+  issueUnboundProActivationCodes,
+  persistIssuedProToken,
+} from '@/lib/cloud/licenseBridge';
+import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
+import { createServiceSupabase } from '@/lib/supabase/server';
+import { AppError } from '@/lib/errors';
 
 export type PaymentProvider = 'generic' | 'stripe' | 'lemon' | 'manual';
 
@@ -72,16 +78,24 @@ export function authorizePaymentWebhook(
   return { ok: false, reason: 'Webhook secret / admin key không hợp lệ.' };
 }
 
-export function processPaymentWebhook(body: PaymentWebhookBody): {
+export async function processPaymentWebhook(body: PaymentWebhookBody): Promise<{
   ok: boolean;
   provider: PaymentProvider;
   mode: 'code' | 'token';
   codes?: string[];
   token?: string;
+  licenseId?: string;
   plan: 'pro';
   orderId?: string;
   message: string;
-} {
+}> {
+  if (!isSupabaseAdminConfigured()) {
+    throw new AppError(
+      'Supabase SERVICE_ROLE bắt buộc cho payment webhook. Không cấp mã/token local.',
+      { code: 'INFRA', status: 503 },
+    );
+  }
+  const service = createServiceSupabase();
   const provider: PaymentProvider = body.provider || 'generic';
   // All paid plans issue as Pro (no VIP product tier)
   const plan = 'pro' as const;
@@ -91,13 +105,26 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
     body.issueMode || (body.hwid ? 'token' : 'code');
 
   if (issueMode === 'token') {
-    const hwid = (body.hwid || getHwid()).trim().toLowerCase();
+    const hwid = (body.hwid || '').trim().toLowerCase();
+    if (hwid.length < 8) {
+      throw new AppError('Payment token mode cần HWID hợp lệ.', {
+        code: 'VALIDATION',
+        status: 400,
+      });
+    }
     const token = issueEntitlementToken({
       is_pro: true,
       is_vip: false,
       plan: 'pro',
       hwid,
       expSeconds,
+    });
+    const persisted = await persistIssuedProToken({
+      service,
+      token,
+      hwid,
+      actorId: `payment:${provider}`,
+      source: `payment-webhook:${orderId}`,
     });
     appendSellerLog({
       at: new Date().toISOString(),
@@ -113,19 +140,21 @@ export function processPaymentWebhook(body: PaymentWebhookBody): {
       provider,
       mode: 'token',
       token,
+      licenseId: persisted.licenseId,
       plan,
       orderId,
       message: `Đã cấp token PRO gắn HWID ${hwid}.`,
     };
   }
 
-  const records = createActivationCodes({
+  const issued = await issueUnboundProActivationCodes({
+    service,
     count: 1,
-    plan,
     expSeconds,
     note: body.email ? `email:${body.email}` : undefined,
     orderId,
   });
+  const records = issued.codes;
   appendSellerLog({
     at: new Date().toISOString(),
     kind: 'webhook',

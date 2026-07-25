@@ -110,7 +110,7 @@ src/app/workspace/
 | Script | `features/script` | Sidebar, chapters, outline, roster, SceneCard, Setup, Editor |
 | TTS | `features/tts` | TTS config modal, RoleCast, voice tabs, TikTok sessions |
 | Media | `features/media` | Media config, Flow accounts/bootstrap, DNA banner, resource monitor |
-| Project | `features/project` | Import, CapCut export, Ship pack |
+| Project | `features/project` | Import, CapCut export, Ship pack; `hooks/useCapCutExport` điều phối preflight/export; `modules/capCutModule` gọi API + mở runtime Tauri vendored tại `tools/xinchao-cut` qua `electron/xinchaoRuntimeHost.cjs` |
 | Channels | `features/channels` | Channel switcher, job queue |
 | YouTube | `features/youtube` | SEO, thumb, safe checklist, prompt modal |
 | AI Novel | `features/ainovel` | Native engine dashboard + toolbar |

@@ -7,7 +7,8 @@
  *
  * Policy C' (docs/SHIP_GUIDE.md + updateChannel.ts):
  *   check on launch → auto download (stage) → do NOT install on quit
- *   → next launch applies staged update (no prompt) → changelog UI
+ *   → next launch applies staged update **silent** (NSIS /S, no Setup UI)
+ *   → after relaunch: changelog / UpdateSuccessModal only
  *
  * ALLOW_UNSIGNED=1 → verifyUpdateCodeSignature = async () => null
  *   (NsisUpdater setter ignores falsy; never assign `false`)
@@ -29,6 +30,7 @@ let lastStatus = {
   checking: false,
   available: false,
   downloaded: false,
+  installing: false,
   error: null,
   version: null,
   releaseNotes: null,
@@ -258,6 +260,74 @@ function isPortableRuntime() {
   );
 }
 
+/**
+ * Resolve downloaded NSIS path (electron-updater cache).
+ * Used for direct silent spawn — avoids shell.openPath fallback (shows Setup UI).
+ */
+function resolveDownloadedInstallerPath() {
+  try {
+    const p = autoUpdater.installerPath;
+    if (p && fs.existsSync(p)) return p;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const helper = autoUpdater.downloadedUpdateHelper;
+    const p = helper && helper.file;
+    if (p && fs.existsSync(p)) return p;
+  } catch {
+    /* ignore */
+  }
+  // Cache dir naming: electron-updater uses `${name}-updater` under LocalAppData
+  const local = process.env.LOCALAPPDATA || '';
+  const names = [
+    'ai-novel-script-generator-updater',
+    'Ai Novel-updater',
+    'AiNovel-updater',
+  ];
+  for (const n of names) {
+    if (!local) break;
+    const p = path.join(local, n, 'installer.exe');
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+/**
+ * Spawn NSIS with /S + windowsHide — no Setup wizard, no Back/Next UI.
+ * Prefer this over autoUpdater when path is known (ENOENT→shell.openPath is non-silent).
+ */
+function spawnSilentNsis(installerPath) {
+  const { spawn } = require('child_process');
+  const args = ['/S', '--updated', '--force-run'];
+  console.log(`[Updater] direct silent NSIS: ${installerPath}`);
+  const child = spawn(installerPath, args, {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+  setImmediate(() => {
+    try {
+      require('electron').autoUpdater.emit('before-quit-for-update');
+    } catch {
+      /* ignore */
+    }
+    try {
+      app.quit();
+    } catch {
+      /* ignore */
+    }
+  });
+  return true;
+}
+
+/**
+ * Apply staged NSIS update.
+ * Always silent: /S + windowsHide (no «Ai Novel Setup» wizard).
+ * isForceRunAfter via --force-run → relaunch app after install.
+ * Next boot: detectJustUpdated → UpdateSuccessModal (notification only).
+ */
 function quitAndInstall() {
   try {
     try {
@@ -271,12 +341,36 @@ function quitAndInstall() {
     }
     if (isPortableRuntime()) {
       console.log(
-        '[Updater] portable runtime — install without /S (NSIS package preferred)',
+        '[Updater] portable runtime — silent /S still used; prefer NSIS ship for auto-update',
       );
     }
-    // isSilent=false → no /S; isForceRunAfter=true → relaunch
-    autoUpdater.quitAndInstall(false, true);
-    return { ok: true };
+    setStatus({
+      installing: true,
+      checking: false,
+      error: null,
+      enabled: true,
+    });
+
+    const installerPath = resolveDownloadedInstallerPath();
+    if (installerPath) {
+      try {
+        spawnSilentNsis(installerPath);
+        return { ok: true, silent: true, mode: 'direct-nsis-s' };
+      } catch (e) {
+        console.warn(
+          '[Updater] direct silent spawn failed — fallback electron-updater',
+          e instanceof Error ? e.message : e,
+        );
+      }
+    } else {
+      console.warn(
+        '[Updater] no cached installer path — fallback electron-updater quitAndInstall(true,true)',
+      );
+    }
+
+    // Silent NSIS: /S + --force-run (electron-updater NsisUpdater.doInstall)
+    autoUpdater.quitAndInstall(true, true);
+    return { ok: true, silent: true, mode: 'electron-updater' };
   } catch (e) {
     return {
       ok: false,
@@ -371,8 +465,8 @@ function bindListeners(log) {
     if (applyStagedOnDownload || qaAutoInstall()) {
       log(
         applyStagedOnDownload
-          ? 'applying staged update on launch'
-          : 'QA autorun: installing downloaded update',
+          ? 'applying staged update on launch (silent /S)'
+          : 'QA autorun: silent install downloaded update',
       );
       setTimeout(() => {
         const r = quitAndInstall();
@@ -381,7 +475,7 @@ function bindListeners(log) {
       return;
     }
 
-    log('staged — will install on next launch');
+    log('staged — silent install on next launch (no Setup UI)');
   });
 
   autoUpdater.on('error', (err) => {

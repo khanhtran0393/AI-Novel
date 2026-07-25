@@ -90,7 +90,7 @@ export const FEATURE_MATRIX: FeatureAccess[] = [
   },
   {
     id: 'export_capcut',
-    label: 'Xuất CapCut / FableCut',
+    label: 'Xuất CapCut',
     minTier: 'trial',
     serverGated: true,
   },

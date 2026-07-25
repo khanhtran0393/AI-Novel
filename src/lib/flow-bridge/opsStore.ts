@@ -18,6 +18,15 @@ export type FlowOpsConfig = {
   defaultCreditBudget: number | null;
   /** Global proxy fallback host:port or http://user:pass@host:port */
   globalProxy?: string;
+  /**
+   * Google Flow standard: recycle Chromium profile after successful gens
+   * (session drift + RAM). Soft refresh tab when N not reached.
+   */
+  recycleAfterSuccess: boolean;
+  /** Image/edit: hard recycle every N successes (min 1) */
+  recycleEveryNSuccess: number;
+  /** Video/extend: hard recycle after every success when true */
+  recycleEveryVideoSuccess: boolean;
   updatedAt: number;
 };
 
@@ -28,6 +37,10 @@ const DEFAULTS: FlowOpsConfig = {
   minHealthScore: 20,
   defaultCreditBudget: null,
   globalProxy: '',
+  /** Soft hygiene ON; hard-kill every video OFF (killed mid multi-gen / hung HTTP). */
+  recycleAfterSuccess: true,
+  recycleEveryNSuccess: 3,
+  recycleEveryVideoSuccess: false,
   updatedAt: 0,
 };
 
@@ -57,6 +70,18 @@ export function loadFlowOps(): FlowOpsConfig {
           ? null
           : Number(raw.defaultCreditBudget),
       globalProxy: raw.globalProxy ? String(raw.globalProxy) : '',
+      recycleAfterSuccess: raw.recycleAfterSuccess !== false,
+      recycleEveryNSuccess: Number.isFinite(Number(raw.recycleEveryNSuccess))
+        ? Math.max(1, Math.floor(Number(raw.recycleEveryNSuccess)))
+        : DEFAULTS.recycleEveryNSuccess,
+      // Default FALSE — hard kill Chrome after every video hung Electron / mid-gen.
+      // Only honor explicit true from ops.json.
+      recycleEveryVideoSuccess:
+        raw.recycleEveryVideoSuccess === true
+          ? true
+          : raw.recycleEveryVideoSuccess === false
+            ? false
+            : DEFAULTS.recycleEveryVideoSuccess,
       updatedAt: Number(raw.updatedAt) || 0,
     };
   } catch {

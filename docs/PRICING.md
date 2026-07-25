@@ -24,8 +24,10 @@ Webhook: `POST /api/entitlement/webhook`
 ## Seller issue tay
 
 ```bash
-npm run license:issue -- --plan pro --count 3 --note "batch-web"
-# hoặc
+AINOVEL_LICENSE_API_URL=https://<license-api> \
+AINOVEL_ENTITLEMENT_ADMIN_KEY=<admin-key> \
+npm run license:issue -- --hwid <HWID> --expDays 365
+# batch mã one-path (mọi mã phải có row Supabase trước khi trả về)
 curl -X POST http://localhost:3000/api/entitlement/codes \
   -H "Content-Type: application/json" \
   -d "{\"adminKey\":\"…\",\"count\":1,\"plan\":\"pro\"}"

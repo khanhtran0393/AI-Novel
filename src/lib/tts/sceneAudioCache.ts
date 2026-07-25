@@ -10,6 +10,8 @@ import { inspectTtsAudioFile } from './audioQuality';
 
 /** Invalidate scenes rendered before the conditioning + signal-quality fixes. */
 const SCENE_CACHE_VERSION = 'v2-conditioning-quality';
+/** Invalidate Piper scenes whose WAV filenames could contain an MP3 studio mix. */
+const PIPER_SCENE_CACHE_VERSION = 'v2-container-format-44100hz';
 
 export type SceneCacheKeyInput = {
   platform: string;
@@ -40,6 +42,7 @@ export function buildSceneCacheId(input: SceneCacheKeyInput): string {
   const platform = String(input.platform || '').toLowerCase();
   const payload = [
     ...(platform === 'vina_voice' ? [SCENE_CACHE_VERSION] : []),
+    ...(platform === 'piper' ? [PIPER_SCENE_CACHE_VERSION] : []),
     platform,
     String(input.voice || '').trim(),
     String(Number(input.speed) || 1),

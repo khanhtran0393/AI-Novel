@@ -29,9 +29,12 @@ type FlowAccount = {
   projectId?: string;
   /** Projects bound to this profile only (from Sync/create on its session) */
   projects?: { id: string; title?: string }[];
+  /** User proxy for this Chromium profile — host:port or http://user:pass@host:port */
+  proxy?: string;
   tokenAgeMs?: number | null;
   lastError?: string | null;
   credits?: number | null;
+  healthScore?: number | null;
   browserAlive?: boolean;
   bridgeRunning?: boolean;
   extensionConnected?: boolean;
@@ -50,6 +53,76 @@ type FlowAccount = {
   } | null;
 };
 
+function formatTokenAge(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}p`;
+  return `${Math.floor(min / 60)}h${min % 60}p`;
+}
+
+function FlowHealthStrip({ snap }: { snap: BridgeSnapshot | null }) {
+  if (!snap) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-black/30 px-2.5 py-2 text-[10px] text-zinc-500">
+        Health: chưa có snapshot bridge…
+      </div>
+    );
+  }
+  const active =
+    (snap.accounts || []).find((a) => a.id === snap.activeAccountId) ||
+    (snap.accounts || [])[0];
+  const tokenAge = active?.tokenAgeMs ?? snap.tokenAgeMs;
+  const credits =
+    active?.credits ??
+    snap.identity?.credits ??
+    active?.capabilities?.credits;
+  const pending = snap.queue?.pending ?? 0;
+  const qRun = Boolean(snap.queue?.running);
+  const health = active?.healthScore;
+  const tokenWarn =
+    typeof tokenAge === 'number' && tokenAge > 45 * 60_000;
+  const bits = [
+    snap.running ? 'Bridge ON' : 'Bridge OFF',
+    snap.extensionConnected ? 'Ext OK' : 'Ext OFF',
+    snap.flowKeyPresent || active?.flowKeyPresent ? 'Token OK' : 'Token OFF',
+    `Age ${formatTokenAge(tokenAge)}${tokenWarn ? ' ⚠' : ''}`,
+    credits != null ? `${credits} cr` : 'cr —',
+    health != null ? `HP ${health}` : null,
+    pending > 0 || qRun
+      ? `Queue ${pending}${qRun ? ' · run' : ''}`
+      : 'Queue idle',
+    snap.metrics?.lastError
+      ? `Err: ${String(snap.metrics.lastError).slice(0, 40)}`
+      : active?.lastError
+        ? `Err: ${String(active.lastError).slice(0, 40)}`
+        : null,
+  ].filter(Boolean);
+
+  return (
+    <div
+      className={`rounded-lg border px-2.5 py-2 text-[10px] leading-relaxed ${
+        snap.extensionConnected &&
+        (snap.flowKeyPresent || active?.flowKeyPresent)
+          ? 'border-emerald-900/50 bg-emerald-950/20 text-emerald-200/90'
+          : 'border-amber-900/40 bg-amber-950/15 text-amber-100/90'
+      }`}
+      title="Google Flow health (bridge / token / queue)"
+    >
+      <span className="font-bold uppercase tracking-wide text-[9px] opacity-70">
+        Health ·{' '}
+      </span>
+      {bits.join(' · ')}
+      {tokenWarn ? (
+        <span className="mt-1 block text-amber-300/90">
+          Token &gt;45p — F5 tab Flow hoặc Đăng nhập lại trước khi gen dồn.
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 type BridgeSnapshot = {
   running: boolean;
   wsPort: number;
@@ -60,12 +133,22 @@ type BridgeSnapshot = {
   projects?: { id: string; title?: string }[];
   activeAccountId?: string | null;
   loginSessionOpen?: boolean;
+  tokenAgeMs?: number | null;
+  identity?: {
+    email?: string;
+    credits?: number | null;
+  } | null;
   accounts: FlowAccount[];
   metrics?: {
     requestCount: number;
     successCount: number;
     failedCount: number;
     lastError?: string | null;
+  };
+  queue?: {
+    running?: boolean;
+    pending?: number;
+    tasks?: unknown[];
   };
 };
 
@@ -166,9 +249,15 @@ export default function FlowAccountsPanel() {
     Record<string, FlowProjectOpt[]>
   >({});
   const [projectBusy, setProjectBusy] = useState<string | null>(null);
+  /** Draft proxy string per profile (saved on blur / Lưu proxy) */
+  const [proxyDraft, setProxyDraft] = useState<Record<string, string>>({});
+  const [proxySaving, setProxySaving] = useState<string | null>(null);
   const autoRan = useRef(false);
   const wasLoginOpen = useRef(false);
-  const hadTokenByProfile = useRef<Record<string, boolean>>({});
+  /** Per-profile: saw login open during this session (for capture toast) */
+  const loginOpenByProfile = useRef<Record<string, boolean>>({});
+  /** Per-profile: already toasted capture summary (avoid spam) */
+  const toastedCaptureByProfile = useRef<Record<string, boolean>>({});
   const refreshRef = useRef<() => Promise<BridgeSnapshot | null>>(async () => null);
 
   const mergeAccountProjects = useCallback(
@@ -415,6 +504,50 @@ export default function FlowAccountsPanel() {
     }
   }, [mergeAccountProjects]);
 
+  const saveAccountProxy = useCallback(
+    async (accountId: string, proxyRaw: string) => {
+      const proxy = String(proxyRaw || '').trim();
+      setProxySaving(accountId);
+      try {
+        const res = await fetch(API.flowAccounts, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'patch',
+            id: accountId,
+            proxy: proxy || '',
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          account?: FlowAccount;
+        };
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        setProxyDraft((prev) => ({
+          ...prev,
+          [accountId]: String(data.account?.proxy || proxy || ''),
+        }));
+        toast.success(
+          'Proxy profile',
+          proxy
+            ? `Đã lưu · mở lại browser profile để áp dụng --proxy-server`
+            : 'Đã xóa proxy · mở lại browser (IP máy)',
+        );
+        await refreshRef.current();
+      } catch (e) {
+        toast.error(
+          'Proxy profile',
+          e instanceof Error ? e.message : String(e),
+        );
+      } finally {
+        setProxySaving(null);
+      }
+    },
+    [],
+  );
+
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(API.flowStatus, { cache: 'no-store' });
@@ -422,6 +555,7 @@ export default function FlowAccountsPanel() {
       setSnap(data);
       // Seed per-profile project catalogs from snapshot accounts
       const nextMap: Record<string, FlowProjectOpt[]> = {};
+      const nextProxy: Record<string, string> = {};
       for (const a of data.accounts || []) {
         const list = (a.projects || [])
           .map((p) => ({
@@ -430,30 +564,66 @@ export default function FlowAccountsPanel() {
           }))
           .filter((p) => p.id && !/^abc-?111$/i.test(p.id));
         if (list.length) nextMap[a.id] = list;
+        nextProxy[a.id] = String(a.proxy || '');
       }
       if (Object.keys(nextMap).length) {
         setProjectsByAccount((prev) => ({ ...prev, ...nextMap }));
       }
+      // Don't clobber in-progress edits for the card being typed
+      setProxyDraft((prev) => {
+        const merged = { ...nextProxy };
+        for (const id of Object.keys(prev)) {
+          if (proxySaving === id) merged[id] = prev[id];
+        }
+        return merged;
+      });
 
       const anyLogin = (data.accounts || []).some((a) => a.loginSessionOpen);
       if (anyLogin || data.loginSessionOpen) wasLoginOpen.current = true;
 
       for (const a of data.accounts || []) {
+        if (a.loginSessionOpen) {
+          loginOpenByProfile.current[a.id] = true;
+          // New login round → allow a fresh capture toast after close
+          toastedCaptureByProfile.current[a.id] = false;
+        }
+
+        const sessionReady =
+          Boolean(a.flowKeyPresent) &&
+          Boolean(a.sessionVerified) &&
+          Boolean(a.email && a.email.includes('@'));
+        const loginJustClosed =
+          loginOpenByProfile.current[a.id] && !a.loginSessionOpen;
+
+        // Toast once when login closes after full capture (email + token + verified)
         if (
-          wasLoginOpen.current &&
-          !a.loginSessionOpen &&
-          a.flowKeyPresent &&
-          a.sessionVerified &&
-          Boolean(a.email && a.email.includes('@')) &&
-          !hadTokenByProfile.current[a.id]
+          loginJustClosed &&
+          sessionReady &&
+          !toastedCaptureByProfile.current[a.id]
         ) {
-          hadTokenByProfile.current[a.id] = true;
+          toastedCaptureByProfile.current[a.id] = true;
+          loginOpenByProfile.current[a.id] = false;
+          const bits = [
+            a.email,
+            'token OK',
+            a.projectId
+              ? `project ${String(a.projectId).slice(0, 10)}…`
+              : a.projectReady
+                ? 'project OK'
+                : null,
+            a.credits != null && Number.isFinite(Number(a.credits))
+              ? `${a.credits} cr`
+              : null,
+            a.capabilities?.browserCookies || a.profileDir
+              ? 'cookies/profile'
+              : null,
+            'browser đã đóng',
+          ].filter(Boolean);
           toast.success(
-            'Đăng nhập xong',
-            `${a.name || a.id}: token/cookie trên profile này — login đã đóng.`,
+            `Đã nhận session · ${a.name || a.id}`,
+            bits.join(' · '),
           );
         }
-        if (a.flowKeyPresent) hadTokenByProfile.current[a.id] = true;
       }
 
       if (
@@ -663,17 +833,34 @@ export default function FlowAccountsPanel() {
   const remove = async (id: string) => {
     setLoading(true);
     try {
-      await fetch(API.flowAccounts, {
+      const res = await fetch(API.flowAccounts, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', id }),
       });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        removed?: string[];
+        killed?: number;
+        errors?: string[];
+      };
       setStepsByProfile((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
       await refresh();
+      if (data.ok) {
+        toast.success(
+          'Đã xóa profile',
+          `Đã kill browser + xóa hồ sơ đĩa (${(data.removed || []).length} path). Token/cookies không còn.`,
+        );
+      } else {
+        toast.error(
+          'Xóa profile',
+          (data.errors && data.errors[0]) || 'Không xóa được profile',
+        );
+      }
     } catch (e) {
       toast.error('Flow', e instanceof Error ? e.message : String(e));
     } finally {
@@ -731,6 +918,8 @@ export default function FlowAccountsPanel() {
         account cũ. Mỗi card tự quản Bridge · Extension · Token · Project ·
         Login.
       </p>
+
+      <FlowHealthStrip snap={snap} />
 
       {/* Engine dùng chung khi launch browser — vẫn áp dụng theo từng profile lúc Đăng nhập */}
       <div className="grid gap-2 rounded-lg border border-zinc-800/60 bg-black/30 p-2 sm:grid-cols-[100px_1fr]">
@@ -902,6 +1091,73 @@ export default function FlowAccountsPanel() {
 
                 {/* 5 trường trạng thái — thuộc profile này */}
                 <ProfileSessionLamps a={a} bridgeUp={bridgeUp} />
+
+                {/* Proxy per profile — user-managed (host:port / http://user:pass@host:port) */}
+                <div className="flex flex-col gap-1 rounded-lg border border-zinc-800/80 bg-black/30 px-2 py-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-violet-400/90">
+                      Proxy · profile này
+                    </span>
+                    {String(a.proxy || '').trim() ? (
+                      <span className="truncate text-[9px] text-violet-300/80">
+                        đang gắn
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-zinc-600">IP máy</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      type="text"
+                      spellCheck={false}
+                      autoComplete="off"
+                      placeholder="host:port hoặc http://user:pass@host:port"
+                      value={
+                        proxyDraft[a.id] !== undefined
+                          ? proxyDraft[a.id]
+                          : String(a.proxy || '')
+                      }
+                      onChange={(e) =>
+                        setProxyDraft((prev) => ({
+                          ...prev,
+                          [a.id]: e.target.value,
+                        }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void saveAccountProxy(
+                            a.id,
+                            proxyDraft[a.id] ?? a.proxy ?? '',
+                          );
+                        }
+                      }}
+                      className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-1.5 py-1 font-mono text-[10px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500"
+                    />
+                    <button
+                      type="button"
+                      disabled={proxySaving === a.id || loading}
+                      onClick={() =>
+                        void saveAccountProxy(
+                          a.id,
+                          proxyDraft[a.id] ?? a.proxy ?? '',
+                        )
+                      }
+                      className="rounded border border-violet-700/50 bg-violet-950/40 px-1.5 py-1 text-[9px] font-bold uppercase text-violet-200 hover:bg-violet-900/40 disabled:opacity-40"
+                      title="Lưu proxy vào profile. Mở lại browser để Chromium nhận --proxy-server"
+                    >
+                      {proxySaving === a.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        'Lưu'
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[8px] leading-snug text-zinc-600">
+                    Chỉ proxy bạn mua/gắn. Sau khi Lưu → bấm «Mở lại browser» /
+                    Đăng nhập để áp dụng. Không Urban free / không auto-xoay.
+                  </p>
+                </div>
 
                 {/* Project dropdown — list + selection bound to THIS profile only */}
                 {(() => {

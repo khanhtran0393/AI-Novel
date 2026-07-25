@@ -152,6 +152,13 @@ export async function POST(req: Request) {
     const bgmMix = body.bgmMix === true;
     const bgmPath = typeof body.bgmPath === 'string' ? body.bgmPath : '';
     const cleanupPaths = body.cleanup !== false;
+    /** scene (default) | chapter — full-chapter master MP3 + optional SRT */
+    const outputRole =
+      body.outputRole === 'chapter' || body.kind === 'chapter'
+        ? 'chapter'
+        : 'scene';
+    const srtContent =
+      typeof body.srtContent === 'string' ? body.srtContent : '';
 
     if (paths.length < 1) {
       return NextResponse.json({ error: 'paths rỗng.' }, { status: 400 });
@@ -195,13 +202,44 @@ export async function POST(req: Request) {
 
     const publicAudioDir = path.join(process.cwd(), 'public', 'audio');
     if (!fs.existsSync(publicAudioDir)) fs.mkdirSync(publicAudioDir, { recursive: true });
-    const filename = localAudioFilename(chapterNum, sceneIndex, 'mp3');
+
+    const scriptTitle = ten_tac_pham
+      ? ten_tac_pham.replace(/[/\\:*?"<>|]/g, '_').trim()
+      : 'Kịch Bản';
+    const safeTitle = scriptTitle || 'KichBan';
+
+    let filename: string;
+    let driveFilename: string;
+    let srtLocalName: string;
+    let srtDriveName: string;
+    if (outputRole === 'chapter') {
+      filename = `chapter_${chapterNum}_full.mp3`;
+      driveFilename = `${safeTitle}_Chuong_${chapterNum}_Full.mp3`;
+      srtLocalName = `chapter_${chapterNum}_full.srt`;
+      srtDriveName = `${safeTitle}_Chuong_${chapterNum}_Full.srt`;
+    } else {
+      filename = localAudioFilename(chapterNum, sceneIndex, 'mp3');
+      driveFilename = driveMediaFilename(scriptTitle, chapterNum, sceneIndex, {
+        kind: 'audio',
+        ext: 'mp3',
+      });
+      srtLocalName = filename.replace(/\.mp3$/i, '.srt');
+      srtDriveName = driveFilename.replace(/\.mp3$/i, '.srt');
+    }
+
     const localSavePath = path.join(publicAudioDir, filename);
     fs.writeFileSync(localSavePath, buffer);
     const audioPathRet = `/audio/${filename}`;
 
+    let localSrtPath = '';
+    if (srtContent.trim()) {
+      localSrtPath = path.join(publicAudioDir, srtLocalName);
+      fs.writeFileSync(localSrtPath, srtContent, 'utf8');
+    }
+
     let driveSaved = false;
     let driveFilePath = '';
+    let driveSrtPath = '';
     if (drivePath?.trim()) {
       try {
         let driveFolder = drivePath.trim();
@@ -209,16 +247,13 @@ export async function POST(req: Request) {
           driveFolder = path.join(driveFolder, `Chương ${chapterNum}`);
         }
         if (!fs.existsSync(driveFolder)) fs.mkdirSync(driveFolder, { recursive: true });
-        const scriptTitle = ten_tac_pham
-          ? ten_tac_pham.replace(/[/\\:*?"<>|]/g, '_').trim()
-          : 'Kịch Bản';
-        const driveFilename = driveMediaFilename(scriptTitle, chapterNum, sceneIndex, {
-          kind: 'audio',
-          ext: 'mp3',
-        });
         driveFilePath = path.join(driveFolder, driveFilename);
         fs.writeFileSync(driveFilePath, buffer);
         driveSaved = true;
+        if (srtContent.trim()) {
+          driveSrtPath = path.join(driveFolder, srtDriveName);
+          fs.writeFileSync(driveSrtPath, srtContent, 'utf8');
+        }
       } catch (e) {
         console.warn('[concat-audio] drive save failed', e);
       }
@@ -247,8 +282,12 @@ export async function POST(req: Request) {
       duration: Math.round(duration),
       driveSaved,
       driveFilePath,
+      driveSrtPath: driveSrtPath || undefined,
+      localSrtPath: localSrtPath || undefined,
+      srtPath: driveSrtPath || localSrtPath || undefined,
+      outputRole,
       segmentCount: absPaths.length,
-      method: `concat-audio (${absPaths.length} parts)`,
+      method: `concat-audio (${absPaths.length} parts${outputRole === 'chapter' ? ', chapter full' : ''})`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

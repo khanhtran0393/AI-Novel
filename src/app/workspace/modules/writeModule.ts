@@ -44,10 +44,15 @@ export interface WriteChapterResult {
   wordCount?: number;
   sceneCount?: number;
   wordMin?: number;
+  wordMax?: number;
   wordGoal?: number;
   needsContinue?: boolean;
+  overSoftMax?: boolean;
   wordsOk?: boolean;
   scenesOk?: boolean;
+  /** Server returned full condensed chapter — client must replace, not append */
+  fullChapterReplace?: boolean;
+  condensedFrom?: number;
 }
 
 export async function compressContextAction(params: {
@@ -167,10 +172,73 @@ export async function writeChapterAction(params: WriteChapterParams): Promise<Wr
     wordCount: typeof data.wordCount === 'number' ? data.wordCount : undefined,
     sceneCount: typeof data.sceneCount === 'number' ? data.sceneCount : undefined,
     wordMin: typeof data.wordMin === 'number' ? data.wordMin : undefined,
+    wordMax: typeof data.wordMax === 'number' ? data.wordMax : undefined,
     wordGoal: typeof data.wordGoal === 'number' ? data.wordGoal : undefined,
     needsContinue: Boolean(data.needsContinue),
+    overSoftMax: Boolean(data.overSoftMax),
     wordsOk: data.wordsOk !== false,
     scenesOk: data.scenesOk !== false,
+    fullChapterReplace: Boolean(data.fullChapterReplace),
+    condensedFrom:
+      typeof data.condensedFrom === 'number' ? data.condensedFrom : undefined,
+  };
+}
+
+/**
+ * Client safety net: if chapter still over hard max, REVISE condense to goal.
+ * Returns body within wordMax when AI cooperates; else best-effort + flag.
+ */
+export async function enforceWordGateBudget(params: {
+  content: string;
+  wordGoal: number;
+  minScenes: number;
+  ten_tac_pham: string;
+  chuong_hien_tai: Chuong;
+  lorebook: string;
+  userRules: { forbidden_words: string; fatigue_words: string };
+  ngon_ngu?: string;
+  nhan_vat?: string[];
+  nhan_vat_prompts?: WriteChapterParams['nhan_vat_prompts'];
+  signal?: AbortSignal;
+}): Promise<{ content: string; wordCount: number; condensed: boolean; stillOver: boolean }> {
+  const { evaluateWordGate, normalizeSceneTags } = await import(
+    '@/lib/storyWriting'
+  );
+  let content = normalizeSceneTags(params.content);
+  let gate = evaluateWordGate(content, params.wordGoal, params.minScenes);
+  if (!gate.overSoftMax) {
+    return {
+      content,
+      wordCount: gate.wordCount,
+      condensed: false,
+      stillOver: false,
+    };
+  }
+  const before = gate.wordCount;
+  const revised = await reviseChapterAction({
+    ten_tac_pham: params.ten_tac_pham,
+    chuong_hien_tai: params.chuong_hien_tai,
+    noi_dung_kich_ban: content,
+    lorebook: params.lorebook,
+    userRules: params.userRules,
+    review: {
+      verdict: 'rewrite',
+      summary: `WORD_GATE_CONDENSE: Rút gọn bắt buộc từ ${before} → ~${params.wordGoal} từ (trần ${gate.wordMax}). Giữ ≥${params.minScenes} [CẢNH] + cốt. CẤM vượt ${gate.wordMax}.`,
+    },
+    mode: 'rewrite',
+    ngon_ngu: params.ngon_ngu,
+    so_tu_chuong: params.wordGoal,
+    nhan_vat: params.nhan_vat,
+    nhan_vat_prompts: params.nhan_vat_prompts,
+    signal: params.signal,
+  });
+  content = normalizeSceneTags(revised.noi_dung);
+  gate = evaluateWordGate(content, params.wordGoal, params.minScenes);
+  return {
+    content,
+    wordCount: gate.wordCount,
+    condensed: true,
+    stillOver: gate.overSoftMax,
   };
 }
 

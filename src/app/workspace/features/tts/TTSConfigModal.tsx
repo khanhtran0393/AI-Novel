@@ -226,11 +226,34 @@ export default function TTSConfigModal({ isOpen, onClose }: TTSConfigModalProps)
 
   const resolvePlayableUrl = (url: string) => {
     if (!url) return url;
-    if (url.startsWith('blob:') || url.startsWith('http')) return url;
-    if (typeof window !== 'undefined') {
-      return new URL(url, window.location.origin).href;
+    const u = String(url).trim();
+    if (!u) return u;
+    if (u.startsWith('blob:') || u.startsWith('http://') || u.startsWith('https://')) {
+      return u;
     }
-    return url;
+    // Relative app path (/audio/...) — safe to resolve against origin
+    if (u.startsWith('/')) {
+      if (typeof window !== 'undefined') {
+        try {
+          return new URL(u, window.location.origin).href;
+        } catch {
+          return u;
+        }
+      }
+      return u;
+    }
+    // Windows absolute / file path — never feed to new URL() (throws Invalid URL / drive protocol)
+    if (/^[a-zA-Z]:[\\/]/.test(u) || u.startsWith('\\\\') || u.startsWith('file:')) {
+      return u;
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        return new URL(u, window.location.origin).href;
+      } catch {
+        return u;
+      }
+    }
+    return u;
   };
 
   const playPreviewUrl = async (primary: string, fallback?: string) => {

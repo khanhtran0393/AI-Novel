@@ -13,33 +13,11 @@ function cleanText(text: string) {
 }
 
 async function runPiper(text: string, modelName: string, speed: number) {
-    const cwd = process.cwd();
-    const tempText = path.join(cwd, 'scratch', `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.txt`);
-    const tempWav = path.join(cwd, 'scratch', `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.wav`);
-    
-    if (!fs.existsSync(path.join(cwd, 'scratch'))) {
-        fs.mkdirSync(path.join(cwd, 'scratch'));
-    }
-
-    fs.writeFileSync(tempText, text, 'utf8');
-    
-    const piperExe = path.join(cwd, 'bin', 'piper', 'piper.exe');
-    const modelPath = path.join(cwd, 'bin', 'piper_vn', modelName);
-    
-    const lengthScale = (1.0 / speed).toFixed(3);
-    const command = `"${piperExe}" -m "${modelPath}" --length_scale ${lengthScale} -f "${tempWav}" < "${tempText}"`;
-    console.log('[VieNeu-TTS API] Running piper:', command);
-    
-    await execAsync(command, { encoding: 'utf-8' });
-    
-    if (fs.existsSync(tempWav)) {
-        const buffer = fs.readFileSync(tempWav);
-        fs.unlinkSync(tempText);
-        fs.unlinkSync(tempWav);
-        return { buffer, contentType: 'audio/wav' };
-    } else {
-        throw new Error('Piper did not generate wav file');
-    }
+    const { generatePiperTTS } = await import(
+      '@/app/api/generate-tts/engines/piper'
+    );
+    const buffer = await generatePiperTTS(text, modelName, speed);
+    return { buffer, contentType: 'audio/wav' };
 }
 
 async function runEdgeTTS(text: string, voiceName: string, speed: number, pitch: number) {
@@ -77,28 +55,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'No text provided' }, { status: 400 });
         }
 
-        // Chuyển đổi tên giọng đọc (VD: "Ngọc Huyền" -> "ngochuyen.onnx")
-        const rawVoice = voice || 'ngochuyen';
-        const modelBaseName = rawVoice.normalize('NFD')
-                                      .replace(/[\u0300-\u036f]/g, '')
-                                      .replace(/đ/g, 'd').replace(/Đ/g, 'D')
-                                      .toLowerCase()
-                                      .replace(/\s+/g, '');
-        
-        const modelName = `${modelBaseName}.onnx`;
-        const modelPath = path.join(process.cwd(), 'bin', 'piper_vn', modelName);
-        
-        let result;
-        
-        if (fs.existsSync(modelPath)) {
-            console.log(`[VieNeu-TTS API] Found local model, routing to Piper: ${modelName}`);
-            result = await runPiper(textToSpeech, modelName, parsedSpeed);
-        } else {
-            throw new Error(`Không tìm thấy mô hình Piper cục bộ: ${modelName} tại đường dẫn: ${modelPath}. Vui lòng tải xuống mô hình hoặc chọn platform khác.`);
-        }
+        // Resolve via piperPaths (packaged AI_NOVEL_ROOT + friendly labels)
+        const { resolvePiperModelPath } = await import('@/lib/tts/piperPaths');
+        const { modelName } = resolvePiperModelPath(String(voice || 'ngochuyen'));
+        console.log(`[VieNeu-TTS API] Piper model: ${modelName}`);
+        const result = await runPiper(textToSpeech, modelName, parsedSpeed);
 
-        return new Response(result.buffer, {
-            headers: { 'Content-Type': result.contentType }
+        return new Response(new Uint8Array(result.buffer), {
+            headers: { 'Content-Type': result.contentType },
         });
         
     } catch (err: any) {

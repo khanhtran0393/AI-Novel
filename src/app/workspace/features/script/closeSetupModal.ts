@@ -70,14 +70,14 @@ export function closeSetupModal(onClose?: () => void): void {
     const w = window as Window & {
       ainovelPersist?: {
         flush?: () => Promise<unknown>;
-        setStoreSync?: (raw: string) => unknown;
+        setStore?: (raw: string) => Promise<unknown> | unknown;
       };
     };
-    // Push patched store to Electron durable if available
+    // Async durable only — setStoreSync freezes Electron chrome
     try {
       const raw = window.localStorage.getItem(STORE_KEY);
-      if (raw && w.ainovelPersist?.setStoreSync) {
-        w.ainovelPersist.setStoreSync(raw);
+      if (raw && w.ainovelPersist?.setStore) {
+        void w.ainovelPersist.setStore(raw);
       }
     } catch {
       /* ignore */

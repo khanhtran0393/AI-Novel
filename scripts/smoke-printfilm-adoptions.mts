@@ -94,6 +94,32 @@ assert.equal(edge.startPromptIndex, 0);
 assert.equal(edge.endPromptIndex, 0);
 assert.equal(edge.dualFrame, false);
 
+// Flow / modern: middle shot is single clip (NOT silent prev→current dual)
+const middleSingle = resolveVideoKeyframeRange({
+  promptIndex: 1,
+  promptsLen: 4,
+  useEndFrame: false,
+  chapter: 1,
+  sceneIndex: 0,
+  singleClipPerPrompt: true,
+});
+assert.equal(middleSingle.startPromptIndex, 1);
+assert.equal(middleSingle.endPromptIndex, 1);
+assert.equal(middleSingle.dualFrame, false);
+
+// Legacy non-Flow: middle = prev→current interpol
+const middleLegacy = resolveVideoKeyframeRange({
+  promptIndex: 1,
+  promptsLen: 4,
+  useEndFrame: false,
+  chapter: 1,
+  sceneIndex: 0,
+  singleClipPerPrompt: false,
+});
+assert.equal(middleLegacy.startPromptIndex, 0);
+assert.equal(middleLegacy.endPromptIndex, 1);
+assert.equal(middleLegacy.dualFrame, true);
+
 // P3 progress
 const empty = computeProjectProgress({});
 assert.equal(empty.doneCount, 0);

@@ -11,6 +11,11 @@ import {
   verifyEntitlementToken,
 } from '@/lib/entitlement';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
+import { verifyLicenseCloud } from '@/lib/cloud/licenseBridge';
+import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
+import { createServiceSupabase } from '@/lib/supabase/server';
+import { isPackagedCustomerRuntime } from '@/lib/commercial/sellerRuntime';
+import { proxyLicenseApiPost } from '@/lib/commercial/licenseApiProxy';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +26,60 @@ export async function POST(req: Request) {
       (typeof body.token === 'string' && body.token.trim()) ||
       extractEntitlementToken(req, body) ||
       '';
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, valid: false, error: 'Thiếu token' },
+        { status: 400 },
+      );
+    }
+    const machineHwid = getHwid().toLowerCase();
+    if (isPackagedCustomerRuntime()) {
+      const remote = await proxyLicenseApiPost('/api/cloud/license/verify', {
+        token,
+        hwid: machineHwid,
+      });
+      return NextResponse.json(remote.payload, { status: remote.status });
+    }
+    if (isSupabaseAdminConfigured()) {
+      const cloud = await verifyLicenseCloud({
+        service: createServiceSupabase(),
+        token,
+        hwid: machineHwid,
+      });
+      if (!cloud.valid || !cloud.claims) {
+        return NextResponse.json(
+          {
+            ok: false,
+            valid: false,
+            hwid: machineHwid.toUpperCase(),
+            cloud: cloud.cloud,
+            rebindToken: cloud.rebindToken || null,
+            error:
+              cloud.cloud.status === 'token_mismatch' ||
+              cloud.cloud.status === 'ticket_stale'
+                ? 'Token không khớp Supabase ledger. Hãy kích hoạt lại key (hoặc đợi app rebind).'
+                : 'License không còn hợp lệ trên Supabase.',
+          },
+          { status: 401 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        valid: true,
+        hwid: machineHwid.toUpperCase(),
+        cloud: cloud.cloud,
+        rebindToken: cloud.rebindToken || null,
+        claims: {
+          is_pro: cloud.claims.is_pro,
+          is_vip: false,
+          is_trial: Boolean(cloud.claims.is_trial),
+          plan: cloud.claims.plan,
+          exp: cloud.claims.exp,
+          expIso: new Date(cloud.claims.exp * 1000).toISOString(),
+          hwidBound: Boolean(cloud.claims.hwid),
+        },
+      });
+    }
     const claimsAny = verifyEntitlementToken(token, { requireHwidMatch: false });
     const claims = verifyEntitlementToken(token, { requireHwidMatch: true });
     const status = getEntitlementPublicStatus();

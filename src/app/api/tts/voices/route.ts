@@ -21,36 +21,35 @@ import {
   resolveLaStudioApiKey,
   resolveLaStudioBaseUrl,
 } from '@/lib/laStudioLocal';
+import { listPiperVoiceOptions } from '@/lib/tts/piperPaths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function loadPiperModels(cwd: string): VoiceOption[] {
-  const piperDir = path.join(cwd, 'bin', 'piper_vn');
-  if (!fs.existsSync(piperDir)) return [];
-  try {
-    return fs
-      .readdirSync(piperDir)
-      .filter((f) => f.endsWith('.onnx'))
-      .map((f) => {
-        let name = f.replace(/\.onnx$/i, '');
-        name = name.charAt(0).toUpperCase() + name.slice(1);
-        let gender: VoiceOption['gender'];
-        if (f === 'ngochuyen.onnx') {
-          name = 'Ngọc Huyền (Nữ)';
-          gender = 'female';
-        }
-        if (f === 'manhdung.onnx') {
-          name = 'Mạnh Dũng (Nam)';
-          gender = 'male';
-        }
-        if (/nu|female|girl|my|huyen|chi|linh|huong/i.test(f)) gender = gender || 'female';
-        if (/nam|male|boy|dung|minh|hung/i.test(f)) gender = gender || 'male';
-        return { id: f, name, gender };
-      });
-  } catch {
-    return [];
+  // Prefer AI_NOVEL_ROOT (packaged resources) then cwd — expand multi-speaker
+  const roots = [
+    String(process.env.AI_NOVEL_ROOT || '').trim(),
+    cwd,
+    process.cwd(),
+  ].filter(Boolean);
+  for (const root of roots) {
+    const piperDir = path.join(root, 'bin', 'piper_vn');
+    if (!fs.existsSync(piperDir)) continue;
+    try {
+      const opts = listPiperVoiceOptions(root);
+      if (opts.length) {
+        return opts.map((o) => ({
+          id: o.id,
+          name: o.name,
+          gender: o.gender,
+        }));
+      }
+    } catch {
+      /* next root */
+    }
   }
+  return [];
 }
 
 /** Build Omni catalog from loadOmniLibrary (public + SuperAudioTools). */
@@ -192,7 +191,7 @@ export async function GET(req: NextRequest) {
       capcutDiag = null;
     }
 
-    // Piper disk models
+    // Piper disk models only — clear static stubs if missing (pack must ship bin/piper_vn)
     const piper = loadPiperModels(cwd);
     if (piper.length) {
       setLangList(catalog, 'piper', 'vi', piper);
@@ -207,6 +206,9 @@ export async function GET(req: NextRequest) {
         })),
       );
       sources.push('piper-disk');
+    } else {
+      setLangList(catalog, 'piper', 'vi', []);
+      sources.push('piper-missing');
     }
 
     // OmniVoice library — keep design presets (alloy/nova/…) at top of each lang

@@ -92,13 +92,33 @@ step(true, 'Mở Setup YouTube — ô link trống, nút Phân tích disabled (U
   }
 }
 
-// Step 5: outline gate messaging (string contract)
+// Step 5: outline gate messaging (string contract) — Phân tích HOẶC gõ tay
 {
-  const needPhanTich =
-    '⚠️ Bấm «Phân tích» (cạnh link) để lấy chép lời + điền cốt truyện trước khi sinh kịch bản.';
+  const needPlot =
+    '⚠️ Điền cốt truyện ô 3 trước: bấm «Phân tích» (cạnh link) hoặc gõ tay tóm tắt rồi Sinh kịch bản.';
   step(
-    needPhanTich.includes('Phân tích') && needPhanTich.includes('cốt truyện'),
-    'Gate Sinh kịch bản thiếu cốt truyện — chỉ dẫn bấm Phân tích',
+    needPlot.includes('Phân tích') &&
+      needPlot.includes('gõ tay') &&
+      needPlot.includes('cốt truyện'),
+    'Gate Sinh kịch bản thiếu cốt truyện — Phân tích hoặc gõ tay',
+  );
+}
+
+// Step 5b: metadata soft-seed when captions blocked
+{
+  const { buildYoutubeMetadataSeed } = await import(
+    '../src/app/workspace/modules/setupModule.ts'
+  );
+  const seed = buildYoutubeMetadataSeed({
+    title: 'Me at the zoo',
+    description: 'The first video on YouTube — elephants at the zoo.',
+    channel: 'jawed',
+    url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw',
+  });
+  step(
+    seed.length >= 40 && seed.includes('METADATA') && seed.includes('Me at the zoo'),
+    'Soft-seed metadata khi không có captions',
+    `len=${seed.length}`,
   );
 }
 

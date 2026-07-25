@@ -33,6 +33,8 @@ export type ShipGateInput = {
   hasAudio?: boolean;
   hasImages?: boolean;
   hasVideos?: boolean;
+  /** CapCut editor can open a visual-only timeline; ship packs may require audio. */
+  requireAudio?: boolean;
   chapterNum?: number;
   /** Live store fields for DNA compare */
   liveMedia?: {
@@ -106,7 +108,10 @@ export function evaluateShipGate(input: ShipGateInput): ShipGateResult {
   }
 
   if (input.hasAudio === false) {
-    if (criteria.recipe.mode === 'radio' || criteria.recipe.includeSrt) {
+    if (
+      input.requireAudio !== false &&
+      (criteria.recipe.mode === 'radio' || criteria.recipe.includeSrt)
+    ) {
       blockers.push(
         `TTS: chưa có audio chương — gen TTS (${criteria.tts.platform}/${criteria.tts.voice}) trước.`,
       );

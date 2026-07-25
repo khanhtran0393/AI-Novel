@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   createAccount,
-  deleteAccount,
+  deleteAccountHard,
   loadAccounts,
   updateAccount,
 } from '@/lib/flow-bridge/accountStore';
@@ -12,6 +12,8 @@ import {
   inheritAccountSession,
   syncAccountIdentity,
 } from '@/lib/flow-bridge';
+/** Direct import — avoids barrel resolution flake during `next build` typecheck. */
+import { purgeDeletedAccountRuntime } from '@/lib/flow-bridge/bridgeServer';
 import { requireFeature } from '@/lib/commercial/apiGate';
 
 export const runtime = 'nodejs';
@@ -123,8 +125,22 @@ export async function POST(req: Request) {
   }
 
   if (action === 'delete') {
-    const ok = deleteAccount(String(body.id || ''));
-    return NextResponse.json({ ok, accounts: loadAccounts() });
+    const id = String(body.id || '').trim();
+    // Hard delete: accounts.json + kill browser + rm accounts_data/<id> + clear bearer
+    const disk = deleteAccountHard(id);
+    try {
+      purgeDeletedAccountRuntime(id);
+    } catch {
+      /* ignore — disk purge already attempted in deleteAccountHard */
+    }
+    return NextResponse.json({
+      ok: disk.ok,
+      accountId: id,
+      killed: disk.killed,
+      removed: disk.removed,
+      errors: disk.errors,
+      accounts: loadAccounts(),
+    });
   }
 
   if (action === 'patch') {
@@ -150,7 +166,11 @@ export async function POST(req: Request) {
       if (patch[k] !== undefined) safe[k] = patch[k];
     }
     if (safe.creditBudget === '') safe.creditBudget = null;
-    const acc = updateAccount(String(body.id || ''), safe);
+    // Empty proxy string clears per-profile proxy
+    if (safe.proxy === '') safe.proxy = undefined;
+    const acc = updateAccount(String(body.id || ''), safe as Partial<
+      import('@/lib/flow-bridge/types').FlowAccount
+    >);
     return NextResponse.json({ account: acc, accounts: loadAccounts() });
   }
 

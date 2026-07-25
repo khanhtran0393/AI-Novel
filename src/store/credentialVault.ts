@@ -18,6 +18,8 @@ const CREDENTIAL_KEYS = [
   'falaiApiKeys',
   'imageApiKey',
   'videoApiKey',
+  'videoApiBaseUrl',
+  'externalVideoApis',
   'aiMasterApiKey',
   'googleStudioCookie',
   'googleStudioCookies',
@@ -69,6 +71,26 @@ function patchFromSnapshot(
   return patch as Partial<NovelStore>;
 }
 
+/** Cheap identity check — avoid JSON.stringify on every non-credential setState (GUI lag). */
+function credentialsUnchanged(
+  state: NovelStore,
+  prev: CredentialSnapshot | null,
+): boolean {
+  if (!prev) return false;
+  for (const key of CREDENTIAL_KEYS) {
+    if (state[key] !== prev[key]) return false;
+  }
+  const t = prev.ttsSecrets || {};
+  const c = state.ttsConfig;
+  return (
+    c.tiktokSessionId === t.tiktokSessionId &&
+    c.googleCloudApiKey === t.googleCloudApiKey &&
+    c.vbeeApiKey === t.vbeeApiKey &&
+    c.vbeeAppId === t.vbeeAppId &&
+    c.vinaReferenceAudioB64 === t.vinaReferenceAudioB64
+  );
+}
+
 export function installCredentialVault(
   store: UseBoundStore<StoreApi<NovelStore>>,
 ): void {
@@ -83,19 +105,20 @@ export function installCredentialVault(
     console.warn('[CredentialVault] hydrate failed:', error);
   }
 
-  let lastSerialized = JSON.stringify(snapshotFromState(store.getState()));
+  let lastSnap: CredentialSnapshot | null = snapshotFromState(store.getState());
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounce vault IPC — typing/stream setState must not thrash credentials disk. */
+  const VAULT_DEBOUNCE_MS = 800;
   store.subscribe((state) => {
+    if (credentialsUnchanged(state, lastSnap)) return;
     const snapshot = snapshotFromState(state);
-    const serialized = JSON.stringify(snapshot);
-    if (serialized === lastSerialized) return;
-    lastSerialized = serialized;
+    lastSnap = snapshot;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
       void bridge.set(snapshot as Record<string, unknown>).catch((error) => {
         console.warn('[CredentialVault] persist failed:', error);
       });
-    }, 250);
+    }, VAULT_DEBOUNCE_MS);
   });
 }

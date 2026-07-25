@@ -176,7 +176,7 @@ async function cleanupQaBucket(config) {
   return { ok: true, deletedBucket: config.bucket };
 }
 
-async function verifyFeed(config) {
+async function verifyFeed(config, options = {}) {
   const markerUrl = publicObjectUrl(config.feedUrl, 'feed-ready.json');
   const response = await fetch(`${markerUrl}?check=${Date.now()}`, {
     cache: 'no-store',
@@ -195,7 +195,61 @@ async function verifyFeed(config) {
   ) {
     throw new Error('Update feed marker does not match this application');
   }
-  return { ok: true, feedUrl: config.feedUrl, markerUrl, marker };
+  let manifest = null;
+  if (options.requireManifest === true) {
+    const manifestName =
+      config.channel === 'latest' ? 'latest.yml' : `${config.channel}.yml`;
+    const manifestUrl = publicObjectUrl(config.feedUrl, manifestName);
+    const manifestResponse = await fetch(
+      `${manifestUrl}?check=${Date.now()}`,
+      {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!manifestResponse.ok) {
+      throw new Error(
+        `Update manifest ${manifestName} returned HTTP ${manifestResponse.status}`,
+      );
+    }
+    const parsed = parseYaml(await manifestResponse.text());
+    const version = String(parsed?.version || '').trim();
+    const artifactPath = String(
+      parsed?.path || parsed?.files?.[0]?.url || '',
+    ).trim();
+    if (!version || !artifactPath) {
+      throw new Error(`${manifestName} thiếu version/path`);
+    }
+    if (version !== String(packageJson.version)) {
+      throw new Error(
+        `${manifestName} version ${version} không khớp package.json ${packageJson.version}`,
+      );
+    }
+    const artifactUrl = publicObjectUrl(config.feedUrl, artifactPath);
+    const artifactResponse = await fetch(artifactUrl, {
+      method: 'HEAD',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!artifactResponse.ok) {
+      throw new Error(
+        `Update artifact ${artifactPath} returned HTTP ${artifactResponse.status}`,
+      );
+    }
+    manifest = {
+      manifestUrl,
+      version,
+      artifactPath,
+      artifactUrl,
+    };
+  }
+  return {
+    ok: true,
+    feedUrl: config.feedUrl,
+    markerUrl,
+    marker,
+    manifest,
+  };
 }
 
 function signatureFor(filePath) {
@@ -521,7 +575,9 @@ async function main() {
   });
   let result;
   if (modes[0] === 'provision') result = await ensurePublicBucket(config);
-  else if (modes[0] === 'verify-feed') result = await verifyFeed(config);
+  else if (modes[0] === 'verify-feed') {
+    result = await verifyFeed(config, { requireManifest: true });
+  }
   else if (modes[0] === 'verify-release') result = await verifyRelease(config);
   else if (modes[0] === 'cleanup-bucket') result = await cleanupQaBucket(config);
   else result = await publishRelease(config);

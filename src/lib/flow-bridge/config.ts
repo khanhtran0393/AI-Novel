@@ -54,16 +54,16 @@ export const FLOW_DEFAULTS = {
    * - Client batch Flow: concurrency 1 + itemGapMs (see jobQueue / useImagePromptActions)
    */
   maxRetries: 3,
-  /** Network/timeout: stop earlier than hard errors */
-  maxRetriesNetwork: 2,
-  retryDelayMs: 15_000,
+  /** Network/timeout: allow full budget (captcha hang is recoverable with tab refresh) */
+  maxRetriesNetwork: 3,
+  retryDelayMs: 12_000,
   /** Min quiet time between extension api_request (ms) */
   extensionMinGapMs: 900,
   /** After each runOne success/fail — human gap before next shot (ms) */
   runOneGapMsMin: 4000,
   runOneGapMsMax: 8000,
-  /** uploadImage body shapes to try (FlowAgent primary first) */
-  maxUploadShapes: 2,
+  /** uploadImage body shapes to try (FlowAgent primary first; more after compress) */
+  maxUploadShapes: 3,
   /** Client batch: Flow image/video must be sequential */
   clientFlowBatchConcurrency: 1,
   /** Client batch gap between shots when provider=flow (ms) */
@@ -72,4 +72,18 @@ export const FLOW_DEFAULTS = {
   tokenRefreshMs: 45 * 60 * 1000,
   /** Account cooldown after slide-off (ms) */
   accountCooldownMs: 60_000,
+  /**
+   * Google Flow runtime standards (Phoma-inspired, extension-native):
+   * - Serialize captcha-bearing API via extApiChain (+ extra gap)
+   * - Max 1 concurrent gen per Google account (parallel = multi-account)
+   * - Hard recycle Chromium profile after N successes (session drift / RAM)
+   */
+  /** Extra quiet ms before captcha-bearing api_request */
+  captchaExtraGapMs: 350,
+  /** 1 = never two workers on the same Labs account at once */
+  maxConcurrentTasksPerAccount: 1,
+  /** Hard recycle delay after success when policy triggers */
+  recycleDelayMs: 800,
+  /** Image/edit: hard recycle every N successes (video: every success by ops) */
+  recycleEveryNSuccess: 2,
 } as const;

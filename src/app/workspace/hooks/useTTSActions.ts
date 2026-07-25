@@ -19,13 +19,7 @@ import {
   resyncPromptTimestamps,
   timestampsNeedResync,
 } from '@/lib/timestampSync';
-import {
-  cancelChapterQueue,
-  getChapterQueueState,
-  hydrateChapterQueueFromDisk,
-  subscribeChapterQueue,
-  type ChapterQueueSnapshot,
-} from '@/lib/ttsChapterQueue';
+import { cancelChapterQueue } from '@/lib/ttsChapterQueue';
 import {
   getTTSApiCredentials,
   resolveDefaultTtsVoice,
@@ -46,14 +40,9 @@ export function useTTSActions() {
   const [generatingTTS, setGeneratingTTS] = useState<{ [sceneIndex: number]: boolean }>({});
   const [ttsProgress, setTtsProgress] = useState<{ [sceneIndex: number]: number }>({});
   const [ttsStatus, setTtsStatus] = useState<{ [sceneIndex: number]: string }>({});
-  const [chapterQueue, setChapterQueue] = useState<ChapterQueueSnapshot>(() =>
-    getChapterQueueState(),
-  );
 
-  useEffect(() => {
-    void hydrateChapterQueueFromDisk();
-    return subscribeChapterQueue(setChapterQueue);
-  }, []);
+  // Chapter queue UI: useChapterTtsQueue() in a leaf component only —
+  // do NOT subscribe here (would re-render whole workspace every progress tick).
 
   useEffect(() => {
     return () => {
@@ -401,8 +390,15 @@ export function useTTSActions() {
     cancelChapterQueue();
   };
 
-  const handleGenerateChapterTTS = (chapterOpts: ChapterTTSOptions = {}) =>
-    generateChapterTts(chapterOpts);
+  /** Fire-and-forget from UI — generateChapterTts already schedules a detached appWork flow. */
+  const handleGenerateChapterTTS = (chapterOpts: ChapterTTSOptions = {}) => {
+    const p = generateChapterTts(chapterOpts);
+    void p.catch((e) => {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      console.warn('[Chapter TTS]', e);
+    });
+    return p;
+  };
 
   const handleChapterCastPreflight = (opts?: { exportFile?: boolean }) =>
     runChapterCastPreflightReport(opts);
@@ -412,10 +408,6 @@ export function useTTSActions() {
     generatingTTS,
     ttsProgress,
     ttsStatus,
-    chapterTtsRunning: chapterQueue.running,
-    chapterTtsProgress: chapterQueue.progress,
-    chapterTtsStatus: chapterQueue.status,
-    chapterQueue,
     handlePlayTTS,
     handleStopTTS,
     handleGenerateTTS,

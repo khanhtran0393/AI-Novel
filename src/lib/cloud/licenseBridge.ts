@@ -1,6 +1,6 @@
 /**
- * Cloud license bridge — Ed25519 issue/verify + optional Supabase persistence.
- * Improves pure local vault: orders, revoke, audit, trial 1/HWID in DB.
+ * Cloud license bridge — Ed25519 issue/verify + sole-truth Supabase ledger.
+ * Orders, revoke, audit, trial and paid Pro all converge on licenses rows.
  */
 
 import crypto from 'crypto';
@@ -15,8 +15,11 @@ import {
   buildTransferContent,
   type PaidPlanId,
 } from '@/lib/commercial/pricingPlans';
-import { createActivationCodes } from '@/lib/commercial/activationVault';
-import { startTrial } from '@/lib/commercial/trial';
+import {
+  generateActivationCode,
+  formatExpSecondsLabel,
+  type ActivationCodeRecord,
+} from '@/lib/commercial/activationVault';
 import { AppError } from '@/lib/errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { LicensePlan, OrderPlan } from '@/lib/supabase/types';
@@ -24,6 +27,34 @@ import { isSupabaseAdminConfigured } from '@/lib/supabase/env';
 
 export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/**
+ * Placeholder HWID for pre-issued activation codes (any machine may claim once).
+ * Format: `unbound:<16hex>` — unique per code, never a real device fingerprint.
+ */
+export const UNBOUND_HWID_PREFIX = 'unbound:';
+
+export function isUnboundLicenseHwid(hwid: string | null | undefined): boolean {
+  const h = String(hwid || '')
+    .trim()
+    .toLowerCase();
+  if (!h) return true;
+  return (
+    h === 'unbound' ||
+    h === 'pending' ||
+    h.startsWith(UNBOUND_HWID_PREFIX) ||
+    h.startsWith('pending:')
+  );
+}
+
+export function unboundHwidForCode(code: string): string {
+  const dig = crypto
+    .createHash('sha256')
+    .update(String(code || '').trim().toUpperCase(), 'utf8')
+    .digest('hex')
+    .slice(0, 16);
+  return `${UNBOUND_HWID_PREFIX}${dig}`;
 }
 
 /**
@@ -142,17 +173,148 @@ export async function updateLicenseDeviceFields(
   }
 }
 
+/**
+ * Persist an already-signed paid-Pro token to the sole-truth ledger.
+ *
+ * A successful return guarantees that the active row carries the exact token
+ * hash and token expiry. Callers must not deliver the token before this
+ * function succeeds.
+ */
+export async function persistIssuedProToken(input: {
+  service: SupabaseClient;
+  token: string;
+  hwid: string;
+  actorId?: string;
+  source: string;
+}): Promise<{ licenseId: string; expAt: string }> {
+  const hwid = licenseDeviceUserId(input.hwid);
+  const claims = verifyEntitlementToken(input.token, {
+    requireHwidMatch: false,
+  });
+  if (!claimsArePaidPro(claims)) {
+    throw new AppError('Token cấp phát không phải Paid Pro hợp lệ.', {
+      code: 'AUTH',
+      status: 401,
+    });
+  }
+  const tokenHwid = licenseDeviceUserId(claims?.hwid || '');
+  if (!tokenHwid || tokenHwid !== hwid) {
+    throw new AppError('Token cấp phát không khớp HWID ledger.', {
+      code: 'AUTH',
+      status: 401,
+    });
+  }
+  const expAt = new Date(
+    Math.max(0, Number(claims?.exp || 0)) * 1000,
+  ).toISOString();
+  if (
+    !Number.isFinite(new Date(expAt).getTime()) ||
+    new Date(expAt).getTime() <= Date.now()
+  ) {
+    throw new AppError('Token cấp phát đã hết hạn hoặc thiếu exp.', {
+      code: 'VALIDATION',
+      status: 400,
+    });
+  }
+  const tokenHash = hashToken(input.token);
+  const { data: activeRows, error: selectError } = await input.service
+    .from('licenses')
+    .select('id,status,plan,created_at')
+    .ilike('hwid', hwid)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (selectError) {
+    throw new AppError(`Supabase licenses: ${selectError.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
+
+  const rows = activeRows || [];
+  const primary = rows[0];
+  let licenseId: string;
+  if (primary?.id) {
+    await updateLicenseDeviceFields(
+      input.service,
+      String(primary.id),
+      hwid,
+      {
+        plan: 'pro',
+        status: 'active',
+        exp_at: expAt,
+        token_hash: tokenHash,
+        activation_code: null,
+      },
+    );
+    licenseId = String(primary.id);
+  } else {
+    const inserted = await insertLicenseRow(input.service, {
+      plan: 'pro',
+      hwid,
+      status: 'active',
+      exp_at: expAt,
+      token_hash: tokenHash,
+      activation_code: null,
+    });
+    licenseId = inserted.id;
+  }
+
+  const duplicateIds = rows
+    .filter((row) => String(row.id) !== licenseId)
+    .map((row) => String(row.id));
+  if (duplicateIds.length > 0) {
+    const { error: expireError } = await input.service
+      .from('licenses')
+      .update({ status: 'expired' })
+      .in('id', duplicateIds);
+    if (expireError) {
+      throw new AppError(
+        `Không thể đóng license trùng HWID: ${expireError.message}`,
+        { code: 'INFRA', status: 502 },
+      );
+    }
+  }
+
+  await auditLog(
+    input.service,
+    'license.issue_persisted',
+    {
+      licenseId,
+      hwid,
+      source: input.source,
+      tokenHash,
+      expAt,
+      duplicateRowsExpired: duplicateIds.length,
+    },
+    input.actorId || 'seller',
+  );
+  return { licenseId, expAt };
+}
+
 /** Redeem a persistent Supabase activation code and issue a fresh HWID token. */
 export async function redeemCloudActivationCode(input: {
   service: SupabaseClient;
   code: string;
   hwid: string;
-}): Promise<{ token: string; claims: EntitlementClaims; licenseId: string }> {
+}): Promise<{
+  token: string;
+  claims: EntitlementClaims;
+  licenseId: string;
+  firstBind?: boolean;
+  alreadyRedeemedSameMachine?: boolean;
+}> {
   const code = input.code.trim().toUpperCase();
   const hwid = input.hwid.trim().toLowerCase();
+  if (!hwid || hwid.length < 8) {
+    throw new AppError('Thiếu HWID máy hợp lệ.', {
+      code: 'VALIDATION',
+      status: 400,
+    });
+  }
   const { data: row, error } = await input.service
     .from('licenses')
-    .select('id,plan,hwid,status,exp_at,activation_code')
+    .select('id,plan,hwid,status,exp_at,activation_code,created_at')
     .eq('activation_code', code)
     .maybeSingle();
   if (error) {
@@ -173,22 +335,49 @@ export async function redeemCloudActivationCode(input: {
       status: 403,
     });
   }
-  if (String(row.hwid || '').trim().toLowerCase() !== hwid) {
-    throw new AppError('Mã kích hoạt không khớp HWID máy này.', {
-      code: 'AUTH',
-      status: 403,
-    });
+
+  const rowHwid = String(row.hwid || '')
+    .trim()
+    .toLowerCase();
+  const unbound = isUnboundLicenseHwid(rowHwid);
+  const sameMachine = !unbound && rowHwid === hwid;
+
+  // Already claimed by another machine — hard fail with bound HWID notice
+  if (!unbound && !sameMachine) {
+    const short =
+      rowHwid.toUpperCase().slice(0, 16) + (rowHwid.length > 16 ? '…' : '');
+    throw new AppError(
+      `Mã đã được nhập rồi — gắn máy HWID ${short}. Mỗi mã chỉ nhận 1 HWID. Liên hệ seller nếu cần chuyển máy.`,
+      { code: 'AUTH', status: 403 },
+    );
   }
-  const secondsLeft = Math.floor(
-    (new Date(row.exp_at).getTime() - Date.now()) / 1000,
-  );
+
+  const nowMs = Date.now();
+  let expAtMs = new Date(row.exp_at).getTime();
+  let firstBind = false;
+
+  // First machine to claim an unbound code: bind HWID + start entitlement clock from now
+  // (preserve intended duration = exp_at − created_at from issue time).
+  if (unbound) {
+    firstBind = true;
+    const createdMs = row.created_at
+      ? new Date(row.created_at).getTime()
+      : nowMs;
+    const intendedMs = Number.isFinite(expAtMs)
+      ? Math.max(expAtMs - createdMs, 60_000)
+      : 60 * 60 * 24 * 365 * 1000;
+    expAtMs = nowMs + intendedMs;
+  }
+
+  const secondsLeft = Math.floor((expAtMs - nowMs) / 1000);
   if (!Number.isFinite(secondsLeft) || secondsLeft <= 0) {
     await input.service
       .from('licenses')
       .update({ status: 'expired' })
       .eq('id', row.id);
-    throw new AppError('License đã hết hạn.', { code: 'AUTH', status: 403 });
+    throw new AppError('License / mã đã hết hạn.', { code: 'AUTH', status: 403 });
   }
+
   const isTrial = row.plan === 'trial';
   const token = issueEntitlementToken({
     is_pro: true,
@@ -199,9 +388,17 @@ export async function redeemCloudActivationCode(input: {
     license_id: String(row.id),
     expSeconds: secondsLeft,
   });
-  await updateLicenseDeviceFields(input.service, String(row.id), hwid, {
+
+  const extra: Record<string, unknown> = {
     token_hash: hashToken(token),
-  });
+    status: 'active',
+  };
+  if (firstBind) {
+    extra.exp_at = new Date(expAtMs).toISOString();
+  }
+
+  await updateLicenseDeviceFields(input.service, String(row.id), hwid, extra);
+
   const claims = verifyEntitlementToken(token, { requireHwidMatch: false });
   if (!claims || claims.hwid?.toLowerCase() !== hwid) {
     throw new AppError('Token vừa cấp không verify được.', {
@@ -209,8 +406,166 @@ export async function redeemCloudActivationCode(input: {
       status: 500,
     });
   }
-  return { token, claims, licenseId: String(row.id) };
+  return {
+    token,
+    claims,
+    licenseId: String(row.id),
+    firstBind,
+    alreadyRedeemedSameMachine: sameMachine,
+  };
 }
+
+/**
+ * Pre-issue Pro activation codes (any HWID may claim once).
+ * Writes Supabase licenses rows with unbound placeholder HWID.
+ * No local-vault code is created: a code is deliverable only after the whole
+ * requested batch has been persisted successfully.
+ */
+export async function issueUnboundProActivationCodes(input: {
+  service?: SupabaseClient | null;
+  count?: number;
+  expSeconds?: number;
+  note?: string;
+  orderId?: string;
+}): Promise<{
+  codes: Array<{
+    code: string;
+    expSeconds: number;
+    expLabel: string;
+    licenseId?: string;
+    ledgerOk: boolean;
+    ledgerError?: string;
+  }>;
+  count: number;
+  expSeconds: number;
+  expLabel: string;
+  ledgerConfigured: boolean;
+}> {
+  const count = Math.max(1, Math.min(50, Math.floor(input.count ?? 1)));
+  const expSeconds = Math.max(
+    60,
+    Math.floor(input.expSeconds ?? 60 * 60 * 24 * 365 * 50),
+  );
+  const expLabel = formatExpSecondsLabel(expSeconds);
+  const note =
+    input.note ||
+    `telegram-gencode count=${count} exp=${expLabel}`;
+
+  const service =
+    input.service ||
+    (isSupabaseAdminConfigured()
+      ? (await import('@/lib/supabase/server')).createServiceSupabase()
+      : null);
+  const ledgerConfigured = Boolean(service);
+  if (!service) {
+    throw new AppError(
+      'Supabase ledger chưa cấu hình — không tạo mã local ngoài sổ cái.',
+      { code: 'INFRA', status: 503 },
+    );
+  }
+  const records = Array.from({ length: count }, () => ({
+    code: generateActivationCode(),
+  }));
+  const expAt = new Date(Date.now() + expSeconds * 1000).toISOString();
+
+  const out: Array<{
+    code: string;
+    expSeconds: number;
+    expLabel: string;
+    licenseId?: string;
+    ledgerOk: boolean;
+    ledgerError?: string;
+  }> = [];
+
+  for (const rec of records) {
+    const code = rec.code;
+    if (!service) {
+      out.push({
+        code,
+        expSeconds,
+        expLabel,
+        ledgerOk: false,
+        ledgerError: 'Supabase chưa cấu hình — chỉ vault local',
+      });
+      continue;
+    }
+    try {
+      const lic = await insertLicenseRow(service, {
+        plan: 'pro',
+        hwid: unboundHwidForCode(code),
+        status: 'active',
+        exp_at: expAt,
+        token_hash: null,
+        activation_code: code,
+        order_id: input.orderId || null,
+      });
+      await auditLog(
+        service,
+        'telegram.gencode',
+        {
+          code,
+          licenseId: lic.id,
+          expSeconds,
+          expLabel,
+          note,
+          source: 'issueUnboundProActivationCodes',
+        },
+        'telegram-admin',
+      );
+      out.push({
+        code,
+        expSeconds,
+        expLabel,
+        licenseId: lic.id,
+        ledgerOk: true,
+      });
+    } catch (e) {
+      out.push({
+        code,
+        expSeconds,
+        expLabel,
+        ledgerOk: false,
+        ledgerError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  const failed = out.find((item) => !item.ledgerOk);
+  if (failed) {
+    const insertedIds = out
+      .map((item) => item.licenseId)
+      .filter((id): id is string => Boolean(id));
+    if (insertedIds.length > 0) {
+      await service
+        .from('licenses')
+        .update({ status: 'revoked' })
+        .in('id', insertedIds);
+    }
+    throw new AppError(
+      `Ghi ledger mã kích hoạt thất bại; toàn bộ lô đã bị thu hồi: ${
+        failed.ledgerError || 'unknown'
+      }`,
+      { code: 'INFRA', status: 502 },
+    );
+  }
+
+  return {
+    codes: out,
+    count: out.length,
+    expSeconds,
+    expLabel,
+    ledgerConfigured,
+  };
+}
+
+/** @deprecated alias — prefer issueUnboundProActivationCodes */
+export async function issueUnboundActivationCodes(
+  input: Parameters<typeof issueUnboundProActivationCodes>[0],
+): Promise<Awaited<ReturnType<typeof issueUnboundProActivationCodes>>> {
+  return issueUnboundProActivationCodes(input);
+}
+
+export type { ActivationCodeRecord };
 
 export function paidPlanToLicense(planId: PaidPlanId): {
   licensePlan: LicensePlan;
@@ -233,6 +588,46 @@ export function paidPlanToLicense(planId: PaidPlanId): {
 }
 
 /**
+ * Issue Pro Ed25519 token for arbitrary duration (e.g. 3/7/15/30 days).
+ */
+export function issueProLicenseForDuration(
+  hwid: string,
+  expSeconds: number,
+): {
+  token: string;
+  claims: EntitlementClaims;
+  expSeconds: number;
+} {
+  const id = hwid.trim().toLowerCase();
+  if (!id || id.length < 8) {
+    throw new AppError('HWID không hợp lệ.', { code: 'VALIDATION', status: 400 });
+  }
+  const secs = Math.max(60, Math.floor(expSeconds));
+  const token = issueEntitlementToken({
+    is_pro: true,
+    is_vip: false,
+    is_trial: false,
+    plan: 'pro',
+    hwid: id,
+    expSeconds: secs,
+  });
+  if (!token.startsWith('AINOVEL2.')) {
+    throw new AppError(
+      'Issue token không phải AINOVEL2 (kiểm tra signing key Ed25519).',
+      { code: 'INFRA', status: 503 },
+    );
+  }
+  const claims = verifyEntitlementToken(token, { requireHwidMatch: false });
+  if (!claims) {
+    throw new AppError(
+      'Issue token thất bại (signing key / public keyring lệch cặp).',
+      { code: 'INFRA', status: 503 },
+    );
+  }
+  return { token, claims, expSeconds: secs };
+}
+
+/**
  * Issue a paid Pro license (Ed25519 AINOVEL2 wire format).
  * Name kept as issueHmacForPlan for call-site compatibility — does NOT use HMAC.
  */
@@ -241,32 +636,8 @@ export function issueProLicenseForPlan(
   hwid: string,
 ): { token: string; claims: EntitlementClaims; meta: ReturnType<typeof paidPlanToLicense> } {
   const meta = paidPlanToLicense(planId);
-  const id = hwid.trim().toLowerCase();
-  if (!id || id.length < 8) {
-    throw new AppError('HWID không hợp lệ.', { code: 'VALIDATION', status: 400 });
-  }
-  const token = issueEntitlementToken({
-    is_pro: true,
-    is_vip: false,
-    is_trial: false,
-    plan: 'pro',
-    hwid: id,
-    expSeconds: meta.expSeconds,
-  });
-  if (!token.startsWith('AINOVEL2.')) {
-    throw new AppError('Issue token không phải AINOVEL2 (kiểm tra signing key Ed25519).', {
-      code: 'INFRA',
-      status: 503,
-    });
-  }
-  const claims = verifyEntitlementToken(token, { requireHwidMatch: false });
-  if (!claims) {
-    throw new AppError('Issue token thất bại (signing key / public keyring lệch cặp).', {
-      code: 'INFRA',
-      status: 503,
-    });
-  }
-  return { token, claims, meta };
+  const issued = issueProLicenseForDuration(hwid, meta.expSeconds);
+  return { token: issued.token, claims: issued.claims, meta };
 }
 
 /** @deprecated Use issueProLicenseForPlan — alias for smoke/scripts. */
@@ -426,18 +797,46 @@ export async function confirmOrderAndIssue(input: {
   const expAt = new Date(Date.now() + meta.expSeconds * 1000).toISOString();
 
   if (issueMode === 'code') {
-    const codes = createActivationCodes({
-      count: 1,
-      plan: 'pro',
-      expSeconds: meta.expSeconds,
-      orderId: order.id,
-      note: `cloud-order:${order.id}`,
-    });
-    activationCode = codes[0]?.code;
+    activationCode = generateActivationCode();
   } else {
     const issued = issueHmacForPlan(planId, hwid);
     token = issued.token;
     tokenHash = hashToken(token);
+  }
+
+  let licenseId: string;
+  let finalExpAt = expAt;
+  if (token) {
+    const persisted = await persistIssuedProToken({
+      service: input.service,
+      token,
+      hwid,
+      actorId: input.actorId || 'order-confirm',
+      source: `order.confirm:${order.id}`,
+    });
+    licenseId = persisted.licenseId;
+    finalExpAt = persisted.expAt;
+    const { error: orderLinkError } = await input.service
+      .from('licenses')
+      .update({ order_id: order.id })
+      .eq('id', licenseId);
+    if (orderLinkError) {
+      throw new AppError(`Link license order fail: ${orderLinkError.message}`, {
+        code: 'INFRA',
+        status: 502,
+      });
+    }
+  } else {
+    const lic = await insertLicenseRow(input.service, {
+      order_id: order.id,
+      plan: meta.licensePlan,
+      hwid,
+      status: 'active',
+      exp_at: expAt,
+      token_hash: tokenHash,
+      activation_code: activationCode || null,
+    });
+    licenseId = lic.id;
   }
 
   const { error: upErr } = await input.service
@@ -445,21 +844,15 @@ export async function confirmOrderAndIssue(input: {
     .update({ status: 'paid', paid_at: new Date().toISOString() })
     .eq('id', order.id);
   if (upErr) {
+    await input.service
+      .from('licenses')
+      .update({ status: 'revoked' })
+      .eq('id', licenseId);
     throw new AppError(`Update order paid fail: ${upErr.message}`, {
       code: 'INFRA',
       status: 502,
     });
   }
-
-  const lic = await insertLicenseRow(input.service, {
-    order_id: order.id,
-    plan: meta.licensePlan,
-    hwid,
-    status: 'active',
-    exp_at: expAt,
-    token_hash: tokenHash,
-    activation_code: activationCode || null,
-  });
 
   // device upsert
   if (order.user_id) {
@@ -478,7 +871,7 @@ export async function confirmOrderAndIssue(input: {
     'order.confirm_issue',
     {
       orderId: order.id,
-      licenseId: lic.id,
+      licenseId,
       plan: meta.licensePlan,
       hwid,
       issueMode,
@@ -489,10 +882,10 @@ export async function confirmOrderAndIssue(input: {
   return {
     token,
     activationCode,
-    licenseId: lic.id as string,
+    licenseId,
     plan: meta.licensePlan,
     hwid,
-    expAt,
+    expAt: finalExpAt,
   };
 }
 
@@ -548,14 +941,14 @@ export async function promoteHwidLicenseToPaidPro(input: {
   if (!hwidNorm || hwidNorm.length < 6) {
     return { ok: false, error: 'HWID không hợp lệ' };
   }
-  const expAt = new Date(Math.max(input.exp, 0) * 1000).toISOString();
+  const tokenExpMs = Math.max(input.exp, 0) * 1000;
   const tokenHash = hashToken(input.token);
 
   try {
     // Prefer any active row for this HWID (case-insensitive)
     const { data: rows, error: selErr } = await input.service
       .from('licenses')
-      .select('id,status,plan')
+      .select('id,status,plan,exp_at')
       .ilike('hwid', hwidNorm)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
@@ -563,7 +956,9 @@ export async function promoteHwidLicenseToPaidPro(input: {
     if (selErr) return { ok: false, error: selErr.message };
 
     const active = rows || [];
-    const primary = active[0];
+    const primary = active[0] as
+      | { id: string; status?: string; plan?: string; exp_at?: string }
+      | undefined;
     if (!primary?.id) {
       return {
         ok: false,
@@ -571,6 +966,16 @@ export async function promoteHwidLicenseToPaidPro(input: {
           'Không có license active trên Supabase cho HWID này (đã ban / hết hạn / chưa cấp). Admin phải issue lại row licenses.',
       };
     }
+
+    // Ledger sole truth for expiry: re-bind must never extend past existing exp_at.
+    const ledgerExpMs = primary.exp_at
+      ? new Date(primary.exp_at).getTime()
+      : NaN;
+    const boundExpMs =
+      Number.isFinite(ledgerExpMs) && ledgerExpMs > 0
+        ? Math.min(tokenExpMs, ledgerExpMs)
+        : tokenExpMs;
+    const expAt = new Date(boundExpMs).toISOString();
 
     try {
       await updateLicenseDeviceFields(input.service, primary.id, hwidNorm, {
@@ -691,9 +1096,82 @@ export async function resolveLicenseByHwid(
 }
 
 /**
+ * Soft ticket drift: local AINOVEL2 still verifies but hash/exp ≠ ledger.
+ * When HWID still has an active licenses row, accept ledger claims (sole truth)
+ * and optionally mint a rebound ticket so client can store a matching hash.
+ */
+export async function rebindTicketToActiveHwidLicense(input: {
+  service: SupabaseClient;
+  hwid: string;
+}): Promise<{
+  ok: boolean;
+  token?: string;
+  claims?: EntitlementClaims;
+  licenseId?: string;
+  expAt?: string;
+  error?: string;
+}> {
+  const hwid = input.hwid.trim().toLowerCase();
+  if (hwid.length < 6) {
+    return { ok: false, error: 'HWID invalid' };
+  }
+  try {
+    const byHwid = await resolveLicenseByHwid(input.service, hwid);
+    if (!byHwid.found || !byHwid.claims || !byHwid.licenseId || !byHwid.expAt) {
+      return {
+        ok: false,
+        error: byHwid.status === 'revoked' ? 'revoked' : 'none',
+      };
+    }
+    const { resolveEntitlementSigningKey } = await import('@/lib/entitlement');
+    const signer = resolveEntitlementSigningKey();
+    if (!signer.ok) {
+      return {
+        ok: true,
+        claims: byHwid.claims,
+        licenseId: byHwid.licenseId,
+        expAt: byHwid.expAt,
+        error: 'signer_unavailable',
+      };
+    }
+    const leftSec = Math.max(
+      60,
+      Math.floor((new Date(byHwid.expAt).getTime() - Date.now()) / 1000),
+    );
+    const isTrial = claimsIsTrial(byHwid.claims);
+    const token = issueEntitlementToken({
+      is_pro: true,
+      is_vip: false,
+      is_trial: isTrial,
+      plan: isTrial ? 'trial' : 'pro',
+      hwid,
+      expSeconds: leftSec,
+    });
+    await updateLicenseDeviceFields(input.service, byHwid.licenseId, hwid, {
+      token_hash: hashToken(token),
+      // Never extend past existing ledger exp
+      exp_at: byHwid.expAt,
+    });
+    return {
+      ok: true,
+      token,
+      claims: byHwid.claims,
+      licenseId: byHwid.licenseId,
+      expAt: byHwid.expAt,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/**
  * Online verify: **Supabase licenses table is sole truth** when admin configured.
- * - No matching active row (by token_hash or HWID) → invalid (**delete row = Free**)
- * - Token Ed25519 may still be cryptographically valid — irrelevant without ledger row
+ * - Exact token_hash + exp match → valid (ledger claims)
+ * - Soft ticket drift (hash/exp) but HWID still active → valid via HWID (+ optional rebindToken)
+ * - Hard deny: revoked / expired / no HWID row → invalid (**delete row = Free**)
  * - Without Supabase service on this process → local ticket only (packaged must proxy
  *   to LICENSE_API which has Supabase; see /api/cloud/license/verify)
  */
@@ -704,6 +1182,8 @@ export async function verifyLicenseCloud(input: {
 }): Promise<{
   valid: boolean;
   claims: EntitlementClaims | null;
+  /** Fresh ticket matching ledger (when signer available after soft drift). */
+  rebindToken?: string;
   cloud: {
     checked: boolean;
     revoked: boolean;
@@ -744,72 +1224,106 @@ export async function verifyLicenseCloud(input: {
   }
 
   const th = hashToken(input.token);
-  const { data: rowByHash } = await input.service
+  const { data: rowByHash, error: hashLookupError } = await input.service
     .from('licenses')
     .select('id,status,exp_at,hwid,plan')
     .eq('token_hash', th)
     .maybeSingle();
+  if (hashLookupError) {
+    throw new AppError(`Supabase token_hash: ${hashLookupError.message}`, {
+      code: 'INFRA',
+      status: 502,
+    });
+  }
 
-  // Prefer HWID row authority — Supabase ledger only (no self-heal INSERT, no offline grant)
   const hwid =
     (input.hwid || localClaims.hwid || '').trim().toLowerCase() || undefined;
-  if (hwid) {
-    const byHwid = await resolveLicenseByHwid(input.service, hwid);
-    if (byHwid.found && byHwid.claims) {
-      // Token optional: if present and hash row revoked, deny
-      if (rowByHash && (rowByHash.status === 'revoked' || rowByHash.status === 'expired')) {
+
+  /** Soft recovery: HWID still active on ledger despite ticket drift. */
+  const softAcceptHwid = async (
+    softStatus: string,
+  ): Promise<{
+    valid: boolean;
+    claims: EntitlementClaims | null;
+    rebindToken?: string;
+    cloud: {
+      checked: boolean;
+      revoked: boolean;
+      licenseId?: string;
+      status?: string;
+      authority: 'supabase' | 'local';
+    };
+  }> => {
+    if (!hwid || !input.service) {
+      return {
+        valid: false,
+        claims: null,
+        cloud: {
+          checked: true,
+          revoked: false,
+          status: softStatus,
+          authority: 'supabase',
+        },
+      };
+    }
+    try {
+      const rebound = await rebindTicketToActiveHwidLicense({
+        service: input.service,
+        hwid,
+      });
+      if (rebound.ok && rebound.claims) {
+        return {
+          valid: true,
+          claims: rebound.claims,
+          rebindToken: rebound.token,
+          cloud: {
+            checked: true,
+            revoked: false,
+            licenseId: rebound.licenseId,
+            status: rebound.token ? 'ticket_rebound' : 'ticket_stale',
+            authority: 'supabase',
+          },
+        };
+      }
+      if (rebound.error === 'revoked') {
         return {
           valid: false,
           claims: null,
           cloud: {
             checked: true,
-            revoked: rowByHash.status === 'revoked',
-            licenseId: rowByHash.id,
-            status: rowByHash.status,
+            revoked: true,
+            status: 'revoked',
             authority: 'supabase',
           },
         };
       }
-
-      // Claims always from active licenses row — never override with offline token alone
       return {
-        valid: true,
-        claims: byHwid.claims,
+        valid: false,
+        claims: null,
         cloud: {
           checked: true,
           revoked: false,
-          licenseId: byHwid.licenseId,
-          status: byHwid.status,
+          status: rebound.error === 'none' ? 'none' : softStatus,
+          authority: 'supabase',
+        },
+      };
+    } catch {
+      return {
+        valid: false,
+        claims: null,
+        cloud: {
+          checked: true,
+          revoked: false,
+          status: softStatus,
           authority: 'supabase',
         },
       };
     }
-
-    // No active row (deleted / revoked / expired / never issued) → Free
-    return {
-      valid: false,
-      claims: null,
-      cloud: {
-        checked: true,
-        revoked: byHwid.status === 'revoked',
-        status: byHwid.status || 'none',
-        authority: 'supabase',
-      },
-    };
-  }
+  };
 
   if (!rowByHash) {
-    // Supabase authority: missing row = not licensed
-    return {
-      valid: false,
-      claims: null,
-      cloud: {
-        checked: true,
-        revoked: false,
-        status: 'none',
-        authority: 'supabase',
-      },
-    };
+    // Hash miss: sole truth = HWID ledger (not Free solely from ticket drift)
+    return softAcceptHwid('token_mismatch');
   }
 
   if (rowByHash.status === 'revoked' || rowByHash.status === 'expired') {
@@ -818,12 +1332,25 @@ export async function verifyLicenseCloud(input: {
       claims: null,
       cloud: {
         checked: true,
-        revoked: true,
+        revoked: rowByHash.status === 'revoked',
         licenseId: rowByHash.id,
         status: rowByHash.status,
         authority: 'supabase',
       },
     };
+  }
+
+  const rowHwid = String(rowByHash.hwid || '').trim().toLowerCase();
+  const claimHwid = String(localClaims.hwid || '').trim().toLowerCase();
+  if (
+    !hwid ||
+    !rowHwid ||
+    !claimHwid ||
+    rowHwid !== hwid ||
+    claimHwid !== hwid
+  ) {
+    // Token may be for this machine while hash row is stale/other — try HWID
+    return softAcceptHwid('hwid_mismatch');
   }
 
   if (new Date(rowByHash.exp_at).getTime() < Date.now()) {
@@ -844,13 +1371,47 @@ export async function verifyLicenseCloud(input: {
     };
   }
 
+  const rowClaims = claimsFromLicensePlan(
+    (rowByHash.plan as LicensePlan) || 'pro',
+    rowByHash.exp_at,
+    rowByHash.hwid,
+  );
+  const tokenExpMs = Number(localClaims.exp || 0) * 1000;
+  const rowExpMs = new Date(rowByHash.exp_at).getTime();
+  if (
+    claimsIsTrial(localClaims) !== claimsIsTrial(rowClaims) ||
+    !Number.isFinite(tokenExpMs) ||
+    Math.abs(tokenExpMs - rowExpMs) > 5_000
+  ) {
+    // Hash matched this machine but ticket claims drifted — ledger exp/plan wins.
+    // Do not Free the seat; optionally rebind so client stores matching exp.
+    let rebindToken: string | undefined;
+    try {
+      const rebound = await rebindTicketToActiveHwidLicense({
+        service: input.service,
+        hwid,
+      });
+      rebindToken = rebound.token;
+    } catch {
+      /* ledger claims still win without rebind */
+    }
+    return {
+      valid: true,
+      claims: rowClaims,
+      rebindToken,
+      cloud: {
+        checked: true,
+        revoked: false,
+        licenseId: rowByHash.id,
+        status: rebindToken ? 'ticket_rebound' : 'ticket_stale',
+        authority: 'supabase',
+      },
+    };
+  }
+
   return {
     valid: true,
-    claims: claimsFromLicensePlan(
-      (rowByHash.plan as LicensePlan) || 'pro',
-      rowByHash.exp_at,
-      rowByHash.hwid,
-    ),
+    claims: rowClaims,
     cloud: {
       checked: true,
       revoked: false,
@@ -880,23 +1441,33 @@ export async function startCloudTrial(input: {
   const already = await resolveLicenseByHwid(input.service, hwid);
   if (already.found && already.claims && !claimsIsTrial(already.claims)) {
     if (already.claims.is_pro || already.claims.is_vip) {
-      const leftSec = Math.max(
-        60,
-        (already.claims.exp || 0) - Math.floor(Date.now() / 1000),
-      );
-      const token = issueEntitlementToken({
-        is_pro: true,
-        is_vip: false,
-        is_trial: false,
-        plan: 'pro',
+      // Rebind ticket to existing paid row so token_hash stays in sync
+      const rebound = await rebindTicketToActiveHwidLicense({
+        service: input.service,
         hwid,
-        expSeconds: leftSec,
       });
+      if (!rebound.ok || !rebound.token) {
+        throw new AppError(
+          rebound.error ||
+            'Máy đã có Pro trên ledger nhưng không mint được ticket (signer/ledger).',
+          { code: 'INFRA', status: 503 },
+        );
+      }
+      try {
+        const { retireLocalTrialAfterPaidPro } = await import(
+          '@/lib/commercial/trial'
+        );
+        retireLocalTrialAfterPaidPro(hwid);
+      } catch {
+        /* non-fatal */
+      }
       return {
         created: false,
-        token,
-        expAt: new Date((already.claims.exp || 0) * 1000).toISOString(),
-        licenseId: already.licenseId || '',
+        token: rebound.token,
+        expAt:
+          rebound.expAt ||
+          new Date((already.claims.exp || 0) * 1000).toISOString(),
+        licenseId: rebound.licenseId || already.licenseId || '',
       };
     }
   }
@@ -932,11 +1503,7 @@ export async function startCloudTrial(input: {
         .from('licenses')
         .update({ token_hash: hashToken(token) })
         .eq('id', existing.id);
-      try {
-        startTrial(hwid);
-      } catch {
-        /* non-fatal */
-      }
+      // Supabase is sole trial authority — do not write local trial vault
       return {
         created: false,
         token,
@@ -951,7 +1518,7 @@ export async function startCloudTrial(input: {
   }
 
   const { token, expAt } = issueTrialToken(hwid, days);
-  // Sole truth: MUST land on Supabase. Local vault is mirror only.
+  // Sole truth: MUST land on Supabase. No local vault mirror (ghost TRIAL after Pro).
   const lic = await insertLicenseRow(input.service, {
     plan: 'trial',
     hwid,
@@ -966,13 +1533,6 @@ export async function startCloudTrial(input: {
     { hwid, licenseId: lic.id, days, userIdWritten: lic.userIdWritten },
     input.userId,
   );
-
-  // Mirror local vault (display only — never authority when Supabase configured)
-  try {
-    startTrial(hwid);
-  } catch {
-    /* non-fatal */
-  }
 
   return {
     created: true,

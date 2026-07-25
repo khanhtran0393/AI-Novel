@@ -602,16 +602,37 @@ export default function LaStudioStudioTab(props: LaStudioStudioTabProps) {
 
   const selectedId = (config.voice || '').trim() || 'diem_trinh';
 
+  /**
+   * Probe / optional ensure engine.
+   * @param ensure — POST spawn+poll (only when offline or user clicks «Engine ẩn»)
+   * @param quiet — no toast, light busy (tab open must not re-boot every time)
+   */
   const refresh = useCallback(
-    async (ensure = false) => {
-      setBusy(true);
+    async (
+      ensure = false,
+      opts?: { quiet?: boolean },
+    ): Promise<
+      | (HealthState & {
+          canSynth?: boolean;
+          kokoroCliReady?: boolean;
+        })
+      | null
+    > => {
+      const quiet = opts?.quiet === true;
+      // Quiet probe: only soft busy if we have no health yet
+      if (!quiet || !health) setBusy(true);
       try {
         // BẮT BUỘC entitlement header (enforce) — thiếu → 403 «không kết nối được»
         const res = await fetch(API.laStudioStatus, {
           method: ensure ? 'POST' : 'GET',
           headers: buildClientApiHeaders(),
           body: ensure
-            ? JSON.stringify({ spawnApp: true, hidden: true, pollMs: 12_000 })
+            ? JSON.stringify({
+                spawnApp: true,
+                hidden: true,
+                // Tab re-open: short poll; user button: full warm
+                pollMs: quiet ? 6_000 : 12_000,
+              })
             : undefined,
           cache: 'no-store',
         });
@@ -636,18 +657,19 @@ export default function LaStudioStudioTab(props: LaStudioStudioTabProps) {
             canSynth: false,
             message: msg,
           });
-          if (ensure) toast.error('LA Studio — không kết nối', msg);
-          return;
+          if (ensure && !quiet) toast.error('LA Studio — không kết nối', msg);
+          return { online: false, canSynth: false, message: msg };
         }
 
-        setHealth({
+        const next = {
           ...data,
           message:
             data.message ||
             (data.online && !data.ttsLoaded
               ? 'API online · model TTS chưa load (vẫn gen Kokoro CLI được nếu pack ship có).'
               : data.message),
-        });
+        };
+        setHealth(next);
 
         const famId =
           config.laStudioFamily ||
@@ -661,12 +683,13 @@ export default function LaStudioStudioTab(props: LaStudioStudioTabProps) {
           }
         } catch (e) {
           const m = e instanceof Error ? e.message : String(e);
-          if (/Trial|Pro|403|Bản quyền/i.test(m) && ensure) {
+          if (/Trial|Pro|403|Bản quyền/i.test(m) && ensure && !quiet) {
             toast.error('LA Studio', m);
           }
         }
 
-        if (ensure) {
+        // Toast only on explicit user «Engine ẩn» — not every modal open
+        if (ensure && !quiet) {
           if (data.canSynth || data.online) {
             toast.success(
               'LA Studio',
@@ -688,14 +711,18 @@ export default function LaStudioStudioTab(props: LaStudioStudioTabProps) {
             );
           }
         }
+        return next;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setHealth({ online: false, message: msg });
-        if (ensure) toast.error('LA Studio', msg);
+        if (ensure && !quiet) toast.error('LA Studio', msg);
+        return { online: false, canSynth: false, message: msg };
       } finally {
         setBusy(false);
       }
     },
+    // health only gates busy UI — omit from deps to avoid refresh identity churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [config.laStudioFamily, pollFamilies, reloadVoicesForFamily, updateTTSConfig],
   );
 
@@ -727,9 +754,22 @@ export default function LaStudioStudioTab(props: LaStudioStudioTabProps) {
     ) {
       updateTTSConfig({ voice: 'diem_trinh' });
     }
-    void refresh(true);
-    void reloadUserClones();
+
+    // Tab open: GET status only (boot already warmed engine via LaStudioAutoBootstrap).
+    // Spawn only if offline — quiet, no toast storm / no full re-boot UI.
+    let cancelled = false;
+    void (async () => {
+      const probe = await refresh(false, { quiet: true });
+      if (cancelled) return;
+      if (!probe?.canSynth && !probe?.online) {
+        await refresh(true, { quiet: true });
+      }
+      if (cancelled) return;
+      await reloadUserClones();
+    })();
+
     return () => {
+      cancelled = true;
       stopPoll();
       if (cloneLocalUrlRef.current) {
         URL.revokeObjectURL(cloneLocalUrlRef.current);
@@ -1193,14 +1233,16 @@ export default function LaStudioStudioTab(props: LaStudioStudioTabProps) {
               }}
             />
             {busy
-              ? 'Đang kết nối…'
+              ? health?.canSynth || health?.online
+                ? 'Đang làm mới…'
+                : 'Đang kiểm tra…'
               : health?.canSynth
                 ? health.online && health.ttsLoaded
-                  ? `API san sang${health.ttsFamily ? ` · ${health.ttsFamily}` : ''}`
+                  ? `API sẵn sàng${health.ttsFamily ? ` · ${health.ttsFamily}` : ''}`
                   : health.kokoroCliReady
-                    ? 'Kokoro CLI san sang (gen that)'
-                    : 'San sang'
-                : 'Chua san sang'}
+                    ? 'Kokoro CLI sẵn sàng (gen thật)'
+                    : 'Sẵn sàng'
+                : 'Chưa sẵn sàng'}
           </span>
           <button
             type="button"

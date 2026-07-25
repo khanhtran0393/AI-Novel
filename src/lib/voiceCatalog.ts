@@ -167,7 +167,7 @@ const TIKTOK_OTHER: Record<string, VoiceOption[]> = {
 // ─── Edge TTS (Neural — multilingual, production-known set) ─
 const EDGE_VI: VoiceOption[] = [
   v('vi-VN-HoaiMyNeural', 'Hoài My (Nữ)', 'female', 'vi-VN'),
-  v('vi-VN-NamMinhNeural', 'Nam Minh (Nam)', 'male', 'vi-VN')
+  v('vi-VN-NamMinhNeural', 'Nam Minh (Nam)', 'male', 'vi-VN'),
 ];
 
 const EDGE_EN: VoiceOption[] = [
@@ -354,10 +354,12 @@ const VIENEU_VI: VoiceOption[] = [
   v('Ngọc Huyền', 'Ngọc Huyền (Truyện Audio)', 'female'),
 ];
 
-const PIPER_VI_STATIC: VoiceOption[] = [
-  v('ngochuyen.onnx', 'Ngọc Huyền (Nữ)', 'female'),
-  v('manhdung.onnx', 'Mạnh Dũng (Nam)', 'male'),
-];
+/**
+ * Piper list is disk-only at runtime (`/api/tts/voices` → listPiperVoiceOptions).
+ * Empty static = cấm hiện giọng ảo khi gói thiếu model (preview fail «(trống)»).
+ * Disk may include: manhdung, ngochuyen, rhasspy vi_VN (25h/vais/vivos multi).
+ */
+const PIPER_VI_STATIC: VoiceOption[] = [];
 
 /** VBee list — legacy catalog only (platform hard-fail; IRON B10) */
 const VBEE_VI: VoiceOption[] = [

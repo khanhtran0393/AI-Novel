@@ -15,6 +15,13 @@ import {
   getModelDurations,
   clampFlowVideoDuration,
   resolveFlowImageModelName,
+  flowModelUserHint,
+  flowVideoFamilyBadge,
+  flowVideoFamilyBadgeVi,
+  flowModelGooglePackage,
+  formatFlowCreditsPart,
+  formatFlowModelDropdownLabel,
+  flowVideoModelRequirements,
 } from '@/lib/flow-bridge/modelCatalog';
 import { loadFlowOps } from '@/lib/flow-bridge/opsStore';
 
@@ -22,14 +29,39 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function serializeModel(m: (typeof FLOW_VIDEO_MODELS)[number]) {
+  const userHint = flowModelUserHint(m);
+  const familyBadge = flowVideoFamilyBadge(m.family);
+  const idLow = String(m.id || '').toLowerCase();
+  const isFl =
+    idLow.endsWith('_fl') ||
+    idLow.includes('_fl_') ||
+    idLow.includes('first_last') ||
+    idLow.includes('start_end') ||
+    String(m.label || '').toLowerCase().includes('2 khung');
+  const familyBadgeVi =
+    m.kind === 'video'
+      ? flowVideoFamilyBadgeVi(m.family, { isFirstLast: isFl })
+      : undefined;
+  const googlePackage =
+    m.kind === 'video' ? flowModelGooglePackage(m) : undefined;
+  const creditsLabel = formatFlowCreditsPart(m);
+  const dropdownLabel = formatFlowModelDropdownLabel(m);
+  const requirements =
+    m.kind === 'video' ? flowVideoModelRequirements(m.id) : undefined;
   return {
     id: m.id,
     label: m.label,
+    /** Full option text for Media Config select */
+    dropdownLabel,
     kind: m.kind,
     credits: m.credits,
     creditsUltra: m.creditsUltra ?? m.credits,
+    creditsLabel,
     tier: m.tier,
     family: m.family,
+    familyBadge: familyBadge || undefined,
+    familyBadgeVi: familyBadgeVi || undefined,
+    googlePackage,
     durationsSec: m.durationsSec,
     defaultDurationSec: m.defaultDurationSec,
     nativeScale: m.nativeScale,
@@ -42,6 +74,10 @@ function serializeModel(m: (typeof FLOW_VIDEO_MODELS)[number]) {
     supportsFirstLast: m.supportsFirstLast,
     paygateNote: m.paygateNote,
     note: m.note,
+    /** VN hint for Cấu hình đầu ra */
+    userHint,
+    /** Yêu cầu + cách dùng khi chọn model (UI Cấu hình đầu ra) */
+    requirements,
     uiHidden: m.uiHidden,
   };
 }

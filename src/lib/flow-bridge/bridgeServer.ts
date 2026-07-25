@@ -85,11 +85,45 @@ type BridgeState = {
    * Parallel gens otherwise race → Extension API timeout on shot 2/3.
    */
   extApiChain: Promise<unknown>;
+  /**
+   * Large JSON bodies for uploadImage — extension fetches via HTTP so WS
+   * does not carry multi-MB base64 (was: Extension API timeout ~66s).
+   */
+  bodyStash: Map<string, { json: string; expiresAt: number }>;
 };
+
+const BODY_STASH_TTL_MS = 5 * 60_000;
+const BODY_STASH_THRESHOLD = 48_000; // ~48KB JSON → stash over HTTP
 
 const g = globalThis as unknown as { __ainovelFlowBridge?: BridgeState };
 // Durable bundles retain identity/project diagnostics, never live auth.
 const ALLOW_DURABLE_BEARER_REHYDRATION = false;
+
+function purgeExpiredBodyStash(s: BridgeState): void {
+  const now = Date.now();
+  for (const [id, row] of s.bodyStash) {
+    if (row.expiresAt <= now) s.bodyStash.delete(id);
+  }
+}
+
+function stashLargeBody(body: unknown): string | null {
+  if (body == null) return null;
+  let json: string;
+  try {
+    json = typeof body === 'string' ? body : JSON.stringify(body);
+  } catch {
+    return null;
+  }
+  if (json.length < BODY_STASH_THRESHOLD) return null;
+  const s = state();
+  purgeExpiredBodyStash(s);
+  const id = `bs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  s.bodyStash.set(id, { json, expiresAt: Date.now() + BODY_STASH_TTL_MS });
+  console.log(
+    `[FlowBridge] body-stash ${id} ${json.length}B (upload/WS offload)`,
+  );
+  return id;
+}
 
 function state(): BridgeState {
   if (!g.__ainovelFlowBridge) {
@@ -120,6 +154,7 @@ function state(): BridgeState {
       queue: new FlowQueueEngine(),
       callbackSecret: `ainovel_${Date.now().toString(36)}`,
       extApiChain: Promise.resolve(),
+      bodyStash: new Map(),
     };
   }
   // Hot-upgrade older process state (HMR / long-lived Node)
@@ -127,6 +162,7 @@ function state(): BridgeState {
   if (!st.flowKeysByAccount) st.flowKeysByAccount = new Map();
   if (!st.inheritTimers) st.inheritTimers = new Map();
   if (!st.extApiChain) st.extApiChain = Promise.resolve();
+  if (!st.bodyStash) st.bodyStash = new Map();
   return st;
 }
 
@@ -296,6 +332,124 @@ export async function runGenerateOne(body: Record<string, unknown>): Promise<{
     return remoteGenerateOne(body);
   }
   return getQueue().runOne(body);
+}
+
+/**
+ * Async path: enqueue + start workers, return immediately with taskId.
+ * Client polls getQueueTask / /api/flow/task until done|failed.
+ */
+export async function enqueueGenerateOne(
+  body: Record<string, unknown>,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  taskId?: string;
+  task?: unknown;
+  queueAhead?: number;
+}> {
+  if (isAdoptedExternalBridge()) {
+    const { remoteEnqueueGenerateOne } = await import('./remoteBridge');
+    if (typeof remoteEnqueueGenerateOne === 'function') {
+      return remoteEnqueueGenerateOne(body);
+    }
+    // Daemon without enqueue RPC — fall back to sync would hang; hard-fail clear
+    return {
+      ok: false,
+      error:
+        'Bridge remote (daemon) chưa hỗ trợ enqueue async — restart app để bridge in-process.',
+    };
+  }
+  const q = getQueue() as FlowQueueEngine & {
+    enqueueAndStart?: (b: Record<string, unknown>) => {
+      ok: boolean;
+      error?: string;
+      task?: { id: string; queueAhead?: number };
+      tasks?: unknown[];
+    };
+    resumeFromStop?: () => void;
+  };
+  // Hot-reload safe: old singleton may lack enqueueAndStart
+  if (typeof q.enqueueAndStart === 'function') {
+    const r = q.enqueueAndStart(body);
+    if (!r.ok || !r.task) {
+      return { ok: false, error: r.error || 'enqueue failed' };
+    }
+    return {
+      ok: true,
+      taskId: r.task.id,
+      task: r.task,
+      queueAhead: r.task.queueAhead ?? 0,
+    };
+  }
+  try {
+    q.resumeFromStop?.();
+    const ahead = q.snapshot().pending;
+    const created = q.enqueueMany(body);
+    const task = created[0] as
+      | (import('./types').FlowTask & { queueAhead?: number; appSavePath?: string })
+      | undefined;
+    if (!task) return { ok: false, error: 'Thiếu prompt' };
+    task.queueAhead = ahead;
+    if (typeof body.appSavePath === 'string') {
+      task.appSavePath = String(body.appSavePath);
+    }
+    if (typeof body.correlationId === 'string') {
+      (task as { correlationId?: string }).correlationId = String(
+        body.correlationId,
+      );
+    }
+    q.start();
+    return {
+      ok: true,
+      taskId: task.id,
+      task,
+      queueAhead: ahead,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+export function getQueueTask(id: string) {
+  const q = getQueue() as FlowQueueEngine & {
+    getTask?: (id: string) => import('./types').FlowTask | undefined;
+  };
+  if (typeof q.getTask === 'function') return q.getTask(id);
+  // Hot-reload: read from snapshot.tasks
+  return q.snapshot().tasks.find((t) => t.id === id);
+}
+
+export function findQueueTaskByCoords(opts: {
+  kind?: string;
+  chapterNum: number;
+  sceneIndex: number;
+  promptIndex?: number;
+}) {
+  const q = getQueue() as FlowQueueEngine & {
+    findTaskByCoords?: (o: typeof opts) => import('./types').FlowTask | undefined;
+  };
+  if (typeof q.findTaskByCoords === 'function') {
+    return q.findTaskByCoords(opts);
+  }
+  const kind = opts.kind || 'video';
+  const pi =
+    opts.promptIndex != null && Number.isFinite(Number(opts.promptIndex))
+      ? Number(opts.promptIndex)
+      : undefined;
+  return [...q.snapshot().tasks].reverse().find((t) => {
+    if (kind === 'video') {
+      if (t.kind !== 'video' && t.kind !== 'extend') return false;
+    } else if (t.kind !== kind) {
+      return false;
+    }
+    if (Number(t.chapterNum) !== Number(opts.chapterNum)) return false;
+    if (Number(t.sceneIndex) !== Number(opts.sceneIndex)) return false;
+    if (pi != null && Number(t.promptIndex) !== pi) return false;
+    return true;
+  });
 }
 
 async function probeExistingBridge(): Promise<boolean> {
@@ -507,6 +661,9 @@ export function beginFreshProfileLogin(accountId: string): {
   // Nếu live key đang thuộc profile khác — giữ nguyên để gen profile cũ không gãy,
   // nhưng không paint key đó lên profile mới (flowKeyAccountId khác id).
   // Nếu live key đang gán nhầm profile này (chưa login) → gỡ flag.
+  // Always drop THIS profile's bearer from memory (disk wipe is prepareBlankLoginProfile).
+  // Never leave a stale ya29 for the wiped profile.
+  s.flowKeysByAccount.delete(id);
   if (s.flowKeyAccountId && s.flowKeyAccountId !== id) {
     /* keep s.flowKey for other profile */
   } else if (!s.flowKeyAccountId) {
@@ -523,6 +680,40 @@ export function beginFreshProfileLogin(accountId: string): {
     `[FlowBridge] Fresh login session account=${id} epoch=${s.loginEpochMs}`,
   );
   return { accountId: id, loginEpochMs: s.loginEpochMs };
+}
+
+/**
+ * Full runtime + disk purge when user deletes a Flow profile card.
+ * Clears bearer map, active bind, and browser profile folders.
+ */
+export function purgeDeletedAccountRuntime(accountId: string): {
+  accountId: string;
+  killed: number;
+  removed: string[];
+  errors: string[];
+} {
+  const id = String(accountId || '').trim();
+  const s = state();
+  s.flowKeysByAccount.delete(id);
+  if (s.flowKeyAccountId === id) {
+    s.flowKey = null;
+    s.flowKeyAccountId = null;
+    s.tokenCapturedAt = null;
+  }
+  if (s.activeAccountId === id) {
+    s.activeAccountId = null;
+  }
+  try {
+    const { purgeAccountProfile } = require('./chromeSession') as typeof import('./chromeSession');
+    return purgeAccountProfile(id);
+  } catch (e) {
+    return {
+      accountId: id,
+      killed: 0,
+      removed: [],
+      errors: [e instanceof Error ? e.message : String(e)],
+    };
+  }
 }
 
 /** True if current live token was captured for this account after loginEpoch. */
@@ -568,25 +759,32 @@ export function applyAccountIdentity(
     : undefined;
   // A service-worker session fetch can transiently return an empty payload
   // while the authenticated Flow tab still has a verified email/session.
-  // Empty optional fields may enrich nothing; only an explicit failed/challenge
-  // payload is allowed to downgrade trusted identity state.
-  const preserveTrustedState = payloadSessionReady && !email;
-  const effectiveEmail =
-    email || (preserveTrustedState ? storedAccount?.email || s.identity?.email || '' : '');
+  // NEVER wipe a known email with empty transient fields — that demoted
+  // sessionVerified and painted "thiếu email" while Bearer still existed
+  // (blocked all Flow gen until re-login).
+  const trustedEmail =
+    (storedAccount?.email && String(storedAccount.email).includes('@')
+      ? String(storedAccount.email)
+      : '') ||
+    (s.identity?.email && String(s.identity.email).includes('@')
+      ? String(s.identity.email)
+      : '');
+  const effectiveEmail = email || trustedEmail;
   const effectiveName =
-    name || (preserveTrustedState ? storedAccount?.displayName || storedAccount?.name || s.identity?.name || '' : '');
+    name ||
+    storedAccount?.displayName ||
+    storedAccount?.name ||
+    s.identity?.name ||
+    '';
   const effectiveCredits =
-    credits ?? (preserveTrustedState ? storedAccount?.credits ?? s.identity?.credits ?? null : null);
+    credits ?? storedAccount?.credits ?? s.identity?.credits ?? null;
   const effectivePaygateTier =
-    paygateTier ??
-    (preserveTrustedState
-      ? storedAccount?.paygateTier ?? s.identity?.paygateTier ?? null
-      : null);
+    paygateTier ?? storedAccount?.paygateTier ?? s.identity?.paygateTier ?? null;
   const effectiveSessionExpires =
     sessionExpires ??
-    (preserveTrustedState
-      ? storedAccount?.sessionExpires ?? s.identity?.sessionExpires ?? null
-      : null);
+    storedAccount?.sessionExpires ??
+    s.identity?.sessionExpires ??
+    null;
 
   // Harvest projects → global catalog + THIS profile only
   const harvested: { id: string; title: string; source: 'capture' }[] = [];
@@ -629,8 +827,15 @@ export function applyAccountIdentity(
     projectCount: harvested.length || loadProjects().length,
   };
 
+  // Verified = real email on profile. Challenge may block gen but must not
+  // erase identity; payload ok=false alone must not demote a known login.
   const verified = Boolean(
-    payloadSessionReady && effectiveEmail && effectiveEmail.includes('@'),
+    effectiveEmail &&
+      effectiveEmail.includes('@') &&
+      !challengeRequired &&
+      (payloadSessionReady ||
+        Boolean(storedAccount?.sessionVerified) ||
+        Boolean(email)),
   );
 
   if (targetId) {
@@ -804,7 +1009,13 @@ export async function inheritAccountSession(accountId: string): Promise<{
 
   // Harvest live session from browser of THIS profile
   try {
-    await commandExtension('force_token_harvest', {}, 35_000, id);
+    // Explicit user Check/Sync may open tab; still refuse open when Google login tab exists (extension-side)
+    await commandExtension(
+      'force_token_harvest',
+      { allowOpenTab: true, reloadIfMissing: true },
+      35_000,
+      id,
+    );
     steps.push('force_token_harvest OK');
   } catch (e) {
     steps.push(
@@ -893,9 +1104,11 @@ export async function inheritAccountSession(accountId: string): Promise<{
     accNow?.email && String(accNow.email).includes('@'),
   );
   const projectCount = accNow?.projects?.length || 0;
-  const authenticated = Boolean(
-    inheritEmail && accNow?.sessionVerified && finalKey,
-  );
+  // sessionVerified = real Google email (login). Do NOT require prior
+  // sessionVerified flag — that created a permanent demotion loop when a
+  // transient poll cleared verified while email/key still lived on disk.
+  const loginVerified = inheritEmail;
+  const authenticated = Boolean(loginVerified && finalKey);
   const projectReady = Boolean(
     (accNow?.projectId && isPlausibleProjectId(accNow.projectId)) ||
       (accNow?.projects || []).some((project) =>
@@ -923,24 +1136,25 @@ export async function inheritAccountSession(accountId: string): Promise<{
   updateAccount(id, {
     status: authenticated
       ? 'active'
-      : accNow?.status === 'connecting'
+      : loginVerified
         ? 'connecting'
-        : 'idle',
+        : accNow?.status === 'connecting'
+          ? 'connecting'
+          : 'idle',
     flowKeyPresent: Boolean(finalKey),
-    // Inherit token without email must NOT paint sessionVerified / sẵn sàng
-    sessionVerified: authenticated,
+    sessionVerified: loginVerified,
     sessionInheritedAt: Date.now(),
     profileDir,
     browserExe: browserExe || accNow?.browserExe || '',
     capabilities,
     lastError: generationReady
       ? null
-      : inheritEmail
+      : loginVerified && !finalKey
         ? 'Đã có email Google nhưng chưa có Bearer token của đúng profile'
-        : finalKey
-        ? 'Có token nhưng chưa đăng nhập Google (thiếu email) — giữ browser, hoàn tất login Google trên tab Flow'
-        : accNow?.lastError ||
-          'Chưa inherit được token/email — mở browser login',
+        : finalKey && !loginVerified
+          ? 'Có token nhưng chưa đăng nhập Google (thiếu email) — giữ browser, hoàn tất login Google trên tab Flow'
+          : accNow?.lastError ||
+            'Chưa inherit được token/email — mở browser login',
   });
 
   // ready = real Google session + Bearer of this profile.
@@ -1342,8 +1556,6 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
           closeLoginSessionAfterCapture,
           getChromeSessionInfo,
           getSession,
-          isProfileBrowserAlive,
-          launchChrome,
         } = await import('./chromeSession');
         if (bindId) {
           s.activeAccountId = bindId;
@@ -1381,20 +1593,22 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
             idr.error || '',
           );
           if (emailNow && String(emailNow).includes('@')) {
-            if (activeSess?.loginOpen || s.loginSessionOpen) {
-              try {
-                sendWs({
-                  id: newMsgId(),
-                  method: 'close_login_session',
-                  params: {},
-                });
-              } catch {
-                /* ignore */
-              }
+            const chromeInfo = getChromeSessionInfo(bindId);
+            const shouldClose =
+              activeSess?.loginOpen ||
+              s.loginSessionOpen ||
+              Boolean(chromeInfo.loginPidAlive);
+            if (shouldClose) {
+              // Single owner: minimize + kill login + background relaunch (no 2nd spawn elsewhere)
               const r = await closeLoginSessionAfterCapture({
                 delayMs: 600,
                 accountId: bindId || undefined,
                 keepBackground: true,
+                force: Boolean(
+                  !activeSess?.loginOpen &&
+                    !s.loginSessionOpen &&
+                    chromeInfo.loginPidAlive,
+                ),
               });
               console.log(
                 '[FlowBridge] auto-close after email session:',
@@ -1413,27 +1627,6 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
                 'Token tạm có — hoàn tất đăng nhập Google trên browser profile (chờ email hiện trên Flow)',
             });
           }
-        }
-
-        // Chỉ spawn background nếu login vừa đóng và browser chết — không spam relaunch
-        const sess = bindId ? getSession(bindId) : null;
-        if (
-          sess?.chromePath &&
-          sess.profileDir &&
-          sess.extDir &&
-          !sess.loginOpen &&
-          !isProfileBrowserAlive(sess.profileDir) &&
-          isNewToken
-        ) {
-          launchChrome({
-            chromePath: sess.chromePath,
-            extDir: sess.extDir,
-            profileDir: sess.profileDir,
-            accountId: sess.accountId,
-            mode: 'background',
-            forceClean: false,
-            isStockChrome: /google[\\/]chrome/i.test(sess.chromePath),
-          });
         }
       } catch (e) {
         console.warn('[FlowBridge] token_captured handler failed', e);
@@ -1522,14 +1715,19 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
           scheduleInheritAccountSession(bind, 1000);
         } else if (hasToken && bind) {
           const existing = loadAccounts().find((account) => account.id === bind);
-          const alreadyVerified = Boolean(
-            existing?.sessionVerified && existing.email?.includes('@'),
+          const hasStoredEmail = Boolean(
+            existing?.email && String(existing.email).includes('@'),
           );
-          // A partial SW poll must not erase a verified tab session. Token-only
-          // is incomplete only when this profile has never established email.
+          const alreadyVerified = Boolean(
+            hasStoredEmail &&
+              (existing?.sessionVerified || hasStoredEmail),
+          );
+          // A partial SW poll must not erase a verified tab session / email.
+          // Token-only is incomplete only when this profile never had email.
           updateAccount(bind, {
             status: alreadyVerified ? 'active' : 'idle',
             flowKeyPresent: true,
+            // Keep sessionVerified when email already on disk
             sessionVerified: alreadyVerified,
             lastError: alreadyVerified
               ? null
@@ -1542,15 +1740,55 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
           const { closeLoginSessionAfterCapture, getChromeSessionInfo } =
             await import('./chromeSession');
           const chrome = getChromeSessionInfo(bind);
-          if (chrome.loginOpen || s.loginSessionOpen) {
-            await closeLoginSessionAfterCapture({
+          // loginOpen flag OR loginPid still alive (stuck visible login after flag flip)
+          // Do NOT kill intentional background (bgPid only) on every poll.
+          const shouldClose =
+            chrome.loginOpen ||
+            s.loginSessionOpen ||
+            Boolean(chrome.loginPidAlive);
+          if (shouldClose) {
+            const forceStuck =
+              !chrome.loginOpen &&
+              !s.loginSessionOpen &&
+              Boolean(chrome.loginPidAlive);
+            const r = await closeLoginSessionAfterCapture({
               delayMs: 400,
               accountId: bind || undefined,
               keepBackground: true,
+              force: forceStuck,
             });
             console.log(
               '[FlowBridge] session_poll → closed login (email verified)',
+              r.message,
             );
+          } else if (
+            // Soft recovery: flags already closed but Chrome still visible
+            // (legacy retain-without-kill path). Minimize only — no kill spam on bg.
+            chrome.profileBrowserAlive &&
+            hasToken
+          ) {
+            const gHide = globalThis as unknown as {
+              __ainovelFlowSoftHideAt?: Record<string, number>;
+            };
+            gHide.__ainovelFlowSoftHideAt = gHide.__ainovelFlowSoftHideAt || {};
+            const key = bind || 'default';
+            const last = gHide.__ainovelFlowSoftHideAt[key] || 0;
+            if (Date.now() - last > 90_000) {
+              gHide.__ainovelFlowSoftHideAt[key] = Date.now();
+              try {
+                await commandExtension(
+                  'close_login_session',
+                  {},
+                  3_000,
+                  bind || undefined,
+                );
+                console.log(
+                  '[FlowBridge] session_poll → soft-hide browser (email+token ready, login flag off)',
+                );
+              } catch {
+                /* ignore */
+              }
+            }
           }
           const acc = bind
             ? loadAccounts().find((a) => a.id === bind)
@@ -1640,6 +1878,31 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
     return;
   }
 
+  if (msg.type === 'challenge_status') {
+    const required = msg.challengeRequired === true;
+    const detail = String(msg.message || '').slice(0, 240);
+    console.log(
+      `[FlowBridge] challenge_status required=${required} account=${socketAccountId || '—'} ${detail}`,
+    );
+    // Surface lastError only — do not force cooldown (gen is actively waiting)
+    const bind =
+      socketAccountId ||
+      s.activeAccountId ||
+      loadAccounts().find((a) => a.status === 'active' || a.status === 'connecting')
+        ?.id ||
+      '';
+    if (bind && required) {
+      updateAccount(bind, {
+        lastError:
+          detail ||
+          'Google /sorry/ — tick reCAPTCHA trên cửa sổ Chromium',
+      });
+    } else if (bind && !required) {
+      updateAccount(bind, { lastError: null });
+    }
+    return;
+  }
+
   if (msg.type === 'media_urls_refresh') {
     // reserved for future URL refresh
     return;
@@ -1679,8 +1942,13 @@ export function requestViaExtension(params: {
   return (async () => {
     await prev.catch(() => undefined);
     try {
-      // Anti-spam quiet window between api_request
-      const gap = Number(FLOW_DEFAULTS.extensionMinGapMs) || 0;
+      // Google Flow standard: serialize ALL extension api_request (captcha-safe).
+      // Extra gap when captchaAction present — avoids parallel grecaptcha race.
+      const baseGap = Number(FLOW_DEFAULTS.extensionMinGapMs) || 0;
+      const captchaGap = params.captchaAction
+        ? Number(FLOW_DEFAULTS.captchaExtraGapMs) || 0
+        : 0;
+      const gap = baseGap + captchaGap;
       if (gap > 0) {
         await new Promise((r) => setTimeout(r, gap));
       }
@@ -1745,23 +2013,40 @@ async function requestViaExtensionUnlocked(params: {
   return new Promise<ExtApiResponse>((resolve, reject) => {
     const timer = setTimeout(() => {
       s.pending.delete(id);
-      reject(new Error('Extension API timeout'));
+      const cap = params.captchaAction
+        ? ` (reCAPTCHA ${params.captchaAction})`
+        : '';
+      reject(
+        new Error(
+          `Extension API timeout sau ${Math.round(timeoutMs / 1000)}s${cap}. ` +
+            `Mở tab Flow trên profile đang gen, F5 nếu treo, rồi gen lại — không đổi provider.`,
+        ),
+      );
     }, timeoutMs);
     s.pending.set(id, { resolve, reject, timer });
+
+    // Offload large uploadImage JSON off WebSocket (base64 stills)
+    const stashId = stashLargeBody(params.body);
+    const wsParams: Record<string, unknown> = {
+      url: params.url,
+      method: params.method || 'POST',
+      headers: headersOut,
+      captchaAction: params.captchaAction,
+      flowKey,
+      accessToken: flowKey,
+    };
+    if (stashId) {
+      wsParams.bodyStashId = stashId;
+      wsParams.body = null;
+    } else {
+      wsParams.body = params.body;
+    }
 
     const ok = sendWs(
       {
         id,
         method: 'api_request',
-        params: {
-          url: params.url,
-          method: params.method || 'POST',
-          headers: headersOut,
-          body: params.body,
-          captchaAction: params.captchaAction,
-          flowKey,
-          accessToken: flowKey,
-        },
+        params: wsParams,
       },
       aid || undefined,
     );
@@ -1909,6 +2194,12 @@ let sanitizedOnce = false;
 
 export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
   const s = state();
+  try {
+    const { registerFlowBrowserShutdownHooks } = await import('./chromeSession');
+    registerFlowBrowserShutdownHooks();
+  } catch {
+    /* ignore */
+  }
   if (!sanitizedOnce) {
     sanitizedOnce = true;
     try {
@@ -1983,6 +2274,35 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
             'Access-Control-Allow-Headers': 'Content-Type',
           });
           res.end();
+          return;
+        }
+
+        // Large api_request body offload (uploadImage) — extension SW fetches then posts to Labs
+        if (
+          url.pathname.startsWith('/internal/body-stash/') &&
+          req.method === 'GET'
+        ) {
+          const secret = String(req.headers['x-callback-secret'] || '');
+          if (s.callbackSecret && secret && secret !== s.callbackSecret) {
+            sendJson(res, 403, { error: 'bad secret' });
+            return;
+          }
+          const stashId = decodeURIComponent(
+            url.pathname.slice('/internal/body-stash/'.length),
+          );
+          purgeExpiredBodyStash(s);
+          const row = s.bodyStash.get(stashId);
+          if (!row) {
+            sendJson(res, 404, { error: 'stash not found or expired' });
+            return;
+          }
+          s.bodyStash.delete(stashId);
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(row.json),
+            'Access-Control-Allow-Origin': '*',
+          });
+          res.end(row.json);
           return;
         }
 
@@ -2083,7 +2403,24 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           return;
         }
 
+        // Health: always answer immediately (hang detector / UI probe)
+        if (
+          (url.pathname === '/api/health' || url.pathname === '/health') &&
+          req.method === 'GET'
+        ) {
+          sendJson(res, 200, {
+            ok: true,
+            ts: Date.now(),
+            extensionConnected: Boolean(s.extSocket),
+            flowKeyPresent: Boolean(s.flowKey),
+            queuePending: s.queue.snapshot().pending,
+            queueRunning: s.queue.snapshot().running,
+          });
+          return;
+        }
+
         if (url.pathname === '/api/status' && req.method === 'GET') {
+          // Snapshot only — never await extension (prevents CLOSE_WAIT pile-up)
           sendJson(res, 200, getBridgeSnapshot());
           return;
         }
@@ -2107,7 +2444,20 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
 
         if (url.pathname.startsWith('/api/accounts/') && req.method === 'DELETE') {
           const id = url.pathname.split('/').pop() || '';
-          sendJson(res, 200, { ok: deleteAccount(id) });
+          const { deleteAccountHard } = await import('./accountStore');
+          const disk = deleteAccountHard(id);
+          try {
+            purgeDeletedAccountRuntime(id);
+          } catch {
+            /* ignore */
+          }
+          sendJson(res, 200, {
+            ok: disk.ok,
+            accountId: id,
+            killed: disk.killed,
+            removed: disk.removed,
+            errors: disk.errors,
+          });
           return;
         }
 
@@ -2287,6 +2637,39 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           return;
         }
 
+        // Async: enqueue + start, return taskId immediately (no multi-minute hold)
+        if (url.pathname === '/api/enqueue-one' && req.method === 'POST') {
+          const body = await readJson(req);
+          const r = s.queue.enqueueAndStart(body);
+          if (!r.ok || !r.task) {
+            sendJson(res, 400, { ok: false, error: r.error || 'enqueue failed' });
+            return;
+          }
+          sendJson(res, 202, {
+            ok: true,
+            taskId: r.task.id,
+            task: r.task,
+            queueAhead: r.task.queueAhead ?? 0,
+            queue: s.queue.snapshot(),
+          });
+          return;
+        }
+
+        if (url.pathname === '/api/task' && req.method === 'GET') {
+          const id = String(url.searchParams.get('id') || '').trim();
+          if (!id) {
+            sendJson(res, 400, { ok: false, error: 'missing id' });
+            return;
+          }
+          const task = s.queue.getTask(id);
+          if (!task) {
+            sendJson(res, 404, { ok: false, error: 'task_not_found' });
+            return;
+          }
+          sendJson(res, 200, { ok: true, task, queue: s.queue.snapshot() });
+          return;
+        }
+
         sendJson(res, 404, { error: 'not_found' });
       } catch (e) {
         sendJson(res, 500, {
@@ -2317,6 +2700,16 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
       }
       reject(err);
     });
+
+    // Bound long-held connections; status/health still answer fast.
+    // (generate-one may hold longer — prefer /api/enqueue-one for app path)
+    try {
+      server.requestTimeout = 0; // disable hard kill of long generate-one
+      server.headersTimeout = 120_000;
+      server.keepAliveTimeout = 30_000;
+    } catch {
+      /* older Node */
+    }
 
     server.listen(FLOW_HTTP_PORT, FLOW_HOST, () => {
       s.httpServer = server;

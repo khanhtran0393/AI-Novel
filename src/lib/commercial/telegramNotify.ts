@@ -23,16 +23,20 @@ export type PaymentNotifyPayload = {
 };
 
 export type TelegramCallbackAction =
-  | { action: 'issue'; planId: PaidPlanId; hwid: string }
+  | { action: 'issue'; planId: PaidPlanId; expKey: string; hwid: string }
   | { action: 'reject'; hwid: string }
-  | { action: 'pick'; planId: PaidPlanId; hwid: string }
+  | { action: 'pick'; planId: PaidPlanId; expKey: string; hwid: string }
   | { action: 'pick_cancel' }
   | { action: 'revoke_confirm'; licenseId: string }
   | { action: 'revoke_cancel' }
+  | { action: 'gencode_plan'; expKey: string }
+  | { action: 'gencode_do'; count: number; expKey: string }
+  | { action: 'gencode_cancel' }
   | {
       action: 'menu';
       item:
         | 'activate'
+        | 'gencode'
         | 'lookup'
         | 'list'
         | 'revoke'
@@ -55,7 +59,7 @@ export type TgReplyMarkup =
 const lastReportAt = new Map<string, number>();
 const COOLDOWN_MS = 120_000;
 
-const PLAN_IDS = new Set(PAID_PLANS.map((p) => p.id));
+const PLAN_IDS: Set<string> = new Set(PAID_PLANS.map((p) => p.id));
 
 export function telegramConfigured(): boolean {
   return Boolean(
@@ -111,15 +115,31 @@ export function isAdminActor(input: {
   return false;
 }
 
-export function buildIssueCallbackData(planId: PaidPlanId, hwid: string): string {
+export function buildIssueCallbackData(
+  planIdOrExpKey: PaidPlanId | string,
+  hwid: string,
+): string {
   const id = (hwid || '').trim().toUpperCase();
-  const plan = PLAN_IDS.has(planId) ? planId : 'lifetime';
+  const key = String(planIdOrExpKey || 'lifetime')
+    .trim()
+    .toLowerCase();
+  const plan = PLAN_IDS.has(key) ? key : key || 'lifetime';
   const data = `issue:${plan}:${id}`;
   if (data.length > 64) {
     // Telegram hard limit — keep plan + truncated hwid tail
     return `issue:${plan}:${id.slice(0, 48)}`.slice(0, 64);
   }
   return data;
+}
+
+/** Map pick/issue plan token → PaidPlanId for legacy callers (day keys → month proxy). */
+function expKeyToPlanId(raw: string): PaidPlanId {
+  const t = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (PLAN_IDS.has(t)) return t as PaidPlanId;
+  // Day presets are not PaidPlanId — use month as display fallback only when needed
+  return 'month';
 }
 
 export function buildRejectCallbackData(hwid: string): string {
@@ -140,6 +160,7 @@ export function parseTelegramCallbackData(
     const item = s.slice('menu:'.length).trim().toLowerCase();
     const allowed = new Set([
       'activate',
+      'gencode',
       'lookup',
       'list',
       'revoke',
@@ -152,12 +173,36 @@ export function parseTelegramCallbackData(
       action: 'menu',
       item: item as
         | 'activate'
+        | 'gencode'
         | 'lookup'
         | 'list'
         | 'revoke'
         | 'plans'
         | 'status'
         | 'help',
+    };
+  }
+
+  if (s === 'gencode_cancel') return { action: 'gencode_cancel' };
+
+  if (s.startsWith('gencode_plan:')) {
+    const expKey = s.slice('gencode_plan:'.length).trim().toLowerCase();
+    if (!expKey) return null;
+    return { action: 'gencode_plan', expKey };
+  }
+
+  if (s.startsWith('gencode_do:')) {
+    // gencode_do:<count>:<expKey>
+    const rest = s.slice('gencode_do:'.length);
+    const colon = rest.indexOf(':');
+    if (colon <= 0) return null;
+    const count = Number(rest.slice(0, colon));
+    const expKey = rest.slice(colon + 1).trim().toLowerCase();
+    if (!Number.isFinite(count) || count < 1 || !expKey) return null;
+    return {
+      action: 'gencode_do',
+      count: Math.min(50, Math.max(1, Math.floor(count))),
+      expKey,
     };
   }
 
@@ -171,23 +216,27 @@ export function parseTelegramCallbackData(
     const rest = s.slice('pick:'.length);
     const colon = rest.indexOf(':');
     if (colon <= 0) return null;
-    const planRaw = rest.slice(0, colon) as PaidPlanId;
+    const expKey = rest.slice(0, colon).trim().toLowerCase();
     const hwid = rest.slice(colon + 1).trim().toUpperCase();
-    if (!hwid || hwid.length < 6) return null;
-    const planId: PaidPlanId = PLAN_IDS.has(planRaw) ? planRaw : 'lifetime';
-    return { action: 'pick', planId, hwid };
+    if (!hwid || hwid.length < 6 || !expKey) return null;
+    const planId: PaidPlanId = PLAN_IDS.has(expKey)
+      ? (expKey as PaidPlanId)
+      : expKeyToPlanId(expKey);
+    return { action: 'pick', planId, expKey, hwid };
   }
 
   if (s.startsWith('issue:')) {
-    // issue:<planId>:<hwid>  — hwid may contain no colons (hex)
+    // issue:<planId|3d|7d|…>:<hwid>  — hwid may contain no colons (hex)
     const rest = s.slice('issue:'.length);
     const colon = rest.indexOf(':');
     if (colon <= 0) return null;
-    const planRaw = rest.slice(0, colon) as PaidPlanId;
+    const expKey = rest.slice(0, colon).trim().toLowerCase();
     const hwid = rest.slice(colon + 1).trim().toUpperCase();
-    if (!hwid || hwid.length < 6) return null;
-    const planId: PaidPlanId = PLAN_IDS.has(planRaw) ? planRaw : 'lifetime';
-    return { action: 'issue', planId, hwid };
+    if (!hwid || hwid.length < 6 || !expKey) return null;
+    const planId: PaidPlanId = PLAN_IDS.has(expKey)
+      ? (expKey as PaidPlanId)
+      : expKeyToPlanId(expKey);
+    return { action: 'issue', planId, expKey, hwid };
   }
 
   if (s.startsWith('reject:')) {
@@ -202,10 +251,12 @@ export function parseTelegramCallbackData(
     const last = body.lastIndexOf('_');
     if (last <= 0) return null;
     const hwid = body.slice(0, last).trim().toUpperCase();
-    const planRaw = body.slice(last + 1) as PaidPlanId;
+    const planRaw = body.slice(last + 1).trim().toLowerCase();
     if (!hwid || hwid.length < 6) return null;
-    const planId: PaidPlanId = PLAN_IDS.has(planRaw) ? planRaw : 'lifetime';
-    return { action: 'issue', planId, hwid };
+    const planId: PaidPlanId = PLAN_IDS.has(planRaw)
+      ? (planRaw as PaidPlanId)
+      : 'lifetime';
+    return { action: 'issue', planId, expKey: planRaw || planId, hwid };
   }
   if (s.startsWith('reject_')) {
     const hwid = s.slice('reject_'.length).trim().toUpperCase();
@@ -238,21 +289,47 @@ export function buildPaymentNotifyMessage(p: PaymentNotifyPayload): string {
 
 export function buildApproveMessage(input: {
   originalText?: string;
-  planId: PaidPlanId;
+  planId?: PaidPlanId;
+  /** Human label e.g. «3 ngày» when not a paid catalog plan */
+  planLabel?: string;
+  expKey?: string;
   hwid: string;
   token: string;
   dbOk: boolean;
   dbError?: string;
 }): string {
-  const plan = PAID_PLANS.find((x) => x.id === input.planId) || PAID_PLANS[2];
+  const plan = input.planId
+    ? PAID_PLANS.find((x) => x.id === input.planId)
+    : undefined;
+  const label =
+    input.planLabel ||
+    plan?.label ||
+    input.expKey ||
+    input.planId ||
+    'Pro';
+  const idHint = input.expKey || input.planId || '';
   const hwid = input.hwid.toUpperCase();
   const head = (input.originalText || '').trim();
   const token = String(input.token || '').trim();
+  if (!input.dbOk) {
+    const failure = [
+      '❌ KHÔNG CẤP KEY',
+      '',
+      `📦 Gói: ${label}${idHint ? ` (${idHint})` : ''}`,
+      `🖥 HWID: ${hwid}`,
+      `🗄 Supabase: LỖI — ${input.dbError || 'unknown'}`,
+      '',
+      'Token đã bị giữ lại và không được giao cho khách. Sửa ledger rồi cấp lại.',
+    ].join('\n');
+    return head
+      ? `${head}\n\n─────────────────\n${failure}`
+      : failure;
+  }
   const isAinovel2 = token.startsWith('AINOVEL2.');
   const statusLines = [
     '✅ ĐÃ CẤP KEY',
     '',
-    `📦 Gói: ${plan.label} (${plan.id})`,
+    `📦 Gói: ${label}${idHint ? ` (${idHint})` : ''}`,
     `🖥 HWID: ${hwid}`,
     `🔐 Bridge: Ed25519 AINOVEL2${isAinovel2 ? '' : ' ⚠️ TOKEN KHÔNG PHẢI AINOVEL2 — KIỂM TRA PRIVATE KEY'}`,
     `🗄 Supabase: ${input.dbOk ? 'đã ghi licenses' : `LỖI — ${input.dbError || 'unknown'}`}`,
@@ -441,21 +518,31 @@ export async function registerTelegramBotMenu(): Promise<TgApiResult> {
 }
 
 /**
- * Edit message text and **remove** inline buttons (empty keyboard).
+ * Edit message text.
+ * - Default: strip inline buttons (empty keyboard) — used after approve/reject.
+ * - Pass `replyMarkup` to replace buttons (e.g. gencode plan → count wizard).
+ * - Pass `replyMarkup: null` to leave existing markup untouched (rare).
  */
 export async function editTelegramMessage(input: {
   chatId: string | number;
   messageId: number;
   text: string;
+  replyMarkup?: TgReplyMarkup | null;
 }): Promise<TgApiResult> {
-  return telegramApi('editMessageText', {
+  const body: Record<string, unknown> = {
     chat_id: input.chatId,
     message_id: input.messageId,
     text: input.text,
     disable_web_page_preview: true,
-    // Explicit empty keyboard removes ✅ / ❌
-    reply_markup: { inline_keyboard: [] },
-  });
+  };
+  if (input.replyMarkup === null) {
+    // leave markup as-is
+  } else if (input.replyMarkup !== undefined) {
+    body.reply_markup = input.replyMarkup;
+  } else {
+    body.reply_markup = { inline_keyboard: [] };
+  }
+  return telegramApi('editMessageText', body);
 }
 
 export async function answerTelegramCallback(

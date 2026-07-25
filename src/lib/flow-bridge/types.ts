@@ -28,6 +28,18 @@ export type RetryCategory =
   | 'content'
   | 'other';
 
+/** Standard Google Flow gen progress steps (queue + UI). */
+export type FlowTaskStep =
+  | 'queued'
+  | 'account'
+  | 'captcha'
+  | 'submit'
+  | 'poll'
+  | 'download'
+  | 'saving'
+  | 'done'
+  | 'error';
+
 export type FlowProjectInfo = {
   id: string;
   title: string;
@@ -133,6 +145,10 @@ export type FlowTask = {
   prompt: string;
   accountId?: string;
   progress: number;
+  /** Standard step for Google Flow runtime UX */
+  step?: FlowTaskStep;
+  /** VN progress line for UI */
+  progressMessage?: string;
   error?: string;
   retryCategory?: RetryCategory;
   /** Storyboard coords */
@@ -168,6 +184,15 @@ export type FlowTask = {
   createdAt: number;
   updatedAt: number;
   attempts: number;
+  /**
+   * App-path finalize target (animatic filename under public/video).
+   * Async generate-video sets this so poll can copy bridge output → UI path.
+   */
+  appSavePath?: string;
+  /** Correlation id from Next request for structured logs */
+  correlationId?: string;
+  /** Pending jobs ahead of this task when enqueued (UI “còn X trước bạn”) */
+  queueAhead?: number;
 };
 
 export type BridgeSnapshot = {

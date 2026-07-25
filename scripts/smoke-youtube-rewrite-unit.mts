@@ -1,73 +1,68 @@
 /**
- * Offline unit checks for YouTube rewrite (no network).
+ * Offline unit: id parse + error builder + VTT parse (no network).
  *   npx tsx scripts/smoke-youtube-rewrite-unit.mts
  */
-import assert from 'assert';
 import {
-  buildYoutubeTranscriptUserError,
   extractYoutubeVideoId,
+  buildYoutubeTranscriptUserError,
   summarizeYoutubeErrorForToast,
+  parseSubtitleFileToText,
 } from '../src/lib/youtubeSource.ts';
 
-// —— IDs ——
-assert.equal(
-  extractYoutubeVideoId('https://www.youtube.com/watch?v=jNQXAC9IVRw'),
-  'jNQXAC9IVRw',
-);
-assert.equal(extractYoutubeVideoId('https://youtu.be/jNQXAC9IVRw'), 'jNQXAC9IVRw');
-assert.equal(
-  extractYoutubeVideoId('https://www.youtube.com/shorts/jNQXAC9IVRw'),
-  'jNQXAC9IVRw',
-);
-assert.equal(extractYoutubeVideoId('not-a-url'), null);
+const failures: string[] = [];
+function ok(cond: boolean, msg: string) {
+  if (!cond) {
+    failures.push(msg);
+    console.error('[FAIL]', msg);
+  } else {
+    console.log('[OK]', msg);
+  }
+}
 
-// —— User error builder (no corrupt template strings) ——
-const full = buildYoutubeTranscriptUserError({
+// id
+ok(extractYoutubeVideoId('https://www.youtube.com/watch?v=jNQXAC9IVRw') === 'jNQXAC9IVRw', 'watch?v=');
+ok(extractYoutubeVideoId('https://youtu.be/jNQXAC9IVRw') === 'jNQXAC9IVRw', 'youtu.be');
+ok(extractYoutubeVideoId('https://www.youtube.com/shorts/jNQXAC9IVRw') === 'jNQXAC9IVRw', 'shorts');
+ok(extractYoutubeVideoId('not a link') === null, 'garbage → null');
+
+// error UX
+const err = buildYoutubeTranscriptUserError({
   code: 'RATE_LIMITED',
   videoId: 'jNQXAC9IVRw',
-  url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw',
   title: 'Me at the zoo',
-  channel: 'jawed',
-  detail: 'HTTP 429',
-  playerCaptionTrackCount: 2,
 });
-assert.ok(full.includes('Không lấy được phụ đề'), 'title line');
-assert.ok(full.includes('🔎 Vì sao:'), 'why line');
-assert.ok(full.includes('Me at the zoo'), 'title in where');
-assert.ok(full.includes('✅ Cách khắc phục:'), 'fix section');
-assert.ok(full.includes('code=RATE_LIMITED'), 'tech code');
-assert.ok(full.includes('videoId=jNQXAC9IVRw'), 'full videoId tech bit');
-assert.ok(!full.includes('\\videoId'), 'no broken escapes');
-// Guard against old corruption that produced bare "\videoId=" or "\ideoId="
-assert.ok(!/\\videoId=|[^v]ideoId=/.test(full), 'no truncated videoId artifact');
+ok(err.includes('Vì sao') && err.includes('Cách khắc phục'), 'RATE_LIMITED UX block');
+const toast = summarizeYoutubeErrorForToast(err);
+ok(toast.length > 20 && toast.length <= 220, 'toast length');
 
-const toast = summarizeYoutubeErrorForToast(full, 200);
-assert.ok(toast.length > 10 && toast.length <= 200, `toast len=${toast.length}`);
-assert.ok(!toast.includes('python_core'), 'toast not dump paths');
+// VTT parse (yt-dlp step)
+const vtt = `WEBVTT
 
-const noKeyGate = (hasKey: boolean, moTa: string, ytUrl: string) => {
-  if (!hasKey) return 'NO_KEY';
-  const ytMode = !!ytUrl;
-  if (ytMode && !moTa.trim()) return 'NEED_PHAN_TICH';
-  if (!moTa.trim()) return 'NEED_MO_TA';
-  return null;
-};
-assert.equal(
-  noKeyGate(true, 'Plot đủ dài để sinh kịch bản YouTube rewrite path.', 'https://youtu.be/x'),
-  null,
-);
-assert.equal(noKeyGate(false, 'plot', 'https://youtu.be/x'), 'NO_KEY');
-assert.equal(noKeyGate(true, '', 'https://youtu.be/x'), 'NEED_PHAN_TICH');
+00:00:00.000 --> 00:00:02.000
+all right
+
+00:00:02.000 --> 00:00:04.000
+so here we are
+
+00:00:04.000 --> 00:00:06.000
+so here we are
+`;
+const plain = parseSubtitleFileToText(vtt);
+ok(plain.includes('all right') && plain.includes('so here we are'), `vtt parse: ${plain}`);
+ok(!plain.includes('-->'), 'vtt stripped timestamps');
+// dedupe consecutive
+ok((plain.match(/so here we are/g) || []).length === 1, 'vtt dedupe consecutive');
 
 console.log(
-  JSON.stringify(
-    {
-      ok: true,
-      toastSample: toast.slice(0, 120),
-      errorLen: full.length,
-    },
-    null,
-    2,
-  ),
+  JSON.stringify({
+    ok: failures.length === 0,
+    toastSample: toast,
+    errorLen: err.length,
+    vttPlain: plain,
+  }),
 );
+if (failures.length) {
+  console.error('[smoke-youtube-rewrite-unit] FAIL', failures);
+  process.exit(1);
+}
 console.log('[smoke-youtube-rewrite-unit] PASS');

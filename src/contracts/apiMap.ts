@@ -10,6 +10,8 @@ export const API = {
   generateImage: '/api/generate-image',
   /** Google Flow bridge (extension + multi-account queue) */
   flowStatus: '/api/flow/status',
+  /** Instant liveness (no extension RPC) */
+  flowHealth: '/api/flow/health',
   flowAccounts: '/api/flow/accounts',
   flowProxy: '/api/flow/proxy',
   flowQueue: '/api/flow/queue',
@@ -21,6 +23,10 @@ export const API = {
   /** Select / create Google Flow project (dropdown) */
   flowProjects: '/api/flow/projects',
   flowGenerateOne: '/api/flow/generate-one',
+  /** Poll async Flow queue task (+ finalize video) */
+  flowTask: '/api/flow/task',
+  /** Probe/recover local mp4 after gen timeout */
+  videoArtifact: '/api/video-artifact',
   /** Flow model matrix + credit estimates (P0) */
   flowModels: '/api/flow/models',
   /** Flow ops: agent instructions, quality, farm policy (P2/P3) */
@@ -31,6 +37,8 @@ export const API = {
   flowMediaId: '/api/flow/media-id',
   /** Video generation */
   generateVideo: '/api/generate-video',
+  /** Auto-detect external video API platform (HeyGen / Luma / Runway / …) */
+  videoApiDetect: '/api/video-api/detect',
   /** TTS synthesis — route dispatches TTS_PROVIDERS registry */
   generateTts: '/api/generate-tts',
   concatAudio: '/api/concat-audio',
@@ -60,7 +68,10 @@ export const API = {
   getCookie: '/api/get-cookie',
   cleanupAssets: '/api/cleanup-assets',
   shipPack: '/api/ship-pack',
+  /** CapCut GUI — engine pack tools/xinchao-cut (+ soft cutsdk) */
   exportCapcut: '/api/export-capcut',
+  /** Alias cùng engine với exportCapcut */
+  exportXinchao: '/api/export-xinchao',
   entitlementIssue: '/api/entitlement/issue',
   entitlementVerify: '/api/entitlement/verify',
   entitlementHwid: '/api/entitlement/hwid',

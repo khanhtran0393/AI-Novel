@@ -135,7 +135,8 @@ function supabaseConfig(): { url: string; key: string } | null {
 export async function persistLicenseLedger(input: {
   token: string;
   hwid: string;
-  planId: PaidPlanId;
+  planId?: PaidPlanId;
+  expSeconds?: number;
 }): Promise<{ ok: boolean; licenseId?: string; error?: string }> {
   const cfg = supabaseConfig();
   if (!cfg) {
@@ -149,8 +150,12 @@ export async function persistLicenseLedger(input: {
   if (!hwidNorm || hwidNorm.length < 6) {
     return { ok: false, error: 'HWID không hợp lệ' };
   }
-  const plan = PAID_PLANS[input.planId] || PAID_PLANS.lifetime;
-  const expAt = new Date(Date.now() + plan.expSeconds * 1000).toISOString();
+  const plan = input.planId
+    ? PAID_PLANS[input.planId] || PAID_PLANS.lifetime
+    : null;
+  const expSeconds =
+    input.expSeconds ?? plan?.expSeconds ?? PAID_PLANS.lifetime.expSeconds;
+  const expAt = new Date(Date.now() + expSeconds * 1000).toISOString();
   const tokenHash = hashToken(input.token);
   const headers: Record<string, string> = {
     apikey: cfg.key,
@@ -243,12 +248,15 @@ export async function persistLicenseLedger(input: {
 }
 
 /** Issue a Pro Ed25519 token bound to HWID (AINOVEL2 wire format). */
-export function issueProToken(hwid: string, planId: PaidPlanId): string {
+export function issueProToken(
+  hwid: string,
+  planIdOrExpKey: PaidPlanId | string,
+): string {
   const id = hwid.trim().toLowerCase();
   if (!id || id.length < 6) throw new Error('HWID không hợp lệ');
-  const plan = PAID_PLANS[planId] || PAID_PLANS.lifetime;
+  const resolved = expSecondsForKey(String(planIdOrExpKey));
   const now = Math.floor(Date.now() / 1000);
-  const exp = now + plan.expSeconds;
+  const exp = now + resolved.expSeconds;
   const payload = {
     is_pro: true,
     is_vip: false,
@@ -272,34 +280,48 @@ export function issueProToken(hwid: string, planId: PaidPlanId): string {
 /** Sign AINOVEL2 + write Supabase licenses (required for app activate). */
 export async function issueAndPersist(
   hwid: string,
-  planId: PaidPlanId,
+  planIdOrExpKey: PaidPlanId | string,
 ): Promise<{
   token: string;
   dbOk: boolean;
   dbError?: string;
   licenseId?: string;
+  expLabel: string;
+  expKey: string;
 }> {
-  const token = issueProToken(hwid, planId);
-  const ledger = await persistLicenseLedger({ token, hwid, planId });
-  return {
+  const resolved = expSecondsForKey(String(planIdOrExpKey));
+  const token = issueProToken(hwid, planIdOrExpKey);
+  const ledger = await persistLicenseLedger({
     token,
+    hwid,
+    expSeconds: resolved.expSeconds,
+  });
+  return {
+    // Never hand out a signed token when ledger write failed.
+    token: ledger.ok ? token : '',
     dbOk: ledger.ok,
     dbError: ledger.error,
     licenseId: ledger.licenseId,
+    expLabel: resolved.label,
+    expKey: String(planIdOrExpKey).trim().toLowerCase(),
   };
 }
 
 export type CallbackAction =
-  | { action: 'issue'; planId: PaidPlanId; hwid: string }
-  | { action: 'pick'; planId: PaidPlanId; hwid: string }
+  | { action: 'issue'; planId: PaidPlanId; expKey: string; hwid: string }
+  | { action: 'pick'; planId: PaidPlanId; expKey: string; hwid: string }
   | { action: 'reject'; hwid: string }
   | { action: 'pick_cancel' }
   | { action: 'revoke_confirm'; licenseId: string }
   | { action: 'revoke_cancel' }
+  | { action: 'gencode_plan'; expKey: string }
+  | { action: 'gencode_do'; count: number; expKey: string }
+  | { action: 'gencode_cancel' }
   | {
       action: 'menu';
       item:
         | 'activate'
+        | 'gencode'
         | 'lookup'
         | 'list'
         | 'revoke'
@@ -315,10 +337,30 @@ export function parseCallback(
   if (!s) return null;
   if (s === 'pick_cancel') return { action: 'pick_cancel' };
   if (s === 'revoke_cancel') return { action: 'revoke_cancel' };
+  if (s === 'gencode_cancel') return { action: 'gencode_cancel' };
+  if (s.startsWith('gencode_plan:')) {
+    const expKey = s.slice('gencode_plan:'.length).trim().toLowerCase();
+    if (!expKey) return null;
+    return { action: 'gencode_plan', expKey };
+  }
+  if (s.startsWith('gencode_do:')) {
+    const rest = s.slice('gencode_do:'.length);
+    const colon = rest.indexOf(':');
+    if (colon <= 0) return null;
+    const count = Number(rest.slice(0, colon));
+    const expKey = rest.slice(colon + 1).trim().toLowerCase();
+    if (!Number.isFinite(count) || count < 1 || !expKey) return null;
+    return {
+      action: 'gencode_do',
+      count: Math.min(50, Math.max(1, Math.floor(count))),
+      expKey,
+    };
+  }
   if (s.startsWith('menu:')) {
     const item = s.slice(5).trim().toLowerCase();
     const ok = new Set([
       'activate',
+      'gencode',
       'lookup',
       'list',
       'revoke',
@@ -339,16 +381,17 @@ export function parseCallback(
     const rest = s.slice(prefix.length);
     const colon = rest.indexOf(':');
     if (colon <= 0) return null;
-    const planRaw = rest.slice(0, colon) as PaidPlanId;
+    const expKey = rest.slice(0, colon).trim().toLowerCase();
     const hwid = rest.slice(colon + 1).trim().toUpperCase();
-    if (!hwid || hwid.length < 6) return null;
+    if (!hwid || hwid.length < 6 || !expKey) return null;
     const planId: PaidPlanId =
-      planRaw === 'month' || planRaw === 'year' || planRaw === 'lifetime'
-        ? planRaw
-        : 'lifetime';
+      expKey === 'month' || expKey === 'year' || expKey === 'lifetime'
+        ? expKey
+        : 'month';
     return {
       action: prefix === 'pick:' ? 'pick' : 'issue',
       planId,
+      expKey,
       hwid,
     };
   }
@@ -399,6 +442,7 @@ type ReplyKeyboard = {
 
 const REPLY_BTN = {
   activate: '🔑 Cấp key',
+  gencode: '🎟 Tạo mã',
   lookup: '🔎 Tra cứu',
   list: '📋 List active',
   revoke: '🚫 Thu hồi',
@@ -410,7 +454,11 @@ const REPLY_BTN = {
 const BOT_MENU_COMMANDS = [
   { command: 'start', description: 'Mở menu quản lý' },
   { command: 'menu', description: 'Hiện bàn phím + nút thao tác' },
-  { command: 'activate', description: 'Cấp key (sau đó dán HWID)' },
+  { command: 'activate', description: 'Cấp key gắn HWID (dán HWID)' },
+  {
+    command: 'gencode',
+    description: 'Tạo mã Pro AINOVEL-… (số lượng + thời hạn)',
+  },
   { command: 'lookup', description: 'Tra license theo HWID' },
   { command: 'list', description: 'List license active' },
   { command: 'revoke', description: 'Thu hồi license' },
@@ -419,14 +467,27 @@ const BOT_MENU_COMMANDS = [
   { command: 'help', description: 'Hướng dẫn' },
 ];
 
-type PendingMode = 'await_hwid' | 'await_lookup' | 'await_revoke';
-const pendingByChat = new Map<string, { mode: PendingMode; at: number }>();
+type PendingMode =
+  | 'await_hwid'
+  | 'await_lookup'
+  | 'await_revoke'
+  | 'await_gencode_count';
+type PendingState = { mode: PendingMode; at: number; expKey?: string };
+const pendingByChat = new Map<string, PendingState>();
 const PENDING_TTL_MS = 15 * 60_000;
 
-function setPending(chatId: string | number, mode: PendingMode) {
-  pendingByChat.set(String(chatId), { mode, at: Date.now() });
+function setPending(
+  chatId: string | number,
+  mode: PendingMode,
+  extra?: { expKey?: string },
+) {
+  pendingByChat.set(String(chatId), {
+    mode,
+    at: Date.now(),
+    expKey: extra?.expKey,
+  });
 }
-function takePending(chatId: string | number): PendingMode | null {
+function takePending(chatId: string | number): PendingState | null {
   const key = String(chatId);
   const p = pendingByChat.get(key);
   if (!p) return null;
@@ -435,24 +496,194 @@ function takePending(chatId: string | number): PendingMode | null {
     return null;
   }
   pendingByChat.delete(key);
-  return p.mode;
+  return p;
 }
 function clearPending(chatId: string | number) {
   pendingByChat.delete(String(chatId));
 }
 
+function unboundHwidForCode(code: string): string {
+  const dig = crypto
+    .createHash('sha256')
+    .update(String(code || '').trim().toUpperCase(), 'utf8')
+    .digest('hex')
+    .slice(0, 16);
+  return `unbound:${dig}`;
+}
+
+function generateActivationCode(): string {
+  const seg = () =>
+    crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4);
+  return `AINOVEL-${seg()}-${seg()}-${seg()}`;
+}
+
+function expSecondsForKey(key: string): { expSeconds: number; label: string } {
+  const plan = parsePlanArg(key);
+  if (plan) {
+    const p = PAID_PLANS[plan];
+    return { expSeconds: p.expSeconds, label: p.label };
+  }
+  const t = key.trim().toLowerCase();
+  const m = t.match(/^(\d+)\s*([dh])?$/);
+  if (m) {
+    const n = Number(m[1]);
+    const unit = (m[2] || 'd').toLowerCase();
+    const sec =
+      unit === 'h'
+        ? Math.min(n, 24 * 365 * 50) * 3600
+        : Math.min(n, 365 * 50) * 86400;
+    const label =
+      unit === 'h' ? `${n} giờ` : n === 1 ? '1 ngày' : `${n} ngày`;
+    return { expSeconds: sec, label };
+  }
+  return {
+    expSeconds: PAID_PLANS.lifetime.expSeconds,
+    label: PAID_PLANS.lifetime.label,
+  };
+}
+
+const DAY_KEY_PRESETS = [3, 7, 15, 30] as const;
+
+function gencodePlanKeyboard(): InlineKeyboard {
+  const dayRow = DAY_KEY_PRESETS.map((d) => ({
+    text: `${d} ngày`,
+    callback_data: `gencode_plan:${d}d`,
+  }));
+  return {
+    inline_keyboard: [
+      dayRow,
+      [
+        { text: '1 tháng', callback_data: 'gencode_plan:month' },
+        { text: '1 năm', callback_data: 'gencode_plan:year' },
+        { text: '⭐ Trọn đời', callback_data: 'gencode_plan:lifetime' },
+      ],
+      [{ text: '❌ Huỷ', callback_data: 'gencode_cancel' }],
+    ],
+  };
+}
+
+function gencodeCountKeyboard(expKey: string): InlineKeyboard {
+  const key = expKey.slice(0, 20);
+  const mk = (n: number) => ({
+    text: `${n} mã`,
+    callback_data: `gencode_do:${n}:${key}`.slice(0, 64),
+  });
+  return {
+    inline_keyboard: [
+      [mk(1), mk(3), mk(5), mk(10)],
+      [mk(20), mk(50)],
+      [{ text: '❌ Huỷ', callback_data: 'gencode_cancel' }],
+    ],
+  };
+}
+
+async function cmdGencode(
+  count: number,
+  expSeconds: number,
+  label: string,
+  chatId?: string | number,
+): Promise<void> {
+  const n = Math.min(50, Math.max(1, Math.floor(count)));
+  const cfg = supabaseConfig();
+  if (!cfg) {
+    await sendMessage(
+      '❌ Bridge thiếu SUPABASE_URL / SERVICE_ROLE — không tạo được mã ledger.',
+      undefined,
+      chatId,
+    );
+    return;
+  }
+  const expAt = new Date(Date.now() + expSeconds * 1000).toISOString();
+  const good: string[] = [];
+  const bad: string[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const code = generateActivationCode();
+    const hwid = unboundHwidForCode(code);
+    const r = await supabaseRest('licenses', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: null,
+        order_id: null,
+        plan: 'pro',
+        hwid,
+        status: 'active',
+        exp_at: expAt,
+        token_hash: null,
+        activation_code: code,
+      }),
+    });
+    if (!r.ok) {
+      bad.push(
+        `${code} — HTTP ${r.status}: ${JSON.stringify(r.body).slice(0, 100)}`,
+      );
+      continue;
+    }
+    good.push(code);
+  }
+
+  // 1) Header
+  await sendMessage(
+    [
+      '🎟 Mã Pro đã tạo — sẵn sàng giao khách',
+      `⏱ Thời hạn: ${label}`,
+      `📦 Số mã: ${good.length}${bad.length ? ` · ⚠️ lỗi ${bad.length}` : ''}`,
+      '📌 Mỗi mã = 1 máy · bất kỳ HWID',
+      '',
+      '⬇️ Mỗi tin sau = 1 mã (giữ / copy / chuyển tiếp cho khách).',
+    ].join('\n'),
+    undefined,
+    chatId,
+  );
+
+  // 2) One code per message — plain line, easy long-press copy
+  for (const code of good) {
+    await sendMessage(code, undefined, chatId);
+  }
+
+  // 3) Bulk block when >1
+  if (good.length > 1) {
+    await sendMessage(
+      ['📋 Copy cả lô (mỗi dòng 1 mã):', good.join('\n')].join('\n'),
+      undefined,
+      chatId,
+    );
+  }
+
+  if (bad.length) {
+    await sendMessage(
+      ['⚠️ Mã lỗi ledger (đừng giao khách):', ...bad].join('\n'),
+      undefined,
+      chatId,
+    );
+  }
+
+  await sendMessage(
+    [
+      'Khách dán mã:',
+      'Logo → Bản quyền → dán AINOVEL-… → Kích hoạt',
+      '(Không phải key AINOVEL2.)',
+    ].join('\n'),
+    undefined,
+    chatId,
+  );
+}
+
 function planPickerKeyboard(hwid: string): InlineKeyboard {
   const id = hwid.toUpperCase();
-  const mk = (plan: PaidPlanId, label: string) => {
-    const data = `pick:${plan}:${id}`;
+  const mk = (expKey: string, label: string) => {
+    const data = `pick:${expKey}:${id}`;
     return {
       text: label,
       callback_data:
-        data.length > 64 ? `pick:${plan}:${id.slice(0, 48)}`.slice(0, 64) : data,
+        data.length > 64
+          ? `pick:${expKey}:${id.slice(0, 48)}`.slice(0, 64)
+          : data,
     };
   };
   return {
     inline_keyboard: [
+      DAY_KEY_PRESETS.map((d) => mk(`${d}d`, `${d} ngày`)),
       [
         mk('month', '1 tháng'),
         mk('year', '1 năm'),
@@ -486,17 +717,20 @@ function mainInlineMenu(): InlineKeyboard {
     inline_keyboard: [
       [
         { text: '🔑 Cấp key', callback_data: 'menu:activate' },
+        { text: '🎟 Tạo mã', callback_data: 'menu:gencode' },
+      ],
+      [
         { text: '🔎 Tra cứu', callback_data: 'menu:lookup' },
-      ],
-      [
         { text: '📋 List', callback_data: 'menu:list' },
-        { text: '🚫 Thu hồi', callback_data: 'menu:revoke' },
       ],
       [
+        { text: '🚫 Thu hồi', callback_data: 'menu:revoke' },
         { text: '📦 Gói', callback_data: 'menu:plans' },
-        { text: '🩺 Status', callback_data: 'menu:status' },
       ],
-      [{ text: '❓ Help', callback_data: 'menu:help' }],
+      [
+        { text: '🩺 Status', callback_data: 'menu:status' },
+        { text: '❓ Help', callback_data: 'menu:help' },
+      ],
     ],
   };
 }
@@ -505,7 +739,10 @@ const HELP_TEXT = [
   '🤖 AI Novel — Bot seller',
   '',
   '👉 Bấm nút trong tin nhắn (bên dưới).',
-  '👉 Menu (góc trái) · dán HWID → chọn gói → copy key gửi khách.',
+  '👉 Menu · dán HWID → chọn gói → copy key AINOVEL2 gửi khách.',
+  '',
+  '🎟 Tạo mã Pro (AINOVEL-…): bất kỳ HWID nào nhập, mỗi mã 1 máy.',
+  '   /gencode 5 year · /gencode 3 30d · /gencode 10 lifetime',
   '',
   '🔔 Khách «Đã thanh toán» → ✅ Cấp Key / ❌ Từ chối.',
   '🔑 AINOVEL2 + Supabase licenses (One-Path).',
@@ -560,14 +797,22 @@ export async function editMessage(
   chatId: string | number,
   messageId: number,
   text: string,
+  replyMarkup?: InlineKeyboard | { inline_keyboard: [] } | null,
 ) {
-  return tgApi('editMessageText', {
+  const body: Record<string, unknown> = {
     chat_id: chatId,
     message_id: messageId,
     text,
     disable_web_page_preview: true,
-    reply_markup: { inline_keyboard: [] },
-  });
+  };
+  if (replyMarkup === null) {
+    // leave existing markup
+  } else if (replyMarkup !== undefined) {
+    body.reply_markup = replyMarkup;
+  } else {
+    body.reply_markup = { inline_keyboard: [] };
+  }
+  return tgApi('editMessageText', body);
 }
 
 export async function sendMessage(
@@ -755,13 +1000,35 @@ export async function handleCustomerPaymentMessage(msg: {
 }
 
 export function approveText(
-  planId: PaidPlanId,
+  planIdOrExpKey: PaidPlanId | string,
   hwid: string,
   token: string,
   original?: string,
-  opts?: { dbOk?: boolean; dbError?: string; licenseId?: string },
+  opts?: {
+    dbOk?: boolean;
+    dbError?: string;
+    licenseId?: string;
+    planLabel?: string;
+  },
 ): string {
-  const plan = PAID_PLANS[planId] || PAID_PLANS.lifetime;
+  const resolved = expSecondsForKey(String(planIdOrExpKey));
+  const label = opts?.planLabel || resolved.label;
+  const keyHint = String(planIdOrExpKey).trim().toLowerCase();
+  if (opts?.dbOk !== true) {
+    const failure = [
+      '❌ KHÔNG CẤP KEY',
+      '',
+      `📦 Gói: ${label} (${keyHint})`,
+      `🖥 HWID: ${hwid.toUpperCase()}`,
+      `🗄 Supabase: LỖI — ${opts?.dbError || 'unknown'}`,
+      '',
+      'Token đã bị giữ lại và không được giao cho khách. Sửa ledger rồi cấp lại.',
+    ].join('\n');
+    const head = (original || '').trim();
+    return head
+      ? `${head}\n\n─────────────────\n${failure}`
+      : failure;
+  }
   const ledgerLine =
     opts?.dbOk === true
       ? `📒 Supabase licenses: OK${opts.licenseId ? ` (id ${opts.licenseId})` : ''}`
@@ -771,7 +1038,7 @@ export function approveText(
   const body = [
     '✅ ĐÃ CẤP KEY',
     '',
-    `📦 Gói: ${plan.label} (${planId})`,
+    `📦 Gói: ${label} (${keyHint})`,
     `🖥 HWID: ${hwid.toUpperCase()}`,
     '🔐 Bridge: Ed25519 AINOVEL2 (kid = SHA256 public SPKI[:16])',
     ledgerLine,
@@ -958,36 +1225,43 @@ async function cmdStatus(chatId?: string | number): Promise<void> {
 }
 
 async function deliverIssue(
-  planId: PaidPlanId,
+  planIdOrExpKey: PaidPlanId | string,
   hwid: string,
   originalText?: string,
   editCtx?: { chatId: string | number; messageId: number },
 ): Promise<{ dbOk: boolean }> {
-  const issued = await issueAndPersist(hwid, planId);
-  const text = approveText(planId, hwid, issued.token, originalText, {
+  const issued = await issueAndPersist(hwid, planIdOrExpKey);
+  const text = approveText(planIdOrExpKey, hwid, issued.token, originalText, {
     dbOk: issued.dbOk,
     dbError: issued.dbError,
     licenseId: issued.licenseId,
+    planLabel: issued.expLabel,
   });
+  if (!issued.dbOk) {
+    if (editCtx) {
+      const edited = await editMessage(editCtx.chatId, editCtx.messageId, text);
+      if (!edited.ok) {
+        await sendMessage(text, undefined, editCtx.chatId);
+      }
+    } else {
+      await sendMessage(text);
+    }
+    return { dbOk: false };
+  }
   if (editCtx) {
     const edited = await editMessage(editCtx.chatId, editCtx.messageId, text);
     if (!edited.ok) {
       await sendMessage(
-        approveText(planId, hwid, issued.token, undefined, {
+        approveText(planIdOrExpKey, hwid, issued.token, undefined, {
           dbOk: issued.dbOk,
           dbError: issued.dbError,
           licenseId: issued.licenseId,
+          planLabel: issued.expLabel,
         }),
       );
     }
   } else {
     await sendMessage(text);
-  }
-  if (!issued.dbOk) {
-    await sendMessage(
-      `⚠️ Key đã ký nhưng Supabase LỖI (HWID ${hwid.toUpperCase()}):\n${issued.dbError || 'unknown'}\n` +
-        'App One-Path: không có row licenses active → khách dán key bị từ chối. Kiểm tra SERVICE_ROLE trên Vercel bridge.',
-    );
   }
   return { dbOk: issued.dbOk };
 }
@@ -1043,6 +1317,7 @@ export type TgUpdate = {
 function matchReplyBtn(text: string): string | null {
   const t = text.trim();
   if (t === REPLY_BTN.activate || /^🔑/.test(t)) return 'activate';
+  if (t === REPLY_BTN.gencode || /^🎟/.test(t)) return 'gencode';
   if (t === REPLY_BTN.lookup || /^🔎/.test(t)) return 'lookup';
   if (t === REPLY_BTN.list || /^📋/.test(t)) return 'list';
   if (t === REPLY_BTN.revoke || /^🚫/.test(t)) return 'revoke';
@@ -1050,6 +1325,23 @@ function matchReplyBtn(text: string): string | null {
   if (t === REPLY_BTN.status || /^🩺/.test(t)) return 'status';
   if (t === REPLY_BTN.menu || /^❓/.test(t)) return 'menu';
   return null;
+}
+
+/**
+ * Slash commands / menu buttons / cancel words escape pending HWID wizard.
+ * Fixes: every /menu after Cấp key was answered «HWID không hợp lệ».
+ */
+function shouldBypassPendingInput(text: string): boolean {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (t.startsWith('/')) return true;
+  if (
+    /^(hủy|huy|cancel|stop|thoát|thoat|menu|help|bỏ|bo)$/i.test(t)
+  ) {
+    return true;
+  }
+  if (matchReplyBtn(t)) return true;
+  return false;
 }
 
 async function openMenu(chatId: string | number) {
@@ -1093,15 +1385,21 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
       return;
     }
 
-    if (parsed.action === 'issue' || parsed.action === 'pick') {
-      await answerCallback(cq.id, '⏳ Đang cấp key…');
-    }
+    // Answer IMMEDIATELY — spinner stops even if later work fails
+    const earlyHint =
+      parsed.action === 'issue' || parsed.action === 'pick'
+        ? '⏳ Đang cấp key…'
+        : parsed.action === 'gencode_do'
+          ? '⏳ Đang tạo mã…'
+          : parsed.action === 'revoke_confirm'
+            ? '⏳ Revoke…'
+            : '…';
+    await answerCallback(cq.id, earlyHint);
 
     if (parsed.action === 'menu') {
       clearPending(chatId);
       if (parsed.item === 'activate') {
         setPending(chatId, 'await_hwid');
-        await answerCallback(cq.id, 'Gửi HWID…');
         await sendMessage(
           '🔑 Gửi HWID khách ở tin tiếp theo (hoặc dán HWID bất kỳ lúc nào).',
           undefined,
@@ -1109,15 +1407,27 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
         );
         return;
       }
+      if (parsed.item === 'gencode') {
+        await sendMessage(
+          [
+            '🎟 Tạo mã Pro (AINOVEL-…)',
+            '• Bất kỳ máy nào dán được · mỗi mã 1 HWID',
+            '• Máy khác nhập → báo đã được nhập',
+            '',
+            'Chọn thời hạn:',
+          ].join('\n'),
+          gencodePlanKeyboard(),
+          chatId,
+        );
+        return;
+      }
       if (parsed.item === 'lookup') {
         setPending(chatId, 'await_lookup');
-        await answerCallback(cq.id, 'Gửi HWID…');
         await sendMessage('🔎 Gửi HWID/prefix (≥3 ký tự).', undefined, chatId);
         return;
       }
       if (parsed.item === 'revoke') {
         setPending(chatId, 'await_revoke');
-        await answerCallback(cq.id, 'Gửi id…');
         await sendMessage(
           '🚫 Gửi licenseId hoặc HWID active để thu hồi.',
           undefined,
@@ -1126,12 +1436,10 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
         return;
       }
       if (parsed.item === 'list') {
-        await answerCallback(cq.id, 'List…');
         await cmdList('active', 10, chatId);
         return;
       }
       if (parsed.item === 'plans') {
-        await answerCallback(cq.id, 'Gói');
         await sendMessage(
           '📦 Gói Pro\n• month · year · lifetime\nDán HWID → chọn gói.',
           undefined,
@@ -1140,15 +1448,51 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
         return;
       }
       if (parsed.item === 'status') {
-        await answerCallback(cq.id, 'Status');
         await cmdStatus(chatId);
         return;
       }
       if (parsed.item === 'help') {
-        await answerCallback(cq.id, 'Menu');
         await openMenu(chatId);
         return;
       }
+      await sendMessage(
+        `Nút menu lạ: ${String((parsed as { item?: string }).item || '?')}`,
+        undefined,
+        chatId,
+      );
+      return;
+    }
+
+    if (parsed.action === 'gencode_cancel') {
+      clearPending(chatId);
+      await editMessage(
+        chatId,
+        messageId,
+        `${originalText}\n\n─────────────────\n❌ Đã huỷ tạo mã.`,
+      );
+      return;
+    }
+    if (parsed.action === 'gencode_plan') {
+      const resolved = expSecondsForKey(parsed.expKey);
+      setPending(chatId, 'await_gencode_count', { expKey: parsed.expKey });
+      // Same-message wizard: swap plan keyboard → count keyboard
+      await editMessage(
+        chatId,
+        messageId,
+        `🎟 Thời hạn: ${resolved.label}\nChọn số lượng hoặc gõ số 1–50:`,
+        gencodeCountKeyboard(parsed.expKey),
+      );
+      return;
+    }
+    if (parsed.action === 'gencode_do') {
+      clearPending(chatId);
+      const resolved = expSecondsForKey(parsed.expKey);
+      await cmdGencode(
+        parsed.count,
+        resolved.expSeconds,
+        resolved.label,
+        chatId,
+      );
       return;
     }
 
@@ -1158,7 +1502,6 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
         messageId,
         `${originalText}\n\n─────────────────\n❌ Đã huỷ chọn gói.`,
       );
-      await answerCallback(cq.id, 'Đã huỷ.');
       return;
     }
     if (parsed.action === 'revoke_cancel') {
@@ -1167,11 +1510,9 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
         messageId,
         `${originalText}\n\n─────────────────\n↩ Đã huỷ thu hồi.`,
       );
-      await answerCallback(cq.id, 'Đã huỷ revoke.');
       return;
     }
     if (parsed.action === 'revoke_confirm') {
-      await answerCallback(cq.id, '⏳ Revoke…');
       const r = await supabaseRest(
         `licenses?id=eq.${encodeURIComponent(parsed.licenseId)}`,
         {
@@ -1200,18 +1541,14 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
 
     if (parsed.action === 'reject') {
       const text = rejectText(parsed.hwid, originalText);
-      const edited = await editMessage(chatId, messageId, text);
-      await answerCallback(
-        cq.id,
-        edited.ok ? 'Đã từ chối.' : edited.error || 'Edit fail',
-        !edited.ok,
-      );
+      await editMessage(chatId, messageId, text);
       return;
     }
 
     if (parsed.action === 'issue' || parsed.action === 'pick') {
       try {
-        await deliverIssue(parsed.planId, parsed.hwid, originalText, {
+        const expKey = parsed.expKey || parsed.planId;
+        await deliverIssue(expKey, parsed.hwid, originalText, {
           chatId,
           messageId,
         });
@@ -1223,7 +1560,14 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
           chatId,
         );
       }
+      return;
     }
+
+    await sendMessage(
+      `⚠️ Callback parse được nhưng chưa có handler: ${JSON.stringify(parsed).slice(0, 120)}`,
+      undefined,
+      chatId,
+    );
     return;
   }
 
@@ -1239,48 +1583,75 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
   const text = msg.text.trim();
 
   try {
-    // Pending multi-step
-    const pending = takePending(chatId);
-    if (pending === 'await_hwid') {
-      const hwid = normalizeHwid(text);
-      if (!hwid) {
-        setPending(chatId, 'await_hwid');
+    // /menu /start /activate … always win over stuck await_hwid wizard
+    if (shouldBypassPendingInput(text)) {
+      clearPending(chatId);
+    } else {
+      // Pending multi-step (raw HWID / count / query only)
+      const pending = takePending(chatId);
+      if (pending?.mode === 'await_hwid') {
+        const hwid = normalizeHwid(text);
+        if (!hwid) {
+          setPending(chatId, 'await_hwid');
+          await sendMessage(
+            'HWID không hợp lệ (≥8 hex).\nGửi lại HWID, hoặc gõ /menu · /start để thoát.',
+            undefined,
+            chatId,
+          );
+          return;
+        }
         await sendMessage(
-          'HWID không hợp lệ (≥8 hex). Gửi lại.',
-          undefined,
+          [
+            '🖥 Mã thiết bị nhận được',
+            `HWID: ${hwid}`,
+            '',
+            'Chọn gói để cấp key Pro:',
+          ].join('\n'),
+          planPickerKeyboard(hwid),
           chatId,
         );
         return;
       }
-      await sendMessage(
-        [
-          '🖥 Mã thiết bị nhận được',
-          `HWID: ${hwid}`,
-          '',
-          'Chọn gói để cấp key Pro:',
-        ].join('\n'),
-        planPickerKeyboard(hwid),
-        chatId,
-      );
-      return;
-    }
-    if (pending === 'await_lookup') {
-      if (text.length < 3) {
-        setPending(chatId, 'await_lookup');
-        await sendMessage('Cần ≥3 ký tự.', undefined, chatId);
+      if (pending?.mode === 'await_gencode_count') {
+        const n = Number(String(text).trim());
+        if (!Number.isFinite(n) || n < 1 || n > 50) {
+          setPending(chatId, 'await_gencode_count', {
+            expKey: pending.expKey,
+          });
+          await sendMessage(
+            'Số lượng không hợp lệ. Gõ 1–50, hoặc /menu để thoát.',
+            undefined,
+            chatId,
+          );
+          return;
+        }
+        const resolved = expSecondsForKey(pending.expKey || 'lifetime');
+        await cmdGencode(
+          Math.floor(n),
+          resolved.expSeconds,
+          resolved.label,
+          chatId,
+        );
         return;
       }
-      await cmdLookup(text, chatId);
-      return;
-    }
-    if (pending === 'await_revoke') {
-      if (text.length < 6) {
-        setPending(chatId, 'await_revoke');
-        await sendMessage('Cần licenseId hoặc HWID.', undefined, chatId);
+      if (pending?.mode === 'await_lookup') {
+        if (text.length < 3) {
+          setPending(chatId, 'await_lookup');
+          await sendMessage('Cần ≥3 ký tự.', undefined, chatId);
+          return;
+        }
+        await cmdLookup(text, chatId);
         return;
       }
-      await cmdRevokePrompt(text, chatId);
-      return;
+      if (pending?.mode === 'await_revoke') {
+        if (text.length < 6) {
+          setPending(chatId, 'await_revoke');
+          await sendMessage('Cần licenseId hoặc HWID.', undefined, chatId);
+          return;
+        }
+        await cmdRevokePrompt(text, chatId);
+        return;
+      }
     }
 
     // Reply keyboard buttons
@@ -1290,6 +1661,17 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
       await sendMessage(
         '🔑 Gửi HWID khách ở tin tiếp theo.',
         undefined,
+        chatId,
+      );
+      return;
+    }
+    if (btn === 'gencode') {
+      await sendMessage(
+        [
+          '🎟 Tạo mã Pro (AINOVEL-…)',
+          'Chọn thời hạn:',
+        ].join('\n'),
+        gencodePlanKeyboard(),
         chatId,
       );
       return;
@@ -1392,6 +1774,38 @@ export async function processUpdate(update: TgUpdate): Promise<void> {
         return;
       }
       await deliverIssue(planId, hwid);
+      return;
+    }
+    if (
+      cmd === '/gencode' ||
+      cmd === '/makecode' ||
+      cmd === '/codes' ||
+      cmd === '/taoma'
+    ) {
+      if (parts.length === 1) {
+        await sendMessage(
+          [
+            '🎟 Tạo mã Pro (AINOVEL-…)',
+            'Chọn thời hạn hoặc: /gencode 5 year',
+          ].join('\n'),
+          gencodePlanKeyboard(),
+          chatId,
+        );
+        return;
+      }
+      let count = 1;
+      let expSeconds = PAID_PLANS.lifetime.expSeconds;
+      let label = PAID_PLANS.lifetime.label;
+      for (const a of parts.slice(1)) {
+        if (/^\d+$/.test(a)) {
+          count = Math.min(50, Math.max(1, Number(a)));
+          continue;
+        }
+        const resolved = expSecondsForKey(a);
+        expSeconds = resolved.expSeconds;
+        label = resolved.label;
+      }
+      await cmdGencode(count, expSeconds, label, chatId);
       return;
     }
     if (cmd === '/lookup' || cmd === '/find' || cmd === '/search') {

@@ -4,7 +4,8 @@ import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+/** Sync generate-one can run minutes; prefer app path async enqueue. */
+export const maxDuration = 900;
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);

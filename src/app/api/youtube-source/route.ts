@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildYoutubeTranscriptUserError, fetchYoutubeSource } from '@/lib/youtubeSource';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+/** Audio+Whisper fallback can take minutes on longer videos. */
+export const maxDuration = 600;
 
 /**
  * POST { url: string, preferredLangs?: string[] }
@@ -35,15 +36,18 @@ export async function POST(req: NextRequest) {
 
     const result = await fetchYoutubeSource(url, { preferredLangs });
     if (!result.ok) {
+      // Keep title/description so client can soft-seed cốt truyện when captions blocked
       return NextResponse.json(
         {
           success: false,
+          ok: false,
           error: result.error || 'Fetch failed',
           errorCode: result.errorCode,
           videoId: result.videoId,
           url: result.url,
           title: result.title,
           channel: result.channel,
+          description: result.description || '',
         },
         { status: 422 },
       );

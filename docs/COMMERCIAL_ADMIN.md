@@ -104,6 +104,8 @@ Nếu vẫn TRIAL: reload app + dán lại key `AINOVEL2.`.
 ## Lệnh hữu ích
 
 ```powershell
+$env:AINOVEL_LICENSE_API_URL='https://<license-api>'
+$env:AINOVEL_ENTITLEMENT_ADMIN_KEY='<admin-key>'
 npm run license:issue -- --hwid <HWID> --expDays 36500
 npm run smoke:commercial
 npm run commercial:go-live-status

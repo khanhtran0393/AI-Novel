@@ -14,7 +14,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 
 export const LA_STUDIO_DEFAULT_PORT = 3900;
 export const LA_STUDIO_DEFAULT_BASE = `http://127.0.0.1:${LA_STUDIO_DEFAULT_PORT}`;
@@ -81,6 +81,18 @@ let lastSpawnError = '';
 /** Active hide-watch (re-hide if Qt recreates windows). */
 let hideWatchTimer: ReturnType<typeof setInterval> | null = null;
 let hideWatchUntil = 0;
+/** Serialize ensure/spawn so boot + UI open do not double-launch. */
+let ensureInFlight: Promise<
+  LaStudioHealth & {
+    settings?: ReturnType<typeof ensureLaStudioApiEnabledInSettings>;
+    spawned?: boolean;
+  }
+> | null = null;
+/** Last successful online probe timestamp (ms) — skip spawn storms. */
+let lastOnlineAt = 0;
+/** Last Start-Process attempt (ms) — process may not appear in tasklist for a few seconds. */
+let lastSpawnAttemptAt = 0;
+const SPAWN_COOLDOWN_MS = 90_000;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -298,12 +310,45 @@ export function startLaStudioHideWatch(durationMs = 60_000): void {
 }
 
 /**
+ * True if LA Studio desktop process is already running (Windows tasklist)
+ * or we Start-Process'd recently (tasklist lag after powershell spawn).
+ * Avoids re-launching every time the TTS modal opens.
+ */
+export function isLaStudioProcessRunning(): boolean {
+  if (
+    lastSpawnAttemptAt > 0 &&
+    Date.now() - lastSpawnAttemptAt < SPAWN_COOLDOWN_MS
+  ) {
+    return true;
+  }
+  if (process.platform !== 'win32') return false;
+  try {
+    for (const image of ['LA Studio.exe', 'LAStudio.exe']) {
+      const r = spawnSync(
+        'tasklist',
+        ['/FI', `IMAGENAME eq ${image}`, '/FO', 'CSV', '/NH'],
+        { encoding: 'utf8', windowsHide: true, timeout: 4000 },
+      );
+      const out = String(r.stdout || '').trim();
+      if (!out || /INFO:/i.test(out)) continue;
+      if (out.toLowerCase().includes(image.toLowerCase())) return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
  * Spawn LA Studio desktop engine.
  * default hidden=true — start Minimized + aggressive SW_HIDE (no full GUI flash).
+ * No-op (ok) when process already running — never double-start.
  */
 export function spawnLaStudioApp(opts?: {
   hidden?: boolean;
-}): { ok: boolean; exe?: string; error?: string; pid?: number; hidden?: boolean } {
+  /** Force a new process even if one is detected (default false) */
+  force?: boolean;
+}): { ok: boolean; exe?: string; error?: string; pid?: number; hidden?: boolean; alreadyRunning?: boolean } {
   const exe = resolveLaStudioExe();
   if (!exe) {
     lastSpawnError =
@@ -311,8 +356,17 @@ export function spawnLaStudioApp(opts?: {
     return { ok: false, error: lastSpawnError };
   }
   const hidden = opts?.hidden !== false;
+  if (!opts?.force && isLaStudioProcessRunning()) {
+    lastSpawnError = '';
+    if (hidden) {
+      hideLaStudioWindows();
+      startLaStudioHideWatch(20_000);
+    }
+    return { ok: true, exe, alreadyRunning: true, hidden };
+  }
   try {
     lastSpawnError = '';
+    lastSpawnAttemptAt = Date.now();
     if (hidden && process.platform === 'win32') {
       // Start-Process Minimized avoids a full normal window flash; then SW_HIDE loop.
       const escaped = exe.replace(/'/g, "''");
@@ -352,6 +406,7 @@ export function spawnLaStudioApp(opts?: {
     return { ok: true, exe, pid: child.pid, hidden: false };
   } catch (e) {
     lastSpawnError = e instanceof Error ? e.message : String(e);
+    lastSpawnAttemptAt = 0;
     return { ok: false, exe, error: lastSpawnError };
   }
 }
@@ -1044,6 +1099,7 @@ export async function synthesizeLaStudioSpeech(
 /**
  * Ensure settings + optional app spawn + poll health.
  * Does not claim success without real /health online.
+ * Concurrent callers share one in-flight ensure (no double-spawn).
  */
 export async function ensureLaStudioApiReady(opts?: {
   baseUrl?: string;
@@ -1057,11 +1113,30 @@ export async function ensureLaStudioApiReady(opts?: {
     spawned?: boolean;
   }
 > {
+  if (ensureInFlight) return ensureInFlight;
+  ensureInFlight = ensureLaStudioApiReadyInner(opts).finally(() => {
+    ensureInFlight = null;
+  });
+  return ensureInFlight;
+}
+
+async function ensureLaStudioApiReadyInner(opts?: {
+  baseUrl?: string;
+  spawnApp?: boolean;
+  hidden?: boolean;
+  pollMs?: number;
+}): Promise<
+  LaStudioHealth & {
+    settings?: ReturnType<typeof ensureLaStudioApiEnabledInSettings>;
+    spawned?: boolean;
+  }
+> {
   const settings = ensureLaStudioApiEnabledInSettings();
   const base = resolveLaStudioBaseUrl(opts?.baseUrl);
   const wantHidden = opts?.hidden !== false;
   let health = await probeLaStudioHealth(base, 2000);
   if (health.online) {
+    lastOnlineAt = Date.now();
     // Already linked — keep UI hidden while AI Novel uses the API
     if (wantHidden) {
       hideLaStudioWindows();
@@ -1071,25 +1146,42 @@ export async function ensureLaStudioApiReady(opts?: {
   }
 
   let spawned = false;
+  let alreadyRunning = false;
   let spawnErr = '';
   if (opts?.spawnApp !== false) {
-    const r = spawnLaStudioApp({ hidden: wantHidden });
-    spawned = r.ok;
-    if (!r.ok) spawnErr = r.error || getLastLaStudioSpawnError();
-    // Cold start Qt needs a few seconds before /health listens
-    if (spawned) {
-      if (wantHidden) startLaStudioHideWatch(75_000);
-      await sleep(2_500);
-      if (wantHidden) hideLaStudioWindows();
+    // Process up but API cold (model load) → poll only, do not Start-Process again
+    if (isLaStudioProcessRunning()) {
+      alreadyRunning = true;
+      if (wantHidden) {
+        hideLaStudioWindows();
+        startLaStudioHideWatch(45_000);
+      }
+    } else {
+      const r = spawnLaStudioApp({ hidden: wantHidden });
+      spawned = r.ok && !r.alreadyRunning;
+      alreadyRunning = r.alreadyRunning === true;
+      if (!r.ok) spawnErr = r.error || getLastLaStudioSpawnError();
+      // Cold start Qt needs a few seconds before /health listens
+      if (r.ok) {
+        if (wantHidden) startLaStudioHideWatch(75_000);
+        await sleep(2_500);
+        if (wantHidden) hideLaStudioWindows();
+      }
     }
   }
 
-  const budget = Math.max(8_000, opts?.pollMs ?? 45_000);
+  // Short poll if we were online recently (tab re-open) — engine still warming
+  const recentOnline = lastOnlineAt > 0 && Date.now() - lastOnlineAt < 120_000;
+  const budget = Math.max(
+    recentOnline || alreadyRunning ? 6_000 : 8_000,
+    opts?.pollMs ?? 45_000,
+  );
   const start = Date.now();
   while (Date.now() - start < budget) {
     if (wantHidden) hideLaStudioWindows();
     health = await probeLaStudioHealth(base, 2500);
     if (health.online) {
+      lastOnlineAt = Date.now();
       if (wantHidden) {
         hideLaStudioWindows();
         startLaStudioHideWatch(30_000);
@@ -1106,8 +1198,8 @@ export async function ensureLaStudioApiReady(opts?: {
     error:
       health.error ||
       spawnErr ||
-      (spawned
-        ? 'Đã mở LA Studio nhưng API chưa listen trong thời gian chờ — mở LA Studio.exe một lần, kiểm tra [api] serverEnabled=true (port 3900), rồi bấm lại «Engine ẩn».'
+      (spawned || alreadyRunning
+        ? 'Đã mở LA Studio nhưng API chưa listen trong thời gian chờ — đợi model load xong (Engine ẩn chỉ cần 1 lần khi boot app). Gen Kokoro CLI vẫn dùng được nếu pack ship có.'
         : 'LA Studio API offline. Cài D:\\LA Studio hoặc set LA_STUDIO_EXE. Gen TTS vẫn dùng được Kokoro CLI ship (bin/la-studio-kokoro).'),
   };
 }

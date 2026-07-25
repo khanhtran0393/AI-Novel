@@ -18,7 +18,13 @@
 
 export type KeyLimitKind = 'rpm' | 'rpd' | 'auth' | 'payload' | 'other';
 
-export type KeyWaitReason = 'rpm' | 'rpd' | 'cooldown' | 'empty' | 'pacing';
+export type KeyWaitReason =
+  | 'rpm'
+  | 'rpd'
+  | 'cooldown'
+  | 'auth'
+  | 'empty'
+  | 'pacing';
 
 export type KeyWaitInfo = {
   reason: KeyWaitReason;
@@ -189,8 +195,12 @@ function msUntilUtcMidnight(now = Date.now()): number {
 const RPM_COOLDOWN_MS = 70_000;
 /** RPD / daily quota soft cooldown */
 const RPD_COOLDOWN_MS = 45 * 60_000;
-/** Invalid / revoked key */
-const AUTH_COOLDOWN_MS = 6 * 60 * 60_000;
+/**
+ * Invalid / revoked / permission-denied key.
+ * Was 6h — mis-labeled as “pacing” and locked the whole pool after one bad key.
+ * 20 min is enough to stop thrash; user can replace keys anytime.
+ */
+const AUTH_COOLDOWN_MS = 20 * 60_000;
 const RPM_WINDOW_MS = 60_000;
 
 /** Register keys when user adds them (starts age timer; no-op if already known). */
@@ -213,23 +223,7 @@ export function classifyLimitMessage(msg: string, status?: number): KeyLimitKind
   const m = String(msg || '');
   const st = status ?? 0;
 
-  if (
-    st === 401 ||
-    st === 403 ||
-    /API[_ ]?key.*(invalid|not valid|expired|revoked)|PERMISSION_DENIED|UNAUTHENTICATED|invalid.?api.?key|key.*disabled/i.test(
-      m,
-    )
-  ) {
-    return 'auth';
-  }
-
-  if (st === 400) {
-    if (/API[_ ]?key|PERMISSION|UNAUTHENTICATED|invalid.?api.?key/i.test(m)) {
-      return 'auth';
-    }
-    return 'payload';
-  }
-
+  // Quota / rate often returns 403 on Google — classify BEFORE bare auth
   if (
     /per\s*day|daily|RPD|GenerateRequestsPerDay|RequestsPerDay|quota.*day|day.*quota/i.test(
       m,
@@ -239,13 +233,62 @@ export function classifyLimitMessage(msg: string, status?: number): KeyLimitKind
   }
   if (
     st === 429 ||
-    /429|rate|RPM|per\s*minute|RequestsPerMinute|resource.exhausted|quota|limit/i.test(
+    /429|rate.?limit|RPM|per\s*minute|RequestsPerMinute|resource.?exhausted|RESOURCE_EXHAUSTED|quota.?exceeded|exceeded.+quota/i.test(
       m,
     )
   ) {
     return 'rpm';
   }
+
+  if (
+    st === 401 ||
+    /API[_ ]?key.*(invalid|not valid|expired|revoked)|PERMISSION_DENIED|UNAUTHENTICATED|invalid.?api.?key|key.*disabled|API_KEY_INVALID|API_KEY_SERVICE_BLOCKED/i.test(
+      m,
+    )
+  ) {
+    return 'auth';
+  }
+  // Bare 403: only auth if message looks like key/permission, else other
+  if (st === 403) {
+    if (
+      /permission|denied|forbidden|invalid|revoked|unauth|api.?key|blocked/i.test(
+        m,
+      )
+    ) {
+      return 'auth';
+    }
+    return 'other';
+  }
+
+  if (st === 400) {
+    if (/API[_ ]?key|PERMISSION|UNAUTHENTICATED|invalid.?api.?key/i.test(m)) {
+      return 'auth';
+    }
+    return 'payload';
+  }
+
+  if (/quota|limit/i.test(m) && !/invalid|permission/i.test(m)) {
+    return 'rpm';
+  }
   return 'other';
+}
+
+/** Clear all cooldowns (e.g. after user replaces API keys in Settings). */
+export function clearAllKeyCooldowns(): void {
+  store().cooldowns.clear();
+  console.log('[KeyRotate] cleared all key cooldowns');
+}
+
+/** Clear cooldown for one key fingerprint or raw key. */
+export function clearKeyCooldown(keyOrFp: string): void {
+  const raw = String(keyOrFp || '').trim();
+  if (!raw) return;
+  const s = store();
+  if (s.cooldowns.has(raw)) {
+    s.cooldowns.delete(raw);
+    return;
+  }
+  s.cooldowns.delete(keyFingerprint(raw));
 }
 
 export function markKeyLimited(
@@ -404,6 +447,13 @@ export function formatQuotaWaitMessage(wait: KeyWaitInfo): string {
   if (wait.reason === 'empty') {
     return 'Chưa có API key trong pool. Thêm ít nhất 1 key rồi thử lại.';
   }
+  if (wait.reason === 'auth') {
+    return (
+      `[API key bị từ chối] Pool ${wait.poolSize} key đang cooldown auth (invalid/403). ` +
+      `Thêm/thay key hợp lệ trong Settings — hoặc chờ ${t} rồi thử lại.` +
+      (wait.nextFp ? ` (key sớm nhất: ${wait.nextFp})` : '')
+    );
+  }
   if (wait.reason === 'pacing') {
     return (
       `[Giữ nhịp an toàn] App dãn lượt gọi để tránh chạm trần RPM ` +
@@ -475,12 +525,21 @@ export function getPoolWaitInfo(keys: string | string[]): KeyWaitInfo | null {
     if (q.nextReadyMs < soonest) {
       soonest = q.nextReadyMs;
       soonestFp = q.fp;
-      if (q.rpdUsed >= q.rpdLimit) dominant = 'rpd';
+      // Auth cooldown must win over pacing mis-label (was: 6h shown as “giữ nhịp”)
+      if (q.cooling && q.coolReason === 'auth') dominant = 'auth';
+      else if (q.cooling && q.coolReason === 'rpd') dominant = 'rpd';
+      else if (q.cooling && q.coolReason === 'rpm') dominant = 'rpm';
+      else if (q.rpdUsed >= q.rpdLimit) dominant = 'rpd';
       else if (q.rpmUsed >= q.rpmLimit) dominant = 'rpm';
-      else if ((q.rpmResetMs || 0) > 0 && q.rpmUsed < q.rpmLimit) {
+      else if (
+        !q.cooling &&
+        (q.rpmResetMs || 0) > 0 &&
+        q.rpmUsed < q.rpmLimit
+      ) {
         // waiting on even spacing, not hard ceiling
         dominant = 'pacing';
-      } else dominant = 'cooldown';
+      } else if (q.cooling) dominant = 'cooldown';
+      else dominant = 'cooldown';
     }
   }
 

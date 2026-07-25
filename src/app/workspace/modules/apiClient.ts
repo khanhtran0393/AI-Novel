@@ -46,11 +46,15 @@ export async function postJson<T = Record<string, unknown>>(
   body: unknown,
   init?: { signal?: AbortSignal; headers?: HeadersInit },
 ): Promise<T> {
-  const res = await fetch(url, {
+  // Off-GUI: LLM/media POST wait in Worker/utilityProcess (signal ignored off-thread)
+  void init?.signal;
+  const { offThreadFetchResponse } = await import(
+    '@/lib/appWork/offThreadFetchCompat'
+  );
+  const res = await offThreadFetchResponse(url, {
     method: 'POST',
     headers: buildClientApiHeaders(init?.headers),
     body: JSON.stringify(body),
-    signal: init?.signal,
   });
   const data = (await res.json().catch(() => ({}))) as T & {
     error?: string;

@@ -6,6 +6,8 @@ export * from './types';
 export {
   evaluateChapterQuality,
   assertChapterMediaReady,
+  formatQualityGateReasons,
+  formatQualityGateTitle,
   type QualityGateInput,
 } from './qualityGate';
 export {
@@ -37,7 +39,14 @@ export {
   clearPipelineStore,
   type PipelinePortableSnapshot,
 } from './pipelineStore';
-export { wordBandFromSetupGoal, type WordBand } from './wordBand';
+export {
+  wordBandFromSetupGoal,
+  wordContentCeiling,
+  shouldStopWordGateContinue,
+  WORD_FLOOR_RATIO,
+  WORD_CEILING_RATIO,
+  type WordBand,
+} from './wordBand';
 export { assertTtsMediaPreflight, type TtsMediaPreflightInput } from './ttsMediaPreflight';
 export {
   evaluateMediaPreflight,

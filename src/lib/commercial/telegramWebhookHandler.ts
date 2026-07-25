@@ -3,12 +3,12 @@
  * Admin: issue key, bare-HWID wizard, lookup/list/revoke, help/status.
  */
 import {
+  issueProLicenseForDuration,
   issueProLicenseForPlan,
-  hashToken,
-  paidPlanToLicense,
-  auditLog,
+  persistIssuedProToken,
   listLicenses,
   revokeLicense,
+  issueUnboundProActivationCodes,
   type LicenseListRow,
 } from '@/lib/cloud/licenseBridge';
 import { createServiceSupabase } from '@/lib/supabase/server';
@@ -30,6 +30,8 @@ import {
 } from '@/lib/commercial/telegramNotify';
 import type { PaidPlanId } from '@/lib/commercial/pricingPlans';
 import {
+  buildGencodeCountKeyboard,
+  buildGencodePlanKeyboard,
   buildHelpMessage,
   buildMainInlineMenu,
   buildPlanPickerKeyboard,
@@ -37,26 +39,45 @@ import {
   buildPlansMessage,
   buildRemoveReplyKeyboard,
   buildRevokeConfirmKeyboard,
+  formatActivationCodeRows,
+  buildGencodeDeliveryMessages,
   formatLicenseRows,
   normalizeHwid,
   parseAdminCommand,
   promptActivateText,
+  promptGencodeCountText,
+  promptGencodeText,
   promptLookupText,
   promptRevokeText,
+  resolveGencodeExpKey,
   syntaxHint,
   type PendingMode,
 } from '@/lib/commercial/telegramAdminCommands';
 import { getEntitlementPublicStatus } from '@/lib/entitlement';
 
-/** Pending multi-step input (Cấp key / Tra cứu / Thu hồi) per chat. */
-const pendingByChat = new Map<string, { mode: PendingMode; at: number }>();
+/** Pending multi-step input (Cấp key / Tra cứu / Thu hồi / Tạo mã) per chat. */
+type PendingState = {
+  mode: PendingMode;
+  at: number;
+  /** For await_gencode_count: duration key (month|year|lifetime|30d…) */
+  expKey?: string;
+};
+const pendingByChat = new Map<string, PendingState>();
 const PENDING_TTL_MS = 15 * 60_000;
 
-function setPending(chatId: string | number, mode: PendingMode) {
-  pendingByChat.set(String(chatId), { mode, at: Date.now() });
+function setPending(
+  chatId: string | number,
+  mode: PendingMode,
+  extra?: { expKey?: string },
+) {
+  pendingByChat.set(String(chatId), {
+    mode,
+    at: Date.now(),
+    expKey: extra?.expKey,
+  });
 }
 
-function takePending(chatId: string | number): PendingMode | null {
+function takePending(chatId: string | number): PendingState | null {
   const key = String(chatId);
   const p = pendingByChat.get(key);
   if (!p) return null;
@@ -65,7 +86,7 @@ function takePending(chatId: string | number): PendingMode | null {
     return null;
   }
   pendingByChat.delete(key);
-  return p.mode;
+  return p;
 }
 
 function clearPending(chatId: string | number) {
@@ -104,145 +125,118 @@ function signerKidHint(): string {
   }
 }
 
+/**
+ * Issue Pro key for paid plan OR day preset (3d/7d/15d/30d).
+ * expKey: month|year|lifetime|3d|7d|15d|30d|…
+ */
 export async function issueAndPersistLicense(
-  planId: PaidPlanId,
+  planIdOrExpKey: PaidPlanId | string,
   hwid: string,
 ): Promise<{
   token: string;
   dbOk: boolean;
   dbError?: string;
   licenseId?: string;
+  expSeconds: number;
+  expLabel: string;
+  expKey: string;
+  planId?: PaidPlanId;
 }> {
-  const issued = issueProLicenseForPlan(planId, hwid);
-  const meta = paidPlanToLicense(planId);
-  const expAt = new Date(Date.now() + meta.expSeconds * 1000).toISOString();
-  const tokenHash = hashToken(issued.token);
+  const resolved = resolveGencodeExpKey(String(planIdOrExpKey));
+  const expSeconds = resolved.expSeconds;
+  const expLabel = resolved.label;
+  const expKey = resolved.expKey;
+  const planId = resolved.planId;
+  const issued = planId
+    ? issueProLicenseForPlan(planId, hwid)
+    : issueProLicenseForDuration(hwid, expSeconds);
   const hwidNorm = hwid.trim().toLowerCase();
 
   if (!isSupabaseAdminConfigured()) {
+    // Never return a usable token when ledger cannot be written.
     return {
-      token: issued.token,
+      token: '',
       dbOk: false,
       dbError:
         'Supabase admin chưa cấu hình. Hãy cấu hình license server với khóa ký Ed25519 trước khi cấp key.',
+      expSeconds,
+      expLabel,
+      expKey,
+      planId,
     };
   }
 
   try {
     const service = createServiceSupabase();
-    // Prefer update existing active row for this HWID (parity with bridge)
-    const { data: existing } = await service
-      .from('licenses')
-      .select('id')
-      .ilike('hwid', hwidNorm)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existing?.id) {
-      const { error: upErr } = await service
-        .from('licenses')
-        .update({
-          plan: meta.licensePlan,
-          hwid: hwidNorm,
-          status: 'active',
-          exp_at: expAt,
-          token_hash: tokenHash,
-          activation_code: null,
-        })
-        .eq('id', existing.id);
-      if (upErr) {
-        return { token: issued.token, dbOk: false, dbError: upErr.message };
-      }
-      await auditLog(
-        service,
-        'telegram.issue_key',
-        {
-          planId,
-          hwid: hwidNorm,
-          licenseId: existing.id,
-          source: 'telegram',
-          mode: 'update',
-        },
-        'telegram-admin',
-      );
-      return {
-        token: issued.token,
-        dbOk: true,
-        licenseId: existing.id as string,
-      };
-    }
-
-    const { insertLicenseRow } = await import('@/lib/cloud/licenseBridge');
-    let licenseId: string;
-    try {
-      const lic = await insertLicenseRow(service, {
-        order_id: null,
-        plan: meta.licensePlan,
-        hwid: hwidNorm,
-        status: 'active',
-        exp_at: expAt,
-        token_hash: tokenHash,
-        activation_code: null,
-      });
-      licenseId = lic.id;
-    } catch (e) {
-      return {
-        token: issued.token,
-        dbOk: false,
-        dbError: e instanceof Error ? e.message : String(e),
-      };
-    }
-
-    await auditLog(
+    const persisted = await persistIssuedProToken({
       service,
-      'telegram.issue_key',
-      {
-        planId,
-        hwid: hwidNorm,
-        licenseId,
-        source: 'telegram',
-        mode: 'insert',
-      },
-      'telegram-admin',
-    );
+      token: issued.token,
+      hwid: hwidNorm,
+      actorId: 'telegram-admin',
+      source: `telegram:${planId || expKey}`,
+    });
 
     return {
       token: issued.token,
       dbOk: true,
-      licenseId,
+      licenseId: persisted.licenseId,
+      expSeconds,
+      expLabel,
+      expKey,
+      planId,
     };
   } catch (e) {
     return {
-      token: issued.token,
+      token: '',
       dbOk: false,
       dbError: e instanceof Error ? e.message : String(e),
+      expSeconds,
+      expLabel,
+      expKey,
+      planId,
     };
   }
 }
 
 async function deliverIssuedKey(
-  planId: PaidPlanId,
+  planIdOrExpKey: PaidPlanId | string,
   hwid: string,
   originalText?: string,
   editCtx?: { chatId: string | number; messageId: number },
 ): Promise<void> {
-  const result = await issueAndPersistLicense(planId, hwid);
-  const text = buildApproveMessage({
+  const result = await issueAndPersistLicense(planIdOrExpKey, hwid);
+  const approve = {
     originalText,
-    planId,
+    planId: result.planId,
+    planLabel: result.expLabel,
+    expKey: result.expKey,
     hwid,
     token: result.token,
     dbOk: result.dbOk,
     dbError: result.dbError,
-  });
+  };
+  const text = buildApproveMessage(approve);
   const replyTo =
     editCtx?.chatId != null ? editCtx.chatId : undefined;
   const canEdit =
     editCtx != null &&
     Number.isFinite(editCtx.messageId) &&
     editCtx.messageId > 0;
+  if (!result.dbOk) {
+    if (canEdit && editCtx) {
+      const edited = await editTelegramMessage({
+        chatId: editCtx.chatId,
+        messageId: editCtx.messageId,
+        text,
+      });
+      if (!edited.ok) {
+        await sendTelegramMessage(text, undefined, replyTo);
+      }
+    } else {
+      await sendTelegramMessage(text, undefined, replyTo);
+    }
+    return;
+  }
   if (canEdit && editCtx) {
     const edited = await editTelegramMessage({
       chatId: editCtx.chatId,
@@ -252,10 +246,8 @@ async function deliverIssuedKey(
     if (!edited.ok) {
       await sendTelegramMessage(
         buildApproveMessage({
-          planId,
-          hwid,
-          token: result.token,
-          dbOk: result.dbOk,
+          ...approve,
+          originalText: undefined,
           dbError: result.dbError || edited.error,
         }),
         undefined,
@@ -264,14 +256,6 @@ async function deliverIssuedKey(
     }
   } else {
     await sendTelegramMessage(text, undefined, replyTo);
-  }
-  if (!result.dbOk) {
-    await sendTelegramMessage(
-      `⚠️ Key đã tạo nhưng Supabase LỖI (HWID ${hwid.toUpperCase()}):\n${result.dbError || 'unknown'}\n` +
-        'Supabase ledger bắt buộc: nếu không ghi được licenses thì khách dán key sẽ Free (không self-heal). Kiểm tra SERVICE_ROLE.',
-      undefined,
-      replyTo,
-    );
   }
 }
 
@@ -328,72 +312,108 @@ export async function handleCallbackQuery(cq: TgCallbackQuery): Promise<void> {
     return;
   }
 
-  // Answer immediately so Telegram stops the loading spinner on buttons
-  if (parsed.action === 'issue' || parsed.action === 'pick') {
-    await answerTelegramCallback(cq.id, '⏳ Đang cấp key…');
-  }
+  // Answer IMMEDIATELY for every button — Telegram shows spinner until this fires.
+  // (Second answerCallback on same id is ignored by Telegram.)
+  const earlyHint =
+    parsed.action === 'issue' || parsed.action === 'pick'
+      ? '⏳ Đang cấp key…'
+      : parsed.action === 'gencode_do'
+        ? '⏳ Đang tạo mã…'
+        : parsed.action === 'revoke_confirm'
+          ? '⏳ Revoke…'
+          : parsed.action === 'menu'
+            ? 'OK'
+            : '…';
+  await answerTelegramCallback(cq.id, earlyHint);
 
   if (parsed.action === 'menu') {
     clearPending(chatId);
     switch (parsed.item) {
       case 'activate':
         setPending(chatId, 'await_hwid');
-        await answerTelegramCallback(cq.id, 'Gửi HWID…');
         await replyToChat(chatId, promptActivateText());
+        return;
+      case 'gencode':
+        await replyToChat(
+          chatId,
+          promptGencodeText(),
+          buildGencodePlanKeyboard(),
+        );
         return;
       case 'lookup':
         setPending(chatId, 'await_lookup');
-        await answerTelegramCallback(cq.id, 'Gửi HWID…');
         await replyToChat(chatId, promptLookupText());
         return;
       case 'revoke':
         setPending(chatId, 'await_revoke');
-        await answerTelegramCallback(cq.id, 'Gửi id/HWID…');
         await replyToChat(chatId, promptRevokeText());
         return;
       case 'list':
-        await answerTelegramCallback(cq.id, 'List…');
         await cmdList('active', 10, chatId);
         return;
       case 'plans':
-        await answerTelegramCallback(cq.id, 'Gói');
         await replyToChat(chatId, buildPlansMessage());
         return;
       case 'status':
-        await answerTelegramCallback(cq.id, 'Status');
         await cmdStatus(chatId);
         return;
       case 'help':
-        await answerTelegramCallback(cq.id, 'Menu');
         await openMainMenu(chatId);
         return;
       default:
-        await answerTelegramCallback(cq.id, 'OK');
+        await replyToChat(
+          chatId,
+          `Nút menu lạ: ${String((parsed as { item?: string }).item || '?')}`,
+        );
         return;
     }
+  }
+
+  if (parsed.action === 'gencode_cancel') {
+    clearPending(chatId);
+    const text = `${originalText}\n\n─────────────────\n❌ Đã huỷ tạo mã.`;
+    await editTelegramMessage({ chatId, messageId, text });
+    return;
+  }
+
+  if (parsed.action === 'gencode_plan') {
+    const resolved = resolveGencodeExpKey(parsed.expKey);
+    setPending(chatId, 'await_gencode_count', { expKey: parsed.expKey });
+    // Keep buttons on the SAME message so user never loses the count keyboard
+    await editTelegramMessage({
+      chatId,
+      messageId,
+      text: promptGencodeCountText(resolved.label),
+      replyMarkup: buildGencodeCountKeyboard(parsed.expKey),
+    });
+    return;
+  }
+
+  if (parsed.action === 'gencode_do') {
+    clearPending(chatId);
+    const resolved = resolveGencodeExpKey(parsed.expKey);
+    await cmdGencode(parsed.count, resolved.expSeconds, chatId);
+    return;
   }
 
   if (parsed.action === 'pick_cancel') {
     const text = `${originalText}\n\n─────────────────\n❌ Đã huỷ chọn gói.`;
     await editTelegramMessage({ chatId, messageId, text });
-    await answerTelegramCallback(cq.id, 'Đã huỷ.');
     return;
   }
 
   if (parsed.action === 'revoke_cancel') {
     const text = `${originalText}\n\n─────────────────\n↩ Đã huỷ thu hồi.`;
     await editTelegramMessage({ chatId, messageId, text });
-    await answerTelegramCallback(cq.id, 'Đã huỷ revoke.');
     return;
   }
 
   if (parsed.action === 'revoke_confirm') {
     if (!isSupabaseAdminConfigured()) {
-      await answerTelegramCallback(cq.id, 'Supabase chưa cấu hình.', true);
+      await replyToChat(chatId, '❌ Supabase chưa cấu hình — không revoke được.');
       return;
     }
     try {
-      await answerTelegramCallback(cq.id, '⏳ Revoke…');
       const service = createServiceSupabase();
       await revokeLicense({
         service,
@@ -404,7 +424,6 @@ export async function handleCallbackQuery(cq: TgCallbackQuery): Promise<void> {
       await editTelegramMessage({ chatId, messageId, text });
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
-      await answerTelegramCallback(cq.id, `Lỗi: ${errMsg}`.slice(0, 200), true);
       await replyToChat(chatId, `❌ Revoke fail: ${errMsg}`);
     }
     return;
@@ -415,19 +434,15 @@ export async function handleCallbackQuery(cq: TgCallbackQuery): Promise<void> {
       originalText,
       hwid: parsed.hwid,
     });
-    const edited = await editTelegramMessage({ chatId, messageId, text });
-    await answerTelegramCallback(
-      cq.id,
-      edited.ok ? 'Đã từ chối.' : edited.error || 'Edit fail',
-      !edited.ok,
-    );
+    await editTelegramMessage({ chatId, messageId, text });
     return;
   }
 
-  // issue (payment) or pick (wizard) — same issue path
+  // issue (payment) or pick (wizard) — same issue path; supports 3d/7d/15d/30d
   if (parsed.action === 'issue' || parsed.action === 'pick') {
     try {
-      await deliverIssuedKey(parsed.planId, parsed.hwid, originalText, {
+      const expKey = parsed.expKey || parsed.planId;
+      await deliverIssuedKey(expKey, parsed.hwid, originalText, {
         chatId,
         messageId,
       });
@@ -438,7 +453,14 @@ export async function handleCallbackQuery(cq: TgCallbackQuery): Promise<void> {
         `❌ Lỗi cấp key (HWID ${parsed.hwid}): ${errMsg}`,
       );
     }
+    return;
   }
+
+  // Unreachable if parseTelegramCallbackData stays in sync with handlers
+  await replyToChat(
+    chatId,
+    `⚠️ Callback đã parse nhưng chưa có handler: ${JSON.stringify(parsed).slice(0, 120)}`,
+  );
 }
 
 async function cmdLookup(
@@ -568,9 +590,74 @@ async function cmdStatus(chatId?: string | number): Promise<void> {
     `Public kids: ${signerKidHint()}`,
     '',
     'One-Path: AINOVEL2 + licenses.active.',
+    'Tạo mã: /gencode 5 year · AINOVEL-… (1 HWID/mã).',
     'Bấm ❓ Menu nếu bàn phím biến mất.',
   ];
   await replyToChat(chatId, lines.join('\n'));
+}
+
+async function cmdGencode(
+  count: number,
+  expSeconds: number,
+  chatId?: string | number,
+): Promise<void> {
+  try {
+    const service = isSupabaseAdminConfigured()
+      ? createServiceSupabase()
+      : null;
+    const result = await issueUnboundProActivationCodes({
+      service,
+      count,
+      expSeconds,
+      note: `telegram-admin chat=${chatId ?? '?'}`,
+    });
+    // One code = one message → long-press copy / forward to customer
+    const messages = buildGencodeDeliveryMessages(result);
+    for (const msg of messages) {
+      await replyToChat(chatId, msg);
+    }
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    await replyToChat(chatId, `❌ Tạo mã thất bại: ${errMsg}`);
+  }
+}
+
+async function cmdListCodes(
+  limit: number,
+  chatId?: string | number,
+): Promise<void> {
+  if (!isSupabaseAdminConfigured()) {
+    await replyToChat(
+      chatId,
+      '❌ Supabase ledger chưa cấu hình — không có danh sách mã local.',
+    );
+    return;
+  }
+  const listed = await listLicenses({
+    service: createServiceSupabase(),
+    limit: Math.max(limit, 100),
+  });
+  const rows = listed.rows
+    .filter((row) => Boolean(row.activation_code))
+    .slice(0, limit)
+    .map((row) => {
+      const createdAtMs = new Date(row.created_at || 0).getTime();
+      const expAtMs = new Date(row.exp_at).getTime();
+      const unbound = String(row.hwid || '').startsWith('unbound:');
+      return {
+        code: String(row.activation_code),
+        redeemedHwid: unbound ? undefined : row.hwid,
+        expSeconds: Math.max(
+          60,
+          Math.floor((expAtMs - createdAtMs) / 1000),
+        ),
+        createdAt: Math.floor(createdAtMs / 1000),
+      };
+    });
+  await replyToChat(
+    chatId,
+    formatActivationCodeRows(rows, '🎟 Mã kích hoạt (Supabase ledger)'),
+  );
 }
 
 /**
@@ -681,42 +768,64 @@ export async function handleAdminMessage(msg: TgMessage): Promise<void> {
   }
   if (!text || chatId == null) return;
 
-  // Multi-step pending (button → next message)
-  const pending = takePending(chatId);
-  if (pending === 'await_hwid') {
-    const hwid = normalizeHwid(text) || tryBareFromPending(text);
-    if (!hwid) {
-      setPending(chatId, 'await_hwid');
+  // /menu /start /activate … always win over pending HWID wizard.
+  // (Bug: stuck await_hwid treated every command as invalid HWID.)
+  if (shouldBypassPendingInput(text)) {
+    clearPending(chatId);
+  } else {
+    // Multi-step pending (button → next message = raw HWID / count / query)
+    const pending = takePending(chatId);
+    if (pending?.mode === 'await_hwid') {
+      const hwid = normalizeHwid(text) || tryBareFromPending(text);
+      if (!hwid) {
+        setPending(chatId, 'await_hwid');
+        await replyToChat(
+          chatId,
+          'HWID không hợp lệ (cần ≥8 hex).\n' +
+            'Gửi lại HWID, hoặc gõ /menu · /start để thoát.',
+        );
+        return;
+      }
       await replyToChat(
         chatId,
-        'HWID không hợp lệ (cần ≥8 hex). Gửi lại hoặc bấm Menu.',
+        buildPlanPickerText(hwid),
+        buildPlanPickerKeyboard(hwid),
       );
       return;
     }
-    await replyToChat(
-      chatId,
-      buildPlanPickerText(hwid),
-      buildPlanPickerKeyboard(hwid),
-    );
-    return;
-  }
-  if (pending === 'await_lookup') {
-    if (text.trim().length < 3) {
-      setPending(chatId, 'await_lookup');
-      await replyToChat(chatId, promptLookupText());
+    if (pending?.mode === 'await_gencode_count') {
+      const n = Number(String(text).trim());
+      if (!Number.isFinite(n) || n < 1 || n > 50) {
+        setPending(chatId, 'await_gencode_count', { expKey: pending.expKey });
+        await replyToChat(
+          chatId,
+          'Số lượng không hợp lệ. Gõ số 1–50, hoặc /menu để thoát.',
+        );
+        return;
+      }
+      const expKey = pending.expKey || 'lifetime';
+      const resolved = resolveGencodeExpKey(expKey);
+      await cmdGencode(Math.floor(n), resolved.expSeconds, chatId);
       return;
     }
-    await cmdLookup(text.trim(), chatId);
-    return;
-  }
-  if (pending === 'await_revoke') {
-    if (text.trim().length < 6) {
-      setPending(chatId, 'await_revoke');
-      await replyToChat(chatId, promptRevokeText());
+    if (pending?.mode === 'await_lookup') {
+      if (text.trim().length < 3) {
+        setPending(chatId, 'await_lookup');
+        await replyToChat(chatId, promptLookupText());
+        return;
+      }
+      await cmdLookup(text.trim(), chatId);
       return;
     }
-    await cmdRevokePrompt(text.trim(), chatId);
-    return;
+    if (pending?.mode === 'await_revoke') {
+      if (text.trim().length < 6) {
+        setPending(chatId, 'await_revoke');
+        await replyToChat(chatId, promptRevokeText());
+        return;
+      }
+      await cmdRevokePrompt(text.trim(), chatId);
+      return;
+    }
   }
 
   const parsed = parseAdminCommand(text);
@@ -737,6 +846,19 @@ export async function handleAdminMessage(msg: TgMessage): Promise<void> {
       case 'prompt_activate':
         setPending(chatId, 'await_hwid');
         await replyToChat(chatId, promptActivateText());
+        return;
+      case 'prompt_gencode':
+        await replyToChat(
+          chatId,
+          promptGencodeText(),
+          buildGencodePlanKeyboard(),
+        );
+        return;
+      case 'gencode':
+        await cmdGencode(parsed.count, parsed.expSeconds, chatId);
+        return;
+      case 'listcodes':
+        await cmdListCodes(parsed.limit, chatId);
         return;
       case 'prompt_lookup':
         setPending(chatId, 'await_lookup');
@@ -791,6 +913,28 @@ export async function handleAdminMessage(msg: TgMessage): Promise<void> {
 
 function tryBareFromPending(text: string): string | null {
   return normalizeHwid(text);
+}
+
+/**
+ * Slash commands, menu buttons, and cancel words must escape pending wizards
+ * (await_hwid / await_lookup / …). Otherwise /menu is misread as invalid HWID.
+ */
+export function shouldBypassPendingInput(text: string): boolean {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (t.startsWith('/')) return true;
+  if (
+    /^(hủy|huy|cancel|stop|thoát|thoat|menu|help|bỏ|bo)$/i.test(t)
+  ) {
+    return true;
+  }
+  const p = parseAdminCommand(t);
+  if (!p) return false;
+  // Pure HWID paste is intended pending input — do not bypass
+  if (p.kind === 'bare_hwid') return false;
+  if (p.kind === 'unknown') return false;
+  // activate with HWID in same line is a full command, not pending fill-in
+  return true;
 }
 
 /** Process one Telegram update object (from webhook or getUpdates). */

@@ -741,7 +741,10 @@ function SceneCard({
                       handleGenerateImage(sceneIndex, pIdx, imagePromptText, scriptPromptText)
                     }
                     onGenVideo={() => {
-                      // P2 keyframe optional: use_end_frame → dual stills; else legacy edge/middle
+                      // Flow: 1 clip / prompt (single still or T2V). Dual only when Start+End.
+                      // Legacy providers: middle still uses prev→current interpol.
+                      const stVid = useNovelStore.getState();
+                      const isFlowVid = stVid.videoProvider === 'flow';
                       const range = resolveVideoKeyframeRange({
                         promptIndex: pIdx,
                         promptsLen: promptsAsset.length,
@@ -749,13 +752,16 @@ function SceneCard({
                         endImageKey: promptItem.end_image_key,
                         chapter: chapterNum,
                         sceneIndex,
+                        singleClipPerPrompt: isFlowVid,
                       });
-                      handleGenerateVideo(
+                      void handleGenerateVideo(
                         sceneIndex,
                         range.startPromptIndex,
                         range.endPromptIndex,
                         videoPromptText,
-                      );
+                      ).catch(() => {
+                        /* toast already in handleGenerateVideo */
+                      });
                     }}
                     onExtendVideo={
                       handleExtendVideo

@@ -20,11 +20,17 @@ export function profilePromptCacheKey(
     g: profile?.gioi_tinh,
     t: profile?.tuoi,
     d: profile?.dang_nguoi,
+    h: profile?.chieu_cao,
     q: profile?.quan_ao,
+    pk: profile?.phu_kien,
+    th: profile?.thoi_quen,
+    st: profile?.so_thich,
     ngoai: profile?.ngoai_hinh,
     dac: profile?.dac_diem_nhan_dang,
     k: profile?.khuet_tat,
+    m: profile?.mau_sac,
     p: profile?.prompt,
+    poses: profile?.pose_prompts,
   });
   return `char_prompt_${simpleHash(payload)}`;
 }

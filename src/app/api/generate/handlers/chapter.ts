@@ -6,6 +6,7 @@ import {
   formatCharacterBible,
   formatSpentEntities,
   formatWorldState,
+  getWordCount,
   lorebookForPrompt,
   normalizeSceneTags,
   requireGenreLabelFromSetup,
@@ -127,8 +128,14 @@ export async function handleChapter(
     const mode = normalizeScriptMode(scriptMode);
     const minScenes = minScenesForScriptMode(mode);
     const maxScenes = maxScenesForScriptMode(mode);
-    const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : DEFAULT_WORD_GOAL;
+    // Cổng từ = so_tu client gửi (đã clamp gói) — không ép hằng 4250
+    const wordGoalRaw = Number(so_tu_chuong);
+    const wordGoal =
+      Number.isFinite(wordGoalRaw) && wordGoalRaw > 0
+        ? Math.round(wordGoalRaw)
+        : DEFAULT_WORD_GOAL;
     const wordMin = Math.round(wordGoal * 0.92);
+    const wordMax = Math.round(wordGoal * 1.2);
     const charBible = formatCharacterBible(nhan_vat, nhan_vat_prompts);
     const spentBlock = formatSpentEntities(da_dien_ra_entities);
     const worldBlock = formatWorldState(world_state);
@@ -138,9 +145,16 @@ export async function handleChapter(
     const humanizeOn = humanize_script !== false;
   
     const isContinue = !!(noi_dung_hien_tai && String(noi_dung_hien_tai).trim());
+    const existingWords = isContinue
+      ? getWordCount(String(noi_dung_hien_tai))
+      : 0;
+    const remainingBudget = Math.max(0, wordMax - existingWords);
     let continueBlock = '';
     if (isContinue) {
       continueBlock = '\n' + buildContinueContext(String(noi_dung_hien_tai)).promptBody;
+      continueBlock += `\n\n--- NGÂN SÁCH TỪ CÒN LẠI (CỨNG) ---
+Đã có ~${existingWords} từ. Mục tiêu toàn chương ${wordGoal}, trần ${wordMax}.
+Phần MỚI tối đa ~${remainingBudget} từ. Hết budget thì kết thúc gọn (đủ open loop), CẤM viết dài gấp đôi.`;
     } else if (isShortManhuaMode(mode)) {
       continueBlock =
         '\nĐừng thêm tiêu đề chương. Bắt đầu bằng [CẢNH 0: COLD OPEN - HOOK] rồi [CẢNH 1: ...] theo nhịp short/manhua.';
@@ -156,12 +170,11 @@ export async function handleChapter(
     const wordGateExtra = force_word_gate_continue
       ? isShortManhuaMode(mode)
         ? buildShortManhuaWordGateExtra(wordMin, minScenes)
-        : `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ (CHẤT LƯỢNG, KHÔNG NHỒI):
-Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ ${minScenes} phân cảnh.
-- Viết thêm phần MỚI: sâu hơn stakes (lựa chọn, hậu quả, thoại có lực, nội tâm lệch tính cách).
-- Nếu thiếu cảnh: thêm [CẢNH X: ...] mới với xung đột riêng, nối hệ quả từ open loop trước.
-- CẤM đệm bằng liệt kê giác quan / lặp mô tả / tóm tắt lại / reset giọng.
-- Bám nhịp câu và quirk thoại đã có — như cùng một cây bút. Chỉ trả về phần MỚI.`
+        : `\n⚠️ CHẾ ĐỘ BÙ CỔNG TỪ (NGẮN GỌN — CÓ TRẦN):
+Bản trước chưa đủ sàn/cảnh. Mục tiêu toàn chương ${wordGoal} từ (sàn ${wordMin}, TRẦN CỨNG ${wordMax}).
+- Đã có ~${existingWords} từ → phần MỚI ≤ ~${remainingBudget} từ.
+- Chỉ thêm beat/cảnh còn thiếu; CẤM nhồi sáo, CẤM viết dài vượt trần.
+- Hết budget: kết chương gọn, open loop ngắn. Chỉ trả về phần MỚI.`
       : '';
   
     const prompt = `${writeEngineRoleLine(genreLabel, 'writer')}
@@ -244,7 +257,10 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   [CẢNH 1: NỘI CẢNH. ĐỊA ĐIỂM - THỜI GIAN]
   (đoạn văn liền mạch…)
   4. Kể chuyện sống: subtext, nội tâm chọn lọc, NARRATIVE PSYCH dệt vào tình huống (không dán slogan). Real-time: CẤM time-skip / tóm tắt tuần/tháng. Hành động + thoại là xương; 1–2 chi tiết giác quan đắt/cảnh (không stack 5 giác quan).
-  5. Cổng Từ: ~${wordGoal} từ (không dưới ${wordMin}) bằng xung đột, thoại, lựa chọn, nội tâm — KHÔNG nhồi sáo / lặp mô tả.
+  5. CỔNG TỪ TOÀN CHƯƠNG (Setup so_tu = ${wordGoal} từ — BẮT BUỘC, không hardcode 4250):
+     - Mục tiêu ≈ ${wordGoal} từ cho TOÀN BỘ kịch bản (dao động chấp nhận ${wordMin}–${wordMax}).
+     - TRẦN CỨNG ≤${wordMax} từ (+20%). Vượt trần = LỖI. CẤM viết gấp đôi / 200%+.
+     - Ước lượng độ dài khi viết; đủ beat + ${minScenes} cảnh trong budget; CẤM nhồi sáo.
   6. Phân cảnh: TỐI THIỂU ${minScenes}, tối đa ~${maxScenes}${
     isShortManhuaMode(mode)
       ? ' cảnh NGẮN (short/manhua — nhiều cut, mỗi cảnh 1 beat hình ảnh).'
@@ -278,11 +294,57 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
       }
     }
     // When continuing, gate is evaluated on the MERGED chapter by the client.
-    // Here we report stats for this chunk alone for observability.
-    const mergedForGate = noi_dung_hien_tai
+    let mergedForGate = noi_dung_hien_tai
       ? `${noi_dung_hien_tai}\n\n${normalized}`
       : normalized;
-    const gate = evaluateWordGate(mergedForGate, wordGoal, minScenes);
+    let gate = evaluateWordGate(mergedForGate, wordGoal, minScenes);
+    let fullChapterReplace = false;
+    let condensedFrom = 0;
+
+    // ENFORCE: nếu vượt trần (+20%) — rút gọn TOÀN BỘ chương (không chỉ cảnh báo)
+    if (gate.wordCount > wordMax) {
+      condensedFrom = gate.wordCount;
+      const condensePrompt = `${writeEngineRoleLine(genreLabel, 'editor')}
+RÚT GỌN CỔNG TỪ BẮT BUỘC — Setup so_tu_chuong = ${wordGoal} từ cho TOÀN BỘ kịch bản.
+
+HIỆN TRẠNG: ~${gate.wordCount} từ (${Math.round((gate.wordCount / wordGoal) * 100)}%) — VƯỢT TRẦN.
+MỤC TIÊU SAU RÚT: khoảng ${wordGoal} từ (sàn ≥${wordMin}, TRẦN CỨNG ≤${wordMax}).
+
+QUY TẮC:
+1. Trả về TOÀN BỘ chương đã rút gọn (không tóm tắt meta, không markdown giải thích).
+2. Giữ ≥${minScenes} tag [CẢNH N: NỘI/NGOẠI…] và cốt truyện / thoại chính.
+3. CẮT mô tả thừa, lặp, sáo AI; KHÔNG thêm tình tiết mới.
+4. Độ dài cuối BẮT BUỘC ≤${wordMax} từ và gần ${wordGoal} từ.
+5. Ngôn ngữ: ${ngon_ngu || 'Tiếng Việt'}.
+
+--- BẢN DÀI CẦN RÚT ---
+${mergedForGate.slice(0, 120_000)}
+`;
+      const condensedRaw = await callActiveModel(condensePrompt, keysToUse, model);
+      let condensed = normalizeSceneTags((condensedRaw || '').normalize('NFC'));
+      if (!condensed.trim()) {
+        // Keep long version but flag — client will retry
+        condensed = mergedForGate;
+      } else {
+        const g2 = evaluateWordGate(condensed, wordGoal, minScenes);
+        // If still massively over, one more hard pass
+        if (g2.wordCount > wordMax) {
+          const hardPrompt = `${writeEngineRoleLine(genreLabel, 'editor')}
+LẦN 2 — RÚT GỌN CỨNG: bản còn ${g2.wordCount} từ. Viết lại TOÀN BỘ ≤${wordMax} từ (mục tiêu ${wordGoal}).
+Giữ ${minScenes}+ [CẢNH]. Chỉ trả kịch bản thuần.
+---
+${condensed.slice(0, 80_000)}`;
+          const hardRaw = await callActiveModel(hardPrompt, keysToUse, model);
+          const hardNorm = normalizeSceneTags((hardRaw || '').normalize('NFC'));
+          if (hardNorm.trim()) condensed = hardNorm;
+        }
+        mergedForGate = condensed;
+        normalized = condensed;
+        fullChapterReplace = true;
+        gate = evaluateWordGate(mergedForGate, wordGoal, minScenes);
+      }
+    }
+
     const narrativePsych = scoreNarrativePsychScript(mergedForGate);
   
     return NextResponse.json({
@@ -291,10 +353,14 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
       wordCount: gate.wordCount,
       sceneCount: gate.sceneCount,
       wordMin: gate.wordMin,
+      wordMax: gate.wordMax,
       wordGoal: gate.wordGoal,
       needsContinue: gate.needsContinue,
+      overSoftMax: gate.overSoftMax,
       wordsOk: gate.wordsOk,
       scenesOk: gate.scenesOk,
+      fullChapterReplace,
+      condensedFrom: condensedFrom || undefined,
       narrativePsych,
       humanJokeCount: countHumanJokeAsides(mergedForGate),
     });
@@ -332,8 +398,13 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   
     const modeSm = normalizeScriptMode(scriptMode);
     const minScenesRev = minScenesForScriptMode(modeSm);
-    const wordGoal = so_tu_chuong ? Number(so_tu_chuong) : DEFAULT_WORD_GOAL;
+    const wordGoalRevRaw = Number(so_tu_chuong);
+    const wordGoal =
+      Number.isFinite(wordGoalRevRaw) && wordGoalRevRaw > 0
+        ? Math.round(wordGoalRevRaw)
+        : DEFAULT_WORD_GOAL;
     const wordMin = Math.round(wordGoal * 0.92);
+    const wordMax = Math.round(wordGoal * 1.2);
     const dims = Array.isArray(review?.dimensions) ? review.dimensions : [];
     const dimNotes = dims
       .map((d: { dimension?: string; score?: number; comment?: string }) =>
@@ -393,7 +464,9 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
   ${noi_dung_kich_ban}
   
   NHIỆM VỤ:
-  1. ${isAudioRead
+  1. ${String(review?.summary || '').includes('WORD_GATE_CONDENSE')
+    ? `CỔNG TỪ RÚT GỌN BẮT BUỘC: viết lại TOÀN BỘ chương còn ≈${wordGoal} từ (sàn ${wordMin}, TRẦN CỨNG ≤${wordMax}). Giữ cốt + ≥${minScenesRev} [CẢNH]. CẮT mô tả thừa. KHÔNG thêm tình tiết. Độ dài cuối PHẢI ≤${wordMax}.`
+    : isAudioRead
     ? 'Giữ 100% tình tiết và tag cảnh; tối ưu nhịp đọc audio — cắt sáo, nghỉ thở rõ, NHƯNG giữ xen câu ngắn/vừa/dài để không thô đều như checklist.'
     : isRewrite
     ? isShortManhuaMode(modeSm)
@@ -404,7 +477,7 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
     : 'Giữ cấu trúc và tình tiết chính; trau chuốt câu chữ, nhịp thở, subtext, đối thoại đời; cắt sáo rỗng/văn AI/thô cứng (câu đều đều, tường thuật dàn, giải thích cảm xúc). Open loop cuối cảnh phải là hệ quả, không máy.'}
   2. Ngôn ngữ: ${ngon_ngu || 'Tiếng Việt'}.
   3. Giữ/khôi phục tag [CẢNH X: NỘI CẢNH/NGOẠI CẢNH. ĐỊA ĐIỂM - THỜI GIAN] — tối thiểu ${minScenesRev} cảnh.
-  4. Độ dài ~${wordGoal} từ (không dưới ${wordMin}) — đủ bằng xung đột/thoại/lựa chọn, không stack giác quan / nhồi tính từ.
+  4. Độ dài TOÀN BỘ chương theo Setup: mục tiêu ~${wordGoal} từ (sàn ${wordMin}, TRẦN CỨNG ≤${wordMax}) — không vượt trần.
   5. Chỉ trả về NỘI DUNG TRUYỆN thuần, không markdown giải thích.`;
   
     const aiResponse = await callActiveModel(prompt, keysToUse, model);
@@ -419,7 +492,11 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
       usedApiKey: getLastWorkingApiKey(),
       wordCount: gate.wordCount,
       sceneCount: gate.sceneCount,
+      wordMin: gate.wordMin,
+      wordMax: gate.wordMax,
+      wordGoal: gate.wordGoal,
       needsContinue: gate.needsContinue,
+      overSoftMax: gate.overSoftMax,
       wordsOk: gate.wordsOk,
       scenesOk: gate.scenesOk,
       narrativePsych,
@@ -596,9 +673,33 @@ Bản trước chưa đạt tối thiểu ${wordMin} từ và/hoặc chưa đủ
           motifs: Array.isArray(result.spent_entities_cap_nhat.motifs) ? result.spent_entities_cap_nhat.motifs.map(String) : [],
         }
       : undefined;
+
+    // LLM may return object/array for text fields — always coerce to string
+    // (client used to crash: lorebook_cap_nhat.trim is not a function)
+    const coerceText = (v: unknown): string => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      if (Array.isArray(v)) return v.map(coerceText).filter(Boolean).join('\n');
+      if (typeof v === 'object') {
+        const o = v as Record<string, unknown>;
+        for (const k of ['text', 'content', 'lorebook', 'value', 'body'] as const) {
+          if (typeof o[k] === 'string') return o[k] as string;
+        }
+        try {
+          return JSON.stringify(v, null, 2);
+        } catch {
+          return '';
+        }
+      }
+      return String(v);
+    };
   
     return NextResponse.json({
       ...result,
+      tom_tat_cuon_chieu: coerceText(result?.tom_tat_cuon_chieu),
+      tri_nho_ngan_han_moi: coerceText(result?.tri_nho_ngan_han_moi),
+      lorebook_cap_nhat: coerceText(result?.lorebook_cap_nhat),
       world_state_cap_nhat: world,
       spent_entities_cap_nhat: spent,
       usedApiKey: getLastWorkingApiKey(),

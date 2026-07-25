@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const result = processPaymentWebhook(body);
+    const result = await processPaymentWebhook(body);
     return NextResponse.json(result);
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {

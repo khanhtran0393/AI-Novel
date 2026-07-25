@@ -26,8 +26,42 @@ const initial: StreamUiState = {
 let state: StreamUiState = initial;
 const listeners = new Set<() => void>();
 
-function emit() {
-  for (const l of listeners) l();
+/** Coalesce rapid typewriter ticks — one React notify per animation frame max. */
+let emitRaf: number | null = null;
+let pendingEmit = false;
+
+function flushEmit() {
+  emitRaf = null;
+  if (!pendingEmit) return;
+  pendingEmit = false;
+  for (const l of listeners) {
+    try {
+      l();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function emit(force = false) {
+  if (force || typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+    pendingEmit = false;
+    if (emitRaf != null && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(emitRaf);
+      emitRaf = null;
+    }
+    for (const l of listeners) {
+      try {
+        l();
+      } catch {
+        /* ignore */
+      }
+    }
+    return;
+  }
+  pendingEmit = true;
+  if (emitRaf != null) return;
+  emitRaf = window.requestAnimationFrame(flushEmit);
 }
 
 export function getStreamUi(): StreamUiState {
@@ -46,7 +80,9 @@ export function setStreamUi(partial: Partial<StreamUiState>): void {
   });
   if (!changed) return;
   state = next;
-  emit();
+  // isStreaming on/off must paint immediately (disable buttons / word-gate chrome)
+  const forcePaint = Object.prototype.hasOwnProperty.call(partial, 'isStreaming');
+  emit(forcePaint);
 }
 
 export function resetStreamUi(): void {

@@ -1,83 +1,67 @@
 /**
- * Seller CLI: issue a HWID-bound Ed25519 Pro token.
+ * Seller CLI: issue a HWID-bound Pro token through the canonical license API.
+ * The API signs and persists the token to Supabase before returning it.
  *
  *   node scripts/issue-license.mjs --hwid abc12345 --expDays 365
  *   node scripts/issue-license.mjs --hwid abc12345 --expDays 36500
  */
-import crypto from 'crypto';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-
 function arg(name, fallback = '') {
   const index = process.argv.indexOf(`--${name}`);
   return index >= 0 ? process.argv[index + 1] || fallback : fallback;
 }
 
-function b64url(buffer) {
-  return buffer
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-}
-
-const localAppData =
-  process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-const defaultKey = path.join(localAppData, 'AI Novel Seller', 'entitlement-private.pem');
-const keyPath = path.resolve(
-  arg('private-key') || process.env.AINOVEL_ENTITLEMENT_PRIVATE_KEY_FILE || defaultKey,
-);
 const hwid = arg('hwid').trim().toLowerCase();
 const expDays = Math.max(1, Number(arg('expDays', '365')) || 365);
+const apiBase = (
+  arg('api') ||
+  process.env.AINOVEL_LICENSE_API_URL ||
+  'http://127.0.0.1:3000'
+).replace(/\/+$/, '');
+const adminKey = (
+  arg('admin-key') ||
+  process.env.AINOVEL_ENTITLEMENT_ADMIN_KEY ||
+  ''
+).trim();
 
 if (hwid.length < 8) {
   console.error('--hwid must contain at least 8 characters.');
   process.exit(1);
 }
-if (!fs.existsSync(keyPath)) {
-  console.error(`Private key not found: ${keyPath}`);
-  console.error('Run npm run commercial:secrets first.');
+if (!adminKey) {
+  console.error(
+    'Missing AINOVEL_ENTITLEMENT_ADMIN_KEY (or --admin-key). Token was not issued.',
+  );
   process.exit(1);
 }
 
-const privateKey = crypto.createPrivateKey(fs.readFileSync(keyPath, 'utf8'));
-if (privateKey.asymmetricKeyType !== 'ed25519') {
-  console.error('License private key must be Ed25519.');
+const response = await fetch(`${apiBase}/api/entitlement/issue`, {
+  method: 'POST',
+  headers: {
+    'content-type': 'application/json',
+    'x-ainovel-admin-key': adminKey,
+  },
+  body: JSON.stringify({
+    adminKey,
+    hwid,
+    expSeconds: Math.floor(expDays * 86400),
+  }),
+});
+const payload = await response.json().catch(() => ({}));
+if (!response.ok || payload?.ok !== true || !payload?.licenseId) {
+  console.error(
+    JSON.stringify(
+      {
+        ok: false,
+        status: response.status,
+        error:
+          payload?.error ||
+          payload?.message ||
+          'License API did not confirm Supabase ledger.',
+      },
+      null,
+      2,
+    ),
+  );
   process.exit(1);
 }
-const publicKey = crypto.createPublicKey(privateKey);
-const kid = crypto
-  .createHash('sha256')
-  .update(publicKey.export({ type: 'spki', format: 'der' }))
-  .digest('hex')
-  .slice(0, 16);
-const now = Math.floor(Date.now() / 1000);
-const payload = {
-  is_pro: true,
-  is_vip: false,
-  plan: 'pro',
-  exp: now + expDays * 86400,
-  iat: now,
-  ver: 2,
-  hwid,
-};
-const body = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
-const input = `AINOVEL2.${kid}.${body}`;
-const signature = b64url(crypto.sign(null, Buffer.from(input, 'utf8'), privateKey));
-const token = `${input}.${signature}`;
-
-console.log(
-  JSON.stringify(
-    {
-      ok: true,
-      kind: 'token',
-      plan: 'pro',
-      hwid,
-      expIso: new Date(payload.exp * 1000).toISOString(),
-      token,
-    },
-    null,
-    2,
-  ),
-);
+console.log(JSON.stringify(payload, null, 2));

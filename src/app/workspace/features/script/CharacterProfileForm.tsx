@@ -17,6 +17,31 @@ import { characterWardrobeImageKey } from '@/contracts';
 
 type CharacterProfileDraft = NhanVatProfile;
 
+/** Per-key image subscribe — avoids full generatedImages map re-renders. */
+function WardrobeStillLink({
+  imageKey,
+  onImageZoom,
+}: {
+  imageKey: string;
+  onImageZoom: (url: string) => void;
+}) {
+  const img = useNovelStore((s) => s.generatedImages?.[imageKey]);
+  if (!img) {
+    return (
+      <span className="text-[8px] text-zinc-600">Chưa có still</span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="text-[8px] font-bold uppercase text-sky-400 hover:text-sky-300 cursor-pointer"
+      onClick={() => onImageZoom(img)}
+    >
+      Xem ảnh
+    </button>
+  );
+}
+
 type CharacterProfileFormProps = {
   editingChar: string | null;
   profileDraft: CharacterProfileDraft;
@@ -65,13 +90,32 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
 
   const ttsPlatform = useNovelStore((s) => s.ttsConfig?.platform || '');
   const ttsLanguage = useNovelStore((s) => s.ttsConfig?.language || '');
-  const sheetImage = useNovelStore((s) =>
-    editingChar ? s.generatedImages?.[charImageKey(editingChar)] : undefined,
-  );
+  const sheetImage = useNovelStore((s) => {
+    if (!editingChar) return undefined;
+    const key = charImageKey(editingChar);
+    const fromMap = s.generatedImages?.[key];
+    if (fromMap && String(fromMap).trim()) return fromMap;
+    // Fallback face_ref (auto-saved on gen) → displayable serve URL
+    const face = s.nhan_vat_prompts?.[editingChar]?.face_ref;
+    if (!face || !String(face).trim()) return undefined;
+    const raw = String(face).trim().split('?')[0];
+    if (raw.startsWith('/api/serve-image')) return raw;
+    if (raw.includes('serve-image')) return raw;
+    const base = raw.replace(/\\/g, '/').split('/').pop() || '';
+    if (base && (/^char_sheet_/i.test(base) || /^chapter_/i.test(base))) {
+      return `/api/serve-image?file=${encodeURIComponent(base)}`;
+    }
+    if (/^[A-Za-z]:[\\/]/.test(raw) || raw.startsWith('/')) {
+      return `/api/serve-image?path=${encodeURIComponent(raw)}`;
+    }
+    return base
+      ? `/api/serve-image?file=${encodeURIComponent(base)}`
+      : undefined;
+  });
   const sheetProjectUrl = useNovelStore((s) =>
     editingChar ? s.projectUrls?.[charImageKey(editingChar)] : undefined,
   );
-  const generatedImages = useNovelStore((s) => s.generatedImages);
+  // CẤM full generatedImages — wardrobe thumbs subscribe per-key below
   const setCharacterVoice = useNovelStore((s) => s.setCharacterVoice);
   const [voiceListTick, setVoiceListTick] = useState(0);
   useEffect(() => {
@@ -216,6 +260,16 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                     />
                   </div>
                   <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Chiều cao</label>
+                    <input
+                      type="text"
+                      placeholder="168 cm"
+                      value={profileDraft.chieu_cao}
+                      onChange={(e) => patchDraft({ chieu_cao: e.target.value })}
+                      className="h-7 w-full rounded border border-zinc-800 bg-black/60 px-2 text-[11px] text-zinc-300 outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
                     <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Vai trò</label>
                     <input
                       type="text"
@@ -234,6 +288,32 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                     placeholder="Áo măng tô rách, kính bảo hộ..."
                     value={profileDraft.quan_ao}
                     onChange={(e) => patchDraft({ quan_ao: e.target.value })}
+                    className="h-7 w-full rounded border border-zinc-800 bg-black/60 px-2 text-[11px] text-zinc-300 outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                    Phụ kiện / công cụ gắn liền
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Orb, belt pack, tablet nứt, boots..."
+                    value={profileDraft.phu_kien}
+                    onChange={(e) => patchDraft({ phu_kien: e.target.value })}
+                    className="h-7 w-full rounded border border-zinc-800 bg-black/60 px-2 text-[11px] text-zinc-300 outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                    Bảng màu signature
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Lab White #F0F0F0; Tech Grey #2A2E33; Glow Cyan #CFFFFF"
+                    value={profileDraft.mau_sac}
+                    onChange={(e) => patchDraft({ mau_sac: e.target.value })}
                     className="h-7 w-full rounded border border-zinc-800 bg-black/60 px-2 text-[11px] text-zinc-300 outline-none focus:border-amber-500"
                   />
                 </div>
@@ -384,28 +464,13 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
                               >
                                 {generatingCharImage ? 'Đang gen…' : 'Gen ảnh wardrobe'}
                               </button>
-                              {(() => {
-                                const wKey =
+                              <WardrobeStillLink
+                                imageKey={
                                   w.image_key ||
-                                  characterWardrobeImageKey(editingChar, w.id);
-                                const img = generatedImages?.[wKey];
-                                if (!img) {
-                                  return (
-                                    <span className="text-[8px] text-zinc-600">
-                                      Chưa có still
-                                    </span>
-                                  );
+                                  characterWardrobeImageKey(editingChar, w.id)
                                 }
-                                return (
-                                  <button
-                                    type="button"
-                                    className="text-[8px] font-bold uppercase text-sky-400 hover:text-sky-300 cursor-pointer"
-                                    onClick={() => onImageZoom(img)}
-                                  >
-                                    Xem ảnh
-                                  </button>
-                                );
-                              })()}
+                                onImageZoom={onImageZoom}
+                              />
                             </div>
                           </div>
                         );

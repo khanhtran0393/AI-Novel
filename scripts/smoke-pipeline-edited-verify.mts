@@ -210,7 +210,7 @@ assert.ok(getChapterQuality(7)?.mediaReady);
 // Word band unify
 const band = wordBandFromSetupGoal(4250);
 assert.strictEqual(band.min, Math.round(4250 * 0.92));
-assert.strictEqual(band.max, Math.round(4250 * 1.25));
+assert.strictEqual(band.max, Math.round(4250 * 1.2));
 assert.ok(
   !q.findings.some((f) => f.code === 'rules_chapter_words'),
   'no dual rules word hard findings',

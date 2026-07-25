@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react';
+import { X, CheckCircle2, AlertTriangle, Info, XCircle, ChevronDown } from 'lucide-react';
 import {
   subscribeToasts,
   type AppToast,
@@ -36,14 +36,24 @@ const KIND_STYLES: Record<
 
 export default function ToastHost() {
   const [toasts, setToasts] = useState<AppToast[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     return subscribeToasts((t) => {
       setToasts((prev) => [...prev.slice(-7), t]);
+      // Auto-expand when detail is present (user asked: bấm xem nguyên nhân)
+      if (t.detail) {
+        setExpanded((prev) => ({ ...prev, [t.id]: true }));
+      }
       const ms = t.durationMs ?? 4500;
       if (ms > 0) {
         window.setTimeout(() => {
           setToasts((prev) => prev.filter((x) => x.id !== t.id));
+          setExpanded((prev) => {
+            const next = { ...prev };
+            delete next[t.id];
+            return next;
+          });
         }, ms);
       }
     });
@@ -52,9 +62,11 @@ export default function ToastHost() {
   if (!toasts.length) return null;
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[200] flex w-[min(360px,92vw)] flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-[200] flex w-[min(400px,92vw)] flex-col gap-2">
       {toasts.map((t) => {
         const st = KIND_STYLES[t.kind] || KIND_STYLES.info;
+        const hasDetail = Boolean(t.detail && t.detail.trim());
+        const isOpen = !!expanded[t.id];
         return (
           <div
             key={t.id}
@@ -62,18 +74,60 @@ export default function ToastHost() {
           >
             {st.icon}
             <div className="min-w-0 flex-1">
-              <div className={`text-[11px] font-bold uppercase tracking-wider ${st.title}`}>
-                {t.title}
-              </div>
-              {t.message ? (
-                <p className="mt-0.5 text-[11px] leading-snug text-zinc-300 whitespace-pre-wrap">
-                  {t.message}
-                </p>
+              <button
+                type="button"
+                className={`w-full text-left ${hasDetail ? 'cursor-pointer' : 'cursor-default'}`}
+                onClick={() => {
+                  if (!hasDetail) return;
+                  setExpanded((prev) => ({ ...prev, [t.id]: !prev[t.id] }));
+                }}
+                title={
+                  hasDetail
+                    ? isOpen
+                      ? 'Thu gọn nguyên nhân'
+                      : 'Bấm để xem nguyên nhân chi tiết'
+                    : undefined
+                }
+              >
+                <div
+                  className={`flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider ${st.title}`}
+                >
+                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                  {hasDetail ? (
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 shrink-0 opacity-80 transition-transform ${
+                        isOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  ) : null}
+                </div>
+                {t.message ? (
+                  <p className="mt-0.5 text-[11px] leading-snug text-zinc-300 whitespace-pre-wrap">
+                    {t.message}
+                  </p>
+                ) : null}
+                {hasDetail && !isOpen ? (
+                  <p className="mt-1 text-[10px] text-zinc-500 underline-offset-2 hover:underline">
+                    Bấm để xem nguyên nhân…
+                  </p>
+                ) : null}
+              </button>
+              {hasDetail && isOpen ? (
+                <pre className="mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-zinc-800/80 bg-black/40 px-2 py-1.5 text-[10px] leading-relaxed text-zinc-200 whitespace-pre-wrap font-sans">
+                  {t.detail}
+                </pre>
               ) : null}
             </div>
             <button
               type="button"
-              onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+              onClick={() => {
+                setToasts((prev) => prev.filter((x) => x.id !== t.id));
+                setExpanded((prev) => {
+                  const next = { ...prev };
+                  delete next[t.id];
+                  return next;
+                });
+              }}
               className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-white cursor-pointer"
               title="Đóng"
             >

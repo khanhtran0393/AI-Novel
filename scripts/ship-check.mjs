@@ -51,6 +51,7 @@ const required = [
   'electron/credentialVault.js',
   'electron/securityPolicy.js',
   'electron/updater.js',
+  'electron/xinchaoRuntimeHost.cjs',
   'resources/license/public-keys',
   'resources/commercial/public.env',
   'resources/commercial/PACKAGING_STANDARD.json',
@@ -61,6 +62,17 @@ const required = [
   'scripts/publish-github-release.mjs',
   'extensions/ainovel-flow',
   'vendor/FableCut',
+  'tools/xinchao-cut/LICENSE',
+  'tools/xinchao-cut/package.json',
+  'tools/xinchao-cut/src/app/App.tsx',
+  'tools/xinchao-cut/src-tauri/src/lib.rs',
+  'tools/xinchao-cut/backend/app/main.py',
+  'scripts/verify-xinchao-vendor.mjs',
+  'scripts/build-xinchao-runtime.mjs',
+  'scripts/build-xinchao-native.cjs',
+  'scripts/smoke-xinchao-runtime.mjs',
+  'scripts/smoke-xinchao-native.ps1',
+  'scripts/test-xinchao-backend.ps1',
   'docs/LEGAL_TOS.md',
   'docs/LEGAL_PRIVACY.md',
   'docs/LEGAL_THIRD_PARTY.md',
@@ -234,6 +246,26 @@ for (const runtimePublicPath of [
 }
 check(resources.includes('extensions/ainovel-flow'), 'Flow extension packaged');
 check(resources.includes('vendor/FableCut'), 'FableCut packaged');
+check(resources.includes('tools/xinchao-cut'), 'XinChao-Cut source/runtime packaged');
+check(resources.includes('!node_modules/**'), 'XinChao-Cut node_modules excluded');
+check(resources.includes('!**/.pytest_cache/**'), 'XinChao-Cut pytest cache excluded');
+check(resources.includes('!src-tauri/target/**'), 'XinChao-Cut Rust target excluded');
+check(
+  resources.includes('!src-tauri/backend-bundle/**'),
+  'XinChao-Cut duplicate backend staging excluded',
+);
+check(resources.includes('!src-tauri/gen/**'), 'XinChao-Cut generated schemas excluded');
+for (const scriptName of [
+  'build:desktop',
+  'pack:commercial',
+  'pack:unsigned:portable',
+  'pack:unsigned:qa',
+]) {
+  check(
+    String(pkg.scripts?.[scriptName] || '').includes('xinchao:build:verified'),
+    `${scriptName} verifies and builds XinChao-Cut native runtime`,
+  );
+}
 check(resources.includes('resources/license'), 'license public keys packaged');
 check(resources.includes('resources/commercial'), 'public commercial defaults packaged');
 check(resources.includes('LEGAL_*.md'), 'legal notices packaged');

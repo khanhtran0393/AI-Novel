@@ -50,7 +50,8 @@ export async function generateWithFlow(
         accountId: snap.activeAccountId || undefined,
         engine: 'auto',
         waitExtensionMs: 40000,
-        waitLoginMs: 25000,
+        // OAuth needs minutes; 25s was failing with "Extension connected, login required"
+        waitLoginMs: 120000,
       });
       snap = await getBridgeSnapshotAsync();
       const activeAfterBootstrap = snap.accounts?.find(
@@ -166,9 +167,20 @@ export async function generateWithFlow(
     });
 
     if (!result.ok || !result.resultPaths?.length) {
+      let err =
+        result.error ||
+        'Sinh ảnh thất bại. Kiểm tra extension + đăng nhập Flow.';
+      // GEM_PIX_2 sometimes 400 INVALID_ARGUMENT on Labs — guide model switch (B10: no silent swap)
+      if (
+        /invalid.?argument|INVALID_ARGUMENT|imageModelName/i.test(err) &&
+        /GEM_PIX|NANO_BANANA_PRO/i.test(explicitFlowModel)
+      ) {
+        err +=
+          '\n→ Thử model ảnh NARWHAL (Nano Banana 2) trong Cấu hình đầu ra — không tự đổi model.';
+      }
       return NextResponse.json(
         {
-          error: `[Google Flow] ${result.error || 'Sinh ảnh thất bại. Kiểm tra extension + đăng nhập Flow.'}`,
+          error: `[Google Flow] ${err}`,
         },
         { status: 500 },
       );

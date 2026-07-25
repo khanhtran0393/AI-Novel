@@ -772,14 +772,14 @@ export async function resolveRequestAccessAsync(
             return { tier, claims: c, authority: 'supabase' };
           }
         }
-        // Explicit revoke / deleted / none on token path → Free
-        if (
-          cloud.cloud?.revoked ||
+        // Hard ledger denials only — never Free solely because local ticket hash drifts.
+        // token_mismatch / claims_mismatch → fall through to HWID ledger (sole truth).
+        const hardDeny =
+          cloud.cloud?.revoked === true ||
           cloud.cloud?.status === 'none' ||
           cloud.cloud?.status === 'expired' ||
-          cloud.cloud?.status === 'revoked' ||
-          cloud.valid === false
-        ) {
+          cloud.cloud?.status === 'revoked';
+        if (hardDeny) {
           return { tier: 'free', claims: freeClaims(), authority: 'supabase' };
         }
       }

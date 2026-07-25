@@ -159,6 +159,36 @@ export function getTrialStatus(hwid?: string): {
   };
 }
 
+/**
+ * Close an active local Trial after Paid Pro is confirmed.
+ *
+ * The record and registry stamp are preserved so the machine cannot receive a
+ * second Trial. Only the active window is ended.
+ */
+export function retireLocalTrialAfterPaidPro(hwid?: string): {
+  changed: boolean;
+  status: ReturnType<typeof getTrialStatus>;
+} {
+  const id = (hwid || getHwid()).toLowerCase();
+  const vault = loadVault();
+  const existing = resolveRecord(id, vault);
+  if (!existing) {
+    return { changed: false, status: getTrialStatus(id) };
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (existing.endsAt <= now) {
+    return { changed: false, status: getTrialStatus(id) };
+  }
+  const retired: TrialRecord = {
+    ...existing,
+    endsAt: Math.max(existing.startedAt, now - 1),
+  };
+  vault.trials[id] = retired;
+  saveVault(vault);
+  writeTrialRegStamp(id, retired.startedAt, retired.endsAt);
+  return { changed: true, status: getTrialStatus(id) };
+}
+
 /** Issue Ed25519 trial ticket when seller/dev signer is available (gates + UI). */
 export function mintTrialTokenIfPossible(
   hwid: string,

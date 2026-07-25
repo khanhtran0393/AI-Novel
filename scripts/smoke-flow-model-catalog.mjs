@@ -90,6 +90,8 @@ assert(
   i2vReq.videoModelKey === 'veo_3_1_i2v_s_fast_portrait',
   'portrait resolve ' + i2vReq.videoModelKey,
 );
+assert(i2vReq.startImage?.mediaId === 'm1', 'I2V startImage.mediaId');
+assert(i2vReq.startImage?.name == null, 'I2V must not send startImage.name');
 
 const i2vFl = buildVideoI2VBody({
   projectId: 'p',
@@ -102,6 +104,8 @@ const i2vFl = buildVideoI2VBody({
 const flReq = i2vFl.body.requests[0];
 assert(flReq.videoModelKey === 'veo_3_1_i2v_s_fast_fl', 'firstLast ' + flReq.videoModelKey);
 assert(i2vFl.url.includes('StartAndEndImage'), 'endpoint fl');
+assert(flReq.endImage?.mediaId === 'm2', 'I2V endImage.mediaId');
+assert(flReq.endImage?.name == null, 'I2V must not send endImage.name');
 
 const i2vFlP = buildVideoI2VBody({
   projectId: 'p',
@@ -125,6 +129,13 @@ const ing = buildVideoIngredientsBody({
 });
 const ingReq = ing.body.requests[0];
 assert(ingReq.videoModelKey === 'veo_3_1_r2v_fast', 'default r2v ' + ingReq.videoModelKey);
+assert(
+  Array.isArray(ingReq.referenceImages) &&
+    ingReq.referenceImages[0]?.mediaId === 'a' &&
+    ingReq.referenceImages[0]?.imageUsageType === 'IMAGE_USAGE_TYPE_ASSET',
+  'R2V uses referenceImages.mediaId not imageInputs.name',
+);
+assert(ingReq.imageInputs == null, 'R2V must not send imageInputs (T2I schema)');
 
 let threw = false;
 try {

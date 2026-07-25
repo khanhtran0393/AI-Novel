@@ -85,6 +85,9 @@ def _classify_error(exc: BaseException) -> tuple[str, str]:
         return "TRANSCRIPTS_DISABLED", msg
     if "ipblocked" in low or "requestblocked" in low or ("blocked" in low and "ip" in low):
         return "IP_BLOCKED", msg
+    if "potokenrequired" in low or "po token" in low or "proof of origin" in low:
+        # Treat as rate/IP class for UI — same recovery path (wait / other net / manual plot)
+        return "RATE_LIMITED", msg
     if "toomanyrequests" in low or "429" in low or "too many requests" in low:
         return "RATE_LIMITED", msg
     if "notranscriptfound" in low or "could not retrieve a transcript" in low:

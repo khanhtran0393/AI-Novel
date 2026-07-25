@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn, execSync, type ChildProcess } from 'child_process';
+import { resolveAccountProxyServer } from './resolveAccountProxy';
 
 export type ChromeLaunchMode = 'login' | 'background';
 
@@ -386,6 +387,149 @@ export function getSession(accountId: string): ProfileSession | null {
   return root().byAccount[accountId] || null;
 }
 
+/**
+ * Hard purge one profile: kill its browser, remove accounts_data + legacy dirs,
+ * drop in-memory session. Does NOT touch accounts.json (caller owns that).
+ * Safe for user "xóa profile" — no orphan cookies/tokens on disk.
+ */
+export function purgeAccountProfile(accountId: string): {
+  accountId: string;
+  killed: number;
+  removed: string[];
+  errors: string[];
+} {
+  const id = String(accountId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const removed: string[] = [];
+  const errors: string[] = [];
+  let killed = 0;
+
+  if (!id || id === 'default' && !String(accountId || '').trim()) {
+    return { accountId: id || '', killed: 0, removed, errors: ['empty accountId'] };
+  }
+
+  const cwd = process.env.AI_NOVEL_ROOT || process.cwd();
+  const candidates = [
+    path.resolve(cwd, 'accounts_data', id),
+    path.resolve(cwd, 'scratch', 'flow-profiles', id),
+  ];
+
+  // Prefer known session profileDir if tracked
+  const sess = root().byAccount[id];
+  if (sess?.profileDir) {
+    candidates.unshift(path.resolve(sess.profileDir));
+    try {
+      const parent = path.dirname(sess.profileDir);
+      if (/accounts_data|flow-profiles/i.test(parent)) {
+        candidates.unshift(path.resolve(parent, id));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const uniqueDirs = [...new Set(candidates.map((c) => path.resolve(c)))];
+
+  for (const dir of uniqueDirs) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      killed += killChromeForProfile(dir);
+    } catch (e) {
+      errors.push(
+        `kill ${dir}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  // Brief settle so Windows releases file locks
+  try {
+    execSync('ping -n 2 127.0.0.1 >nul', { windowsHide: true });
+  } catch {
+    /* ignore */
+  }
+
+  for (const dir of uniqueDirs) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      // Retry wipe once if partial lock
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (!fs.existsSync(dir)) {
+        removed.push(dir);
+      } else {
+        // Second pass: wipe children then root
+        for (const name of fs.readdirSync(dir)) {
+          try {
+            fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+          } catch (e) {
+            errors.push(
+              `wipe ${name}: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        }
+        try {
+          fs.rmSync(dir, { recursive: true, force: true });
+        } catch {
+          /* ignore */
+        }
+        if (!fs.existsSync(dir)) removed.push(dir);
+        else errors.push(`still exists after wipe: ${dir}`);
+      }
+    } catch (e) {
+      errors.push(
+        `rm ${dir}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  delete root().byAccount[id];
+  if (root().lastActiveAccountId === id) {
+    root().lastActiveAccountId = undefined;
+  }
+
+  console.log(
+    `[FlowChrome] purgeAccountProfile account=${id} killed=${killed} removed=${removed.length} errors=${errors.length}`,
+  );
+  return { accountId: id, killed, removed, errors };
+}
+
+/**
+ * List profile folders on disk that are NOT in the given account id set (orphans).
+ */
+export function listOrphanProfileDirs(knownIds: string[]): string[] {
+  const known = new Set(
+    (knownIds || []).map((x) =>
+      String(x || '').replace(/[^a-zA-Z0-9_-]/g, '_'),
+    ),
+  );
+  const cwd = process.env.AI_NOVEL_ROOT || process.cwd();
+  const roots = [
+    path.resolve(cwd, 'accounts_data'),
+    path.resolve(cwd, 'scratch', 'flow-profiles'),
+  ];
+  const orphans: string[] = [];
+  for (const rootDir of roots) {
+    if (!fs.existsSync(rootDir)) continue;
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(rootDir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (name === 'README.md' || name.startsWith('.')) continue;
+      const full = path.join(rootDir, name);
+      try {
+        if (!fs.statSync(full).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      // Only treat acc_* folders as profile dirs
+      if (!/^acc_[a-z0-9_]+$/i.test(name) && name !== 'default') continue;
+      if (!known.has(name)) orphans.push(full);
+    }
+  }
+  return orphans;
+}
+
 export function listSessions(): ProfileSession[] {
   return Object.values(root().byAccount);
 }
@@ -491,14 +635,31 @@ export function registerSessionMeta(meta: {
   gstate.lastActiveAccountId = id;
 }
 
-/** Kill Chrome processes for ONE profile dir only (never other accounts). */
-export function killChromeForProfile(profileDir: string): number {
-  if (!profileDir) return 0;
+/**
+ * Kill chrome/msedge/chromium whose CommandLine contains any of the given path needles.
+ * Used for per-profile cleanup and full app-quit (detached browsers otherwise survive).
+ */
+export function killChromeByPathNeedles(needles: string[]): number {
+  const clean = [
+    ...new Set(
+      (needles || [])
+        .map((n) => String(n || '').trim())
+        .filter(Boolean)
+        .map((n) => path.resolve(n)),
+    ),
+  ];
+  if (clean.length === 0) return 0;
+
   if (process.platform !== 'win32') {
-    const abs = path.resolve(profileDir);
     let n = 0;
     for (const s of listSessions()) {
-      if (s.profileDir !== abs) continue;
+      const hit = clean.some(
+        (needle) =>
+          s.profileDir === needle ||
+          s.profileDir.startsWith(needle + path.sep) ||
+          needle.startsWith(s.profileDir + path.sep),
+      );
+      if (!hit) continue;
       for (const pid of [s.loginPid, s.bgPid]) {
         if (pid && isAlive(pid)) {
           try {
@@ -513,11 +674,14 @@ export function killChromeForProfile(profileDir: string): number {
     return n;
   }
 
-  const needle = path.resolve(profileDir).replace(/'/g, "''");
+  const likeParts = clean
+    .map((n) => n.replace(/'/g, "''"))
+    .map((n) => `($_.CommandLine -like '*${n}*')`)
+    .join(' -or ');
   const ps = [
     `$n=0;`,
     `Get-CimInstance Win32_Process -EA SilentlyContinue |`,
-    `Where-Object { ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe' -or $_.Name -eq 'chromium.exe') -and $_.CommandLine -and ($_.CommandLine -like '*${needle}*') } |`,
+    `Where-Object { ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe' -or $_.Name -eq 'chromium.exe') -and $_.CommandLine -and (${likeParts}) } |`,
     `ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -EA Stop; $n++ } catch {} };`,
     `Write-Output $n`,
   ].join(' ');
@@ -527,7 +691,7 @@ export function killChromeForProfile(profileDir: string): number {
       `powershell -NoProfile -NonInteractive -Command "${ps}"`,
       {
         encoding: 'utf8',
-        timeout: 20_000,
+        timeout: 25_000,
         windowsHide: true,
       },
     );
@@ -536,6 +700,85 @@ export function killChromeForProfile(profileDir: string): number {
   } catch {
     return 0;
   }
+}
+
+/** Kill Chrome processes for ONE profile dir only (never other accounts). */
+export function killChromeForProfile(profileDir: string): number {
+  if (!profileDir) return 0;
+  return killChromeByPathNeedles([profileDir]);
+}
+
+/**
+ * Kill EVERY Flow/TikTok app browser under this install root.
+ * Chrome is spawned detached+unref so it survives Electron exit unless we kill it here.
+ */
+export function killAllFlowBrowsers(opts?: {
+  reason?: string;
+  roots?: string[];
+}): { killed: number; needles: string[] } {
+  const cwd = process.env.AI_NOVEL_ROOT || process.cwd();
+  const extra = (opts?.roots || []).filter(Boolean);
+  const baseRoots = [...new Set([cwd, ...extra].map((r) => path.resolve(r)))];
+
+  const needles: string[] = [];
+  for (const r of baseRoots) {
+    needles.push(path.join(r, 'accounts_data'));
+    needles.push(path.join(r, 'scratch', 'flow-profiles'));
+    needles.push(path.join(r, 'browser-profiles'));
+  }
+
+  // Tracked sessions (may sit outside default roots)
+  for (const s of listSessions()) {
+    if (s.profileDir) needles.push(s.profileDir);
+    try {
+      needles.push(accountRootDir(s.accountId));
+      needles.push(profileDirForAccount(s.accountId));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const killed = killChromeByPathNeedles(needles);
+
+  // Clear in-memory session flags so next boot is clean
+  const gstate = root();
+  for (const s of Object.values(gstate.byAccount)) {
+    s.loginOpen = false;
+    s.closing = false;
+    s.loginPid = undefined;
+    s.bgPid = undefined;
+  }
+  gstate.byAccount = {};
+  gstate.lastActiveAccountId = undefined;
+
+  console.log(
+    `[FlowChrome] killAllFlowBrowsers reason=${opts?.reason || '?'} killed=${killed} needles=${needles.length}`,
+  );
+  return { killed, needles: [...new Set(needles.map((n) => path.resolve(n)))] };
+}
+
+let shutdownHooksRegistered = false;
+
+/** Idempotent: register process exit hooks so Node/Next quit also kills browsers. */
+export function registerFlowBrowserShutdownHooks(): void {
+  if (shutdownHooksRegistered) return;
+  shutdownHooksRegistered = true;
+  const run = (sig: string) => {
+    try {
+      killAllFlowBrowsers({ reason: `process:${sig}` });
+    } catch (e) {
+      console.warn(
+        '[FlowChrome] shutdown kill failed',
+        e instanceof Error ? e.message : e,
+      );
+    }
+  };
+  process.once('exit', () => run('exit'));
+  process.once('SIGTERM', () => run('SIGTERM'));
+  process.once('SIGINT', () => run('SIGINT'));
+  // Windows console close / Electron killing Next child
+  process.once('SIGHUP' as NodeJS.Signals, () => run('SIGHUP'));
+  console.log('[FlowChrome] shutdown hooks registered (kill browsers on process exit)');
 }
 
 /**
@@ -747,8 +990,13 @@ export function launchChrome(opts: {
     '--enable-extensions',
   ];
 
-  if (opts.proxy) {
-    baseArgs.push(`--proxy-server=${opts.proxy}`);
+  // Per-profile proxy (UI) → ops.globalProxy fallback. No free-VPN auto.
+  const proxyServer = resolveAccountProxyServer(accountId, opts.proxy);
+  if (proxyServer) {
+    baseArgs.push(`--proxy-server=${proxyServer}`);
+    console.log(
+      `[FlowChrome] proxy for account=${accountId}: ${proxyServer.replace(/:[^:@/]+@/, ':***@')}`,
+    );
   }
 
   if (opts.isStockChrome) {
@@ -760,9 +1008,11 @@ export function launchChrome(opts: {
 
   const flowUrl = `https://labs.google/fx/tools/flow?ainovel_account=${encodeURIComponent(accountId)}`;
 
+  // Login: single maximized window + Flow URL.
+  // CẤM --new-window on cold start — with residual session restore it can open a 2nd blank window.
   const args =
     opts.mode === 'login'
-      ? [...baseArgs, '--new-window', '--start-maximized', flowUrl]
+      ? [...baseArgs, '--start-maximized', flowUrl]
       : [
           ...baseArgs,
           '--window-position=-32000,-32000',
@@ -894,17 +1144,27 @@ export function launchFirefoxFamily(opts: {
 }
 
 /**
- * After token capture, retain the same authenticated Chrome process whenever
- * background operation is requested. The extension minimizes the window; this
- * function only changes its tracked role from login to background. Killing and
- * relaunching the same profile here dropped the live socket and restored extra
- * Flow tabs on some Chromium builds.
+ * After verified email+token capture (docs/flow-bridge.md):
+ *   1) extension close_login_session (minimize / off-screen)
+ *   2) kill login Chrome for this profile only
+ *   3) relaunch Chrome background (off-screen) when keepBackground
+ *
+ * Do NOT only flip loginOpen while leaving a visible login window —
+ * that left "LOGIN OFF" + browser still on screen after capture.
  */
 export async function closeLoginSessionAfterCapture(opts?: {
   delayMs?: number;
   keepBackground?: boolean;
   accountId?: string;
-}): Promise<{ closed: boolean; relaunched: boolean; message: string }> {
+  /** Force kill even if already marked closed (stuck visible window) */
+  force?: boolean;
+}): Promise<{
+  closed: boolean;
+  relaunched: boolean;
+  message: string;
+  minimized?: boolean;
+  killed?: number;
+}> {
   const gstate = root();
   const accountId =
     opts?.accountId || gstate.lastActiveAccountId || Object.keys(gstate.byAccount)[0];
@@ -926,23 +1186,53 @@ export async function closeLoginSessionAfterCapture(opts?: {
   if (s.closing) {
     return { closed: false, relaunched: false, message: 'Close already in progress' };
   }
-  // Debounce dài — chặn vòng logout/login khi token/session_poll spam
-  if (s.lastTokenCloseAt && Date.now() - s.lastTokenCloseAt < 60_000) {
-    return { closed: false, relaunched: false, message: 'Recently closed (debounce 60s)' };
-  }
-  // Đã ở background, không còn login window → bỏ qua (không kill-relaunch)
-  if (!s.loginOpen && !opts?.keepBackground) {
-    return { closed: false, relaunched: false, message: 'Login already closed' };
-  }
-  if (!s.loginOpen && s.bgPid) {
+
+  const profileDir = s.profileDir;
+  const browserAlive = Boolean(
+    profileDir && isProfileBrowserAlive(profileDir),
+  );
+  const force = Boolean(opts?.force);
+  // Already in true background (no login window, bgPid, browser may be off-screen)
+  // and not forced → skip. If browser still alive after "closed" with loginPid
+  // only (stuck visible), still close.
+  if (
+    !force &&
+    !s.loginOpen &&
+    s.bgPid &&
+    isAlive(s.bgPid) &&
+    !s.loginPid &&
+    s.lastTokenCloseAt &&
+    Date.now() - s.lastTokenCloseAt < 60_000
+  ) {
     return {
       closed: false,
       relaunched: false,
       message: 'Already in background — skip kill/relaunch',
     };
   }
+  // Debounce only when we already killed recently AND browser is gone
+  if (
+    !force &&
+    s.lastTokenCloseAt &&
+    Date.now() - s.lastTokenCloseAt < 45_000 &&
+    !s.loginOpen &&
+    !browserAlive
+  ) {
+    return {
+      closed: false,
+      relaunched: false,
+      message: 'Recently closed (debounce)',
+    };
+  }
+  // Nothing to close
+  if (!force && !s.loginOpen && !browserAlive && !s.loginPid) {
+    return {
+      closed: false,
+      relaunched: false,
+      message: 'Login already closed',
+    };
+  }
 
-  const profileDir = s.profileDir;
   const chromePath = s.chromePath;
   const extDir = s.extDir;
 
@@ -963,33 +1253,39 @@ export async function closeLoginSessionAfterCapture(opts?: {
   }
 
   s.closing = true;
-  const delayMs = opts?.delayMs ?? 1500;
+  const delayMs = opts?.delayMs ?? 800;
   const keepBg = opts?.keepBackground !== false;
+  let minimized = false;
+
+  // 1) Ask extension to minimize / hide windows (best-effort before kill)
+  try {
+    const bridge = await import('./bridgeServer');
+    const r = await bridge.commandExtension(
+      'close_login_session',
+      {},
+      4_000,
+      accountId,
+    );
+    minimized = Boolean(
+      r &&
+        typeof r === 'object' &&
+        (r as { result?: { ok?: boolean; minimized?: number } }).result?.ok !==
+          false,
+    );
+    console.log(
+      `[FlowChrome] close_login_session minimize account=${accountId} ok=${minimized}`,
+    );
+  } catch (e) {
+    console.warn(
+      `[FlowChrome] close_login_session (minimize) failed account=${accountId}`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 
   await new Promise((r) => setTimeout(r, delayMs));
 
   try {
-    if (keepBg && isProfileBrowserAlive(profileDir)) {
-      s.bgPid = s.loginPid || s.bgPid;
-      s.loginPid = undefined;
-      s.loginOpen = false;
-      s.lastTokenCloseAt = Date.now();
-      try {
-        const { setLoginSessionOpen } = await import('./bridgeServer');
-        setLoginSessionOpen(false);
-      } catch {
-        /* ignore */
-      }
-      console.log(
-        `[FlowChrome] Login window retained as background account=${accountId} dir=${profileDir}`,
-      );
-      return {
-        closed: true,
-        relaunched: false,
-        message: `Đã hạ cửa sổ đăng nhập xuống nền; giữ nguyên phiên ${accountId}.`,
-      };
-    }
-
+    // 2) Kill login/visible browser for this profile only (docs: auto-close)
     let killed = killChromeForProfile(profileDir);
     if (killed === 0) {
       for (const pid of [s.loginPid, s.bgPid]) {
@@ -1003,6 +1299,12 @@ export async function closeLoginSessionAfterCapture(opts?: {
         }
       }
     }
+    // Retry once if Windows process still holds the profile
+    if (isProfileBrowserAlive(profileDir)) {
+      await new Promise((r) => setTimeout(r, 600));
+      killed += killChromeForProfile(profileDir);
+    }
+
     s.loginOpen = false;
     s.loginPid = undefined;
     s.bgPid = undefined;
@@ -1014,12 +1316,12 @@ export async function closeLoginSessionAfterCapture(opts?: {
       /* ignore */
     }
     console.log(
-      `[FlowChrome] Login closed account=${accountId} killed=${killed} dir=${profileDir}`,
+      `[FlowChrome] Login closed account=${accountId} killed=${killed} minimized=${minimized} dir=${profileDir}`,
     );
 
     let relaunched = false;
     let reconnected = false;
-    // Chỉ relaunch nền 1 lần sau khi vừa đóng login — nếu browser còn sống thì thôi
+    // 3) Relaunch background (off-screen) so gen/captcha keep working
     const stillAlive = isProfileBrowserAlive(profileDir);
     if (
       keepBg &&
@@ -1027,7 +1329,7 @@ export async function closeLoginSessionAfterCapture(opts?: {
       fs.existsSync(chromePath) &&
       fs.existsSync(extDir)
     ) {
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 1200));
       const isStock =
         /google[\\/]chrome/i.test(chromePath) ||
         /\\chrome\\application\\chrome\.exe$/i.test(chromePath);
@@ -1041,9 +1343,7 @@ export async function closeLoginSessionAfterCapture(opts?: {
         isStockChrome: isStock,
       });
       relaunched = true;
-      console.log(
-        `[FlowChrome] Background once for account=${accountId}`,
-      );
+      console.log(`[FlowChrome] Background once for account=${accountId}`);
 
       try {
         const bridge = await import('./bridgeServer');
@@ -1060,19 +1360,23 @@ export async function closeLoginSessionAfterCapture(opts?: {
         /* ignore */
       }
     } else if (stillAlive) {
-      console.log(
-        `[FlowChrome] Skip relaunch — browser still alive account=${accountId}`,
+      console.warn(
+        `[FlowChrome] Browser still alive after kill account=${accountId} — user may need to close manually`,
       );
     }
 
     return {
       closed: true,
       relaunched,
+      minimized,
+      killed,
       message: relaunched
         ? reconnected
-          ? `Đã đóng login profile ${accountId}; Chrome nền sẵn sàng.`
-          : `Đã đóng login profile ${accountId}; Chrome nền đang nối…`
-        : `Đã đóng cửa sổ đăng nhập (${accountId}).`,
+          ? `Đã đóng login + Chrome nền sẵn sàng (${accountId}).`
+          : `Đã đóng login; Chrome nền đang nối (${accountId})…`
+        : killed > 0
+          ? `Đã đóng cửa sổ đăng nhập (${accountId}).`
+          : `Đã đánh dấu đóng login (${accountId}).`,
     };
   } finally {
     s.closing = false;

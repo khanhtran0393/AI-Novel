@@ -35,7 +35,7 @@ type StoryActions = Pick<
   | 'setSceneLocationAssets' | 'upsertSceneLocationAsset' | 'removeSceneLocationAsset'
   | 'updateYoutubeSafe' | 'setHumanEditFlag' | 'setChapterHook'
   | 'setSetupKind' | 'setYoutubeRewrite' | 'setScriptMode'
-  | 'updateUserRules' | 'updateEditorReview' | 'setCungHienTai' | 'addChuongMoi'
+  | 'updateUserRules' | 'updateEditorReview' | 'dismissEditorReview' | 'clearEditorReview' | 'setCungHienTai' | 'addChuongMoi'
   | 'updateWorldState' | 'updateSpentEntities' | 'setNextBeatType' | 'setMemoryPipelineStatus'
 >;
 
@@ -225,6 +225,10 @@ export function createStoryActions(
             ...(oldVal.expression_prompts || {}),
             ...(data.expression_prompts || {}),
           },
+          pose_prompts: {
+            ...(oldVal.pose_prompts || {}),
+            ...(data.pose_prompts || {}),
+          },
           wardrobe_variants:
             data.wardrobe_variants !== undefined
               ? data.wardrobe_variants
@@ -353,6 +357,37 @@ export function createStoryActions(
       updateEditorReview: (chapterIndex, review) => set((state) => ({
         editorReviews: { ...state.editorReviews, [chapterIndex]: review }
       })),
+
+      dismissEditorReview: (chapterIndex) =>
+        set((state) => {
+          const prev = state.editorReviews[chapterIndex];
+          if (!prev) return state;
+          if (prev.verdict === 'accept') return state;
+          const note = 'User bỏ qua yêu cầu sửa / giữ bản hiện tại.';
+          const summary = (prev.summary || '').trim();
+          return {
+            editorReviews: {
+              ...state.editorReviews,
+              [chapterIndex]: {
+                ...prev,
+                verdict: 'accept' as const,
+                summary: summary
+                  ? summary.includes(note)
+                    ? summary
+                    : `${summary} · ${note}`
+                  : note,
+              },
+            },
+          };
+        }),
+
+      clearEditorReview: (chapterIndex) =>
+        set((state) => {
+          if (!(chapterIndex in state.editorReviews)) return state;
+          const next = { ...state.editorReviews };
+          delete next[chapterIndex];
+          return { editorReviews: next };
+        }),
 
       setCungHienTai: (arc) => set({ cung_hien_tai: arc }),
 

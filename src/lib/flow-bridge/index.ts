@@ -1,3 +1,4 @@
+/** Flow-bridge public barrel — each symbol re-exported exactly once. */
 export {
   ensureBridgeStarted,
   getBridgeSnapshot,
@@ -5,6 +6,9 @@ export {
   isBridgeRunning,
   isAdoptedExternalBridge,
   runGenerateOne,
+  enqueueGenerateOne,
+  getQueueTask,
+  findQueueTaskByCoords,
   requestViaExtension,
   commandExtension,
   getProjectId,
@@ -20,6 +24,8 @@ export {
   applyAccountIdentity,
   getQueue,
   getLiveAccounts,
+  purgeDeletedAccountRuntime,
+  beginFreshProfileLogin,
 } from './bridgeServer';
 export {
   writeSessionBundle,
@@ -42,6 +48,24 @@ export {
 export type { FlowProject } from './projectStore';
 export { FLOW_WS_PORT, FLOW_HTTP_PORT, FLOW_DEFAULTS } from './config';
 export {
+  normalizeProxyServer,
+  resolveAccountProxyServer,
+} from './resolveAccountProxy';
+export {
+  classifyFlowError,
+  describeFlowError,
+  formatFlowTaskError,
+  isPermanentFlowFailure,
+} from './flowRuntimeErrors';
+export type { FlowErrorDetail } from './flowRuntimeErrors';
+export {
+  markAccountBusy,
+  markAccountFree,
+  isAccountBusy,
+  scheduleFlowRuntimeRecycle,
+} from './flowRuntimeRecycle';
+export { applyFlowTaskStep, flowStepLabel } from './flowRuntimeSteps';
+export {
   FLOW_IMAGE_MODELS,
   FLOW_VIDEO_MODELS,
   FLOW_QUALITY_PRESETS,
@@ -58,7 +82,27 @@ export {
   resolveFirstLastModel,
   listFlowVideoModelsForUi,
   listFlowImageModelsForUi,
+  flowModelUserHint,
+  flowVideoFamilyBadge,
+  flowVideoFamilyBadgeVi,
+  flowModelGooglePackage,
+  formatFlowCreditsPart,
+  formatFlowModelDropdownLabel,
+  flowVideoModelRequirements,
+  formatFlowVideoModelPickToast,
 } from './modelCatalog';
+export type { FlowVideoModelRequirement } from './modelCatalog';
+export {
+  FLOW_SCENE_PIPELINE_PRESETS,
+  resolveFlowVideoModelForScene,
+  assertFlowVideoModelForScene,
+  recommendFlowSceneModels,
+} from './flowSceneMode';
+export type {
+  FlowScenePipelinePreset,
+  FlowSceneVideoContext,
+  FlowSceneModeResult,
+} from './flowSceneMode';
 export { loadFlowOps, saveFlowOps, applyAgentInstructions } from './opsStore';
 export { applyCameraToPrompt, cameraFromScaleIndex } from './cameraPrompt';
 export type { CameraShot } from './cameraPrompt';
@@ -90,6 +134,7 @@ export {
   closeLoginSessionAfterCapture,
   launchChrome,
   getChromeSessionInfo,
+  listSessions,
   profileDirForAccount,
   accountRootDir,
   sourceExtensionDir,
@@ -99,6 +144,12 @@ export {
   isProfileBrowserAlive,
   countChromeForProfile,
   reconcileLoginBrowserClosed,
+  killChromeForProfile,
+  killChromeByPathNeedles,
+  killAllFlowBrowsers,
+  registerFlowBrowserShutdownHooks,
+  purgeAccountProfile,
+  listOrphanProfileDirs,
 } from './chromeSession';
 export type {
   BridgeSnapshot,

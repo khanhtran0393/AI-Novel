@@ -28,8 +28,12 @@ function findChromePath(): string | null {
 }
 
 export const runtime = 'nodejs';
-/** Flow Veo can take several minutes (upload + captcha + poll). */
-export const maxDuration = 300;
+/**
+ * Flow Veo can take several minutes (bootstrap + captcha + poll + download).
+ * Chain behind another runOne easily exceeds 5m — abort mid-gen left mp4 on disk
+ * but client got 0-byte timeout (false fail in UI). Keep 15m for Electron/Next.
+ */
+export const maxDuration = 900;
 
 function getApiKeyPath(): string {
   return path.join(process.cwd(), 'apikey.txt');
@@ -235,11 +239,12 @@ export async function POST(req: Request) {
     }
 
     const videoProvider = typeof body.videoProvider === 'string' ? body.videoProvider.trim() : '';
-    const supportedVideoProviders = ['flow', 'sora', 'veo', 'grok', 'luma', 'runway', 'ffmpeg'];
+    const { SUPPORTED_GENERATE_VIDEO_PROVIDERS } = await import('@/lib/video-api');
+    const supportedVideoProviders = [...SUPPORTED_GENERATE_VIDEO_PROVIDERS];
     if (!videoProvider) {
       return NextResponse.json({ error: '[Video API] Thieu videoProvider. He thong khong tu chay provider mac dinh.' }, { status: 400 });
     }
-    if (!supportedVideoProviders.includes(videoProvider)) {
+    if (!supportedVideoProviders.includes(videoProvider as (typeof SUPPORTED_GENERATE_VIDEO_PROVIDERS)[number])) {
       return NextResponse.json({ error: `[Video API] Provider ${videoProvider} khong duoc ho tro trong che do production.` }, { status: 400 });
     }
     if (videoProvider === 'flow' && ![4, 6, 8].includes(videoDuration)) {
@@ -360,7 +365,9 @@ export async function POST(req: Request) {
     const sourceImagePath = resolveLocalImagePath(startImage);
     const publicImageUrl = /^https?:\/\//i.test(startImage || '')
       ? startImage
-      : (sourceImagePath && ['luma', 'runway'].includes(videoProvider) ? await uploadToPublicTempHost(sourceImagePath) : null);
+      : (sourceImagePath && ['luma', 'runway', 'heygen'].includes(videoProvider)
+          ? await uploadToPublicTempHost(sourceImagePath)
+          : null);
 
     const providerKeysToTry: string[] = [];
     if (videoApiKey) providerKeysToTry.push(videoApiKey);
@@ -380,6 +387,7 @@ export async function POST(req: Request) {
           getBridgeSnapshotAsync,
           bootstrapFlow,
           runGenerateOne,
+          enqueueGenerateOne,
         } = await import('@/lib/flow-bridge');
         await ensureBridgeStarted();
         let snap = await getBridgeSnapshotAsync();
@@ -401,7 +409,7 @@ export async function POST(req: Request) {
             accountId: snap.activeAccountId || undefined,
             engine: 'auto',
             waitExtensionMs: 40000,
-            waitLoginMs: 25000,
+            waitLoginMs: 120000,
           });
           snap = await getBridgeSnapshotAsync();
           const activeAfterBootstrap = snap.accounts?.find(
@@ -460,21 +468,29 @@ export async function POST(req: Request) {
               .map((x) => resolveLocalImagePath(String(x)))
               .filter(Boolean)
           : [];
-        // Auto ingredients: start + end frames as multi-ref when both present
-        if (sourceImagePath && endResolved) {
-          for (const p of [sourceImagePath, endResolved]) {
-            if (p && !ingredientPaths.includes(p)) ingredientPaths.push(p);
-          }
-        }
+        // Dedup paths (same still twice is NOT multi-ref)
+        const uniqIngredients = [
+          ...new Set(ingredientPaths.filter(Boolean) as string[]),
+        ];
+        ingredientPaths.length = 0;
+        ingredientPaths.push(...uniqIngredients);
+        // Start+End (2 ảnh liền kề khác nhau) = I2V first+last — KHÔNG auto-ép ingredients/R2V
+        const dualI2v = Boolean(
+          sourceImagePath &&
+            endResolved &&
+            sourceImagePath !== endResolved,
+        );
         const videoMode =
           typeof body.videoMode === 'string'
             ? body.videoMode
             : body.extendMediaId
               ? 'extend'
-              : ingredientPaths.length >= 2
-                ? 'ingredients'
-                : 'auto';
-        const result = await runGenerateOne({
+              : dualI2v
+                ? 'auto'
+                : ingredientPaths.length >= 2
+                  ? 'ingredients'
+                  : 'auto';
+        const flowTaskBody = {
           kind: body.extendMediaId || videoMode === 'extend' ? 'extend' : 'video',
           prompt: promptText,
           chapterNum,
@@ -508,7 +524,54 @@ export async function POST(req: Request) {
               : typeof body.videoQuality === 'string'
                 ? body.videoQuality
                 : 'hd',
-        });
+          appSavePath: localSavePath,
+          correlationId,
+        };
+        // Default async: return 202 + taskId so UI polls (avoids multi-minute HTTP hang).
+        // Sync only when body.async === false (scripts / smoke).
+        const useAsync = body.async !== false;
+        if (useAsync) {
+          const enq = await enqueueGenerateOne(flowTaskBody);
+          if (!enq.ok || !enq.taskId) {
+            return NextResponse.json(
+              {
+                error: `[Google Flow Video] ${enq.error || 'Không xếp được hàng đợi'}`,
+                correlationId,
+              },
+              { status: 500, headers: { 'x-correlation-id': correlationId } },
+            );
+          }
+          slog({
+            level: 'info',
+            msg: 'flow_video_async_accepted',
+            correlationId,
+            route: '/api/generate-video',
+          });
+          return NextResponse.json(
+            {
+              async: true,
+              accepted: true,
+              jobId: enq.taskId,
+              taskId: enq.taskId,
+              queueAhead: enq.queueAhead ?? 0,
+              expectedVideoPath: `/video/${filename}`,
+              expectedLocalPath: localSavePath,
+              chapterNum: Number(chapterNum),
+              sceneIndex: Number(sceneIndex),
+              promptIndex:
+                body.promptIndex != null ? Number(body.promptIndex) : 0,
+              pollUrl: `/api/flow/task?id=${encodeURIComponent(enq.taskId)}`,
+              finalizeUrl: `/api/flow/task?id=${encodeURIComponent(enq.taskId)}&finalize=1`,
+              correlationId,
+              method: 'flow',
+            },
+            {
+              status: 202,
+              headers: { 'x-correlation-id': correlationId },
+            },
+          );
+        }
+        const result = await runGenerateOne(flowTaskBody);
         if (!result.ok || !result.resultPaths?.length) {
           const raw = result.error || 'Sinh video thất bại. Kiểm tra extension + đăng nhập Flow.';
           const err =
@@ -518,8 +581,9 @@ export async function POST(req: Request) {
           return NextResponse.json(
             {
               error: `[Google Flow Video] ${err}`,
+              correlationId,
             },
-            { status: 500 },
+            { status: 500, headers: { 'x-correlation-id': correlationId } },
           );
         }
         const src = result.resultPaths[0];
@@ -531,6 +595,7 @@ export async function POST(req: Request) {
               error: `[Google Flow Video] Generated video could not be persisted: ${
                 copyError instanceof Error ? copyError.message : String(copyError)
               }`,
+              correlationId,
             },
             { status: 502 },
           );
@@ -569,6 +634,53 @@ export async function POST(req: Request) {
           { status: 500 },
         );
       }
+    }
+
+    // 0b. HEYGEN (Video Agent v3 — external BYOK)
+    if (videoProvider === 'heygen') {
+      if (providerKeysToTry.length === 0) {
+        return NextResponse.json(
+          { error: '[HeyGen] Vui lòng dán HeyGen API key (Media Config → API video ngoài).' },
+          { status: 400 },
+        );
+      }
+      let lastError = '';
+      for (const currentKey of providerKeysToTry) {
+        try {
+          const { generateHeygenVideo } = await import('@/lib/video-api');
+          const out = await generateHeygenVideo({
+            providerId: 'heygen',
+            apiKey: currentKey,
+            baseUrl:
+              typeof body.videoApiBaseUrl === 'string'
+                ? body.videoApiBaseUrl.trim()
+                : undefined,
+            model: String(model || 'video-agent').trim() || 'video-agent',
+            prompt: promptText,
+            durationSec: videoDuration,
+            aspectRatio: videoAspectRatio,
+            publicImageUrl,
+            timeoutMs: 600_000,
+          });
+          return await persistDownloadedVideo({
+            bytes: out.bytes,
+            localSavePath,
+            filename,
+            duration: videoDuration,
+            drivePath,
+            chapterNum,
+            method: out.method,
+            seedanceCtx: seedanceGenCtx,
+          });
+        } catch (err: unknown) {
+          lastError = err instanceof Error ? err.message : String(err);
+          console.error('[Video API] HeyGen error:', lastError);
+        }
+      }
+      return NextResponse.json(
+        { error: `[HeyGen Error] ${lastError || 'Gen thất bại'}` },
+        { status: 502 },
+      );
     }
 
     // 1. LUMA DREAM MACHINE

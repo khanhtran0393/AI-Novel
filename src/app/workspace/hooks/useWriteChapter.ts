@@ -5,6 +5,7 @@ import { useNovelStore, type Chuong } from '@/store/useNovelStore';
 import {
   writeChapterAction,
   reviseChapterAction,
+  enforceWordGateBudget,
 } from '../modules/writeModule';
 import {
   resolveNgonNgu,
@@ -20,18 +21,18 @@ import {
 } from '@/lib/storyWriting';
 import { setStreamUi, getStreamUi } from '../modules/streamUiStore';
 import { pushToast } from '@/lib/toastBus';
+import { appConfirm } from '@/lib/confirmDialog';
 import { validateSpeechFingerprints } from '@/lib/youtubeSafe';
 import {
   FREE_LIMITS,
   TRIAL_LIMITS,
-  clampFreeWordGoal,
-  clampTrialWordGoal,
   freeChapterCapMessage,
   freeWordCapMessage,
   trialChapterCapMessage,
   trialWordCapMessage,
+  resolveWriteWordPlan,
 } from '@/lib/commercial/freeLimitsPolicy';
-import { storeIsFreeTier } from './useFreeLimits';
+import { minScenesForScriptMode, normalizeScriptMode } from '@/lib/scriptMode';
 
 export type WriteChapterOptions = {
   /** Apply editor review via REVISE_CHAPTER instead of fresh write */
@@ -63,8 +64,16 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
     }
   };
 
-  const publishLiveText = (fullText: string) => {
+  const publishLiveText = (
+    fullText: string,
+    opts?: { skipWordCount?: boolean },
+  ) => {
     const normalized = (fullText || '').normalize('NFC');
+    // Word count splits entire chapter — skip on typewriter mid-ticks (GUI freeze).
+    if (opts?.skipWordCount) {
+      setStreamUi({ liveScriptText: normalized });
+      return;
+    }
     setStreamUi({
       liveScriptText: normalized,
       liveWordCount: getWordCount(normalized),
@@ -81,8 +90,9 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
   };
 
   /**
-   * Typewriter for the new chunk; Word-Gate counts base + typed so far in real time.
-   * ~30fps (33ms / step 28) — smooth enough without flooding React.
+   * Typewriter for the new chunk.
+   * Throttled UI (~8–10fps + large steps) — avoids parseScenes/re-render thrash
+   * that freezes Electron when streaming long chapters.
    */
   const animateText = (
     content: string,
@@ -95,10 +105,15 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       streamTextRef.current = '';
       liveBaseRef.current = baseContent || '';
       const base = liveBaseRef.current;
+      const compose = (chunk: string) =>
+        base ? `${base}\n\n${chunk}` : chunk;
       publishLiveText(base);
-      const delay = 33;
-      const step = 28;
+      // Adaptive step: longer chapters advance faster so total animation stays ~3–6s
+      const len = content.length || 1;
+      const step = Math.max(48, Math.min(220, Math.ceil(len / 80)));
+      const delay = 90; // ~11fps UI — enough smoothness, leaves main thread free
       let index = 0;
+      let tick = 0;
 
       intervalRef.current = setInterval(() => {
         if (genId !== writeGenRef.current) {
@@ -110,14 +125,20 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           index = Math.min(index + step, content.length);
           const next = content.substring(0, index);
           streamTextRef.current = next;
+          tick += 1;
+          // Paint stream every tick; word-count every 3rd to cut split() cost
           setStreamUi({ streamText: next });
-          publishLiveText(base ? `${base}\n\n${next}` : next);
+          if (tick % 3 === 0 || index >= content.length) {
+            publishLiveText(compose(next));
+          } else {
+            publishLiveText(compose(next), { skipWordCount: true });
+          }
           return;
         }
         stopTyping();
         streamTextRef.current = content;
         setStreamUi({ streamText: content });
-        publishLiveText(base ? `${base}\n\n${content}` : content);
+        publishLiveText(compose(content));
         resolve();
       }, delay);
     });
@@ -147,8 +168,21 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
       return;
     }
 
-    // Free: ≤2 ch · ≤600 từ · 3/day. Trial: ≤10 ch · ≤3000 từ · 5/day.
-    if (storeIsFreeTier(startState)) {
+    // Word plan BEFORE gen: goal = so_tu user set · min/max = 0.92 / +20% · clamp gói
+    const wordPlan = resolveWriteWordPlan(startState.setup?.so_tu_chuong, {
+      is_pro: startState.is_pro,
+      is_trial: startState.is_trial,
+      is_vip: startState.is_vip,
+    });
+    // Sync Setup if store still holds over-tier value (e.g. 4250 on Free)
+    if (Number(startState.setup?.so_tu_chuong) !== wordPlan.goal) {
+      startState.setSetup({ so_tu_chuong: wordPlan.goal });
+    }
+
+    // Free: ≤2 ch · 3/day. Trial: ≤10 ch · 5/day.
+    // Word block only when FULL chapter already complete (floor+scenes) and at soft max+
+    // — never block mid-script solely for soft max.
+    if (wordPlan.tier === 'free') {
       if (chapterNumber > FREE_LIMITS.maxChapters) {
         const msg = freeChapterCapMessage();
         setPromptError(msg);
@@ -161,22 +195,21 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
         pushToast('error', 'Gói Free — giới hạn chương', msg, 12_000);
         return;
       }
-      const goal = Number(startState.setup.so_tu_chuong) || FREE_LIMITS.maxWordsPerChapter;
-      if (goal > FREE_LIMITS.maxWordsPerChapter) {
-        startState.setSetup({
-          so_tu_chuong: clampFreeWordGoal(goal),
-        });
+      if (!overwrite) {
+        const existing = currentChapter.noi_dung || '';
+        const g = evaluateWordGate(
+          existing,
+          wordPlan.goal,
+          minScenesForScriptMode(normalizeScriptMode(startState.scriptMode)),
+        );
+        if (!g.needsContinue && g.wordCount >= wordPlan.max) {
+          const msg = freeWordCapMessage();
+          setPromptError(msg);
+          pushToast('error', 'Gói Free — giới hạn từ', msg, 12_000);
+          return;
+        }
       }
-      const existingWords = getWordCount(
-        overwrite ? '' : currentChapter.noi_dung || '',
-      );
-      if (existingWords >= FREE_LIMITS.maxWordsPerChapter) {
-        const msg = freeWordCapMessage();
-        setPromptError(msg);
-        pushToast('error', 'Gói Free — giới hạn từ', msg, 12_000);
-        return;
-      }
-    } else if (startState.is_trial) {
+    } else if (wordPlan.tier === 'trial') {
       if (chapterNumber > TRIAL_LIMITS.maxChapters) {
         const msg = trialChapterCapMessage();
         setPromptError(msg);
@@ -189,19 +222,19 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
         pushToast('error', 'Gói Trial — giới hạn chương', msg, 12_000);
         return;
       }
-      const goal =
-        Number(startState.setup.so_tu_chuong) || TRIAL_LIMITS.maxWordsPerChapter;
-      if (goal > TRIAL_LIMITS.maxWordsPerChapter) {
-        startState.setSetup({ so_tu_chuong: clampTrialWordGoal(goal) });
-      }
-      const existingWords = getWordCount(
-        overwrite ? '' : currentChapter.noi_dung || '',
-      );
-      if (existingWords >= TRIAL_LIMITS.maxWordsPerChapter) {
-        const msg = trialWordCapMessage();
-        setPromptError(msg);
-        pushToast('error', 'Gói Trial — giới hạn từ', msg, 12_000);
-        return;
+      if (!overwrite) {
+        const existing = currentChapter.noi_dung || '';
+        const g = evaluateWordGate(
+          existing,
+          wordPlan.goal,
+          minScenesForScriptMode(normalizeScriptMode(startState.scriptMode)),
+        );
+        if (!g.needsContinue && g.wordCount >= wordPlan.max) {
+          const msg = trialWordCapMessage();
+          setPromptError(msg);
+          pushToast('error', 'Gói Trial — giới hạn từ', msg, 12_000);
+          return;
+        }
       }
     }
 
@@ -256,6 +289,17 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           throw new Error('Không có bản thảo hoặc nhận xét biên tập để sửa.');
         }
         const mode = review.verdict === 'polish' ? 'polish' : 'rewrite';
+        const prepMsg =
+          mode === 'polish'
+            ? `✨ Đang trau chuốt chương ${chapterNumber} theo nhận xét biên tập — chuẩn bị viết lại...`
+            : `📝 Đang viết lại chương ${chapterNumber} theo nhận xét biên tập — chuẩn bị rewrite...`;
+        setPromptError(prepMsg);
+        pushToast(
+          'info',
+          mode === 'polish' ? 'Chuẩn bị trau chuốt' : 'Chuẩn bị viết lại',
+          `Chương ${chapterNumber}: AI đang ${mode === 'polish' ? 'trau chuốt' : 'viết lại'} kịch bản theo nhận xét (media giữ nguyên).`,
+          7_000,
+        );
         const revised = await reviseChapterAction({
           ten_tac_pham: startState.ten_tac_pham,
           chuong_hien_tai: currentChapter,
@@ -265,9 +309,7 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           review,
           mode,
           ngon_ngu: resolveNgonNgu(startState.setup.ngon_ngu),
-          so_tu_chuong: storeIsFreeTier(startState)
-            ? clampFreeWordGoal(startState.setup.so_tu_chuong)
-            : startState.setup.so_tu_chuong || 4250,
+          so_tu_chuong: wordPlan.goal,
           nhan_vat: startState.nhan_vat,
           nhan_vat_prompts: startState.nhan_vat_prompts,
           signal: controller.signal,
@@ -282,6 +324,10 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
         let autoContinues = 0;
         let forceGate = false;
         let intervention = options.intervention;
+        // Re-resolve plan each loop from live store (user may change setup mid-write)
+        const minScenes = minScenesForScriptMode(
+          normalizeScriptMode(startState.scriptMode),
+        );
 
         do {
           if (controller.signal.aborted || genId !== writeGenRef.current) {
@@ -289,6 +335,35 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
           }
 
           const live = useNovelStore.getState();
+          const plan = resolveWriteWordPlan(live.setup?.so_tu_chuong, {
+            is_pro: live.is_pro,
+            is_trial: live.is_trial,
+            is_vip: live.is_vip,
+          });
+          // Pre-call: stop if done OR already over hard max (anti 200%+)
+          if (workingContent.trim()) {
+            const preGate = evaluateWordGate(
+              workingContent,
+              plan.goal,
+              minScenes,
+            );
+            if (preGate.overSoftMax) {
+              setPromptError(
+                `⛔ Cổng từ vượt trần: ${preGate.wordCount}/${plan.goal} từ (max ${preGate.wordMax} = +20%). Dừng gen — không bù thêm.`,
+              );
+              pushToast(
+                'warn',
+                'Cổng từ vượt quy định',
+                `${preGate.wordCount}/${plan.goal} từ (${Math.round((preGate.wordCount / plan.goal) * 100)}%). Mục tiêu Setup ${plan.goal}, trần ${preGate.wordMax}.`,
+                12_000,
+              );
+              break;
+            }
+            if (!preGate.needsContinue) {
+              break;
+            }
+          }
+
           const result = await writeChapterAction({
             apiKey: live.apiKey,
             apiKeys: live.apiKeys || [],
@@ -301,9 +376,8 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
             nhan_vat_prompts: live.nhan_vat_prompts,
             chuong_hien_tai: currentChapter,
             so_chuong: live.setup.so_chuong,
-            so_tu_chuong: storeIsFreeTier(live)
-              ? clampFreeWordGoal(live.setup.so_tu_chuong)
-              : live.setup.so_tu_chuong || 4250,
+            // Cổng từ = đúng so_tu user = độ dài TOÀN BỘ chương
+            so_tu_chuong: plan.goal,
             ngon_ngu: resolveNgonNgu(live.setup.ngon_ngu),
             noi_dung_hien_tai: workingContent,
             userRules: live.userRules,
@@ -311,10 +385,7 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
             world_state: live.world_state,
             current_beat_type: live.current_beat_type,
             intervention_directive: intervention,
-            // Free: không force word-gate continue vượt 600 từ
-            force_word_gate_continue: storeIsFreeTier(live)
-              ? false
-              : forceGate,
+            force_word_gate_continue: forceGate,
             signal: controller.signal,
           });
 
@@ -322,43 +393,174 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
 
           latestChunk = result.noi_dung;
           const baseBeforeChunk = workingContent;
-          workingContent = workingContent
-            ? normalizeSceneTags(`${workingContent}\n\n${result.noi_dung}`)
-            : normalizeSceneTags(result.noi_dung);
+          // Server may return full condensed chapter (after overshoot) — replace, don't append
+          if (result.fullChapterReplace) {
+            workingContent = normalizeSceneTags(result.noi_dung);
+            if (result.condensedFrom) {
+              setPromptError(
+                `✂ Đã rút gọn cổng từ: ${result.condensedFrom} → ${result.wordCount ?? getWordCount(workingContent)} / ${plan.goal} từ (trần ${plan.max}).`,
+              );
+              pushToast(
+                'info',
+                'Cổng từ — rút gọn',
+                `Từ ${result.condensedFrom} xuống ~${result.wordCount ?? '?'} (mục tiêu ${plan.goal}, trần ${plan.max}).`,
+                10_000,
+              );
+            }
+          } else {
+            workingContent = workingContent
+              ? normalizeSceneTags(`${workingContent}\n\n${result.noi_dung}`)
+              : normalizeSceneTags(result.noi_dung);
+          }
 
-          await animateText(latestChunk, genId, baseBeforeChunk);
+          // fullChapterReplace: animate full condensed body from empty base
+          await animateText(
+            latestChunk,
+            genId,
+            result.fullChapterReplace ? '' : baseBeforeChunk,
+          );
           liveBaseRef.current = workingContent;
           publishLiveText(workingContent);
 
           intervention = undefined;
 
-          // Free: dừng auto-continue khi đã đạt cap từ
-          if (storeIsFreeTier(live)) {
-            const freeWords = getWordCount(workingContent);
-            if (freeWords >= FREE_LIMITS.maxWordsPerChapter) {
-              break;
-            }
-          }
-
           const gate = evaluateWordGate(
             workingContent,
-            live.setup.so_tu_chuong || 4250,
+            plan.goal,
+            minScenes,
           );
+          if (gate.overSoftMax) {
+            // Client safety net: force condense, don't leave 200%+ on disk
+            setPromptError(
+              `✂ Đang rút gọn cổng từ ${gate.wordCount}/${plan.goal} (trần ${gate.wordMax})…`,
+            );
+            try {
+              const enforced = await enforceWordGateBudget({
+                content: workingContent,
+                wordGoal: plan.goal,
+                minScenes,
+                ten_tac_pham: live.ten_tac_pham,
+                chuong_hien_tai: currentChapter,
+                lorebook: live.lorebook,
+                userRules: live.userRules || {
+                  forbidden_words: '',
+                  fatigue_words: '',
+                },
+                ngon_ngu: resolveNgonNgu(live.setup.ngon_ngu),
+                nhan_vat: live.nhan_vat,
+                nhan_vat_prompts: live.nhan_vat_prompts,
+                signal: controller.signal,
+              });
+              workingContent = enforced.content;
+              liveBaseRef.current = workingContent;
+              publishLiveText(workingContent);
+              if (enforced.stillOver) {
+                pushToast(
+                  'error',
+                  'Cổng từ vẫn vượt',
+                  `Sau rút gọn còn ${enforced.wordCount}/${plan.goal} (trần ${plan.max}). Hãy bấm viết lại hoặc hạ so_tu Setup.`,
+                  14_000,
+                );
+                setPromptError(
+                  `⛔ Cổng từ ${enforced.wordCount}/${plan.goal} vẫn > trần ${plan.max} sau rút gọn.`,
+                );
+              } else if (enforced.condensed) {
+                pushToast(
+                  'success',
+                  'Cổng từ đã khớp',
+                  `${enforced.wordCount}/${plan.goal} từ (trần ${plan.max}).`,
+                  8_000,
+                );
+                setPromptError(
+                  `✓ Cổng từ sau rút gọn: ${enforced.wordCount}/${plan.goal} (sàn ${Math.round(plan.goal * 0.92)} · trần ${plan.max}).`,
+                );
+              }
+            } catch (condenseErr) {
+              pushToast(
+                'warn',
+                'Cổng từ vượt — rút gọn lỗi',
+                condenseErr instanceof Error
+                  ? condenseErr.message
+                  : String(condenseErr),
+                12_000,
+              );
+            }
+            break;
+          }
           if (options.skipAutoContinue || !gate.needsContinue) {
             break;
           }
           if (autoContinues >= MAX_AUTO_CONTINUES) {
             setPromptError(
-              `⚠️ Cổng Từ chưa đạt sau ${MAX_AUTO_CONTINUES + 1} lượt: ${gate.wordCount}/${gate.wordMin} từ, ${gate.sceneCount} cảnh (cần ≥3). Hãy bấm "Sinh phần tiếp theo".`,
+              `⚠️ Cổng Từ chưa đạt sau ${MAX_AUTO_CONTINUES + 1} lượt: ${gate.wordCount}/${gate.wordMin}–${plan.goal} từ (trần ${gate.wordMax}), ${gate.sceneCount}/${minScenes} cảnh.`,
             );
             break;
           }
           autoContinues += 1;
           forceGate = true;
           setPromptError(
-            `↻ Tự động bù Cổng Từ (lượt ${autoContinues}/${MAX_AUTO_CONTINUES}): ${gate.wordCount}/${gate.wordMin} từ, ${gate.sceneCount} cảnh...`,
+            `↻ Bù Cổng Từ (lượt ${autoContinues}/${MAX_AUTO_CONTINUES}): ${gate.wordCount}/${plan.goal} từ (sàn ${gate.wordMin} · trần ${gate.wordMax}), ${gate.sceneCount}/${minScenes} cảnh…`,
           );
         } while (true);
+      }
+
+      if (genId !== writeGenRef.current) return;
+
+      // Final hard enforce before save — never leave 200%+ chapter on disk
+      {
+        const live = useNovelStore.getState();
+        const plan = resolveWriteWordPlan(live.setup?.so_tu_chuong, {
+          is_pro: live.is_pro,
+          is_trial: live.is_trial,
+          is_vip: live.is_vip,
+        });
+        const minScenes = minScenesForScriptMode(
+          normalizeScriptMode(live.scriptMode),
+        );
+        const finalGate = evaluateWordGate(
+          workingContent,
+          plan.goal,
+          minScenes,
+        );
+        if (finalGate.overSoftMax) {
+          setPromptError(
+            `✂ Rút gọn cổng từ trước khi lưu: ${finalGate.wordCount}/${plan.goal} (trần ${finalGate.wordMax})…`,
+          );
+          try {
+            const enforced = await enforceWordGateBudget({
+              content: workingContent,
+              wordGoal: plan.goal,
+              minScenes,
+              ten_tac_pham: live.ten_tac_pham,
+              chuong_hien_tai: currentChapter,
+              lorebook: live.lorebook,
+              userRules: live.userRules || {
+                forbidden_words: '',
+                fatigue_words: '',
+              },
+              ngon_ngu: resolveNgonNgu(live.setup.ngon_ngu),
+              nhan_vat: live.nhan_vat,
+              nhan_vat_prompts: live.nhan_vat_prompts,
+              signal: controller.signal,
+            });
+            workingContent = enforced.content;
+            liveBaseRef.current = workingContent;
+            publishLiveText(workingContent);
+            pushToast(
+              enforced.stillOver ? 'error' : 'success',
+              enforced.stillOver ? 'Cổng từ vẫn vượt' : 'Cổng từ đã khớp',
+              `${enforced.wordCount}/${plan.goal} từ (trần ${plan.max}).`,
+              10_000,
+            );
+          } catch (e) {
+            pushToast(
+              'error',
+              'Rút gọn cổng từ thất bại',
+              e instanceof Error ? e.message : String(e),
+              12_000,
+            );
+          }
+        }
       }
 
       if (genId !== writeGenRef.current) return;
@@ -448,7 +650,40 @@ export function useWriteChapter(setPromptError: (err: string) => void) {
   };
 
   const handleReviseFromReview = async (chapterNumber?: number) => {
-    const ch = chapterNumber ?? useNovelStore.getState().chuong_dang_chon;
+    const state = useNovelStore.getState();
+    const ch = chapterNumber ?? state.chuong_dang_chon;
+    const review = state.editorReviews[ch];
+    const isPolish = review?.verdict === 'polish';
+    const summary = (review?.summary || '').trim();
+    const summaryLine = summary
+      ? `Nhận xét: ${summary.length > 180 ? `${summary.slice(0, 180)}…` : summary}`
+      : 'Có nhận xét biên tập';
+
+    const ok = await appConfirm({
+      title: isPolish ? 'Trau chuốt theo nhận xét' : 'Sửa theo nhận xét',
+      message: isPolish
+        ? 'AI sắp trau chuốt / viết lại kịch bản chương theo nhận xét biên tập. Nội dung hiện tại sẽ được thay thế.'
+        : 'AI sắp viết lại kịch bản chương theo nhận xét biên tập. Nội dung hiện tại sẽ được thay thế.',
+      details: [
+        `Chương ${ch}`,
+        summaryLine,
+        isPolish ? 'Chế độ: polish (trau chuốt)' : 'Chế độ: rewrite (viết lại)',
+        'Media (audio · ảnh · video) giữ nguyên — không xóa',
+      ],
+      confirmLabel: isPolish ? 'Bắt đầu trau chuốt' : 'Bắt đầu viết lại',
+      cancelLabel: 'Hủy',
+      tone: isPolish ? 'warn' : 'danger',
+    });
+    if (!ok) return;
+
+    // Toast ngay sau xác nhận (trước khi stream) — user biết đang chuẩn bị viết lại
+    pushToast(
+      'warn',
+      isPolish ? 'Chuẩn bị trau chuốt' : 'Chuẩn bị viết lại',
+      `Chương ${ch}: AI sắp ${isPolish ? 'trau chuốt' : 'viết lại'} kịch bản theo nhận xét. Media giữ nguyên.`,
+      6_000,
+    );
+
     await handleWriteChapter(false, ch, {
       reviseFromReview: true,
       skipAutoRevise: true,

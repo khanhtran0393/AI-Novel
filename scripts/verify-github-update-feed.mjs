@@ -211,7 +211,7 @@ async function main() {
         );
       }
       if (parsed.version && compareSemver(pkg.version, parsed.version) > 0) {
-        warnings.push(
+        failures.push(
           `package.json ${pkg.version} > feed ${parsed.version} — shipping newer app than published feed; users on feed cannot "update" to local-only builds`,
         );
       }

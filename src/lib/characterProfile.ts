@@ -1,8 +1,13 @@
 /**
  * Hồ sơ nhân vật mở rộng:
  * - Khóa nhận diện (face lock + đặc điểm nhận dạng)
- * - Ảnh đối chiếu 4 chiều (turnaround)
- * - Biểu cảm khuôn mặt nhất quán theo cảm xúc
+ * - Ảnh đối chiếu 4 chiều (turnaround) + sheet bible full (pose / tool / height)
+ * - Biểu cảm khuôn mặt nhất quán theo cảm xúc (8 ô)
+ * - Hành động / thói quen (7 pose) + phụ kiện gắn liền
+ *
+ * Sheet layout lấy CẤU TRÚC production bible (info · expressions · turnaround · poses ·
+ * accessories · close-ups · palette · height bar) — style lấy từ Setup/Visual DNA,
+ * CẤM hardcode style mẫu (vd. cute 3D beach explorer).
  */
 
 import {
@@ -20,6 +25,16 @@ export const CHAR_ANGLE_LABELS: Record<CharAngle, string> = {
   side: 'Nghiêng / Profile',
   back: 'Sau lưng',
 };
+
+/** Góc turnaround hiển thị trên sheet gộp (nhiều hơn 4 key lưu trữ — chỉ cho layout sheet) */
+export const CHAR_SHEET_TURNAROUND_VIEWS = [
+  'front',
+  'three_quarter_front',
+  'left_side',
+  'back',
+  'right_side',
+  'three_quarter_rear',
+] as const;
 
 export const CHAR_EMOTIONS = [
   'neutral',
@@ -42,6 +57,31 @@ export const CHAR_EMOTION_LABELS: Record<CharEmotion, string> = {
   surprised: 'Ngạc nhiên',
   determined: 'Quyết tâm',
   pain: 'Đau / Căng thẳng',
+};
+
+/**
+ * 7 pose hành động / thói quen trên character bible sheet.
+ * Map từ thói quen + phụ kiện signature — không copy content mẫu bãi biển.
+ */
+export const CHAR_POSES = [
+  'standing',
+  'walking',
+  'running',
+  'crouch',
+  'pointing',
+  'holding_prop',
+  'inspecting',
+] as const;
+export type CharPose = (typeof CHAR_POSES)[number];
+
+export const CHAR_POSE_LABELS: Record<CharPose, string> = {
+  standing: 'Đứng idle',
+  walking: 'Đi + dụng cụ',
+  running: 'Chạy',
+  crouch: 'Ngồi xổm / cast',
+  pointing: 'Chỉ tay',
+  holding_prop: 'Nâng prop signature',
+  inspecting: 'Soi / chỉnh dụng cụ',
 };
 
 /** English camera / framing hints for turnaround sheet */
@@ -68,20 +108,48 @@ export const CHAR_EMOTION_FACE: Record<CharEmotion, string> = {
   pain: 'winced eyes, clenched jaw, strained brow, physical or emotional pain, restrained',
 };
 
+/** English full-body action anchors for habit/pose strip on sheet */
+export const CHAR_POSE_ACTION: Record<CharPose, string> = {
+  standing:
+    'full-body standing idle pose, neutral weight on both feet, relaxed ready stance, signature outfit fully visible',
+  walking:
+    'full-body walking pose mid-stride, carrying or checking a signature tool/device, natural gait',
+  running:
+    'full-body running pose, dynamic motion, coat or clothing reacting to movement, purposeful sprint',
+  crouch:
+    'full-body crouch or kneel pose, one hand interacting with energy/tool/ground, tactical low stance',
+  pointing:
+    'full-body pointing/command pose, arm extended toward target, confident directive gesture',
+  holding_prop:
+    'full-body pose holding signature prop/tool aloft or close for inspection, prop clearly readable',
+  inspecting:
+    'full-body pose inspecting belt device, instrument, or accessory at waist/hand level, focused habit',
+};
+
 export interface NhanVatProfile {
   /** Giới tính (chỉ giới tính, không nhét tuổi) */
   gioi_tinh: string;
   /** Tuổi / độ tuổi ước lượng */
   tuoi: string;
-  /** Dáng người, chiều cao ước lượng */
+  /** Dáng người (tỷ lệ thân — có thể kèm gợi ý chiều cao) */
   dang_nguoi: string;
+  /**
+   * Chiều cao rõ (vd. "168 cm" / "3 ft (91 cm)") — bắt buộc trên sheet bible.
+   * Tách khỏi dang_nguoi để layout height bar ổn định.
+   */
+  chieu_cao: string;
   /** Vai trò: chính / phụ / phản diện / ... */
   vai_tro: string;
   /** Trang phục signature */
   quan_ao: string;
+  /**
+   * Phụ kiện / công cụ gắn liền (orb, staff, belt pack, backpack…)
+   * — hàng ACCESSORIES trên sheet.
+   */
+  phu_kien: string;
   /** Sở thích / phong cách */
   so_thich: string;
-  /** Thói quen hành vi */
+  /** Thói quen hành vi (map sang pose strip) */
   thoi_quen: string;
   /** Động cơ cốt lõi */
   dong_co: string;
@@ -103,6 +171,10 @@ export interface NhanVatProfile {
    */
   khuet_tat: string;
   /**
+   * Bảng màu signature (hex + tên chất liệu ngắn) — COLOR PALETTE block trên sheet.
+   */
+  mau_sac: string;
+  /**
    * Master visual prompt (English) — khóa nhận diện gốc cho concept + consistency.
    * Legacy field: vẫn dùng làm ảnh front / base.
    */
@@ -113,8 +185,10 @@ export interface NhanVatProfile {
   identity_lock?: string;
   /** Prompt tiếng Anh cho từng góc quay (4 chiều) */
   angle_prompts?: Partial<Record<CharAngle, string>>;
-  /** Prompt tiếng Anh cho từng biểu cảm khuôn mặt */
+  /** Prompt tiếng Anh cho từng biểu cảm khuôn mặt (8) */
   expression_prompts?: Partial<Record<CharEmotion, string>>;
+  /** Prompt tiếng Anh cho 7 pose hành động / thói quen */
+  pose_prompts?: Partial<Record<CharPose, string>>;
   /**
    * Optional costume / wardrobe variants (Printfilm-style) — không bắt buộc setup complete.
    * Face lock stays fixed; only outfit layer changes.
@@ -145,8 +219,10 @@ export function emptyNhanVatProfile(): NhanVatProfile {
     gioi_tinh: '',
     tuoi: '',
     dang_nguoi: '',
+    chieu_cao: '',
     vai_tro: '',
     quan_ao: '',
+    phu_kien: '',
     so_thich: '',
     thoi_quen: '',
     dong_co: '',
@@ -155,9 +231,11 @@ export function emptyNhanVatProfile(): NhanVatProfile {
     ngoai_hinh: '',
     dac_diem_nhan_dang: '',
     khuet_tat: '',
+    mau_sac: '',
     prompt: '',
     angle_prompts: {},
     expression_prompts: {},
+    pose_prompts: {},
     wardrobe_variants: [],
     active_wardrobe_id: '',
   };
@@ -216,8 +294,12 @@ export function normalizeNhanVatProfile(
   return {
     ...base,
     ...raw,
+    chieu_cao: String(raw.chieu_cao || '').normalize('NFC').trim(),
+    phu_kien: String(raw.phu_kien || '').normalize('NFC').trim(),
+    mau_sac: String(raw.mau_sac || '').normalize('NFC').trim(),
     angle_prompts: { ...(raw.angle_prompts || {}) },
     expression_prompts: { ...(raw.expression_prompts || {}) },
+    pose_prompts: { ...(raw.pose_prompts || {}) },
     wardrobe_variants: normalizeWardrobeVariants(raw.wardrobe_variants),
     active_wardrobe_id: String(raw.active_wardrobe_id || '').trim(),
   };
@@ -232,8 +314,10 @@ export const CHAR_PROFILE_REQUIRED_FIELDS: Array<{
   { key: 'gioi_tinh', label: 'Giới tính', minLen: 1 },
   { key: 'tuoi', label: 'Tuổi', minLen: 1 },
   { key: 'dang_nguoi', label: 'Dáng người', minLen: 2 },
+  { key: 'chieu_cao', label: 'Chiều cao', minLen: 2 },
   { key: 'vai_tro', label: 'Vai trò', minLen: 1 },
   { key: 'quan_ao', label: 'Trang phục', minLen: 2 },
+  { key: 'phu_kien', label: 'Phụ kiện / công cụ gắn liền', minLen: 2 },
   { key: 'so_thich', label: 'Sở thích', minLen: 1 },
   { key: 'thoi_quen', label: 'Thói quen', minLen: 1 },
   { key: 'dong_co', label: 'Động cơ', minLen: 2 },
@@ -246,6 +330,7 @@ export const CHAR_PROFILE_REQUIRED_FIELDS: Array<{
     label: 'Khuyết điểm (điểm yếu / thói xấu / nỗi sợ — không bắt buộc trope khuyết tật cứng)',
     minLen: 2,
   },
+  { key: 'mau_sac', label: 'Bảng màu signature', minLen: 2 },
   { key: 'prompt', label: 'Master prompt EN', minLen: 12 },
 ];
 
@@ -332,6 +417,17 @@ export function buildIdentityLockEnglish(profile: Partial<NhanVatProfile> | unde
   if (profile.quan_ao?.trim()) {
     parts.push(`Signature outfit: ${profile.quan_ao.trim()}`);
   }
+  if (profile.phu_kien?.trim()) {
+    parts.push(
+      `Signature props / tools always present when relevant: ${profile.phu_kien.trim()}`,
+    );
+  }
+  if (profile.chieu_cao?.trim()) {
+    parts.push(`Height: ${profile.chieu_cao.trim()}`);
+  }
+  if (profile.mau_sac?.trim()) {
+    parts.push(`Signature color palette: ${profile.mau_sac.trim()}`);
+  }
   const wardrobe = getActiveWardrobe(profile);
   if (wardrobe) {
     const outfit =
@@ -344,10 +440,29 @@ export function buildIdentityLockEnglish(profile: Partial<NhanVatProfile> | unde
       );
     }
   }
-  if (profile.gioi_tinh?.trim() || profile.tuoi?.trim() || profile.dang_nguoi?.trim()) {
+  if (
+    profile.gioi_tinh?.trim() ||
+    profile.tuoi?.trim() ||
+    profile.dang_nguoi?.trim() ||
+    profile.vai_tro?.trim()
+  ) {
     parts.push(
-      `Identity: ${[profile.gioi_tinh, profile.tuoi, profile.dang_nguoi].filter(Boolean).join(', ')}`,
+      `Identity: ${[
+        profile.gioi_tinh,
+        profile.tuoi,
+        profile.dang_nguoi,
+        profile.chieu_cao,
+        profile.vai_tro,
+      ]
+        .filter(Boolean)
+        .join(', ')}`,
     );
+  }
+  if (profile.thoi_quen?.trim()) {
+    parts.push(`Behavioral habits (drive pose strip): ${profile.thoi_quen.trim()}`);
+  }
+  if (profile.so_thich?.trim()) {
+    parts.push(`Likes / interests: ${profile.so_thich.trim()}`);
   }
   return parts.join('. ');
 }
@@ -402,24 +517,123 @@ export function composeExpressionPrompt(
     .join(', ');
 }
 
+/**
+ * Compose English full-body pose prompt for habit/action strip.
+ * Identity + outfit + props fixed; only body action changes.
+ */
+export function composePosePrompt(
+  profile: Partial<NhanVatProfile>,
+  pose: CharPose,
+  custom?: string,
+): string {
+  if (custom?.trim()) return custom.trim();
+  const stored = profile.pose_prompts?.[pose]?.trim();
+  if (stored) return stored;
+
+  const identity = buildIdentityLockEnglish(profile);
+  const action = CHAR_POSE_ACTION[pose];
+  const habit = profile.thoi_quen?.trim()
+    ? `habit context: ${profile.thoi_quen.trim()}`
+    : '';
+  const tools = profile.phu_kien?.trim()
+    ? `use signature tools/props: ${profile.phu_kien.trim()}`
+    : '';
+  return [
+    identity || 'consistent character full-body',
+    action,
+    habit,
+    tools,
+    'same face, marks, hair, outfit, proportions; only pose/action changes',
+    'character design pose reference, clean neutral background, grounded production design, no text, no watermark',
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
+export type CharacterSheetPromptOpts = {
+  /** Visual DNA / Media Style — bắt buộc cho đúng style Setup, cấm style mẫu cứng */
+  styleHint?: string;
+  /** Genre label từ Setup (chu_de / phong_cach) */
+  genre?: string;
+};
+
+/**
+ * Prompt gen 1 ảnh character bible sheet đầy đủ cấu trúc production:
+ * info + height · 8 expressions · turnaround multi-view · 7 action poses ·
+ * accessories · close-ups · color palette.
+ * Style chỉ từ styleHint/genre Setup — không hardcode cute 3D / beach / lab mẫu.
+ */
 export function composeCharacterReferenceSheetPrompt(
   profile: Partial<NhanVatProfile>,
   charName?: string,
+  opts?: CharacterSheetPromptOpts,
 ): string {
   const identity = buildIdentityLockEnglish(profile);
-  const nameHint = charName?.trim() ? `Character: ${charName.trim()}. ` : '';
+  const name = charName?.trim() || 'Character';
+  const styleHint = String(opts?.styleHint || '').trim();
+  const genre = String(opts?.genre || '').trim();
+  const styleLine = [styleHint, genre].filter(Boolean).join(' · ');
+
+  const exprList = CHAR_EMOTIONS.map((e) => {
+    const custom = profile.expression_prompts?.[e]?.trim();
+    const face = CHAR_EMOTION_FACE[e];
+    return `${e} (${CHAR_EMOTION_LABELS[e]}): ${custom || face}`;
+  }).join(' | ');
+
+  const poseList = CHAR_POSES.map((p) => {
+    const custom = profile.pose_prompts?.[p]?.trim();
+    const act = CHAR_POSE_ACTION[p];
+    return `${p} (${CHAR_POSE_LABELS[p]}): ${custom || act}`;
+  }).join(' | ');
+
+  const angleList = CHAR_ANGLES.map((a) => {
+    const custom = profile.angle_prompts?.[a]?.trim();
+    return `${a}: ${custom || CHAR_ANGLE_CAMERA[a]}`;
+  }).join(' | ');
+
+  const turnaroundViews = CHAR_SHEET_TURNAROUND_VIEWS.join(', ');
+
+  const infoBits = [
+    `Name: ${name}`,
+    profile.vai_tro?.trim() ? `Role: ${profile.vai_tro.trim()}` : null,
+    profile.gioi_tinh?.trim() ? `Gender: ${profile.gioi_tinh.trim()}` : null,
+    profile.tuoi?.trim() ? `Age: ${profile.tuoi.trim()}` : null,
+    profile.chieu_cao?.trim() ? `Height: ${profile.chieu_cao.trim()}` : null,
+    profile.dang_nguoi?.trim() ? `Body: ${profile.dang_nguoi.trim()}` : null,
+    profile.so_thich?.trim() ? `Likes: ${profile.so_thich.trim()}` : null,
+    profile.thoi_quen?.trim() ? `Habits: ${profile.thoi_quen.trim()}` : null,
+    profile.dong_co?.trim() ? `Motive: ${profile.dong_co.trim()}` : null,
+    profile.phu_kien?.trim()
+      ? `Signature tools/accessories: ${profile.phu_kien.trim()}`
+      : null,
+    profile.mau_sac?.trim() ? `Color palette: ${profile.mau_sac.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join('. ');
+
   return [
-    `${nameHint}Professional comprehensive character design reference sheet, single cohesive image, clean neutral studio background`,
-    'Layout structure:',
-    '- MAIN: A large full-body presentation pose of the character prominently featured',
-    '- EXPRESSIONS: A row or section of facial expression close-ups (e.g. neutral, happy, surprised, curious, determined, pain, etc.)',
-    '- TURNAROUND: A full-body turnaround sequence showing multiple angles (front, 3/4 front, side, back, 3/4 rear)',
-    '- POSES: A sequence of various dynamic action poses (e.g. standing, walking, running, pointing, exploring, etc.)',
-    '- DETAILS: Close-up details of signature accessories, props, and a clean color palette block',
-    identity || 'consistent character identity',
-    'CRITICAL: identical face structure, hair, eyes, skin, scars/moles/marks, body proportions, and signature outfit in EVERY panel',
-    'Distinctive identifying marks must appear the same in the main portrait, all turnaround angles, poses, and expression faces',
-    'Even panel spacing, meticulously organized model-sheet style layout, concept art production design, cinematic natural lighting, high detail, no text labels, no watermark, no logo',
+    `Professional comprehensive character design BIBLE / model sheet for "${name}", single cohesive image, clean neutral studio paper background`,
+    styleLine
+      ? `Art direction / style (from project Setup — MUST follow, do NOT invent beach-kid cute-3D or unrelated default styles): ${styleLine}`
+      : 'Art direction from character identity only — grounded production design matching the character world; do NOT default to cute 3D beach explorer or any unrelated sample style',
+    'MANDATORY LAYOUT STRUCTURE (all sections must appear):',
+    '1) INFO + HEIGHT REFERENCE: left info zone with silhouette height bar and basic stats (age, height, role, habits, likes, tools)',
+    '2) HERO: large full-body presentation pose with signature prop/tool if any',
+    `3) EXPRESSIONS: exactly 8 headshot faces in one row — ${CHAR_EMOTIONS.join(', ')}`,
+    `4) TURNAROUND: full-body orthographic-style views — ${turnaroundViews} (minimum 6 angles)`,
+    '5) ACTION / HABIT POSES: exactly 7 full-body poses driven by this character habits and tools — standing, walking with tool, running, crouch/cast, pointing, holding signature prop, inspecting device/accessory',
+    '6) ACCESSORIES: labeled icon row of signature tools/props/outfit pieces unique to THIS character',
+    '7) CLOSE-UPS: prop-in-hand, outfit detail, boots/gear, face mark detail',
+    '8) COLOR PALETTE: swatch row matching signature colors',
+    infoBits,
+    identity || 'consistent character identity lock',
+    `Expression targets: ${exprList}`,
+    `Stored turnaround angle prompts: ${angleList}`,
+    `Pose / habit targets: ${poseList}`,
+    'CRITICAL identity lock: identical face structure, hair, eyes, skin, scars/moles/marks, body proportions, height feel, and signature outfit in EVERY panel',
+    'Distinctive marks and signature tools must recur across hero, turnaround, poses, expressions, and close-ups',
+    'Even panel spacing, meticulously organized production model-sheet layout, high detail',
+    'Prefer readable English labels for section titles if any text is rendered; no watermark, no logo spam, no random unrelated mascots',
   ]
     .filter(Boolean)
     .join('. ');
@@ -431,11 +645,14 @@ export function formatProfileBibleLine(name: string, p: Partial<NhanVatProfile>)
     p.vai_tro ? `Vai=${p.vai_tro}` : null,
     `Giới=${p.gioi_tinh || '?'}`,
     p.tuoi ? `Tuổi=${p.tuoi}` : null,
+    p.chieu_cao ? `Cao=${p.chieu_cao}` : null,
     p.dang_nguoi ? `Dáng=${p.dang_nguoi}` : null,
     `Trang phục=${p.quan_ao || '?'}`,
+    p.phu_kien ? `Phụ kiện=${p.phu_kien}` : null,
     p.ngoai_hinh ? `Ngoại hình=${p.ngoai_hinh}` : null,
     p.dac_diem_nhan_dang ? `Nhận dạng=${p.dac_diem_nhan_dang}` : null,
     p.khuet_tat ? `Khuyết điểm=${p.khuet_tat}` : null,
+    p.mau_sac ? `Màu=${p.mau_sac}` : null,
     `Sở thích=${p.so_thich || '?'}`,
     `Thói quen=${p.thoi_quen || '?'}`,
     p.dong_co ? `Động cơ=${p.dong_co}` : null,
@@ -488,8 +705,12 @@ export function formatCharacterVisualRef(
     ` | Vai: ${p.vai_tro || '?'}` +
     ` | Giới: ${p.gioi_tinh || '?'}` +
     ` | Tuổi: ${p.tuoi || '?'}` +
+    ` | Cao: ${p.chieu_cao || '?'}` +
     ` | Dáng: ${p.dang_nguoi || '?'}` +
     ` | Trang phục: ${p.quan_ao || '?'}` +
+    ` | Phụ kiện/công cụ: ${p.phu_kien || '?'}` +
+    ` | Thói quen: ${p.thoi_quen || '?'}` +
+    ` | Màu: ${p.mau_sac || '?'}` +
     ` | Face lock: ${p.ngoai_hinh || '?'}` +
     ` | Đặc điểm nhận dạng (BẮT BUỘC giữ): ${p.dac_diem_nhan_dang || p.khuet_tat || '?'}` +
     (() => {

@@ -30,6 +30,7 @@ import {
 import {
   CHAR_ANGLE_CAMERA,
   CHAR_EMOTION_FACE,
+  CHAR_POSE_ACTION,
 } from '@/lib/characterProfile';
 import {
   callActiveModel,
@@ -188,6 +189,7 @@ CẤM bịa quy tắc không có trong nguồn. CẤM copy nguyên đoạn tho�
             prompt?: string;
             angle_prompts?: Record<string, string>;
             expression_prompts?: Record<string, string>;
+            pose_prompts?: Record<string, string>;
           }) => {
             if (!c || typeof c !== 'object') return c;
             const sheet = applyCharacterSheetFormulas({
@@ -195,10 +197,12 @@ CẤM bịa quy tắc không có trong nguồn. CẤM copy nguyên đoạn tho�
               prompt: c.prompt || '',
               angle_prompts: c.angle_prompts,
               expression_prompts: c.expression_prompts,
+              pose_prompts: c.pose_prompts,
               styleHint: importStyle || importGenre,
               genre: importGenre || importStyle,
               angleFraming: CHAR_ANGLE_CAMERA as unknown as Record<string, string>,
               emotionFace: CHAR_EMOTION_FACE as unknown as Record<string, string>,
+              poseAction: CHAR_POSE_ACTION as unknown as Record<string, string>,
             });
             return {
               ...c,
@@ -209,6 +213,9 @@ CẤM bịa quy tắc không có trong nguồn. CẤM copy nguyên đoạn tho�
               expression_prompts: Object.keys(sheet.expression_prompts).length
                 ? sheet.expression_prompts
                 : c.expression_prompts,
+              pose_prompts: Object.keys(sheet.pose_prompts).length
+                ? sheet.pose_prompts
+                : c.pose_prompts,
             };
           },
         );

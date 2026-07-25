@@ -45,6 +45,8 @@ Mọi feature / hook / module / API **không** invent key/field ad-hoc.
 | Prefix lọc chương | `chapterAssetPrefix(ch)` | `3_` |
 | File đĩa audio | `localAudioFilename` | `chapter_3_scene_2.mp3` |
 | File đĩa ảnh | `localImageFilename` | `chapter_3_scene_2_prompt_0.png` |
+| File sheet NV | `localCharacterSheetFilename` | `char_sheet_Hàn_Dực.png` |
+| File wardrobe NV | `localCharacterWardrobeFilename` | `char_sheet_X_wardrobe_battle.png` |
 | File đĩa video | `localVideoFilename` | `chapter_3_scene_2_animatic.mp4` |
 | Tên Drive export | `driveMediaFilename` | `Title_Chuong_3_Canh_2.mp3` |
 

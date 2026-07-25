@@ -1,3 +1,4 @@
+import { clearAllKeyCooldowns } from '@/lib/apiKeyRotate';
 import {
   cloneFactoryAppState,
   cloneFreshProjectState,
@@ -26,7 +27,15 @@ export function createCredentialActions(
   return {
       setApiKey: (apiKey) => set({ apiKey }),
 
-      setApiKeys: (apiKeys) => set({ apiKeys }),
+      setApiKeys: (apiKeys) => {
+        // New key pool — clear auth/rpm cooldowns so user is not stuck after replace
+        try {
+          clearAllKeyCooldowns();
+        } catch {
+          /* ignore */
+        }
+        set({ apiKeys });
+      },
 
       setOpenaiApiKey: (openaiApiKey) => set({ openaiApiKey }),
 
@@ -158,6 +167,9 @@ export function createCredentialActions(
             aiMasterApiKey: state.aiMasterApiKey,
             imageApiKey: state.imageApiKey,
             videoApiKey: state.videoApiKey,
+            videoApiBaseUrl: state.videoApiBaseUrl,
+            externalVideoApis: state.externalVideoApis || [],
+            activeExternalVideoApiId: state.activeExternalVideoApiId || '',
             imageProvider: state.imageProvider,
             imageModel: state.imageModel,
             videoProvider: state.videoProvider,
@@ -238,7 +250,8 @@ export function createCredentialActions(
       setVipStatus: (is_vip, is_pro, is_trial = false) =>
         set({
           is_vip: !!is_vip,
-          is_pro: !!is_pro,
+          // Trial is Pro-equivalent access; legacy VIP also normalizes to Pro.
+          is_pro: !!is_pro || !!is_trial || !!is_vip,
           // is_vip chỉ tương thích dữ liệu cũ; sản phẩm trả phí duy nhất là Pro.
           is_trial: !!is_trial && !is_vip,
         }),

@@ -1,6 +1,7 @@
 /**
  * POST admin — issue license (token or AINOVEL code).
- * Persists to Supabase when SERVICE_ROLE configured.
+ * Supabase SERVICE_ROLE is mandatory; no token/code is returned without a
+ * confirmed licenses row.
  *
  * Auth:
  * - Header x-ainovel-admin-key / body.adminKey = AINOVEL_ENTITLEMENT_ADMIN_KEY
@@ -11,10 +12,10 @@ import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { generateActivationCode } from '@/lib/commercial/activationVault';
 import {
   auditLog,
-  hashToken,
   insertLicenseRow,
   issueProLicenseForPlan,
   paidPlanToLicense,
+  persistIssuedProToken,
 } from '@/lib/cloud/licenseBridge';
 import type { PaidPlanId } from '@/lib/commercial/pricingPlans';
 import { PAID_PLANS } from '@/lib/commercial/pricingPlans';
@@ -42,6 +43,13 @@ export async function POST(req: Request) {
   try {
     assertSellerRuntime();
     assertLicenseSignerConfigured();
+    if (!isSupabaseAdminConfigured()) {
+      throw new AppError(
+        'Supabase SERVICE_ROLE bắt buộc để cấp license. Không phát hành token-only.',
+        { code: 'INFRA', status: 503 },
+      );
+    }
+    const service = createServiceSupabase();
     const body = (await req.json().catch(() => ({}))) as {
       planId?: string;
       hwid?: string;
@@ -89,7 +97,6 @@ export async function POST(req: Request) {
 
     let token: string | undefined;
     let activationCode: string | undefined;
-    let tokenHash: string | null = null;
 
     if (issueMode === 'code') {
       // Cloud issue persists directly to Supabase. Do not touch the local
@@ -98,18 +105,16 @@ export async function POST(req: Request) {
     } else {
       const issued = issueProLicenseForPlan(planId, hwid);
       token = issued.token;
-      tokenHash = hashToken(token);
     }
 
-    let licenseId: string | null = null;
-    if (isSupabaseAdminConfigured()) {
-      const service = createServiceSupabase();
+    let licenseId: string;
+    if (issueMode === 'code') {
       const lic = await insertLicenseRow(service, {
         plan: meta.licensePlan,
         hwid,
         status: 'active',
         exp_at: expAt,
-        token_hash: tokenHash,
+        token_hash: null,
         activation_code: activationCode || null,
       });
       licenseId = lic.id;
@@ -119,6 +124,15 @@ export async function POST(req: Request) {
         { licenseId, planId, hwid, issueMode },
         actorId,
       );
+    } else {
+      const persisted = await persistIssuedProToken({
+        service,
+        token: token!,
+        hwid,
+        actorId,
+        source: 'api.cloud.license.issue',
+      });
+      licenseId = persisted.licenseId;
     }
 
     return NextResponse.json({
@@ -129,7 +143,7 @@ export async function POST(req: Request) {
       plan: meta.licensePlan,
       hwid,
       expAt,
-      cloud: Boolean(licenseId),
+      cloud: true,
     });
   } catch (err: unknown) {
     return NextResponse.json(toErrorJson(err), {

@@ -4,8 +4,10 @@ Packages copied for runtime so the app does **not** require `D:\repo` on custome
 
 | Folder | Source | Used for |
 |--------|--------|----------|
-| `FableCut/` | FableCut-main | Timeline editor + `project.json` |
+| `FableCut/` | FableCut-main | Timeline `project.json` side-pack (ngầm) |
 | `watch/` | claude-video-main/skills/watch | Post-video QC (report only) |
+
+**XinChao-Cut** (full multi-track editor, GUI replaces CapCut button): `tools/xinchao-cut/` — nguyên cấu trúc repo (Vite + backend + src-tauri). Không đặt trong `vendor/` vì là app editor độc lập.
 
 Resolution order (`src/lib/integrations/paths.ts`):
 

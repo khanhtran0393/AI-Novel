@@ -519,9 +519,13 @@ export async function bootstrapFlow(opts?: {
         const { commandExtension, syncAccountIdentity } = await import(
           './bridgeServer'
         );
-        await commandExtension('force_token_harvest', {}, 30_000, accountId).catch(
-          () => undefined,
-        );
+        // allowOpenTab:false — CLI already opened Flow; do not open a 2nd tab mid-login
+        await commandExtension(
+          'force_token_harvest',
+          { allowOpenTab: false, reloadIfMissing: false },
+          30_000,
+          accountId,
+        ).catch(() => undefined);
         // Prefer session poll (email) over waiting only for webRequest Bearer
         const idr = await syncAccountIdentity(accountId);
         if (idr.ok && idr.identity?.email) {
@@ -535,36 +539,60 @@ export async function bootstrapFlow(opts?: {
     isProfileBrowserAlive(launch.profileDir) ||
     isProfileBrowserAlive(profileDir)
   ) {
-    // Browser còn mở nhưng extension chưa nối — retry 1 lần (không retry nếu user đã tắt)
-    steps.push('Extension chưa nối — thử lại 1 lần (browser vẫn mở)…');
-    launchChrome({
-      chromePath: browser.exe,
-      extDir: isolated.extDir,
-      profileDir,
-      accountId,
-      mode: 'login',
-      forceClean: true,
-      isStockChrome: browser.isStockChrome,
-    });
+    // Browser still open but extension slow — KEEP the same window.
+    // CẤM forceClean relaunch here: kills login window + spawns a 2nd → user sees
+    // "tự mở → mở cái nữa → cái kia tắt" (especially stock Chrome blocking --load-extension).
+    if (browser.isStockChrome) {
+      steps.push(
+        'Extension chưa nối — Google Chrome thường chặn --load-extension. Giữ cửa sổ login hiện tại (không mở browser thứ 2). Ưu tiên Brave / Chromium portable.',
+      );
+      steps.push(portableChromiumInstallHint());
+    } else {
+      steps.push(
+        'Extension chưa nối — giữ cửa sổ login đang mở, chờ thêm (không kill/relaunch cửa sổ thứ 2)…',
+      );
+    }
     const retryEnd = Date.now() + 20_000;
+    let recoveredOnce = false;
     while (Date.now() < retryEnd) {
-      if (
-        !isProfileBrowserAlive(profileDir) &&
-        !isProfileBrowserAlive(launch.profileDir)
-      ) {
+      const alive =
+        isProfileBrowserAlive(profileDir) ||
+        isProfileBrowserAlive(launch.profileDir);
+      if (!alive) {
+        // Crash only: one recovery launch. User intentional close → mark cancel (no loop).
+        if (!recoveredOnce) {
+          recoveredOnce = true;
+          steps.push(
+            'Browser crash giữa chừng — mở lại 1 lần duy nhất (cùng profile)…',
+          );
+          launchChrome({
+            chromePath: browser.exe,
+            extDir: isolated.extDir,
+            profileDir,
+            accountId,
+            mode: 'login',
+            forceClean: true,
+            isStockChrome: browser.isStockChrome,
+          });
+          await new Promise((r) => setTimeout(r, 800));
+          continue;
+        }
         browserClosedByUser = true;
-        markUserClosed('Browser đã đóng khi retry — dừng, không mở thêm');
+        markUserClosed('Browser đã đóng khi chờ extension — dừng, không mở thêm');
         break;
       }
       if (getBridgeSnapshot().extensionConnected) {
-        steps.push('Extension đã nối sau lần 2');
-        if (isProfileBrowserAlive(launch.profileDir) || isProfileBrowserAlive(profileDir)) {
-          try {
-            const { commandExtension } = await import('./bridgeServer');
-            await commandExtension('force_token_harvest', {}, 30_000, accountId);
-          } catch {
-            /* ignore */
-          }
+        steps.push('Extension đã nối sau khi chờ thêm (cùng cửa sổ)');
+        try {
+          const { commandExtension } = await import('./bridgeServer');
+          await commandExtension(
+            'force_token_harvest',
+            { allowOpenTab: false, reloadIfMissing: false },
+            30_000,
+            accountId,
+          );
+        } catch {
+          /* ignore */
         }
         break;
       }
@@ -574,8 +602,16 @@ export async function bootstrapFlow(opts?: {
       !browserClosedByUser &&
       !getBridgeSnapshot().extensionConnected
     ) {
-      if (browser.isStockChrome) steps.push(portableChromiumInstallHint());
-      else steps.push('Extension vẫn chưa nối');
+      if (browser.isStockChrome) {
+        steps.push(
+          'Chrome vẫn chưa nạp extension Flow — đừng fallback Chrome. Dùng Brave / «Cài browser gen ảnh».',
+        );
+        steps.push(portableChromiumInstallHint());
+      } else {
+        steps.push(
+          'Extension vẫn chưa nối — đăng nhập Google trên cửa sổ đang mở nếu còn; app không mở browser mới.',
+        );
+      }
     }
   } else {
     browserClosedByUser = true;
@@ -700,9 +736,10 @@ export async function bootstrapFlow(opts?: {
             }
           }
           if (!isFreshTokenForAccount(accountId)) {
+            // Poll-only harvest — never open/reload a new Flow tab while user logs in
             await commandExtension(
               'force_token_harvest',
-              {},
+              { allowOpenTab: false, reloadIfMissing: false },
               12_000,
               accountId,
             ).catch(() => undefined);
@@ -852,7 +889,7 @@ export async function bootstrapFlow(opts?: {
       : browserClosedByUser
         ? 'Browser đã đóng — chưa hoàn tất đăng nhập'
         : snap.extensionConnected
-          ? 'Extension đã nối — đăng nhập Google trên cửa sổ app (không dùng Chrome cá nhân)'
+          ? 'Extension đã nối — CHƯA có email Google. Đăng nhập TRONG cửa sổ browser app (Media Config → Đăng nhập). Không dùng Chrome cá nhân.'
           : browser.isStockChrome
             ? 'Chrome không nạp extension. Cài Ungoogled vào tools/browsers/ungoogled-chromium/'
             : 'Đã mở browser. Đăng nhập Google trên cửa sổ này.',

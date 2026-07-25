@@ -66,12 +66,40 @@ export async function evaluateChapter(
   }
 }
 
+/**
+ * LLM often returns lorebook/tom_tat as object/array instead of string.
+ * Coerce safely — never call .trim() on non-string (toast: lorebook_cap_nhat.trim is not a function).
+ */
+export function coerceMemoryText(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => coerceMemoryText(item))
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    for (const key of ['text', 'content', 'lorebook', 'value', 'body'] as const) {
+      if (typeof o[key] === 'string') return o[key] as string;
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return '';
+    }
+  }
+  return String(value);
+}
+
 function applyMemoryResult(
   state: ReturnType<typeof useNovelStore.getState>,
   memory: {
-    tom_tat_cuon_chieu?: string;
-    tri_nho_ngan_han_moi?: string;
-    lorebook_cap_nhat?: string;
+    tom_tat_cuon_chieu?: unknown;
+    tri_nho_ngan_han_moi?: unknown;
+    lorebook_cap_nhat?: unknown;
     world_state_cap_nhat?: {
       inventory: string[];
       discovered_clues: string[];
@@ -87,16 +115,20 @@ function applyMemoryResult(
   chapterCount: number,
   okMessage: string,
 ): void {
-  if (memory.tom_tat_cuon_chieu) {
-    state.updateTomTatCuonChieu(memory.tom_tat_cuon_chieu.normalize('NFC'));
+  const tomTat = coerceMemoryText(memory.tom_tat_cuon_chieu).trim();
+  const triNho = coerceMemoryText(memory.tri_nho_ngan_han_moi).trim();
+  const lorebook = coerceMemoryText(memory.lorebook_cap_nhat).trim();
+
+  if (tomTat) {
+    state.updateTomTatCuonChieu(tomTat.normalize('NFC'));
   }
-  if (memory.tri_nho_ngan_han_moi) {
+  if (triNho) {
     state.updateTriNhoNganHan(
-      [...state.tri_nho_ngan_han, memory.tri_nho_ngan_han_moi.normalize('NFC')].slice(-3),
+      [...state.tri_nho_ngan_han, triNho.normalize('NFC')].slice(-3),
     );
   }
-  if (memory.lorebook_cap_nhat && memory.lorebook_cap_nhat.trim()) {
-    state.updateLorebook(memory.lorebook_cap_nhat.normalize('NFC'));
+  if (lorebook) {
+    state.updateLorebook(lorebook.normalize('NFC'));
   }
   if (memory.world_state_cap_nhat) {
     state.updateWorldState(memory.world_state_cap_nhat);
@@ -129,11 +161,9 @@ function applyMemoryResult(
     projectName: state.ten_tac_pham,
     payload: {
       chapter: chapterNum,
-      tom_tat_cuon_chieu: memory.tom_tat_cuon_chieu,
-      tri_nho_ngan_han_moi: memory.tri_nho_ngan_han_moi,
-      hasLorebookUpdate: Boolean(
-        memory.lorebook_cap_nhat && memory.lorebook_cap_nhat !== state.lorebook,
-      ),
+      tom_tat_cuon_chieu: tomTat || undefined,
+      tri_nho_ngan_han_moi: triNho || undefined,
+      hasLorebookUpdate: Boolean(lorebook && lorebook !== state.lorebook),
       chapterCount,
       nextBeat,
     },
@@ -212,19 +242,31 @@ export async function commitChapterMemory(
     enrichMemoryAfterCommit({
       chapter: chapterNum,
       content: body,
-      scrollSummary: after.tom_tat_cuon_chieu || String(memory.tom_tat_cuon_chieu || ''),
+      scrollSummary:
+        after.tom_tat_cuon_chieu ||
+        coerceMemoryText(memory.tom_tat_cuon_chieu) ||
+        '',
       shortTerm: after.tri_nho_ngan_han || [],
       characterNames: after.nhan_vat || [],
     });
 
     // P0 — Quality Gate snapshot (editor verdict may still be pending)
+    const { effectiveSetupWordGoal } = await import(
+      '@/lib/commercial/freeLimitsPolicy'
+    );
+    const wordGoalQg = effectiveSetupWordGoal(after.setup?.so_tu_chuong, {
+      is_pro: after.is_pro,
+      is_trial: after.is_trial,
+      is_vip: after.is_vip,
+    });
     const q = evaluateChapterQuality({
       chapter: chapterNum,
       content: body,
       characterNames: after.nhan_vat || [],
-      wordGoal: after.setup?.so_tu_chuong || 4250,
+      wordGoal: wordGoalQg,
       userRules: after.userRules,
       editorVerdict: after.editorReviews?.[chapterNum]?.verdict,
+      scriptMode: after.scriptMode,
     });
     setChapterQuality(q);
 

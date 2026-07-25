@@ -132,17 +132,31 @@ export function seedRolesFromProject(state: CastSeedSnapshot): VoiceRole[] {
     if (!n) continue;
     const profile = state.nhan_vat_prompts?.[n] as Partial<NhanVatProfile> | undefined;
     const prev = existingByChar.get(n);
+    const explicit = (profile?.tts_voice || '').trim();
+    const suggested =
+      suggestVoiceFromProfile(profile, platform, language) || '';
+    // Prefer: existing voice → explicit profile → gender/quirk suggest → narrator default
+    // (empty voiceId → Role Cast toast «chưa có voiceId»)
+    const resolveVoice = (current?: string) =>
+      (current || '').trim() || explicit || suggested || defaultVoice;
+
     if (prev) {
       // Giữ role cũ; nếu thiếu speed/pitch → bù từ quirk hồ sơ (trừ khi locked)
       const filled = applyProsodyFromProfile(prev, profile, baseSpeed, basePitch, {
         force: false,
       });
+      const voiceId = resolveVoice(filled.voiceId);
       roles.push({
         ...filled,
         id: characterRoleId(n),
         characterName: n,
         label: filled.label || n,
         kind: 'character',
+        voiceId,
+        voicesByPlatform: {
+          ...(filled.voicesByPlatform || {}),
+          ...(voiceId ? { [platform]: voiceId } : {}),
+        },
         vinaRoleIndex:
           typeof filled.vinaRoleIndex === 'number' && filled.vinaRoleIndex >= 1
             ? filled.vinaRoleIndex
@@ -150,8 +164,7 @@ export function seedRolesFromProject(state: CastSeedSnapshot): VoiceRole[] {
       });
       continue;
     }
-    const explicit = (profile?.tts_voice || '').trim();
-    const voiceId = explicit;
+    const voiceId = resolveVoice('');
     const prosody = suggestProsodyFromProfile(profile, { baseSpeed, basePitch });
     roles.push({
       id: characterRoleId(n),
@@ -217,18 +230,18 @@ export function migrateRolesForPlatform(
   defaultVoice: string,
   opts?: { baseSpeed?: number; basePitch?: number },
 ): VoiceRole[] {
-  void language;
   // Never throw on missing opts — callers (updateTTSConfig) historically omitted them
   // and crashed workspace with uncaught "TTS speed khong hop le".
   const baseSpeed = coerceTtsSpeed(opts?.baseSpeed, 1);
   const basePitch = coerceTtsPitch(opts?.basePitch, 0);
+  const def = (defaultVoice || '').trim();
   return roles.map((r) => {
     const cached = r.voicesByPlatform?.[newPlatform]?.trim();
     if (cached) {
       return { ...r, voiceId: cached };
     }
     if (r.kind === 'narrator') {
-      const v = defaultVoice;
+      const v = def;
       return {
         ...r,
         voiceId: v,
@@ -237,7 +250,11 @@ export function migrateRolesForPlatform(
     }
     if (r.kind === 'character' && r.characterName) {
       const profile = prompts[r.characterName];
-      const v = (profile?.tts_voice || '').trim();
+      const explicit = (profile?.tts_voice || '').trim();
+      const suggested =
+        suggestVoiceFromProfile(profile, newPlatform, language) || '';
+      // CẤM để voiceId rỗng sau đổi platform (toast «chưa có voiceId»)
+      const v = explicit || suggested || def || (r.voiceId || '').trim();
       const withVoice = {
         ...r,
         voiceId: v,
@@ -247,12 +264,14 @@ export function migrateRolesForPlatform(
         force: false,
       });
     }
+    // extras: keep previous voice if any, else narrator default
+    const v = (r.voiceId || '').trim() || def;
     return {
       ...r,
-      voiceId: '',
+      voiceId: v,
       voicesByPlatform: {
         ...(r.voicesByPlatform || {}),
-        [newPlatform]: '',
+        [newPlatform]: v,
       },
     };
   });

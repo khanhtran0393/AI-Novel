@@ -135,10 +135,12 @@ export function evaluateChapterQuality(input: QualityGateInput): ChapterQualityR
     });
   }
   if (gate.wordCount > band.max) {
+    // Hard over max (+20%): error so media/quality flag overshoot (e.g. 208%)
+    const hardOver = Math.round(band.goal * 1.35);
     findings.push({
-      severity: gate.wordCount > Math.round(band.max * 1.15) ? 'error' : 'warning',
+      severity: gate.wordCount > hardOver ? 'error' : 'warning',
       code: 'word_over_max',
-      message: `Số từ ${gate.wordCount} trên ceiling Setup ${band.max} (goal×1.25).`,
+      message: `Cổng từ vượt quy định: ${gate.wordCount}/${band.goal} từ (${Math.round((gate.wordCount / band.goal) * 100)}%) — trần ${band.max} (+20%).`,
     });
   }
   if (!gate.scenesOk) {
@@ -212,6 +214,57 @@ export function evaluateChapterQuality(input: QualityGateInput): ChapterQualityR
   };
 }
 
+/**
+ * Human-readable gate reasons for toast / badge click / preflight.
+ * Errors first, then warnings — never empty vague "chặn media" alone.
+ */
+export function formatQualityGateReasons(
+  report: ChapterQualityReport | null | undefined,
+  opts?: { maxErrors?: number; maxWarnings?: number; includeMeta?: boolean },
+): string {
+  if (!report) return 'Chưa có báo cáo Quality Gate — viết/commit chương để quét lại.';
+  const maxE = opts?.maxErrors ?? 8;
+  const maxW = opts?.maxWarnings ?? 4;
+  const lines: string[] = [];
+  if (opts?.includeMeta !== false) {
+    lines.push(
+      `Ch${report.chapter}: ${report.wordCount} từ · ${report.sceneCount} cảnh · ` +
+        `${report.hardErrors} lỗi · ${report.warnings} cảnh báo` +
+        (report.editorVerdict && report.editorVerdict !== 'ungated'
+          ? ` · editor=${report.editorVerdict}`
+          : ''),
+    );
+  }
+  const errors = (report.findings || []).filter((f) => f.severity === 'error');
+  const warns = (report.findings || []).filter((f) => f.severity === 'warning');
+  if (!errors.length && !warns.length) {
+    lines.push(
+      report.mediaReady
+        ? 'Không có finding — media-ready.'
+        : 'mediaReady=false nhưng không có finding (re-scan chương).',
+    );
+    return lines.join('\n');
+  }
+  for (const f of errors.slice(0, maxE)) {
+    lines.push(`❌ [${f.code}] ${f.message}`);
+  }
+  if (errors.length > maxE) lines.push(`… +${errors.length - maxE} lỗi khác`);
+  for (const f of warns.slice(0, maxW)) {
+    lines.push(`⚠ [${f.code}] ${f.message}`);
+  }
+  if (warns.length > maxW) lines.push(`… +${warns.length - maxW} cảnh báo khác`);
+  return lines.join('\n');
+}
+
+/** One-line summary for toast title / compact badge. */
+export function formatQualityGateTitle(
+  report: ChapterQualityReport | null | undefined,
+): string {
+  if (!report) return 'Gate — chưa quét';
+  if (report.mediaReady) return `Gate OK · ${report.wordCount}t · ${report.sceneCount}c`;
+  return `Gate ${report.hardErrors} lỗi chặn media`;
+}
+
 /** Throw with actionable message if not media-ready (B10 hard-fail). */
 export function assertChapterMediaReady(
   report: ChapterQualityReport | null | undefined,
@@ -229,13 +282,13 @@ export function assertChapterMediaReady(
     );
   }
   if (!report.mediaReady) {
-    const top = report.findings
-      .filter((f) => f.severity === 'error')
-      .slice(0, 3)
-      .map((f) => f.message)
-      .join(' | ');
+    const reasons = formatQualityGateReasons(report, {
+      maxErrors: 5,
+      maxWarnings: 2,
+      includeMeta: false,
+    });
     throw new Error(
-      `Quality Gate chặn media ch${chapter} (${report.hardErrors} lỗi). ${top || 'Xem findings.'}`,
+      `Quality Gate chặn media ch${chapter} (${report.hardErrors} lỗi).\n${reasons || 'Xem findings trên badge Gate (bấm để mở).'}`,
     );
   }
 }

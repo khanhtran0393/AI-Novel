@@ -64,6 +64,17 @@ Seedance = TypeScript **in-process** (`src/lib/integrations/seedance*`) — khô
 | Watch QC | `exports/integrations/watch/qc_*.md` (report-only) |
 | Ship packs | `exports/ship-packs/…` |
 | Seedance bake | `exports/integrations/…` (sequence persist) |
+| CapCut / XinChao-Cut pack | `exports/integrations/xinchao-cut/…` |
+
+---
+
+## Runtime CapCut nội bộ
+
+- Source tham chiếu được vendored nguyên cấu trúc tại `tools/xinchao-cut`.
+- Nút CapCut tạo pack từ media thật rồi mở `tools/xinchao-cut/XinChao-Cut.exe`.
+- Frontend `dist`, backend Python, setup scripts và native Tauri runtime đều nằm trong bản cài AI Novel.
+- Runtime không đọc `D:\repo\XinChao-Cut-main`, không dùng junction `node_modules`, và không soft-success khi editor không mở.
+- Build/QA: `npm run xinchao:qa`, `xinchao:build:runtime`, `xinchao:build:verified`, `smoke:xinchao`, `smoke:xinchao:runtime`, `smoke:xinchao:native`.
 
 ---
 

@@ -25,10 +25,14 @@ Tạo file customer bằng `npm run commercial:setup-env -- --license-api <HTTPS
 ## 3. Cấp Pro
 
 ```powershell
-npm run license:issue -- --token --hwid <BUYER_HWID> --plan pro --expDays 365
+$env:AINOVEL_LICENSE_API_URL='https://<license-api>'
+$env:AINOVEL_ENTITLEMENT_ADMIN_KEY='<admin-key>'
+npm run license:issue -- --hwid <BUYER_HWID> --expDays 365
 ```
 
-Tháng, năm và trọn đời đều phát hành claims `plan: pro`; chỉ khác ngày hết hạn.
+CLI không ký token cục bộ. License API phải ghi Supabase ledger thành công rồi
+mới trả token. Tháng, năm và trọn đời đều phát hành claims `plan: pro`; chỉ
+khác ngày hết hạn.
 
 ## 4. Ký và đóng gói
 

@@ -16,6 +16,9 @@ UI (Media Config / SceneCard)
   → labs.google / aisandbox-pa.googleapis.com
 ```
 
+> **CẤM** dùng browser ký sinh Flow để lấy phụ đề YouTube / Setup «viết lại tương tự».  
+> Captions: `src/lib/youtubeSource.ts` (python → timedtext → yt-dlp). Flow browser chỉ cho Google Labs gen media.
+
 | Cổng | Vai trò |
 |------|---------|
 | **9223** | WebSocket — extension kết nối bridge |
@@ -45,13 +48,25 @@ Xem: [`tools/browsers/README.md`](../tools/browsers/README.md)
 
 ### Đăng nhập → nhận cookie/token → tự đóng phiên
 
-1. App mở Chrome **hiển thị** (profile `scratch/flow-profiles/...`) + tab Flow  
-2. User đăng nhập Google  
+1. App mở browser **hiển thị** (Brave / portable / Chromium sạch — **không** fallback Chrome ngầm) + 1 tab Flow  
+2. User đăng nhập Google trên **cùng cửa sổ**  
 3. Extension bắt Bearer `ya29.*` (và session labs) → gửi bridge  
-4. Bridge gọi `close_login_session` → minimize → **kill Chrome login**  
-5. Relaunch Chrome **nền** (off-screen, cùng profile) để captcha/API vẫn chạy  
+4. Bridge gọi `close_login_session` → minimize → **kill login window**  
+5. Relaunch **1 lần** browser nền (off-screen, cùng profile) — **single owner** `closeLoginSessionAfterCapture`  
 
-Không cần để cửa sổ Chrome hiện trên màn hình sau khi login xong.
+**CẤM double-window:** extension chậm **không** kill+mở browser thứ 2; login **không** dùng `--new-window` (tránh cửa sổ trống); token capture **không** spawn nền lần 2 sau close.
+
+Không cần để cửa sổ browser hiện trên màn hình sau khi login xong.
+
+### Đóng app → tắt browser Flow
+
+Chrome Flow spawn **detached** (gen không chết theo window). Khi **đóng Ai Novel**:
+
+1. `main.js` `before-quit` / `quitAppFully` → `killFlowBrowsersOnAppQuit`  
+2. Next process exit hooks → `killAllFlowBrowsers`  
+3. Chỉ kill process có `--user-data-dir` dưới `accounts_data` / `scratch/flow-profiles` / `browser-profiles` (không đụng Chrome cá nhân)
+
+Smoke: `npx tsx scripts/smoke-flow-browser-quit.mts`
 
 ### Cách kích hoạt
 
@@ -97,11 +112,47 @@ Profile Chrome riêng: `scratch/flow-profiles/<accountId>/` — login một lầ
 - **Families:** T2V · I2V (+ `_fl` first+last) · R2V/ingredients (`veo_3_1_r2v_*`) · Extend · Upsample. Matrix: `src/lib/flow-bridge/modelCatalog.ts` · `GET /api/flow/models`.
 - Legacy: OpenAI / Grok / Gemini banana+whisk / API-key Veo vẫn chọn được trong dropdown.
 
+## Google `/sorry/` (checkbox “Tôi không phải là người máy”)
+
+Khác với **reCAPTCHA Enterprise invisible** (token API gen khi đã vào Labs):
+
+| | Enterprise (API gen) | Trang `/sorry/` (chặn bot) |
+|--|--|--|
+| Khi nào | Tab Flow sạch, `grecaptcha.enterprise.execute` | Google risk → redirect `google.com/sorry` |
+| App tự làm | Có (extension inject token) | **Có một phần:** đưa cửa sổ ra màn hình + auto-click checkbox + chờ tới 180s |
+| Còn cần user | Không (khi session sạch) | Captcha **ảnh** / risk cao → tick tay trên cửa sổ Chromium |
+
+Luồng: `queueEngine` → `resolve_google_challenge` + `open_flow_tab` → extension `resolveGoogleChallenge` (focus window, click `#recaptcha-anchor`, poll hết `/sorry/`) → rồi mới `solveCaptcha` Enterprise.
+
+**Lưu ý:** Chrome for Testing / gen dày / IP risk dễ dính `/sorry/`. Giảm parallel, proxy per account, không minimize cửa sổ lúc đang chờ tick.
+
 ## Lưu ý an toàn tài khoản
 
 - Delay giữa task (mặc định 3–8s)
 - Không spam multi-thread không proxy
 - Token Bearer hết hạn ~1h → refresh tab Flow
+
+## Google Flow runtime standards (chuẩn app)
+
+Áp dụng mặc định cho queue gen Google Labs (không clone Phoma; không UrbanVPN hard-depend; **B10** giữ cứng).
+
+| Chuẩn | Hành vi | Module |
+|-------|---------|--------|
+| **Error taxonomy** | Map quota / 401 / captcha / rate / policy → message VN + gợi ý (không auto-đổi model) | `flowRuntimeErrors.ts` |
+| **1 gen / account** | Parallel = nhiều account; không xếp 2 captcha cùng profile | `queueEngine` + `flowRuntimeRecycle` busy set |
+| **Captcha serialize** | `extApiChain` + `captchaExtraGapMs` khi có `captchaAction` | `bridgeServer.requestViaExtension` |
+| **Progress steps** | `queued→account→captcha→submit→poll→download→done` | `flowRuntimeSteps.ts` · task.`step` / `progressMessage` |
+| **Jitter delay** | `delayMsMin..Max` + `runOneGapMs*` giữa shot | `config.FLOW_DEFAULTS` |
+| **Recycle after success** | Soft: `refresh_flow_tab`; hard kill Chrome: ảnh mỗi N success; **video hard recycle default OFF** (tránh treo Electron mid-gen) | `flowRuntimeRecycle.ts` · ops |
+| **Async video app path** | `POST /api/generate-video` Flow → **202** + `taskId`; client poll `GET /api/flow/task?id=&finalize=1`; recover `GET /api/video-artifact` | `videoModule` · `flowVideoFinalize` · queue `enqueueAndStart` |
+| **Health** | Bridge `GET /api/health` (instant); Media Config Health strip (token age / cr / queue) | `bridgeServer` · `FlowAccountsPanel` |
+| **Proxy** | **UI trên từng card** Media Config → Flow profile: ô «Proxy · profile này» → Lưu → **Mở lại browser**. Format `host:port` / `http://user:pass@host:port` / `socks5://…`. Fallback `ops.globalProxy`. **Không** Urban free / auto-xoay | `FlowAccountsPanel` · `resolveAccountProxy` · `launchChrome --proxy-server` |
+
+Ops file `data/flow-bridge/ops.json`:
+
+- `recycleAfterSuccess` (default **true**)
+- `recycleEveryNSuccess` (default **3**, ảnh)
+- `recycleEveryVideoSuccess` (default **false** — chỉ bật explicit `true`)
 
 ## P0–P3 (Flow parity layer)
 

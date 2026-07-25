@@ -23,7 +23,21 @@ export default function CharacterRoster({ onImageZoom }: Props) {
   // Raw store refs only — never `|| []` / map inside selector (infinite getSnapshot loop)
   const nhanVat = useNovelStore((s) => s.nhan_vat);
   const nhanVatPrompts = useNovelStore((s) => s.nhan_vat_prompts);
-  const generatedImages = useNovelStore((s) => s.generatedImages);
+  /**
+   * CẤM subscribe full generatedImages — mỗi gen scene shot đổi map → re-render cả roster.
+   * Chỉ ký hiệu 0/1 theo sheet NV (face_ref hoặc char_ key).
+   */
+  const sheetPresenceSig = useNovelStore((s) => {
+    const names = s.nhan_vat || [];
+    let sig = '';
+    for (const n of names) {
+      const k = charImageKey(n);
+      const img = s.generatedImages?.[k];
+      const face = s.nhan_vat_prompts?.[n]?.face_ref;
+      sig += img || face ? '1' : '0';
+    }
+    return sig;
+  });
 
   const {
     editingChar,
@@ -81,10 +95,14 @@ export default function CharacterRoster({ onImageZoom }: Props) {
           )}
           <div className="flex flex-wrap gap-1.5">
             {nhanVat.map((char, idx) => {
+              void sheetPresenceSig; // re-render only when NV sheet presence flips
+              const hasRef =
+                sheetPresenceSig[idx] === '1' ||
+                !!nhanVatPrompts?.[char]?.face_ref;
               const status = getCharacterProfileSetupStatus(
                 nhanVatPrompts?.[char],
                 {
-                  hasReferenceImage: !!generatedImages?.[charImageKey(char)],
+                  hasReferenceImage: hasRef,
                 },
               );
               const setupDone = status.complete;

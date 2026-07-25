@@ -1,4 +1,3 @@
-import { createJSONStorage } from 'zustand/middleware';
 import { mergeYoutubeSafe as mergeYoutubeSafeConfig } from '@/lib/youtubeSafe';
 import {
   defaultChannelsBootstrap,
@@ -13,7 +12,11 @@ import {
 } from '@/lib/channelBridge';
 import { normalizeVoiceCast } from '@/lib/voiceCast';
 import { bindableFromState } from './channelStoreHelpers';
-import { STORE_KEY, dualStorage, syncLocalStoreToDurable } from './persistStorage';
+import {
+  STORE_KEY,
+  createDeferredPersistStorage,
+  syncLocalStoreToDurable,
+} from './persistStorage';
 import type {
   NovelState,
   NovelStore,
@@ -46,7 +49,8 @@ export function createNovelStorePersistOptions(storeAccess: {
 
   return {
     name: STORE_KEY,
-    storage: createJSONStorage(() => dualStorage),
+    // Deferred storage: batch jobs can mute stringify/IPC (runWithPersistMuted)
+    storage: createDeferredPersistStorage(),
     version: 5,
     // v3: ensure every channel has outputDna + ttsDna (channel media/TTS lock)
     migrate: (persistedState: unknown, fromVersion: number) => {
@@ -124,18 +128,25 @@ export function createNovelStorePersistOptions(storeAccess: {
         if (fromP === 1 || fromC === 1) return 1 as const;
         return (fromP ?? fromC ?? 1) as 1 | 2;
       })();
+      const mergedVip =
+        typeof p.is_vip === 'boolean' ? p.is_vip : current.is_vip;
+      const mergedTrial =
+        typeof (p as { is_trial?: boolean }).is_trial === 'boolean'
+          ? !!(p as { is_trial?: boolean }).is_trial
+          : current.is_trial;
+      const mergedPro =
+        (typeof p.is_pro === 'boolean' ? p.is_pro : current.is_pro) ||
+        mergedTrial ||
+        mergedVip;
 
       return {
         ...current,
         ...p,
         giai_doan: mergedPhase,
         // Entitlement: keep rehydrated plan; boot hook useEntitlementSync may promote
-        is_vip: typeof p.is_vip === 'boolean' ? p.is_vip : current.is_vip,
-        is_pro: typeof p.is_pro === 'boolean' ? p.is_pro : current.is_pro,
-        is_trial:
-          typeof (p as { is_trial?: boolean }).is_trial === 'boolean'
-            ? !!(p as { is_trial?: boolean }).is_trial
-            : current.is_trial,
+        is_vip: mergedVip,
+        is_pro: mergedPro,
+        is_trial: mergedTrial && !mergedVip,
         credits:
           typeof p.credits === 'number' && Number.isFinite(p.credits)
             ? Math.max(0, p.credits)
@@ -158,6 +169,17 @@ export function createNovelStorePersistOptions(storeAccess: {
           migrateFlowAgentVideoModel(p.videoModel || current.videoModel) ||
           current.videoModel,
         videoApiKey: current.videoApiKey,
+        videoApiBaseUrl:
+          typeof p.videoApiBaseUrl === 'string'
+            ? p.videoApiBaseUrl
+            : current.videoApiBaseUrl || '',
+        externalVideoApis: Array.isArray(p.externalVideoApis)
+          ? p.externalVideoApis
+          : current.externalVideoApis || [],
+        activeExternalVideoApiId:
+          typeof p.activeExternalVideoApiId === 'string'
+            ? p.activeExternalVideoApiId
+            : current.activeExternalVideoApiId || '',
         videoAspectRatio: p.videoAspectRatio || current.videoAspectRatio,
         videoDuration:
           typeof p.videoDuration === 'number' && p.videoDuration > 0
@@ -355,6 +377,9 @@ export function createNovelStorePersistOptions(storeAccess: {
       videoModel: state.videoModel,
       imageProvider: state.imageProvider,
       videoProvider: state.videoProvider,
+      videoApiBaseUrl: state.videoApiBaseUrl || '',
+      externalVideoApis: state.externalVideoApis || [],
+      activeExternalVideoApiId: state.activeExternalVideoApiId || '',
 
       // Persist actual plan (commercial Free/Trial/Pro)
       is_vip: !!state.is_vip,

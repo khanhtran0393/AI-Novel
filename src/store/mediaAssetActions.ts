@@ -22,8 +22,12 @@ type MediaAssetActions = Pick<
   | 'setImageModel' | 'setVideoModel' | 'setAiMasterModel' | 'setAiMasterApiKey'
   | 'setVisualDnaPrompt' | 'setMediaStylePreset'
   | 'setImageProvider' | 'setImageApiKey' | 'setImageAspectRatio' | 'setImageCount'
-  | 'setVideoProvider' | 'setVideoApiKey' | 'setVideoAspectRatio' | 'setVideoDuration'
+  | 'setVideoProvider' | 'setVideoApiKey' | 'setVideoApiBaseUrl'
+  | 'setExternalVideoApis' | 'upsertExternalVideoApi' | 'removeExternalVideoApi'
+  | 'setActiveExternalVideoApiId' | 'applyExternalVideoApi'
+  | 'setVideoAspectRatio' | 'setVideoDuration'
   | 'setWpm' | 'setSecondsPerBeat' | 'clearChapterMedia'
+  | 'reconcileMissingMediaAssets'
 >;
 
 export function createMediaAssetActions(
@@ -245,6 +249,79 @@ export function createMediaAssetActions(
       queueMicrotask(() => flushDurableNow());
     },
 
+    setVideoApiBaseUrl: (videoApiBaseUrl) => {
+      set({ videoApiBaseUrl: String(videoApiBaseUrl || '').trim() });
+      queueMicrotask(() => flushDurableNow());
+    },
+
+    setExternalVideoApis: (externalVideoApis) => {
+      set({
+        externalVideoApis: Array.isArray(externalVideoApis)
+          ? externalVideoApis
+          : [],
+      });
+      queueMicrotask(() => flushDurableNow());
+    },
+
+    upsertExternalVideoApi: (entry) => {
+      set((state) => {
+        const list = Array.isArray(state.externalVideoApis)
+          ? [...state.externalVideoApis]
+          : [];
+        const id = String(entry?.id || '').trim();
+        if (!id) return state;
+        const idx = list.findIndex((e) => e.id === id);
+        if (idx >= 0) list[idx] = { ...list[idx], ...entry };
+        else list.push(entry);
+        return { externalVideoApis: list };
+      });
+      queueMicrotask(() => flushDurableNow());
+    },
+
+    removeExternalVideoApi: (id) => {
+      const rid = String(id || '').trim();
+      set((state) => ({
+        externalVideoApis: (state.externalVideoApis || []).filter(
+          (e) => e.id !== rid,
+        ),
+        activeExternalVideoApiId:
+          state.activeExternalVideoApiId === rid
+            ? ''
+            : state.activeExternalVideoApiId,
+      }));
+      queueMicrotask(() => flushDurableNow());
+    },
+
+    setActiveExternalVideoApiId: (id) => {
+      set({ activeExternalVideoApiId: String(id || '').trim() });
+      queueMicrotask(() => flushDurableNow());
+    },
+
+    applyExternalVideoApi: (id) => {
+      const rid = String(id || '').trim();
+      const state = get();
+      const entry = (state.externalVideoApis || []).find((e) => e.id === rid);
+      if (!entry) {
+        throw new Error(`Không tìm thấy external video API id=${rid}`);
+      }
+      if (!entry.apiKey?.trim()) {
+        throw new Error('Entry thiếu API key.');
+      }
+      if (!entry.providerId || entry.providerId === 'unknown') {
+        throw new Error(
+          'Entry chưa nhận dạng provider. Bấm «Nhận dạng API» trước.',
+        );
+      }
+      set({
+        activeExternalVideoApiId: rid,
+        videoProvider: entry.providerId,
+        videoApiKey: entry.apiKey,
+        videoApiBaseUrl: entry.baseUrl || '',
+        videoModel: entry.model || state.videoModel || '',
+      });
+      queueMicrotask(() => flushDurableNow());
+    },
+
     setVideoAspectRatio: (videoAspectRatio, opts) => {
       const mirror = opts?.mirrorChannel !== false;
       set((state) => ({
@@ -259,12 +336,15 @@ export function createMediaAssetActions(
     setVideoDuration: (videoDuration, opts) => {
       const mirror = opts?.mirrorChannel !== false;
       const n = Number(videoDuration);
-      if (!Number.isFinite(n) || n <= 0 || n > 15) {
+      const provider = String(get().videoProvider || '').trim();
+      // Flow/Grok short clips ≤15s; HeyGen Video Agent can request longer targets
+      const maxSec = provider === 'heygen' ? 120 : 15;
+      if (!Number.isFinite(n) || n <= 0 || n > maxSec) {
         throw new Error(
-          'VIDEO_DURATION_INVALID: Hãy chọn thời lượng video hợp lệ; app không tự thay bằng 6 giây.',
+          `VIDEO_DURATION_INVALID: Thời lượng phải 1–${maxSec}s cho provider ${provider || '?'}; app không tự thay.`,
         );
       }
-      if (get().videoProvider === 'flow' && ![4, 6, 8].includes(n)) {
+      if (provider === 'flow' && ![4, 6, 8].includes(n)) {
         throw new Error(
           `FLOW_DURATION_INVALID: Flow chỉ nhận 4/6/8 giây, không nhận ${n}s.`,
         );
@@ -306,5 +386,94 @@ export function createMediaAssetActions(
           editorReviews: nextReviews,
         };
       }),
+
+    /**
+     * Drop ghost media keys (store path but file missing/empty).
+     * Call after hydrate / before export — B10: no fake success from phantom paths.
+     */
+    reconcileMissingMediaAssets: async (options) => {
+      const state = get();
+      const response = await fetch('/api/media/reconcile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          generatedAudioPaths: state.generatedAudioPaths,
+          generatedImages: state.generatedImages,
+          generatedVideos: state.generatedVideos,
+          generatedImageVariants: state.generatedImageVariants,
+          generatedAssetDna: state.generatedAssetDna,
+          discoverChapterNum: options?.discoverChapterNum,
+          discoverSceneIndices: options?.discoverSceneIndices,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            success?: boolean;
+            error?: string;
+            result?: {
+              generatedAudioPaths: typeof state.generatedAudioPaths;
+              generatedImages: typeof state.generatedImages;
+              generatedVideos: typeof state.generatedVideos;
+              generatedImageVariants: typeof state.generatedImageVariants;
+              generatedAssetDna: typeof state.generatedAssetDna;
+              removedAudioKeys: string[];
+              removedImageKeys: string[];
+              removedVideoKeys: string[];
+              addedAudioKeys: string[];
+              addedImageKeys: string[];
+              addedVideoKeys: string[];
+              changed: boolean;
+            };
+            summary?: string;
+          }
+        | null;
+      if (!response.ok || !payload?.success || !payload.result) {
+        throw new Error(
+          payload?.error ||
+            `MEDIA_RECONCILE_FAILED: HTTP ${response.status}`,
+        );
+      }
+      const r = payload.result;
+      if (!r.changed) {
+        return {
+          changed: false,
+          removedAudio: 0,
+          removedImage: 0,
+          removedVideo: 0,
+          addedAudio: 0,
+          addedImage: 0,
+          addedVideo: 0,
+          summary: payload.summary || 'Media disk reconcile: OK (no ghosts)',
+        };
+      }
+      set({
+        generatedAudioPaths: r.generatedAudioPaths,
+        generatedImages: r.generatedImages,
+        generatedVideos: r.generatedVideos,
+        generatedImageVariants: r.generatedImageVariants,
+        generatedAssetDna: r.generatedAssetDna as typeof state.generatedAssetDna,
+      });
+      queueMicrotask(() => {
+        try {
+          syncLocalStoreToDurable();
+        } catch {
+          /* ignore */
+        }
+        flushDurableNow();
+      });
+      const summary =
+        payload.summary || 'Media disk reconcile: dropped missing files';
+      console.info(`[mediaReconcile] ${summary}`);
+      return {
+        changed: true,
+        removedAudio: r.removedAudioKeys.length,
+        removedImage: r.removedImageKeys.length,
+        removedVideo: r.removedVideoKeys.length,
+        addedAudio: r.addedAudioKeys.length,
+        addedImage: r.addedImageKeys.length,
+        addedVideo: r.addedVideoKeys.length,
+        summary,
+      };
+    },
   };
 }

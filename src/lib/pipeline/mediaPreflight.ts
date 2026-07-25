@@ -3,8 +3,12 @@
  * Run before Gen Prompt / Ảnh / Video / TTS.
  */
 
-import { assertChapterMediaReady } from './qualityGate';
+import {
+  assertChapterMediaReady,
+  formatQualityGateReasons,
+} from './qualityGate';
 import { getChapterQuality } from './pipelineStore';
+import { resolveFlowVideoModelForScene } from '@/lib/flow-bridge/flowSceneMode';
 import type { MediaPreflightIssue, MediaPreflightResult, MediaStage } from './types';
 
 export type MediaPreflightInput = {
@@ -29,10 +33,14 @@ export type MediaPreflightInput = {
   characterHasIdentity?: Record<string, boolean>;
   imageProvider?: string;
   videoProvider?: string;
+  /** Flow / provider video model id — used to block I2V/R2V/EXT mismatch */
+  videoModel?: string;
   /** image_prompt / video_prompt present for later stages */
   hasImagePrompt?: boolean;
   hasVideoPrompt?: boolean;
   hasStartImage?: boolean;
+  hasEndImage?: boolean;
+  hasIngredients?: boolean;
   ttsPlatform?: string;
   ttsVoice?: string;
 };
@@ -113,10 +121,17 @@ export function evaluateMediaPreflight(input: MediaPreflightInput): MediaPreflig
         message: `Chưa có Quality Gate ch${chapter}. Viết xong chương (finish pipeline) trước Gen media.`,
       });
     } else if (!q.mediaReady) {
+      const reasons = formatQualityGateReasons(q, {
+        maxErrors: 4,
+        maxWarnings: 1,
+        includeMeta: false,
+      });
       issues.push({
         level: 'block',
         code: 'quality_blocked',
-        message: `Quality Gate chặn ch${chapter}: ${q.hardErrors} lỗi. Sửa/rewrite trước.`,
+        message:
+          `Quality Gate chặn ch${chapter}: ${q.hardErrors} lỗi — sửa trước khi Gen Prompt/Ảnh/Video.\n` +
+          (reasons || 'Bấm badge Gate để xem nguyên nhân.'),
       });
     }
   }
@@ -126,22 +141,57 @@ export function evaluateMediaPreflight(input: MediaPreflightInput): MediaPreflig
       issues.push({
         level: 'block',
         code: 'no_image_prompt',
-        message: 'Chưa có image_prompt — chạy Gen Prompt Studio trước.',
+        message:
+          'Chưa có image_prompt — chạy Gen Prompt Studio trên cảnh (đồng bộ kịch bản) trước.',
       });
     }
     if (stage === 'video' && input.hasVideoPrompt === false) {
       issues.push({
         level: 'block',
         code: 'no_video_prompt',
-        message: 'Chưa có video_prompt — chạy Gen Prompt Studio / Seedance trước.',
+        message:
+          'Chưa có video_prompt — chạy Gen Prompt Studio trên cảnh trước. App không gen video từ chữ thô.',
       });
     }
     if (stage === 'video' && input.hasStartImage === false) {
       issues.push({
         level: 'warn',
         code: 'no_start_image',
-        message: 'Chưa có ảnh start (I2V). Pure T2V chỉ khi user chọn model T2V.',
+        message:
+          'Chưa có ảnh start. Model I2V sẽ được chuyển T2V hoặc chặn; khuyến nghị Gen ảnh trước (pipeline cảnh).',
       });
+    }
+
+    // Flow: model family vs scene assets — same auto-align as gen (T2V↔I2V);
+    // block only true mismatches (R2V/EXT/upsample / missing prompt).
+    if (
+      stage === 'video' &&
+      String(input.videoProvider || '').toLowerCase() === 'flow' &&
+      String(input.videoModel || '').trim()
+    ) {
+      const r = resolveFlowVideoModelForScene({
+        videoModel: String(input.videoModel || '').trim(),
+        hasVideoPrompt: input.hasVideoPrompt !== false,
+        hasStartImage: input.hasStartImage === true,
+        hasEndImage: input.hasEndImage === true,
+        hasIngredients: input.hasIngredients === true,
+        autoAlign: true,
+      });
+      if (!r.ok) {
+        issues.push({
+          level: 'block',
+          code: 'flow_scene_mode',
+          message:
+            r.message ||
+            'Model video không khớp cảnh (prompt/ảnh). Chọn preset «Pipeline cảnh» trong Cấu hình đầu ra.',
+        });
+      } else if (r.changed && r.message) {
+        issues.push({
+          level: 'info',
+          code: 'flow_scene_align',
+          message: r.message,
+        });
+      }
     }
   }
 

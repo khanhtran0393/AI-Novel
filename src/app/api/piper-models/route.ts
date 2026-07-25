@@ -1,32 +1,35 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import {
+  listPiperOnnxModels,
+  listPiperVoiceOptions,
+  resolvePiperModelsDir,
+  resolveNovelRoot,
+} from '@/lib/tts/piperPaths';
 
 export async function GET() {
   try {
-    const piperDir = path.join(process.cwd(), 'bin', 'piper_vn');
-    if (!fs.existsSync(piperDir)) {
-      return NextResponse.json({ models: [] });
-    }
-
-    const files = fs.readdirSync(piperDir);
-    const models = files
-      .filter(f => f.endsWith('.onnx'))
-      .map(f => {
-        let name = f.replace('.onnx', '');
-        name = name.charAt(0).toUpperCase() + name.slice(1);
-        
-        if (f === 'ngochuyen.onnx') name = 'Ngọc Huyền (Nữ)';
-        if (f === 'manhdung.onnx') name = 'Mạnh Dũng (Nam)';
-        
-        return {
-          id: f,
-          name: name
-        };
-      });
-
-    return NextResponse.json({ models });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const root = resolveNovelRoot();
+    const files = listPiperOnnxModels(root);
+    const voices = listPiperVoiceOptions(root);
+    const models = voices.map((v) => ({
+      id: v.id,
+      name: v.name,
+      gender: v.gender,
+      modelName: v.modelName,
+      speakerId: v.speakerId,
+    }));
+    return NextResponse.json({
+      models,
+      /** Raw ONNX files on disk (not expanded multi-speaker) */
+      onnxFiles: files,
+      voiceCount: models.length,
+      modelsDir: resolvePiperModelsDir(root),
+      ok: true,
+    });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }

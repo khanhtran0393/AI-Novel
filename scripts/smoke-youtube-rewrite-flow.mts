@@ -57,9 +57,30 @@ console.log(
     title: lib.title?.slice(0, 80),
     words: lib.wordCount,
     source: lib.source,
+    chain: lib.chain,
     transcriptLen: lib.transcript?.length || 0,
   }),
 );
+// Chain must include fallback steps when early caption paths fail
+if (Array.isArray(lib.chain)) {
+  const hasPy = lib.chain.some((s) => String(s).startsWith('python:'));
+  ok(hasPy, `chain has python step: ${lib.chain.join('>')}`);
+  if (lib.ok && lib.source === 'audio_whisper') {
+    ok(
+      lib.chain.some((s) => s === 'whisper:ok'),
+      `whisper path used: ${lib.chain.join('>')}`,
+    );
+    ok(
+      !!(lib.transcript && lib.transcript.length >= 20),
+      `whisper transcript len=${lib.transcript?.length || 0}`,
+    );
+  } else if (!lib.ok) {
+    const hasYtdlp = lib.chain.some((s) => String(s).startsWith('ytdlp:'));
+    const hasWhisper = lib.chain.some((s) => String(s).startsWith('whisper:'));
+    ok(hasYtdlp, `chain has ytdlp step: ${lib.chain.join('>')}`);
+    ok(hasWhisper, `chain has whisper step: ${lib.chain.join('>')}`);
+  }
+}
 const netBlocked =
   lib.errorCode === 'IP_BLOCKED' ||
   lib.errorCode === 'RATE_LIMITED' ||

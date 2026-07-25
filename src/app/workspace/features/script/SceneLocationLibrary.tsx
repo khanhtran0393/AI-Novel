@@ -17,11 +17,33 @@ import { toast } from '@/lib/toastBus';
 
 type Props = { onImageZoom: (url: string) => void };
 
+function LocStillLink({
+  imageKey,
+  onImageZoom,
+}: {
+  imageKey: string;
+  onImageZoom: (url: string) => void;
+}) {
+  const img = useNovelStore((s) => s.generatedImages?.[imageKey]);
+  if (!img) {
+    return <span className="text-[8px] text-zinc-600">Chưa có still</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onImageZoom(img)}
+      className="text-[8px] font-bold uppercase text-sky-400 hover:text-sky-300 cursor-pointer"
+    >
+      Xem ảnh
+    </button>
+  );
+}
+
 export default function SceneLocationLibrary({ onImageZoom }: Props) {
   const items = useNovelStore((s) => s.scene_location_assets || []);
   const upsert = useNovelStore((s) => s.upsertSceneLocationAsset);
   const remove = useNovelStore((s) => s.removeSceneLocationAsset);
-  const generatedImages = useNovelStore((s) => s.generatedImages);
+  // Per-location thumbs use LocStill; cấm full generatedImages map
   const visualDna = useNovelStore((s) => s.visualDnaPrompt);
   const mediaStyle = useNovelStore((s) => s.mediaStylePreset);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -136,7 +158,6 @@ export default function SceneLocationLibrary({ onImageZoom }: Props) {
           ) : null}
           {items.map((loc) => {
             const key = loc.image_key || sceneLocationImageKey(loc.name);
-            const img = generatedImages?.[key];
             return (
               <div
                 key={loc.id}
@@ -189,17 +210,7 @@ export default function SceneLocationLibrary({ onImageZoom }: Props) {
                     <Sparkles className="h-2.5 w-2.5" />
                     {busyId === loc.id ? 'Đang gen…' : 'Gen still'}
                   </button>
-                  {img ? (
-                    <button
-                      type="button"
-                      onClick={() => onImageZoom(img)}
-                      className="text-[8px] font-bold uppercase text-sky-400 hover:text-sky-300 cursor-pointer"
-                    >
-                      Xem ảnh
-                    </button>
-                  ) : (
-                    <span className="text-[8px] text-zinc-600">Chưa có still</span>
-                  )}
+                  <LocStillLink imageKey={key} onImageZoom={onImageZoom} />
                 </div>
               </div>
             );
