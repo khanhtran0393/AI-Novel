@@ -492,19 +492,56 @@ type DrawSource =
   | HTMLVideoElement | HTMLImageElement | VideoFrame | ImageBitmap
   | HTMLCanvasElement | OffscreenCanvas
 
+/**
+ * Draw-source size helpers must not bare-reference HTMLImageElement /
+ * HTMLVideoElement: browser export runs in a Worker where those constructors
+ * are undefined, and `src instanceof HTMLImageElement` throws
+ * `ReferenceError: HTMLImageElement is not defined` (same for HTMLVideoElement).
+ * Mirror gpu-compositor's typeof guards so ImageBitmap / VideoFrame paths work.
+ */
 function drawSrcW(src: DrawSource, fallback: number): number {
-  if (src instanceof HTMLVideoElement) return src.videoWidth || fallback
-  if (src instanceof HTMLImageElement) return src.naturalWidth || fallback
-  if (typeof VideoFrame !== 'undefined' && src instanceof VideoFrame) return src.displayWidth || fallback
+  if (typeof HTMLVideoElement !== 'undefined' && src instanceof HTMLVideoElement) {
+    return src.videoWidth || fallback
+  }
+  if (typeof HTMLImageElement !== 'undefined' && src instanceof HTMLImageElement) {
+    return src.naturalWidth || fallback
+  }
+  if (typeof VideoFrame !== 'undefined' && src instanceof VideoFrame) {
+    return src.displayWidth || fallback
+  }
   // ImageBitmap and canvases both expose .width.
   return (src as ImageBitmap).width || fallback
 }
 
 function drawSrcH(src: DrawSource, fallback: number): number {
-  if (src instanceof HTMLVideoElement) return src.videoHeight || fallback
-  if (src instanceof HTMLImageElement) return src.naturalHeight || fallback
-  if (typeof VideoFrame !== 'undefined' && src instanceof VideoFrame) return src.displayHeight || fallback
+  if (typeof HTMLVideoElement !== 'undefined' && src instanceof HTMLVideoElement) {
+    return src.videoHeight || fallback
+  }
+  if (typeof HTMLImageElement !== 'undefined' && src instanceof HTMLImageElement) {
+    return src.naturalHeight || fallback
+  }
+  if (typeof VideoFrame !== 'undefined' && src instanceof VideoFrame) {
+    return src.displayHeight || fallback
+  }
   return (src as ImageBitmap).height || fallback
+}
+
+/** Image pool entry size — safe when HTMLImageElement is missing (Worker). */
+export function exportImageSurfaceSize(
+  img: HTMLImageElement | ImageBitmap,
+  fallbackW: number,
+  fallbackH: number,
+): { w: number; h: number } {
+  if (typeof HTMLImageElement !== 'undefined' && img instanceof HTMLImageElement) {
+    return {
+      w: img.naturalWidth || fallbackW,
+      h: img.naturalHeight || fallbackH,
+    }
+  }
+  return {
+    w: (img as ImageBitmap).width || fallbackW,
+    h: (img as ImageBitmap).height || fallbackH,
+  }
 }
 
 function fitDrawCtx(
@@ -1303,7 +1340,9 @@ export async function exportVideoCore(
     if (!isWorker) {
       for (const el of exportVideoPool.values()) el.src = ''
       for (const img of exportImagePool.values()) {
-        if (img instanceof HTMLImageElement) img.src = ''
+        if (typeof HTMLImageElement !== 'undefined' && img instanceof HTMLImageElement) {
+          img.src = ''
+        }
       }
     } else {
       for (const bmp of exportImagePool.values()) {
@@ -2115,8 +2154,7 @@ export async function exportVideoCore(
       } else if (asset.kind === 'image') {
         try {
           const img = await ensureImage(asset)
-          const sw = img instanceof HTMLImageElement ? img.naturalWidth || width : img.width || width
-          const sh = img instanceof HTMLImageElement ? img.naturalHeight || height : img.height || height
+          const { w: sw, h: sh } = exportImageSurfaceSize(img, width, height)
           clipSources.set(clip.id, {
             source: img,
             sourceW: sw,

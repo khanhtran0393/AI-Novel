@@ -1012,7 +1012,7 @@ export async function inheritAccountSession(accountId: string): Promise<{
     // Explicit user Check/Sync may open tab; still refuse open when Google login tab exists (extension-side)
     await commandExtension(
       'force_token_harvest',
-      { allowOpenTab: true, reloadIfMissing: true },
+      { allowOpenTab: false, reloadIfMissing: false },
       35_000,
       id,
     );

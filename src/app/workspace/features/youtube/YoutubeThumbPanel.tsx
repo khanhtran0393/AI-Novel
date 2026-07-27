@@ -20,6 +20,7 @@ import {
   THUMB_COMPOSITION_PRESETS,
   type ThumbCompositionId,
 } from '@/lib/youtubeSafe';
+import { stripImageCacheBust } from '@/lib/mediaReference';
 
 export type YoutubeThumbPanelProps = {
   ch: number;
@@ -149,7 +150,7 @@ export default function YoutubeThumbPanel({
             </button>
             <button
               type="button"
-              disabled={thumbImageLoading || !thumbnailPrompt.trim()}
+              disabled={thumbImageLoading}
               onClick={() => void onGenImage()}
               className="text-[9px] font-bold uppercase text-black bg-emerald-500 hover:bg-emerald-400 border-none px-2 py-1 rounded shadow-md transition-colors flex items-center gap-0.5 cursor-pointer font-sans disabled:opacity-40 disabled:cursor-not-allowed"
               title={
@@ -351,7 +352,8 @@ export default function YoutubeThumbPanel({
               <div className="w-full grid grid-cols-4 gap-1">
                 {variants.slice(0, 4).map((src, i) => {
                   const isWin =
-                    (thumbImageUrl || '').split('?')[0] === (src || '').split('?')[0];
+                    stripImageCacheBust(thumbImageUrl) ===
+                    stripImageCacheBust(src);
                   return (
                     <button
                       key={`${src}_${i}`}

@@ -911,33 +911,7 @@ export default function FlowAccountsPanel() {
         </div>
       </div>
 
-      <p className="text-[10px] leading-relaxed text-zinc-500">
-        <strong className="text-zinc-300">Thêm profile</strong> = mở{' '}
-        <strong className="text-emerald-300">trình duyệt / hồ sơ trống</strong>{' '}
-        để đăng nhập Google account <em>mới</em> — không phải đăng nhập lại
-        account cũ. Mỗi card tự quản Bridge · Extension · Token · Project ·
-        Login.
-      </p>
 
-      <FlowHealthStrip snap={snap} />
-
-      {/* Engine dùng chung khi launch browser — vẫn áp dụng theo từng profile lúc Đăng nhập */}
-      <div className="grid gap-2 rounded-lg border border-zinc-800/60 bg-black/30 p-2 sm:grid-cols-[100px_1fr]">
-        <span className="flex items-center text-[10px] font-bold uppercase text-zinc-500">
-          Engine
-        </span>
-        <select
-          value={engine}
-          onChange={(e) => onEngineChange(e.target.value)}
-          className="w-full appearance-none rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-xs font-semibold text-zinc-200 outline-none focus:border-indigo-500"
-        >
-          <option value="auto">Auto (ưu tiên Ungoogled/Brave)</option>
-          <option value="ungoogled">Ungoogled / Chromium sạch</option>
-          <option value="brave">Brave</option>
-          <option value="chrome">Google Chrome (hay bị chặn)</option>
-          <option value="mullvad">Mullvad / Firefox (load tay)</option>
-        </select>
-      </div>
 
       <div className="flex flex-wrap gap-2">
         <input
@@ -1153,10 +1127,6 @@ export default function FlowAccountsPanel() {
                       )}
                     </button>
                   </div>
-                  <p className="text-[8px] leading-snug text-zinc-600">
-                    Chỉ proxy bạn mua/gắn. Sau khi Lưu → bấm «Mở lại browser» /
-                    Đăng nhập để áp dụng. Không Urban free / không auto-xoay.
-                  </p>
                 </div>
 
                 {/* Project dropdown — list + selection bound to THIS profile only */}
@@ -1239,12 +1209,7 @@ export default function FlowAccountsPanel() {
                 })()}
 
                 {/* Banner trạng thái trên đúng card */}
-                {ready ? (
-                  <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-2 py-1.5 text-[10px] font-semibold text-emerald-300">
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    Đã đăng nhập ({a.email}) · token OK · gen bằng profile này
-                  </div>
-                ) : tokenOnly ? (
+                {ready ? null : tokenOnly ? (
                   <div className="rounded-lg border border-amber-500/40 bg-amber-950/25 px-2 py-1.5 text-[10px] text-amber-100">
                     <div className="font-semibold">
                       Chưa đăng nhập Google — bấm Đăng nhập

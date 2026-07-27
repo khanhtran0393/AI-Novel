@@ -30,6 +30,7 @@ import ScenePromptRow from './ScenePromptRow';
 import SceneTtsBar from './SceneTtsBar';
 import { resolveVideoKeyframeRange } from '@/lib/projectProgress';
 import QualityGateBadge from './QualityGateBadge';
+import SceneReadyDots from './SceneReadyDots';
 
 interface SceneCardProps {
   scene: { title: string; content: string };
@@ -302,6 +303,11 @@ function SceneCard({
           </h4>
         </button>
         <div className="flex items-center gap-2 shrink-0">
+          <SceneReadyDots
+            chapter={chapterNum}
+            sceneIndex={sceneIndex}
+            sceneText={scene.content}
+          />
           {promptCount > 0 && (
             <span
               className="text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded font-sans pointer-events-none"

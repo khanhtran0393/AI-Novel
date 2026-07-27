@@ -9,20 +9,33 @@ export const runtime = 'nodejs';
 
 const execFileAsync = promisify(execFile);
 
+function sanitizeFolderName(name: string): string {
+  return (
+    (name || '')
+      .normalize('NFC')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .trim() || 'Kenh_Chinh'
+  );
+}
+
 function resolveOpenTarget(folderPath: string): string {
   const raw = (folderPath || '').trim();
   const cwd = process.cwd();
 
-  // Aliases used by Header / UI
+  // Output / Channels directory alias (user picks channel folder)
   if (
     !raw ||
-    raw === '.' ||
+    raw === 'output' ||
+    raw === 'output/channels' ||
+    raw === 'channels' ||
     raw === 'project' ||
-    raw === 'cwd' ||
-    raw === 'root' ||
-    raw.toLowerCase() === 'project-root'
+    raw === '.'
   ) {
-    return path.resolve(cwd);
+    const channelsDir = path.resolve(cwd, 'output', 'channels');
+    if (!fs.existsSync(channelsDir)) {
+      fs.mkdirSync(channelsDir, { recursive: true });
+    }
+    return channelsDir;
   }
 
   // Absolute or relative path
@@ -34,7 +47,7 @@ async function openWithExplorer(resolvedPath: string): Promise<void> {
   if (process.platform === 'win32') {
     const child = spawn('explorer.exe', [resolvedPath], {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
     });
     child.unref();
     return;
@@ -51,10 +64,65 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as {
       folderPath?: string;
       path?: string;
+      channelId?: string;
+      channelName?: string;
+      resourceType?:
+        | 'all'
+        | 'images'
+        | 'video'
+        | 'audio'
+        | 'scripts'
+        | 'thumbnails'
+        | 'ship_pack';
     };
-    const folderPath = body.folderPath ?? body.path ?? 'project';
 
-    let resolvedPath = resolveOpenTarget(folderPath);
+    const cwd = process.cwd();
+    let resolvedPath = '';
+
+    // Channel specific output folder with resource subfolders
+    if (body.channelName || body.channelId || body.resourceType) {
+      const channelFolder = sanitizeFolderName(
+        body.channelName || body.channelId || 'Kênh Chính',
+      );
+      const channelRootDir = path.resolve(
+        cwd,
+        'output',
+        'channels',
+        channelFolder,
+      );
+
+      // Subfolders by resource type inside the channel folder
+      const subfolders = [
+        'images',
+        'video',
+        'audio',
+        'scripts',
+        'thumbnails',
+        'ship_pack',
+      ];
+
+      // Auto-create channel root folder & all resource subfolders
+      fs.mkdirSync(channelRootDir, { recursive: true });
+      for (const sub of subfolders) {
+        const subPath = path.join(channelRootDir, sub);
+        if (!fs.existsSync(subPath)) {
+          fs.mkdirSync(subPath, { recursive: true });
+        }
+      }
+
+      if (
+        body.resourceType &&
+        body.resourceType !== 'all' &&
+        subfolders.includes(body.resourceType)
+      ) {
+        resolvedPath = path.join(channelRootDir, body.resourceType);
+      } else {
+        resolvedPath = channelRootDir;
+      }
+    } else {
+      const folderPath = body.folderPath ?? body.path ?? 'project';
+      resolvedPath = resolveOpenTarget(folderPath);
+    }
 
     if (!fs.existsSync(resolvedPath)) {
       try {
@@ -64,17 +132,11 @@ export async function POST(req: Request) {
         const msg = err instanceof Error ? err.message : String(err);
         return NextResponse.json(
           {
-            error: `Thư mục không tồn tại và không tạo được: ${resolvedPath}. ${msg}. Không fallback cwd.`,
+            error: `Thư mục không tồn tại và không tạo được: ${resolvedPath}. ${msg}.`,
           },
           { status: 400 },
         );
       }
-    }
-    if (!fs.existsSync(resolvedPath)) {
-      return NextResponse.json(
-        { error: `Thư mục không tồn tại: ${resolvedPath}. Không fallback cwd.` },
-        { status: 400 },
-      );
     }
 
     try {
@@ -82,7 +144,10 @@ export async function POST(req: Request) {
     } catch (openError: unknown) {
       return NextResponse.json(
         {
-          error: openError instanceof Error ? openError.message : String(openError),
+          error:
+            openError instanceof Error
+              ? openError.message
+              : String(openError),
           path: resolvedPath,
         },
         { status: 500 },

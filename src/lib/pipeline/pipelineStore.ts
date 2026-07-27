@@ -128,7 +128,38 @@ export function setChapterQuality(report: ChapterQualityReport): void {
 
 export function getChapterQuality(chapter: number): ChapterQualityReport | null {
   const q = bag().quality;
-  return q[chapter] || q[Number(chapter)] || null;
+  const report = q[chapter] || q[Number(chapter)] || null;
+  if (!report) return null;
+
+  // Auto-heal cached reports with stale word_over_max hard error severity
+  let dirty = false;
+  const sanitizedFindings = (report.findings || []).map((f) => {
+    if (f.code === 'word_over_max' && f.severity === 'error') {
+      dirty = true;
+      return { ...f, severity: 'warning' as const };
+    }
+    return f;
+  });
+
+  if (dirty) {
+    const hardErrors = sanitizedFindings.filter((f) => f.severity === 'error').length;
+    const warnings = sanitizedFindings.filter((f) => f.severity === 'warning').length;
+    const mediaReady = hardErrors === 0 && (report.wordCount > 0 || (report.sceneCount || 0) > 0);
+    const updated: ChapterQualityReport = {
+      ...report,
+      findings: sanitizedFindings,
+      hardErrors,
+      warnings,
+      ok: hardErrors === 0,
+      mediaReady,
+    };
+    q[chapter] = updated;
+    q[Number(chapter)] = updated;
+    writeLs(LS_QUALITY, q);
+    return updated;
+  }
+
+  return report;
 }
 
 export function getAllChapterQuality(): Record<number, ChapterQualityReport> {

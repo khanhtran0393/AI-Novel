@@ -19,10 +19,10 @@ DEVICE_PLATFORM = "windows"
 # ── DLL path ─────────────────────────────────────────────────────────────────
 # Overwritten at runtime by engines/capcut.ts (findCapCutSscronet).
 # Keep a sensible default for manual python runs.
-SSCRONET_DLL = r""
+SSCRONET_DLL = r"C:\\Users\\Khanh\\AppData\\Local\\CapCut\\Apps\\9.1.0.3879\\sscronet.dll"
 
 # ── Voice TTS ─────────────────────────────────────────────────────────────────
-VOICE_NAME = "Giọng CapCut"
-VOICE_RESOURCE_ID = "BV074_streaming"
+VOICE_NAME = "BV074_streaming"
+VOICE_RESOURCE_ID = "7102355709945188865"
 VOICE_PLATFORM    = "sami"
-VOICE_RATE        = "1.0"
+VOICE_RATE = "1.0"

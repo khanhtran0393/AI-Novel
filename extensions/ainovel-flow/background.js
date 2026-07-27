@@ -599,7 +599,29 @@ async function ensureSingleFlowTab({
 
     if (!tabs.length && allowCreate) {
       console.log('[AI Novel Flow] No Flow tab — creating one (allowCreate)');
-      const created = await chrome.tabs.create({ url: FLOW_TAB_URL, active });
+      let created = null;
+      try {
+        created = await chrome.tabs.create({ url: FLOW_TAB_URL, active });
+      } catch (error) {
+        const message = String(error?.message || error || '');
+        if (!/No current window/i.test(message)) throw error;
+        // The extension worker may stay connected after Chromium's final
+        // window closes. Recover a real window before the captcha/gen path.
+        console.warn(
+          '[AI Novel Flow] Extension alive without a window - creating a recovery window',
+        );
+        const recoveredWindow = await chrome.windows.create({
+          url: FLOW_TAB_URL,
+          focused: active,
+          state: 'normal',
+          type: 'normal',
+          width: 1100,
+          height: 820,
+          left: 80,
+          top: 60,
+        });
+        created = recoveredWindow?.tabs?.[0] || null;
+      }
       tabs = created ? [created] : [];
       await sleep(1500);
       const registered = await queryFlowTabs();

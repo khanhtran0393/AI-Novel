@@ -542,16 +542,21 @@ function expSecondsForKey(key: string): { expSeconds: number; label: string } {
   };
 }
 
-const DAY_KEY_PRESETS = [3, 7, 15, 30] as const;
+const DAY_KEY_PRESETS = [1, 3, 7, 15, 30] as const;
 
 function gencodePlanKeyboard(): InlineKeyboard {
-  const dayRow = DAY_KEY_PRESETS.map((d) => ({
+  const row1 = [1, 3, 7].map((d) => ({
+    text: `${d} ngày`,
+    callback_data: `gencode_plan:${d}d`,
+  }));
+  const row2 = [15, 30].map((d) => ({
     text: `${d} ngày`,
     callback_data: `gencode_plan:${d}d`,
   }));
   return {
     inline_keyboard: [
-      dayRow,
+      row1,
+      row2,
       [
         { text: '1 tháng', callback_data: 'gencode_plan:month' },
         { text: '1 năm', callback_data: 'gencode_plan:year' },
@@ -683,7 +688,8 @@ function planPickerKeyboard(hwid: string): InlineKeyboard {
   };
   return {
     inline_keyboard: [
-      DAY_KEY_PRESETS.map((d) => mk(`${d}d`, `${d} ngày`)),
+      [1, 3, 7].map((d) => mk(`${d}d`, `${d} ngày`)),
+      [15, 30].map((d) => mk(`${d}d`, `${d} ngày`)),
       [
         mk('month', '1 tháng'),
         mk('year', '1 năm'),

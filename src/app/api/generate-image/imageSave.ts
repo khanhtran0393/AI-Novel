@@ -49,6 +49,19 @@ export function createImageSavers(ctx: ImageSaveContext): {
       const variantLocalSavePath = path.join(publicImageDir, variantFilename);
       fs.writeFileSync(variantLocalSavePath, imageBuffer);
       localFilePaths.push(variantLocalSavePath);
+
+      // Auto-save generated image/thumbnail into active channel folder
+      try {
+        const { autoSaveToChannelFolder } = require('@/lib/channelMediaMirror');
+        const resType = sceneIndex === -1 ? 'thumbnails' : 'images';
+        autoSaveToChannelFolder({
+          channelName: ten_tac_pham || 'Kênh Chính',
+          resourceType: resType,
+          sourceFilePath: variantLocalSavePath,
+        });
+      } catch {
+        /* ignore */
+      }
       const probe = probeVisualArtifact(variantLocalSavePath, 'image');
       if (!probe.ok) {
         for (const writtenPath of localFilePaths) {
@@ -113,6 +126,8 @@ export function createImageSavers(ctx: ImageSaveContext): {
       success: true,
       imagePath: imagePaths[0],
       imagePaths,
+      localFilePath: localFilePaths[0] || '',
+      localFilePaths,
       driveSaved,
       driveFilePath: driveFilePaths[0] || '',
       driveFilePaths,

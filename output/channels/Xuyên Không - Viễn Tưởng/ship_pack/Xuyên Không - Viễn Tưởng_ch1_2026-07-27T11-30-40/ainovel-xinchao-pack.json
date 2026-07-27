@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "source": "ai-novel",
+  "editor": "capcut",
+  "name": "Xuyên Không - Viễn Tưởng — Chương 1",
+  "chapterNum": 1,
+  "ten_tac_pham": "Xuyên Không - Viễn Tưởng",
+  "aspect": "16:9",
+  "imageProvider": "flow",
+  "videoProvider": "flow",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "createdAt": "2026-07-27T11:30:40.806Z",
+  "mediaDir": "media",
+  "files": [
+    {
+      "key": "1_990_0_video",
+      "kind": "video",
+      "path": "media/v_1_990_0_video.mp4",
+      "durationSec": null
+    },
+    {
+      "key": "1_990_4_video",
+      "kind": "video",
+      "path": "media/v_1_990_4_video.mp4",
+      "durationSec": null
+    },
+    {
+      "key": "1_1_0",
+      "kind": "image",
+      "path": "media/i_1_1_0.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_1_1",
+      "kind": "image",
+      "path": "media/i_1_1_1.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_1_2",
+      "kind": "image",
+      "path": "media/i_1_1_2.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_990_0",
+      "kind": "image",
+      "path": "media/i_1_990_0.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_990_1",
+      "kind": "image",
+      "path": "media/i_1_990_1.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_990_2",
+      "kind": "image",
+      "path": "media/i_1_990_2.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_990_3",
+      "kind": "image",
+      "path": "media/i_1_990_3.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_990_4",
+      "kind": "image",
+      "path": "media/i_1_990_4.png",
+      "durationSec": null
+    },
+    {
+      "key": "1_0",
+      "kind": "audio",
+      "path": "media/a_1_0.mp3",
+      "durationSec": 19.382857
+    },
+    {
+      "key": "1_1",
+      "kind": "audio",
+      "path": "media/a_1_1.mp3",
+      "durationSec": 44.277551
+    },
+    {
+      "key": "1_2",
+      "kind": "audio",
+      "path": "media/a_1_2.mp3",
+      "durationSec": 72.542041
+    },
+    {
+      "key": "1_3",
+      "kind": "audio",
+      "path": "media/a_1_3.mp3",
+      "durationSec": 56.685714
+    },
+    {
+      "key": "1_4",
+      "kind": "audio",
+      "path": "media/a_1_4.mp3",
+      "durationSec": 72.359184
+    },
+    {
+      "key": "1_5",
+      "kind": "audio",
+      "path": "media/a_1_5.mp3",
+      "durationSec": 59.977143
+    },
+    {
+      "key": "1_990",
+      "kind": "audio",
+      "path": "media/a_1_990.wav",
+      "durationSec": 11.257868
+    }
+  ],
+  "suggestedTimeline": [
+    {
+      "key": "1_990_0_video",
+      "kind": "video",
+      "path": "media/v_1_990_0_video.mp4",
+      "startSec": 0,
+      "durationSec": 2.2515736
+    },
+    {
+      "key": "1_990_1",
+      "kind": "image",
+      "path": "media/i_1_990_1.png",
+      "startSec": 2.2515736,
+      "durationSec": 2.2515736
+    },
+    {
+      "key": "1_990_2",
+      "kind": "image",
+      "path": "media/i_1_990_2.png",
+      "startSec": 4.5031472,
+      "durationSec": 2.2515736
+    },
+    {
+      "key": "1_990_3",
+      "kind": "image",
+      "path": "media/i_1_990_3.png",
+      "startSec": 6.754720799999999,
+      "durationSec": 2.2515736
+    },
+    {
+      "key": "1_990_4_video",
+      "kind": "video",
+      "path": "media/v_1_990_4_video.mp4",
+      "startSec": 9.0062944,
+      "durationSec": 2.2515736
+    },
+    {
+      "key": "1_990",
+      "kind": "audio",
+      "path": "media/a_1_990.wav",
+      "startSec": 0,
+      "durationSec": 11.257868
+    },
+    {
+      "key": "1_0",
+      "kind": "audio",
+      "path": "media/a_1_0.mp3",
+      "startSec": 11.257868,
+      "durationSec": 19.382857
+    },
+    {
+      "key": "1_1_0",
+      "kind": "image",
+      "path": "media/i_1_1_0.png",
+      "startSec": 30.640725000000003,
+      "durationSec": 14.759183666666667
+    },
+    {
+      "key": "1_1_1",
+      "kind": "image",
+      "path": "media/i_1_1_1.png",
+      "startSec": 45.39990866666667,
+      "durationSec": 14.759183666666667
+    },
+    {
+      "key": "1_1_2",
+      "kind": "image",
+      "path": "media/i_1_1_2.png",
+      "startSec": 60.159092333333334,
+      "durationSec": 14.759183666666667
+    },
+    {
+      "key": "1_1",
+      "kind": "audio",
+      "path": "media/a_1_1.mp3",
+      "startSec": 30.640725000000003,
+      "durationSec": 44.277551
+    },
+    {
+      "key": "1_2",
+      "kind": "audio",
+      "path": "media/a_1_2.mp3",
+      "startSec": 74.918276,
+      "durationSec": 72.542041
+    },
+    {
+      "key": "1_3",
+      "kind": "audio",
+      "path": "media/a_1_3.mp3",
+      "startSec": 147.460317,
+      "durationSec": 56.685714
+    },
+    {
+      "key": "1_4",
+      "kind": "audio",
+      "path": "media/a_1_4.mp3",
+      "startSec": 204.146031,
+      "durationSec": 72.359184
+    },
+    {
+      "key": "1_5",
+      "kind": "audio",
+      "path": "media/a_1_5.mp3",
+      "startSec": 276.505215,
+      "durationSec": 59.977143
+    }
+  ],
+  "howToImport": [
+    "Bấm nút CapCut trong AI Novel.",
+    "Runtime CapCut nội bộ tự tạo project đúng tỷ lệ.",
+    "Runtime tự nhập file thật trong media/ bằng path-backed asset.",
+    "Runtime tự dựng timeline theo suggestedTimeline (startSec / durationSec)."
+  ]
+}

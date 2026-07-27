@@ -82,9 +82,10 @@ AI Novel
 
 | Layer | Path |
 |-------|------|
-| UI | `workspace/features/youtube/*` |
+| UI | `workspace/features/youtube/*`, Setup rewrite `YoutubeSetupPhase` (Link nguồn) |
 | Lib | `lib/youtube-safe/*`, `lib/youtubeSafe.ts`, `lib/youtubePsych55.ts`, `lib/youtubeSource.ts` |
-| API | `api/youtube-source`, `navtools.youtubeSeo` |
+| Lib multi-source | `lib/source-ingest/*` (router + youtube wrapper + web article), `lib/sourceIngestId.ts` (client-safe) |
+| API | `api/youtube-source` (compat), **`api/source-ingest`** (YouTube + web), `navtools.youtubeSeo` |
 
 ### channels
 

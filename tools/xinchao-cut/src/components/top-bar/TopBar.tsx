@@ -70,7 +70,7 @@ export function TopBar({ onOpenShortcuts }: TopBarProps) {
         >
           <img
             src="/logo.png"
-            alt="XinChao-Cut logo"
+            alt="CapCut logo"
             className="h-7 w-7 rounded-md group-hover:hidden"
             draggable={false}
           />

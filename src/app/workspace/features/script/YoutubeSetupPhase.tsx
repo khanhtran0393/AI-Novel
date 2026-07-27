@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * Setup riêng: Link YouTube · viết lại tương tự
+ * Setup riêng: Link nguồn (YouTube | Web) · viết lại tương tự
  *
  * Luồng:
  * 1. Dán link → bấm «Phân tích»
- *    - Lấy captions → cache (đối chiếu % trùng)
+ *    - YouTube: captions/Whisper · Web: article extract → cache (% trùng)
  *    - AI bóc cốt truyện → điền ô 3
  * 2. Chỉnh % trùng / quy mô
- * 3. Sinh kịch bản → dùng cache captions để canh %, rồi xóa cache
+ * 3. Sinh kịch bản → dùng cache để canh %, rồi xóa cache
  */
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -23,7 +23,13 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { extractYoutubeVideoId } from '@/lib/youtubeSourceId';
+import {
+  detectClientSourcePlatform,
+  extractUrlsFromInput,
+  isAnalyzableMultiSourceInput,
+  isAnalyzableSourceUrl,
+  sourceUrlHint,
+} from '@/lib/sourceIngestId';
 import {
   chapterWordsMinutes,
   resolveWpm,
@@ -87,11 +93,11 @@ export default function YoutubeSetupPhase({
   const outlineBusy = isGeneratingOutline;
   const busy = analyzeBusy || outlineBusy || isGeneratingIdea;
   const rawYtUrl = (store.youtubeRewriteUrl || '').trim();
-  const ytIdOk = !!extractYoutubeVideoId(rawYtUrl);
-  const ytUrlHint =
-    rawYtUrl.length > 0 && !ytIdOk
-      ? 'Link chưa hợp lệ — cần watch / youtu.be / shorts (không dán playlist hay trang kênh).'
-      : '';
+  const detectedUrls = extractUrlsFromInput(rawYtUrl);
+  const isMultiSource = detectedUrls.length > 1;
+  const sourcePlatform = detectClientSourcePlatform(rawYtUrl);
+  const urlOk = isAnalyzableMultiSourceInput(rawYtUrl);
+  const ytUrlHint = sourceUrlHint(rawYtUrl);
   const captionCached = (store.youtubeSourceText || '').trim().length >= 40;
   const captionWords = captionCached
     ? (store.youtubeSourceText || '').trim().split(/\s+/).filter(Boolean).length
@@ -99,7 +105,9 @@ export default function YoutubeSetupPhase({
   const hasPlot =
     (store.setup.mo_ta || '').trim().length > 40 &&
     !(store.setup.mo_ta || '').trim().startsWith('[NGUỒN YOUTUBE') &&
-    !(store.setup.mo_ta || '').trim().startsWith('[RAW YOUTUBE');
+    !(store.setup.mo_ta || '').trim().startsWith('[NGUỒN WEB') &&
+    !(store.setup.mo_ta || '').trim().startsWith('[RAW YOUTUBE') &&
+    !(store.setup.mo_ta || '').trim().startsWith('[NGUỒN 1:');
 
   const modal = (
     <div
@@ -132,10 +140,10 @@ export default function YoutubeSetupPhase({
               id="yt-setup-title"
               className="truncate text-[clamp(12px,1.5vw,15px)] font-bold leading-snug tracking-wide text-red-400 uppercase"
             >
-              Link YouTube · viết lại tương tự
+              Link YouTube & Đa Nguồn Web (Agent-Reach)
             </h2>
             <p className="text-[9px] leading-snug text-zinc-500 mt-0.5">
-              Phân tích link → cốt truyện · captions cache canh % trùng · xóa cache khi sinh kịch bản
+              Dán 1 hoặc nhiều link (YouTube | Web) → cốt truyện hợp nhất · cache canh % trùng · xóa cache khi sinh kịch bản
             </p>
           </div>
           <button
@@ -166,37 +174,33 @@ export default function YoutubeSetupPhase({
           <div className="rounded-lg border border-red-900/40 bg-red-950/10 p-3">
             <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-400">
               <Video className="h-3.5 w-3.5" />
-              1. Link YouTube (Chủ đề nguồn)
+              1. Link nguồn (YouTube hoặc Đa Nguồn Web)
             </label>
             <p className="mb-2 text-[10px] text-zinc-500">
-              Dán link → bấm <strong className="text-zinc-300">Phân tích</strong>: lấy{' '}
-              <strong className="text-zinc-300">lời thoại</strong> (phụ đề → nếu chặn thì tải audio +
-              Whisper) vào <strong className="text-zinc-300">cache</strong> để canh % trùng mục 2,
-              rồi bóc <strong className="text-zinc-300">cốt truyện</strong> vào mục 3. Có thể 1–3 phút.
+              Dán link → bấm <strong className="text-zinc-300">Phân tích</strong>:{' '}
+              <strong className="text-zinc-300">YouTube</strong> lấy lời thoại (phụ đề → Whisper nếu
+              cần); <strong className="text-zinc-300">Web</strong> lấy thân bài viết. Hỗ trợ dán{' '}
+              <strong className="text-amber-400">nhiều URL</strong> (mỗi URL 1 dòng) để tổng hợp tri thức đa nguồn Agent-Reach.
             </p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <div className="relative min-w-0 flex-1">
-                <Link2 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
-                <input
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://www.youtube.com/watch?v=… / youtu.be/… / shorts/…"
+            <div className="flex flex-col gap-2 sm:flex-row items-start">
+              <div className="relative min-w-0 flex-1 w-full">
+                <Link2 className="pointer-events-none absolute left-2.5 top-3 h-3.5 w-3.5 text-zinc-600" />
+                <textarea
+                  rows={isMultiSource || rawYtUrl.includes('\n') ? 3 : 2}
+                  placeholder="https://youtube.com/… hoặc https://blog.example.com/bai-viet (Dán nhiều link: mỗi link 1 dòng)"
                   value={store.youtubeRewriteUrl || ''}
                   onChange={(e) => store.setYoutubeRewrite({ url: e.target.value })}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
                       const u = (store.youtubeRewriteUrl || '').trim();
                       if (!u || busy) return;
-                      if (!extractYoutubeVideoId(u)) {
-                        // fail-soft: user sees inline hint (button also disabled)
-                        return;
-                      }
+                      if (!isAnalyzableMultiSourceInput(u)) return;
                       void handlePhanTichYoutube(u);
                     }
                   }}
                   disabled={busy}
-                  className={`w-full rounded-lg border bg-black py-2.5 pl-8 pr-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 disabled:opacity-50 ${
+                  className={`w-full rounded-lg border bg-black py-2 pl-8 pr-3 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 disabled:opacity-50 font-mono resize-y ${
                     ytUrlHint
                       ? 'border-red-500/60 focus:border-red-400'
                       : 'border-zinc-800 focus:border-red-500'
@@ -205,13 +209,13 @@ export default function YoutubeSetupPhase({
               </div>
               <button
                 type="button"
-                disabled={busy || !rawYtUrl || !ytIdOk}
+                disabled={busy || !rawYtUrl || !urlOk}
                 onClick={() => void handlePhanTichYoutube(store.youtubeRewriteUrl || '')}
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-700/50 bg-sky-500/20 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/30 disabled:opacity-40"
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-700/50 bg-sky-500/20 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/30 disabled:opacity-40 self-stretch sm:self-auto"
                 title={
                   ytUrlHint
                     ? ytUrlHint
-                    : 'Lấy captions (cache) + phân tích cốt truyện → ô 3'
+                    : 'Lấy nội dung nguồn (cache) + phân tích cốt truyện → ô 3'
                 }
               >
                 {isAnalyzingPlot ? (
@@ -222,7 +226,7 @@ export default function YoutubeSetupPhase({
                 ) : (
                   <>
                     <Sparkles className="h-3.5 w-3.5" />
-                    Phân tích
+                    {isMultiSource ? `Phân tích ${detectedUrls.length} nguồn` : 'Phân tích'}
                   </>
                 )}
               </button>
@@ -250,13 +254,22 @@ export default function YoutubeSetupPhase({
             ) : null}
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
+              {rawYtUrl && urlOk ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700/60 bg-zinc-900/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-400">
+                  {isMultiSource
+                    ? `Agent-Reach · ${detectedUrls.length} nguồn`
+                    : sourcePlatform === 'web'
+                      ? 'Web Article'
+                      : 'YouTube Video'}
+                </span>
+              ) : null}
               {captionCached ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800/50 bg-emerald-950/40 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-400">
-                  Captions cache · ~{captionWords} từ · canh % trùng
+                  Cache nội dung · ~{captionWords} từ · canh % trùng
                 </span>
               ) : (
                 <span className="text-[9px] text-zinc-600 font-medium">
-                  Chưa có captions cache — bấm Phân tích
+                  Chưa có cache nội dung — bấm Phân tích
                 </span>
               )}
               {hasPlot ? (
@@ -361,7 +374,7 @@ export default function YoutubeSetupPhase({
             </div>
             <textarea
               rows={6}
-              placeholder="Bấm «Phân tích» cạnh link — hoặc gõ tóm tắt cốt truyện tay (khi YouTube chặn phụ đề)…"
+              placeholder="Bấm «Phân tích» cạnh link — hoặc gõ tóm tắt cốt truyện tay (khi site chặn / không lấy được nội dung)…"
               value={store.setup.mo_ta}
               onChange={(e) => store.setSetup({ mo_ta: e.target.value })}
               className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-amber-500 focus:bg-zinc-950 font-sans"

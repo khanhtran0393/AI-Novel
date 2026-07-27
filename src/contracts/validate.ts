@@ -256,7 +256,7 @@ export const generateImageBodySchema = z
     ten_tac_pham: z.string().optional(),
     cookie: z.string().optional(),
     characterPrompt: z.string().optional(),
-    model: z.string().optional(),
+    model: z.string().min(1, 'Thiếu model ảnh.'),
     imageProvider: z.enum(['flow', 'openai', 'gemini', 'grok']),
     imageApiKey: z.string().optional(),
     imageAspectRatio: z.string().optional(),
@@ -267,6 +267,7 @@ export const generateImageBodySchema = z
     grokApiKeys: z.array(z.string()).optional(),
     aiMasterApiKey: z.string().optional(),
     referenceImagePath: z.string().optional(),
+    ingredientPaths: z.array(z.string().min(1)).max(3).optional(),
   })
   .passthrough();
 

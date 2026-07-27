@@ -25,6 +25,7 @@ import {
   setCachedConceptPrompt,
 } from '@/lib/conceptPromptCache';
 import { scheduleAppWork } from '@/lib/appWork';
+import { stripImageCacheBust } from '@/lib/mediaReference';
 
 export function useCharacterActions() {
   // getState only — parent CharacterRoster selects data slices
@@ -399,15 +400,15 @@ export function useCharacterActions() {
       }
       applyImageResult(charKey, data.imagePath, data.projectUrl);
       // face_ref = durable absolute path (save folder) when available; else serve URL file
-      const facePath =
-        String(data.durablePath || data.imagePath || '')
-          .split('?')[0]
-          .trim();
+      const facePath = stripImageCacheBust(
+        String(data.durablePath || data.imagePath || ''),
+      ).trim();
       if (facePath) {
         const next = normalizeNhanVatProfile({
           ...profileDraft,
           face_ref: facePath,
-          identity_lock: `sheet:${char}`,
+          identity_lock:
+            String(profileDraft.identity_lock || '').trim() || `sheet:${char}`,
         } as NhanVatProfile);
         setProfileDraft(next);
         // Auto-save hồ sơ ngay sau gen — user không cần bấm "Lưu hồ sơ"

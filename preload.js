@@ -177,8 +177,10 @@ contextBridge.exposeInMainWorld('ainovelTools', {
   setTtsQueue: (snapshot) => ipcRenderer.invoke('ainovel-tts-queue-set', snapshot),
   getTtsQueue: () => ipcRenderer.invoke('ainovel-tts-queue-get'),
   openPath: (targetPath) => ipcRenderer.invoke('ainovel-open-path', targetPath),
-  /** Open vendored XinChao-Cut editor (tools/xinchao-cut) + optional pack folder */
-  openXinChao: (payload) => ipcRenderer.invoke('ainovel-open-xinchao', payload || {}),
+  /** Open bundled CapCut multi-track editor + optional pack folder */
+  openCapCut: (payload) => ipcRenderer.invoke('ainovel-open-capcut', payload || {}),
+  /** @deprecated Use openCapCut — same CapCut runtime */
+  openXinChao: (payload) => ipcRenderer.invoke('ainovel-open-capcut', payload || {}),
   windowControls: {
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),

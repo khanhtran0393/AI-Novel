@@ -68,10 +68,8 @@ export const API = {
   getCookie: '/api/get-cookie',
   cleanupAssets: '/api/cleanup-assets',
   shipPack: '/api/ship-pack',
-  /** CapCut GUI — engine pack tools/xinchao-cut (+ soft cutsdk) */
+  /** CapCut GUI — multi-track pack + open CapCut editor (+ soft cutsdk) */
   exportCapcut: '/api/export-capcut',
-  /** Alias cùng engine với exportCapcut */
-  exportXinchao: '/api/export-xinchao',
   entitlementIssue: '/api/entitlement/issue',
   entitlementVerify: '/api/entitlement/verify',
   entitlementHwid: '/api/entitlement/hwid',
@@ -116,6 +114,11 @@ export const API = {
   downloadVideo: '/api/download-video',
   /** YouTube title/desc/captions → seed Setup rewrite */
   youtubeSource: '/api/youtube-source',
+  /**
+   * Multi-source ingest (YouTube chain | web article) → seed Setup rewrite.
+   * Prefer this over youtubeSource for new UI; youtube-source kept for compat.
+   */
+  sourceIngest: '/api/source-ingest',
   /**
    * YouTube meta psych SEO — score ≥8.5 + rewrite rounds (server generateYoutubeMetaWithQA).
    * Prefer over navtools.youtubeSeo for Studio Meta / post-write.

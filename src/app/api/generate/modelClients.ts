@@ -455,7 +455,7 @@ export function getLastWorkingApiKey(): string {
 }
 
 // Gemini: round-robin keys mỗi request + hard gate RPM/RPD (B10: chỉ xoay key, không đổi platform)
-async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
+async function callGemini(prompt: string, apiKeyOrKeys: string | string[], preferredModel?: string) {
   assertPoolHasCapacity(apiKeyOrKeys);
   const keys = filterAvailableKeys(apiKeyOrKeys);
 
@@ -469,11 +469,13 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
   let models = [
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-2.5-pro'
+    'gemini-2.0-flash',
+    'gemini-2.5-pro',
   ];
 
-  // Model sticky OK (cùng provider); key thì luôn RR
-  if (globalLastWorkingModel && models.includes(globalLastWorkingModel)) {
+  if (preferredModel && models.includes(preferredModel)) {
+    models = [preferredModel, ...models.filter((m) => m !== preferredModel)];
+  } else if (globalLastWorkingModel && models.includes(globalLastWorkingModel)) {
     models = [globalLastWorkingModel, ...models.filter((m) => m !== globalLastWorkingModel)];
   }
 
@@ -639,15 +641,15 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
 }
 
 export async function callActiveModel(prompt: string, apiKeyOrKeys: string | string[], model: string = 'gemini') {
-  if (model === 'gpt4o') {
+  if (model === 'gpt4o' || model.startsWith('gpt-')) {
     return await callOpenAI(prompt, apiKeyOrKeys);
-  } else if (model === 'llama') {
+  } else if (model === 'llama' || model.startsWith('grok')) {
     const firstKey = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys[0] : apiKeyOrKeys;
     return firstKey && String(firstKey).startsWith('gsk_')
       ? await callGroq(prompt, apiKeyOrKeys)
       : await callGrok(prompt, apiKeyOrKeys);
   } else {
-    return await callGemini(prompt, apiKeyOrKeys);
+    return await callGemini(prompt, apiKeyOrKeys, model !== 'gemini' ? model : undefined);
   }
 }
 
@@ -696,12 +698,15 @@ async function callOpenAIVision(prompt: string, images: VisionInput[], apiKeyOrK
 }
 
 async function callGeminiVision(prompt: string, images: VisionInput[], apiKeyOrKeys: string | string[]) {
-  const keys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
-  if (keys.length === 0) throw new Error('Khong co Google API Key de phan tich anh.');
+  const rawKeys = Array.isArray(apiKeyOrKeys) ? apiKeyOrKeys.filter(Boolean) : [apiKeyOrKeys].filter(Boolean);
+  const keys = filterAvailableKeys(rawKeys);
+  if (keys.length === 0) throw new Error('Khong co Google API Key hop le de phan tich anh.');
 
-  const models = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-pro'];
   let lastError: unknown = null;
+
   for (const apiKey of keys) {
+    if (!isKeyAvailable(apiKey)) continue;
     for (const visionModel of models) {
       try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${visionModel}:generateContent?key=${apiKey}`, {
@@ -722,10 +727,17 @@ async function callGeminiVision(prompt: string, images: VisionInput[], apiKeyOrK
         if (response.ok) {
           const data = await response.json();
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) return text;
+          if (text) {
+            markKeySuccess(apiKey);
+            return text;
+          }
         } else {
           const err = await response.json().catch(() => ({}));
-          lastError = new Error(err.error?.message || `Gemini vision error ${response.status}`);
+          const msg = err.error?.message || `Gemini vision error ${response.status}`;
+          if (!msg.includes('limit: 0') || !lastError) {
+            lastError = new Error(msg);
+          }
+          markKeyLimited(apiKey, msg, response.status);
         }
       } catch (err) {
         lastError = err;

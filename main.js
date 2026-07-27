@@ -181,7 +181,7 @@ function killFlowBrowsersOnAppQuit(reason) {
   const ps = [
     `$n=0;`,
     `Get-CimInstance Win32_Process -EA SilentlyContinue |`,
-    `Where-Object { ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe' -or $_.Name -eq 'chromium.exe') -and $_.CommandLine -and (${likeParts}) } |`,
+    `Where-Object { ($_.Name -like '*chrome*' -or $_.Name -like '*chromium*' -or $_.Name -like '*edge*') -and $_.CommandLine -and (${likeParts}) } |`,
     `ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -EA Stop; $n++ } catch {} };`,
     `Write-Output $n`,
   ].join(' ');
@@ -928,18 +928,21 @@ function registerIpc() {
     }
   });
 
-  /** Open full XinChao-Cut editor (tools/xinchao-cut) + reveal media pack */
-  ipcMain.handle('ainovel-open-xinchao', async (event, payload) => {
+  /** Open bundled CapCut multi-track editor + optional pack folder */
+  const handleOpenCapCut = async (event, payload) => {
     try {
       assertTrustedIpc(event);
       return await openXinChaoEditor(payload || {});
     } catch (err) {
       return { ok: false, error: err?.message || String(err) };
     }
-  });
+  };
+  ipcMain.handle('ainovel-open-capcut', handleOpenCapCut);
+  /** @deprecated Use ainovel-open-capcut — same CapCut runtime */
+  ipcMain.handle('ainovel-open-xinchao', handleOpenCapCut);
 }
 
-/** Track single XinChao-Cut BrowserWindow + optional vite child process */
+/** Track single CapCut BrowserWindow + optional vite child process */
 let xinchaoWindow = null;
 let xinchaoViteProc = null;
 let xinchaoNativeProc = null;
@@ -1024,7 +1027,7 @@ async function ensureXinChaoVite(root) {
 
   const pkg = path.join(root, 'package.json');
   if (!fs.existsSync(pkg)) {
-    return { error: `XinChao-Cut không có package.json tại ${root}` };
+    return { error: `CapCut không có package.json tại ${root}` };
   }
   const nodeModules = path.join(root, 'node_modules');
   if (!fs.existsSync(nodeModules)) {
@@ -1051,7 +1054,7 @@ async function ensureXinChaoVite(root) {
         xinchaoViteProc = null;
       });
       xinchaoViteProc.on('error', (err) => {
-        console.warn('[xinchao] vite spawn error', err?.message || err);
+        console.warn('[capcut-editor] vite spawn error', err?.message || err);
         xinchaoViteProc = null;
       });
     } catch (e) {
@@ -1066,8 +1069,8 @@ async function ensureXinChaoVite(root) {
   }
   return {
     error:
-      `XinChao-Cut Vite timeout (${XINCHAO_VITE_WAIT_MS / 1000}s, port ${XINCHAO_DEV_PORT}). ` +
-      `Chạy npm run xinchao:dev thủ công rồi bấm lại.`,
+      `CapCut Vite timeout (${XINCHAO_VITE_WAIT_MS / 1000}s, port ${XINCHAO_DEV_PORT}). ` +
+      `Chạy npm run xinchao:dev thủ công rồi bấm lại nút CapCut.`,
   };
 }
 
@@ -1097,7 +1100,7 @@ function buildXinChaoLoadingHtml(statusLine) {
 function attachXinChaoWindowGuards(win) {
   if (!win || win.isDestroyed()) return;
   win.webContents.on('unresponsive', () => {
-    console.warn('[xinchao] BrowserWindow renderer unresponsive — keep main app alive');
+    console.warn('[capcut-editor] BrowserWindow renderer unresponsive — keep main app alive');
     try {
       win.setTitle('CapCut — đang xử lý (không đóng AI Novel chính)');
     } catch {
@@ -1208,7 +1211,7 @@ async function launchXinChaoNative(root, packRoot) {
     xinchaoNativeProc.exitCode === null &&
     !xinchaoNativeProc.killed
   ) {
-    // Forward a new AI Novel pack through XinChao-Cut's single-instance IPC.
+    // Forward a new AI Novel pack through CapCut runtime single-instance IPC.
     // Returning the existing PID alone would focus the editor but silently drop
     // every subsequent real-media pack.
     if (packRoot) {
@@ -1278,7 +1281,7 @@ async function openXinChaoEditor(payload) {
       packOpened: openExplorer,
       editorOpened: false,
       error:
-        'Không tìm thấy editor CapCut (tools/xinchao-cut). Chạy npm run xinchao:install.',
+        'Không tìm thấy editor CapCut nội bộ. Chạy npm run xinchao:install.',
       packRoot: packRoot || null,
       mediaDir: mediaDir || null,
     };

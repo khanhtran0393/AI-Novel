@@ -6,6 +6,7 @@ import {
   canStartZeroCopy,
   BrowserVideoUnsupportedError,
   DesktopVideoSourceReadError,
+  exportImageSurfaceSize,
   isBrowserVideoUnsupportedError,
   mediaDrawCacheKey,
   muxerCodec,
@@ -51,6 +52,33 @@ describe('browser video fallback classification', () => {
     expect(isBrowserVideoUnsupportedError(
       new Error('video sample index timed out'),
     )).toBe(false)
+  })
+})
+
+describe('exportImageSurfaceSize (worker-safe image dims)', () => {
+  it('reads width/height from ImageBitmap-shaped objects without HTMLImageElement', () => {
+    // Worker export has no HTMLImageElement global; ImageBitmap only has .width/.height.
+    const bitmapLike = { width: 1920, height: 1080 } as ImageBitmap
+    expect(exportImageSurfaceSize(bitmapLike, 1280, 720)).toEqual({ w: 1920, h: 1080 })
+  })
+
+  it('falls back when bitmap dims are zero', () => {
+    const empty = { width: 0, height: 0 } as ImageBitmap
+    expect(exportImageSurfaceSize(empty, 1280, 720)).toEqual({ w: 1280, h: 720 })
+  })
+
+  it('does not throw when HTMLImageElement is undefined (Worker semantics)', () => {
+    const had = 'HTMLImageElement' in globalThis
+    const prev = (globalThis as { HTMLImageElement?: unknown }).HTMLImageElement
+    try {
+      // Simulate Worker: constructor missing — bare `instanceof HTMLImageElement` would throw.
+      delete (globalThis as { HTMLImageElement?: unknown }).HTMLImageElement
+      const bitmapLike = { width: 640, height: 360 } as ImageBitmap
+      expect(() => exportImageSurfaceSize(bitmapLike, 1, 1)).not.toThrow()
+      expect(exportImageSurfaceSize(bitmapLike, 1, 1)).toEqual({ w: 640, h: 360 })
+    } finally {
+      if (had) (globalThis as { HTMLImageElement?: unknown }).HTMLImageElement = prev
+    }
   })
 })
 

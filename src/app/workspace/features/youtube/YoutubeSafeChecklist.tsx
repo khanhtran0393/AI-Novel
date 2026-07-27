@@ -56,6 +56,7 @@ import {
 import { pushToast, toast } from '@/lib/toastBus';
 import SeoField, { hasImageCredentials } from './SeoField';
 import YoutubeThumbPanel from './YoutubeThumbPanel';
+import { appendImageCacheBust } from '@/lib/mediaReference';
 
 /** Stable empty hook — never allocate new {} in selector (causes getSnapshot infinite loop). */
 const EMPTY_CHAPTER_HOOK = Object.freeze({
@@ -491,10 +492,18 @@ export default function YoutubeSafeChecklist() {
 
   /** Gen / tạo lại ảnh thumbnail — blend competitor DNA at gen-time, keep stored prompt clean */
   const handleGenThumbImage = async () => {
-    const contentPrompt = (asset.thumbnailPrompt || '').trim();
+    let contentPrompt = (asset.thumbnailPrompt || '').trim();
     if (!contentPrompt) {
-      toast.info('Notice', '⚠️ Chưa có Thumb prompt (EN). Bấm Meta hoặc viết lại prompt trước.');
-      return;
+      contentPrompt = buildThumbnailPrompt({
+        hook: asset.hook || 'High tension mystery scene',
+        thumbnailLine: asset.thumbnailLine || '',
+        visualDna: resolveThumbStyle(),
+        characterHint: characterHint(),
+        compositionId: asset.thumbCompositionId,
+        competitorThumbDna: asset.competitorThumbDna,
+        styleEngine: styleEngineSeo(),
+      });
+      patch({ thumbnailPrompt: contentPrompt });
     }
     if (!hasImageCredentials(useNovelStore.getState())) {
       toast.info('Notice', 'Chưa cấu hình credential cho engine sinh ảnh (Cấu hình đầu ra).');
@@ -514,8 +523,6 @@ export default function YoutubeSafeChecklist() {
       : contentPrompt;
 
     setThumbImageLoading(true);
-    store().addGeneratedImage(thumbAssetKey, '');
-    store().addGeneratedImageVariants(thumbAssetKey, []);
 
     try {
       const st = useNovelStore.getState();
@@ -562,8 +569,9 @@ export default function YoutubeSafeChecklist() {
         data.imagePaths && data.imagePaths.length > 0 ? data.imagePaths : [data.imagePath];
       const cacheBusted = imagePaths
         .filter(Boolean)
-        .map((path) => `${path}?t=${cacheBust}`);
-      const primary = cacheBusted[0] || `${data.imagePath}?t=${cacheBust}`;
+        .map((path) => appendImageCacheBust(path, cacheBust));
+      const primary =
+        cacheBusted[0] || appendImageCacheBust(data.imagePath, cacheBust);
 
       store().addGeneratedImage(thumbAssetKey, primary);
       store().addGeneratedImageVariants(thumbAssetKey, cacheBusted);

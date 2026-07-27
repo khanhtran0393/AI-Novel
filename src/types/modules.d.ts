@@ -28,6 +28,30 @@ interface AinovelToolsApi {
   setTtsQueue: (snapshot: unknown) => Promise<{ ok?: boolean; path?: string; error?: string }>;
   getTtsQueue: () => Promise<Record<string, unknown> | null>;
   openPath?: (targetPath: string) => Promise<{ ok?: boolean; error?: string }>;
+  /** Open bundled CapCut multi-track editor with an AI Novel pack. */
+  openCapCut?: (payload: {
+    packRoot: string;
+    mediaDir?: string;
+    openExplorer: boolean;
+  }) => Promise<{
+    ok?: boolean;
+    error?: string;
+    url?: string;
+    mode?: string;
+    editorOpened?: boolean;
+  }>;
+  /** @deprecated Use openCapCut — same CapCut runtime. */
+  openXinChao?: (payload: {
+    packRoot: string;
+    mediaDir?: string;
+    openExplorer: boolean;
+  }) => Promise<{
+    ok?: boolean;
+    error?: string;
+    url?: string;
+    mode?: string;
+    editorOpened?: boolean;
+  }>;
 }
 
 interface AinovelCredentialsApi {

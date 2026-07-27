@@ -3,6 +3,8 @@ export { default as ContentTab } from './ContentTab';
 export { default as SceneCard } from './SceneCard';
 export { default as ScenePromptRow } from './ScenePromptRow';
 export { default as ChapterList } from './ChapterList';
+export { default as VideoReadyBoard } from './VideoReadyBoard';
+export { default as SceneReadyDots } from './SceneReadyDots';
 export { default as OutlineAccordions } from './OutlineAccordions';
 export { default as CharacterRoster } from './CharacterRoster';
 export { default as EditorPanel } from './EditorPanel';

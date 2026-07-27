@@ -14,7 +14,17 @@ import {
 import { APP_VERSION, formatAppVersionLabel } from '@/lib/appVersion';
 import { SELLER_BANK } from '@/lib/commercial/pricingPlans';
 import { useFolderActions } from '../hooks/useFolderActions';
-import { Sparkles } from 'lucide-react';
+import {
+  Sparkles,
+  ChevronDown,
+  Folder,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Mic,
+  FileText,
+  LayoutTemplate,
+  Package,
+} from 'lucide-react';
 import CapCutExportButton from '../features/project/CapCutExportButton';
 import ChannelSwitcher from '../features/channels/ChannelSwitcher';
 import JobQueuePanel from '../features/channels/JobQueuePanel';
@@ -46,11 +56,130 @@ function ZaloIcon({ className }: { className?: string }) {
   );
 }
 
+/** Channel & output folder button with dropdown menu */
+function ChannelFolderButton() {
+  const activeChannel = useNovelStore((state) => {
+    const id = state.activeChannelId;
+    return id ? state.channels?.[id] : null;
+  });
+  const { handleOpenFolder, handleOpenChannelFolder } = useFolderActions();
+  const [open, setOpen] = useState(false);
+
+  const channelName = activeChannel?.name || 'Kênh Chính';
+
+  return (
+    <div className="relative shrink-0 overflow-visible">
+      <div className="flex items-center rounded-2xl border border-zinc-800 bg-zinc-900/60 transition-all duration-300 hover:border-zinc-700 hover:bg-zinc-800/80">
+        <button
+          type="button"
+          onClick={() => void handleOpenFolder('output')}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-zinc-200 hover:text-white cursor-pointer"
+          title="Mở thư mục output tổng (chứa danh sách tất cả các thư mục kênh)"
+        >
+          📁 <span className="hidden lg:inline">Thư mục lưu</span>
+          <span className="lg:hidden">Thư mục lưu</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="border-l border-zinc-800/80 px-1.5 py-1.5 text-zinc-400 hover:text-white cursor-pointer"
+          title="Chọn mở cụ thể thư mục của Kênh hiện tại hoặc loại tài nguyên Ảnh, Video, Audio..."
+        >
+          <ChevronDown
+            className={`h-3 w-3 transition-transform ${
+              open ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+      </div>
+
+      {open ? (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute right-0 top-full z-50 mt-1.5 w-60 rounded-xl border border-zinc-800 bg-zinc-950/95 p-1.5 shadow-2xl backdrop-blur-md">
+            <div className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 border-b border-zinc-900 mb-1 truncate">
+              Kênh hiện tại: {channelName}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                void handleOpenChannelFolder(channelName, 'images');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/80 hover:text-emerald-400"
+            >
+              <ImageIcon className="h-3.5 w-3.5 text-emerald-400" />
+              Thư mục Ảnh (images)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                void handleOpenChannelFolder(channelName, 'video');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/80 hover:text-cyan-400"
+            >
+              <VideoIcon className="h-3.5 w-3.5 text-cyan-400" />
+              Thư mục Video (video)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                void handleOpenChannelFolder(channelName, 'audio');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/80 hover:text-amber-400"
+            >
+              <Mic className="h-3.5 w-3.5 text-amber-400" />
+              Thư mục Giọng đọc (audio)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                void handleOpenChannelFolder(channelName, 'scripts');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/80 hover:text-indigo-400"
+            >
+              <FileText className="h-3.5 w-3.5 text-indigo-400" />
+              Thư mục Kịch bản (scripts)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                void handleOpenChannelFolder(channelName, 'thumbnails');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/80 hover:text-pink-400"
+            >
+              <LayoutTemplate className="h-3.5 w-3.5 text-pink-400" />
+              Thư mục Thumbnails (thumbnails)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                void handleOpenChannelFolder(channelName, 'ship_pack');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/80 hover:text-purple-400"
+            >
+              <Package className="h-3.5 w-3.5 text-purple-400" />
+              Thư mục Ship Pack (CapCut)
+            </button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export default function Header() {
   const isPro = useNovelStore(selectIsPro);
   const isVip = useNovelStore(selectIsVip);
   const isTrial = useNovelStore(selectIsTrial);
-  const { handleOpenFolder } = useFolderActions();
   const [appVersion, setAppVersion] = useState(APP_VERSION);
 
   useEffect(() => {
@@ -161,14 +290,7 @@ export default function Header() {
         <ChannelSwitcher />
         <JobQueuePanel />
 
-        <button
-          type="button"
-          onClick={() => void handleOpenFolder('project')}
-          className="flex shrink-0 whitespace-nowrap items-center gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 hover:text-white transition-all duration-300 cursor-pointer"
-          title="Mở thư mục lưu dự án (output / public generated)"
-        >
-          📁 <span className="hidden lg:inline">Mở thư mục lưu</span>
-        </button>
+        <ChannelFolderButton />
 
         <div className="flex shrink-0 items-center gap-1.5 overflow-visible">
           <ToolboxHost />

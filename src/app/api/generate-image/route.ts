@@ -18,8 +18,30 @@ import { generateWithGrok } from './providers/grok';
 import { generateWithGemini } from './providers/gemini';
 import { generateWithFlow } from './providers/flow';
 import type { ImageProviderCtx } from './imageTypes';
+import { resolveImageReferenceTransportPath } from '@/lib/mediaReference';
 
 export const runtime = 'nodejs';
+
+function resolveReferenceFile(raw?: string): string | null {
+  const value = resolveImageReferenceTransportPath(raw);
+  if (!value) return null;
+
+  const candidates = path.isAbsolute(value)
+    ? [value]
+    : [
+        path.join(/* turbopackIgnore: true */ process.cwd(), value),
+        path.join(process.cwd(), 'public', value.replace(/^[\\/]/u, '')),
+        path.join(process.cwd(), 'public', 'images', path.basename(value)),
+      ];
+  const resolved = candidates.find((candidate) => {
+    try {
+      return fs.existsSync(candidate) && fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+  return resolved ? path.resolve(resolved) : null;
+}
 
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
@@ -41,8 +63,14 @@ export async function POST(req: Request) {
       body.model ||
         (body as { imageModel?: string }).imageModel ||
         '',
-    ).trim() || 'imagen3';
+    ).trim();
     const imageProvider = body.imageProvider;
+    if (!model) {
+      throw new AppError(
+        '[Image API] Missing image model. The app does not choose a model implicitly.',
+        { code: 'VALIDATION', status: 400 },
+      );
+    }
 
     slog({
       level: 'info',
@@ -65,27 +93,54 @@ export async function POST(req: Request) {
     const imageCount = Math.max(1, Math.min(4, Number(body.imageCount) || 1));
 
     // Face / concept sheet binary identity lock (optional)
-    const referenceImagePathRaw = String(body.referenceImagePath || '')
-      .trim()
-      .split('?')[0];
+    const referenceImagePathRaw = String(body.referenceImagePath || '').trim();
+    const requestedIngredients = Array.isArray(body.ingredientPaths)
+      ? body.ingredientPaths.map(String).filter(Boolean).slice(0, 3)
+      : [];
+    const resolvedIngredientPaths: string[] = [];
+    for (const candidate of [
+      referenceImagePathRaw,
+      ...requestedIngredients,
+    ]) {
+      const resolved = resolveReferenceFile(candidate);
+      if (
+        resolved &&
+        !resolvedIngredientPaths.includes(resolved) &&
+        resolvedIngredientPaths.length < 3
+      ) {
+        resolvedIngredientPaths.push(resolved);
+      } else if (candidate && !resolved) {
+        throw new AppError(
+          `[Image API] Reference image does not exist on disk: ${candidate}`,
+          { code: 'VALIDATION', status: 400 },
+        );
+      }
+    }
     let referenceImageB64 = '';
     let referenceMime = 'image/png';
-    if (referenceImagePathRaw) {
+    const primaryReferencePath = resolvedIngredientPaths[0] || '';
+    if (primaryReferencePath) {
       try {
-        let abs = referenceImagePathRaw;
-        if (!path.isAbsolute(abs)) {
-          const candidates = [
-            path.join(/* turbopackIgnore: true */ process.cwd(), abs),
-            path.join(process.cwd(), 'public', abs),
-            path.join(process.cwd(), 'public', 'images', path.basename(abs)),
-          ];
-          abs = candidates.find((c) => fs.existsSync(c)) || abs;
-        }
-        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
-          const buf = fs.readFileSync(abs);
-          if (buf.length > 0 && buf.length < 4_500_000) {
+        if (
+          fs.existsSync(primaryReferencePath) &&
+          fs.statSync(primaryReferencePath).isFile()
+        ) {
+          const buf = fs.readFileSync(primaryReferencePath);
+          if (buf.length <= 0) {
+            throw new AppError(
+              `[Image API] Reference image is empty: ${primaryReferencePath}`,
+              { code: 'VALIDATION', status: 400 },
+            );
+          }
+          if (imageProvider !== 'flow' && buf.length >= 4_500_000) {
+            throw new AppError(
+              `[Image API] Reference image is too large for ${imageProvider} (${buf.length} bytes, limit 4499999). Compress the real reference file first.`,
+              { code: 'VALIDATION', status: 400 },
+            );
+          }
+          if (imageProvider !== 'flow') {
             referenceImageB64 = buf.toString('base64');
-            const ext = path.extname(abs).toLowerCase();
+            const ext = path.extname(primaryReferencePath).toLowerCase();
             referenceMime =
               ext === '.jpg' || ext === '.jpeg'
                 ? 'image/jpeg'
@@ -93,16 +148,20 @@ export async function POST(req: Request) {
                   ? 'image/webp'
                   : 'image/png';
             console.log(
-              `[generate-image] Face-ref loaded ${path.basename(abs)} (${Math.round(buf.length / 1024)}KB)`,
+              `[generate-image] Face-ref loaded ${path.basename(primaryReferencePath)} (${Math.round(buf.length / 1024)}KB) refs=${resolvedIngredientPaths.length}`,
+            );
+          } else {
+            console.log(
+              `[generate-image] Flow ref ready ${path.basename(primaryReferencePath)} (${Math.round(buf.length / 1024)}KB) refs=${resolvedIngredientPaths.length}`,
             );
           }
-        } else {
-          console.warn(
-            `[generate-image] Face-ref path missing: ${referenceImagePathRaw}`,
-          );
         }
       } catch (e) {
-        console.warn('[generate-image] Face-ref read failed', e);
+        if (e instanceof AppError) throw e;
+        throw new AppError(
+          `[Image API] Failed to read the requested reference image: ${primaryReferencePath}`,
+          { code: 'VALIDATION', status: 400, cause: e },
+        );
       }
     }
 
@@ -190,6 +249,7 @@ export async function POST(req: Request) {
       imageCount,
       referenceImageB64,
       referenceMime,
+      ingredientPaths: resolvedIngredientPaths,
       saveImage,
       saveImageBuffers,
       model,
@@ -229,7 +289,9 @@ export async function POST(req: Request) {
     if (imageProvider === 'flow') return attachCid(await generateWithFlow(ctx));
     if (imageProvider === 'openai') return attachCid(await generateWithOpenAI(ctx));
     if (imageProvider === 'grok') return attachCid(await generateWithGrok(ctx));
-    if (imageProvider === 'gemini') return attachCid(await generateWithGemini(ctx));
+    if (imageProvider === 'gemini' || imageProvider === 'whisk' || imageProvider === 'banana') {
+      return attachCid(await generateWithGemini(ctx));
+    }
 
     return NextResponse.json(
       { error: 'Loại image provider không hợp lệ.', correlationId },

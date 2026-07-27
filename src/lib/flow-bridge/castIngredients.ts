@@ -2,6 +2,7 @@
  * B — Auto cast ingredients: match names in prompt/script → concept/face refs (max 3).
  */
 import { characterImageKey, characterWardrobeImageKey } from '@/contracts';
+import { stripImageCacheBust } from '@/lib/mediaReference';
 
 export type CastProfileLite = {
   prompt?: string;
@@ -12,7 +13,7 @@ export type CastProfileLite = {
 };
 
 function stripQuery(p: string): string {
-  return String(p || '').trim().split('?')[0] || '';
+  return stripImageCacheBust(p);
 }
 
 /** Mention check: name appears as whole-ish token in haystack */

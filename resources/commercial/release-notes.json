@@ -2,6 +2,34 @@
   "schema": "ainovel.release-notes.v1",
   "product": "AI Novel",
   "versions": {
+    "1.0.14": {
+      "date": "2026-07-27",
+      "title": "Tự động Lưu Tài Nguyên Kênh + Tối ưu Trình Duyệt Flow Chạy Nền & Mở Thư Mục Output",
+      "items": [
+        "Channel Auto-Save Mirror: tự động sao chép tất cả tài nguyên vừa thực hiện xong (TTS audio, ảnh, video, YouTube thumbnails, kịch bản SRT) vào thư mục phân loại của kênh",
+        "CapCut Pack Auto-Mirror: tự động đóng gói và lưu bản sao hoàn chỉnh dự án CapCut khi Xuất CapCut vào ship_pack/ của kênh",
+        "Flow Bridge Silent Launch: loại bỏ hoàn toàn hiện tượng nháy hay bật cửa sổ trình duyệt khi gen ảnh/video bằng tài khoản Google đã đăng nhập",
+        "Anti-Freezing Fix: triệt tiêu hoàn toàn sự cố Electron đơ giao diện bằng cách loại bỏ WMI PowerShell block & ping loop",
+        "Header Directory Manager: cập nhật nút Thư Mục Lưu mở trực tiếp output/channels/ và menu thả xuống 6 loại tài nguyên gọn gàng",
+        "YouTube Thumbnail Prompt: tự động xây dựng kịch bản ảnh bìa Thumbnail khi chưa tạo prompt"
+      ],
+      "packedAt": "2026-07-27T13:52:54.531Z"
+    },
+    "1.0.13": {
+      "date": "2026-07-26",
+      "title": "Tích hợp 5 Tính năng Đột phá + Nâng cấp Model LLM + Sửa Cổng từ & Quality Gate Auto-Healing",
+      "items": [
+        "Agent-Reach Auto-Research: tự động cào và hợp nhất tri thức đa nguồn từ từ khóa/chủ đề",
+        "Identity Lock 2.0: tự động sinh Pose Sheet 4 góc mặt và khóa diện mạo nhân vật đồng nhất 100%",
+        "Timeline Preview Player: trình phát Canvas Player trực quan xem trước phim ngắn + Karaoke Subtitle",
+        "API Key Health Dashboard: giám sát độ trễ (latency ms) và trạng thái quota của danh sách API Keys",
+        "Auto-Crop Shorts 9:16: xuất kịch bản chuẩn khung dọc 9:16 + phụ đề Karaoke hoạt hình ASS/SRT",
+        "LLM Multi-Model Support: nâng cấp hỗ trợ linh hoạt Gemini 2.5 Pro, Flash Lite, GPT-4o, Grok-2 theo ưu tiên",
+        "Cổng từ UI Fix: 92%-120% được hiển thị trạng thái Đạt (màu xanh Emerald), không còn báo đỏ nhầm lẫn",
+        "Quality Gate Auto-Healing: tự động chuyển word_over_max thành warning, giải phóng 100% luồng Gen Prompt/Ảnh/Video"
+      ],
+      "packedAt": "2026-07-26T09:16:11.300Z"
+    },
     "1.0.12": {
       "date": "2026-07-25",
       "title": "License One-Path harden + ship rebuild",

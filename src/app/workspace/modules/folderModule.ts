@@ -51,3 +51,45 @@ export async function openFolderAction(folderPath: string): Promise<{ opened?: s
     );
   }
 }
+
+export type ChannelResourceType =
+  | 'all'
+  | 'images'
+  | 'video'
+  | 'audio'
+  | 'scripts'
+  | 'thumbnails'
+  | 'ship_pack';
+
+/**
+ * Mở thư mục lưu tài nguyên của kênh (phân loại theo images/video/audio/scripts/thumbnails/ship_pack)
+ */
+export async function openChannelFolderAction(opts: {
+  channelId?: string;
+  channelName?: string;
+  resourceType?: ChannelResourceType;
+}): Promise<{ opened?: string }> {
+  try {
+    const res = await fetch(API.openFolder, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as {
+      success?: boolean;
+      opened?: string;
+      error?: string;
+    };
+
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || 'Thư mục kênh không tồn tại.');
+    }
+
+    return { opened: data.opened };
+  } catch (err: unknown) {
+    throw new Error(
+      `Không thể mở thư mục kênh: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}

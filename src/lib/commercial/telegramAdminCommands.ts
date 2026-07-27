@@ -23,7 +23,7 @@ export const GENCODE_DEFAULT_EXP =
 export const GENCODE_MAX_COUNT = 50;
 
 /** Seller day-based Pro key durations (Cấp key + Tạo mã). */
-export const DAY_KEY_PRESETS = [3, 7, 15, 30] as const;
+export const DAY_KEY_PRESETS = [1, 3, 7, 15, 30] as const;
 export type DayKeyPreset = (typeof DAY_KEY_PRESETS)[number];
 
 export function isDayKeyExpKey(raw: string | undefined | null): boolean {
@@ -403,13 +403,18 @@ export function buildMainInlineMenu(): InlineKeyboard {
 
 /** Wizard: pick plan duration then ask count (or use /gencode N plan). */
 export function buildGencodePlanKeyboard(): InlineKeyboard {
-  const dayRow = DAY_KEY_PRESETS.map((d) => ({
+  const row1 = [1, 3, 7].map((d) => ({
+    text: `${d} ngày`,
+    callback_data: `gencode_plan:${d}d`,
+  }));
+  const row2 = [15, 30].map((d) => ({
     text: `${d} ngày`,
     callback_data: `gencode_plan:${d}d`,
   }));
   return {
     inline_keyboard: [
-      dayRow,
+      row1,
+      row2,
       [
         { text: '1 tháng', callback_data: 'gencode_plan:month' },
         { text: '1 năm', callback_data: 'gencode_plan:year' },

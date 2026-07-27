@@ -78,6 +78,7 @@ export function hasImageCredentials(
     imageProvider?: string;
   },
 ): boolean {
+  if (store.imageProvider === 'flow') return true;
   const hasApiKey = !!store.apiKey || (store.apiKeys && store.apiKeys.length > 0);
   const hasCookie =
     !!store.googleStudioCookie ||

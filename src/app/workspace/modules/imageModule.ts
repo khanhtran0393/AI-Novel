@@ -14,6 +14,7 @@ import {
 } from '@/lib/flow-bridge/castIngredients';
 import { characterImageKey } from '@/contracts';
 import { lorebookWithMemoryPack } from '@/lib/pipeline';
+import { resolveImageReferenceTransportPath } from '@/lib/mediaReference';
 
 export type NhanVatPrompts = Record<string, NhanVatProfile | Partial<NhanVatProfile>>;
 
@@ -230,29 +231,7 @@ interface GenerateImageParams {
 
 /** Normalize face_ref / generated image URL → local path when possible */
 export function resolveLocalImagePath(raw?: string): string {
-  let s = String(raw || '').trim().split('?')[0] || '';
-  if (!s) return '';
-  try {
-    if (s.startsWith('file:')) {
-      s = decodeURIComponent(s.replace(/^file:\/\//, '').replace(/^\/([A-Za-z]:)/, '$1'));
-    }
-  } catch {
-    /* ignore */
-  }
-  // /images/xxx.png served from public
-  if (s.startsWith('/images/') || s.startsWith('images/')) {
-    return s.replace(/^\//, '');
-  }
-  // full URL to local serve-image?path=
-  try {
-    if (s.includes('serve-image') && s.includes('path=')) {
-      const u = new URL(s, 'http://local');
-      return decodeURIComponent(u.searchParams.get('path') || '');
-    }
-  } catch {
-    /* ignore */
-  }
-  return s;
+  return resolveImageReferenceTransportPath(raw);
 }
 
 export async function generateImageAction(params: GenerateImageParams): Promise<{

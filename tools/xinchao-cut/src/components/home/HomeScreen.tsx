@@ -384,12 +384,12 @@ export function HomeScreen() {
         <div className="flex items-center gap-2.5 px-4 py-4">
           <img
             src="/logo.png"
-            alt="XinChao-Cut"
+            alt="CapCut"
             className="h-8 w-8 rounded-lg"
             draggable={false}
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight">XinChao-Cut</p>
+            <p className="truncate text-sm font-semibold leading-tight">CapCut</p>
             <p className="truncate text-2xs text-text-3">{APP_OWNER}</p>
           </div>
         </div>

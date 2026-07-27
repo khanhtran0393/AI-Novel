@@ -111,10 +111,6 @@ export async function ensureFlowSessionReady(
   const notify = opts.notify !== false;
   const label = kindLabel(opts.kind || 'flow');
 
-  if (notify) {
-    toast.info(label, 'Đang kiểm tra trạng thái Flow (bridge + extension)…');
-  }
-
   let st: FlowSessionSnapshot;
   try {
     st = await fetchFlowStatus();
@@ -133,6 +129,10 @@ export async function ensureFlowSessionReady(
       loginRequired: false,
       message: 'Flow session ready',
     };
+  }
+
+  if (notify) {
+    toast.info(label, 'Đang kiểm tra & khởi tạo phiên Flow (bridge + extension)…');
   }
 
   const staleKey = hasStaleTokenNoEmail(st);

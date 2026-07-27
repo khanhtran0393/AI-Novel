@@ -120,6 +120,7 @@ export async function bootstrapFlow(opts?: {
   engine?: FlowBrowserEngine | string;
   waitExtensionMs?: number;
   waitLoginMs?: number;
+  mode?: 'login' | 'background';
   /**
    * Profile mới / thêm trình duyệt: wipe cookies + mở phiên TRỐNG.
    * Không tái dùng token/account Google của profile khác.
@@ -435,13 +436,22 @@ export async function bootstrapFlow(opts?: {
     };
   }
 
-  // ─── Chromium family (clean preferred) ───
+  // If caller explicitly passes mode OR account is already verified, launch in silent background mode
+  const isAccountReady = Boolean(
+    accNow &&
+      accNow.sessionVerified &&
+      accNow.email &&
+      accNow.email.includes('@') &&
+      accountFlowKeyPresent,
+  );
+  const launchMode = opts?.mode ? opts.mode : (isAccountReady ? 'background' : 'login');
+
   const launch = launchChrome({
     chromePath: browser.exe,
     extDir: isolated.extDir,
     profileDir,
     accountId,
-    mode: 'login',
+    mode: launchMode,
     forceClean: true,
     isStockChrome: browser.isStockChrome,
   });

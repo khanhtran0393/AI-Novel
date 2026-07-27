@@ -650,28 +650,33 @@ export function killChromeByPathNeedles(needles: string[]): number {
   ];
   if (clean.length === 0) return 0;
 
-  if (process.platform !== 'win32') {
-    let n = 0;
-    for (const s of listSessions()) {
-      const hit = clean.some(
-        (needle) =>
-          s.profileDir === needle ||
-          s.profileDir.startsWith(needle + path.sep) ||
-          needle.startsWith(s.profileDir + path.sep),
-      );
-      if (!hit) continue;
-      for (const pid of [s.loginPid, s.bgPid]) {
-        if (pid && isAlive(pid)) {
-          try {
-            process.kill(pid, 'SIGTERM');
-            n++;
-          } catch {
-            /* ignore */
+  let killedByPid = 0;
+  for (const s of listSessions()) {
+    const hit = clean.some(
+      (needle) =>
+        s.profileDir === needle ||
+        s.profileDir.startsWith(needle + path.sep) ||
+        needle.startsWith(s.profileDir + path.sep),
+    );
+    if (!hit) continue;
+    for (const pid of [s.loginPid, s.bgPid]) {
+      if (pid && isAlive(pid)) {
+        try {
+          if (process.platform === 'win32') {
+            execSync(`taskkill /F /T /PID ${pid}`, { windowsHide: true, stdio: 'ignore' });
+          } else {
+            process.kill(pid, 'SIGKILL');
           }
+          killedByPid++;
+        } catch {
+          /* ignore */
         }
       }
     }
-    return n;
+  }
+
+  if (process.platform !== 'win32') {
+    return killedByPid;
   }
 
   const likeParts = clean
@@ -681,7 +686,7 @@ export function killChromeByPathNeedles(needles: string[]): number {
   const ps = [
     `$n=0;`,
     `Get-CimInstance Win32_Process -EA SilentlyContinue |`,
-    `Where-Object { ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe' -or $_.Name -eq 'chromium.exe') -and $_.CommandLine -and (${likeParts}) } |`,
+    `Where-Object { ($_.Name -like '*chrome*' -or $_.Name -like '*chromium*' -or $_.Name -like '*edge*') -and $_.CommandLine -and (${likeParts}) } |`,
     `ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -EA Stop; $n++ } catch {} };`,
     `Write-Output $n`,
   ].join(' ');
@@ -691,14 +696,15 @@ export function killChromeByPathNeedles(needles: string[]): number {
       `powershell -NoProfile -NonInteractive -Command "${ps}"`,
       {
         encoding: 'utf8',
-        timeout: 25_000,
+        timeout: 3_000,
         windowsHide: true,
       },
     );
     const n = Number(String(out).trim().split(/\r?\n/).filter(Boolean).pop());
-    return Number.isFinite(n) ? n : 0;
+    const psKilled = Number.isFinite(n) ? n : 0;
+    return killedByPid + psKilled;
   } catch {
-    return 0;
+    return killedByPid;
   }
 }
 
@@ -916,11 +922,6 @@ export function launchChrome(opts: {
         console.log(
           `[FlowChrome] Killed ${killed} process(es) for account=${accountId} only`,
         );
-        try {
-          execSync('ping -n 3 127.0.0.1 >nul', { windowsHide: true });
-        } catch {
-          /* ignore */
-        }
       }
     } catch (e) {
       console.warn('[FlowChrome] kill profile failed (continue)', e);
@@ -1009,14 +1010,17 @@ export function launchChrome(opts: {
   const flowUrl = `https://labs.google/fx/tools/flow?ainovel_account=${encodeURIComponent(accountId)}`;
 
   // Login: single maximized window + Flow URL.
-  // CẤM --new-window on cold start — with residual session restore it can open a 2nd blank window.
+  // Background: start minimized + silent launch off-screen (zero window flash on screen).
   const args =
     opts.mode === 'login'
       ? [...baseArgs, '--start-maximized', flowUrl]
       : [
           ...baseArgs,
+          '--window-state=minimized',
+          '--start-minimized',
+          '--silent-launch',
           '--window-position=-32000,-32000',
-          '--window-size=900,700',
+          '--window-size=10,10',
           flowUrl,
         ];
 
@@ -1042,7 +1046,7 @@ export function launchChrome(opts: {
   const child = spawn(opts.chromePath, args, {
     detached: true,
     stdio: 'ignore',
-    windowsHide: opts.mode === 'background',
+    windowsHide: opts.mode !== 'login',
   });
   child.unref();
 

@@ -64,7 +64,7 @@ Seedance = TypeScript **in-process** (`src/lib/integrations/seedance*`) — khô
 | Watch QC | `exports/integrations/watch/qc_*.md` (report-only) |
 | Ship packs | `exports/ship-packs/…` |
 | Seedance bake | `exports/integrations/…` (sequence persist) |
-| CapCut / XinChao-Cut pack | `exports/integrations/xinchao-cut/…` |
+| CapCut pack | `exports/integrations/capcut/…` |
 
 ---
 

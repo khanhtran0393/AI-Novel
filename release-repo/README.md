@@ -1,87 +1,44 @@
-# AI Novel — Desktop Releases
+# 🚀 AI Novel & Script Generator — Ultimate Studio
 
-**Public release-only repository** for **[Ai Novel](https://github.com/khanhtran0393/AI-Novel)**.
+[![Release](https://img.shields.io/github/v/release/khanhtran0393/AI-Novel-release?color=emerald&style=for-the-badge)](https://github.com/khanhtran0393/AI-Novel-release/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue?style=for-the-badge)](https://github.com/khanhtran0393/AI-Novel-release/releases)
+[![License](https://img.shields.io/badge/status-Active%20Development%20(Beta)-orange?style=for-the-badge)](#-trạng-thái-phát-triển)
 
-Source code stays in the private app repo. This repo holds **installers only** so the desktop app can auto-update without opening private source.
+**AI Novel & Script Generator** là Workspace sản xuất nội dung đa phương tiện cao cấp dành riêng cho nhà sáng tạo nội dung, biên kịch, đạo diễn hình ảnh và Youtuber/Tiktokers. 
 
-| | |
-|--|--|
-| App | **Ai Novel** |
-| Owner | [khanhtran0393](https://github.com/khanhtran0393) |
-| Releases | [Releases →](https://github.com/khanhtran0393/AI-Novel-release-/releases) |
-| Updater | `electron-updater` · provider **github** · this repo |
+Hệ thống giúp tự động hóa khép kín từ **ý tưởng ➡️ viết kịch bản ➡️ phân cảnh ➡️ lồng tiếng đa nhân vật (TTS) ➡️ sinh ảnh/video AI ➡️ xuất thẳng dự án vào CapCut**.
 
 ---
 
-## What is uploaded each version
+## ✨ TÍNH NĂNG NỔI BẬT
 
-| File | Purpose |
-|------|---------|
-| `AI-Novel-<version>-x64.exe` | Windows installer / portable package |
-| `latest.yml` | electron-updater manifest (version, sha512, size) |
-| `*.exe.blockmap` | Optional differential update map |
-
-**Do not** commit source, secrets, API keys, or license private keys here.
-
----
-
-## How users get updates
-
-1. Open the packaged app  
-2. App checks GitHub Releases on this repo  
-3. Downloads the new `.exe` in the background  
-4. **Next launch** applies the update (no prompt)
-
-Requires a **published** (not draft) release with tag `vX.Y.Z` matching the app version.
+- 📖 **Lõi Engine AI Novel Native**: Tạo câu chuyện dài (Long-form), quản lý lorebook, dàn ý và thế giới truyện theo thể loại cá nhân hóa (Setup Genre).
+- 👤 **Hồ sơ nhân vật sâu (Character Roster)**: Quản lý chi tiết ngoại hình, tính cách, khuyết điểm, khóa định dạng nhân vật (Identity Lock) khi gen ảnh/video.
+- 🎨 **Gen Prompt Studio**: Tự động sinh `image_prompt` và `video_prompt` chuẩn điện ảnh (khung hình, góc quay, ánh sáng, Seedance sequence).
+- 🎙️ **Lồng tiếng Đa nhân vật (Multi-Voice TTS)**: Gán giọng đọc riêng cho từng nhân vật, hỗ trợ Vina Voice, Edge TTS, Piper, CapCut TTS. Tự động đồng bộ thời lượng (re-sync timestamp).
+- 🎬 **Tích hợp Media AI**: Sinh ảnh & video qua Google Flow Bridge, Veo, Whisk, Gemini... Quản lý hàng chờ (Job Queue) mượt mà.
+- ✂️ **Xuất dự án CapCut / FableCut**: Tự động build file timeline chứa đầy đủ Audio, Hình ảnh, Video, Subtitles — mở lên là render được ngay.
+- 📈 **YouTube SEO Assistant**: Tự động tạo Title, Description, Tags, Thumbnail Prompt tối ưu lượt xem.
 
 ---
 
-## Publisher checklist (you)
+## 📥 HƯỚNG DẪN TẢI VỀ & CÀI ĐẶT
 
-```text
-1. Bump version in the private app package.json  (e.g. 1.0.0 → 1.0.1)
-2. Build:  npm run pack:unsigned:qa   (or signed build:desktop)
-3. Generate latest.yml:  npm run release:manifest
-4. Create GitHub Release on THIS repo:
-   - Tag:    v1.0.1
-   - Title:  1.0.1
-   - Attach: AI-Novel-1.0.1-x64.exe  +  latest.yml
-   - Publish release (not Pre-release, unless testing prerelease channel)
-```
-
-Or from the app machine (with `GH_TOKEN`):
-
-```powershell
-cd "D:\My app\AI Novel"
-$env:GH_TOKEN = "ghp_..."   # repo scope on AI-Novel-release- only (ideal)
-npm run release:github
-```
+1. Truy cập mục **[Releases](https://github.com/khanhtran0393/AI-Novel-release/releases)** trên GitHub.
+2. Tải file cài đặt phiên bản mới nhất: `AI-Novel-Setup-x64.exe` (hoặc `AI-Novel-<version>-x64.exe`).
+3. Chạy file `.exe` để tiến hành cài đặt vào máy tính.
+4. **Tự động cập nhật**: Ứng dụng tích hợp bộ tự động cập nhật (`electron-updater`), sẽ tự động kiểm tra và tải phiên bản mới khi có bản phát hành tiếp theo.
 
 ---
 
-## Security notes
+## 🚧 TRẠNG THÁI PHÁT TRIỂN
 
-- This repository is **public by design** (download without login).  
-- Never put `GH_TOKEN`, Supabase service role, or entitlement private keys in releases.  
-- Until Windows Authenticode is configured, builds may be **unsigned**; the app allows that via `AINOVEL_UPDATE_ALLOW_UNSIGNED=1`.  
-- After code signing, re-publish signed builds and turn unsigned allow off.
+> ⚠️ **Lưu ý**: Ứng dụng đang trong giai đoạn **thử nghiệm & phát triển tích cực (Active Beta)**. 
+> Trong quá trình sử dụng có thể phát sinh một số lỗi nhỏ hoặc tính năng chưa hoàn thiện. Rất mong nhận được phản hồi và đóng góp ý kiến từ bạn để ứng dụng ngày càng tốt hơn!
 
 ---
 
-## License / support
+## 🔗 LIÊN HỆ & BÁO LỖI
 
-Product terms and support: see the main product documentation and in-app **Bản quyền** / License modal.  
-This repo is distribution-only.
-
----
-
-## Current channel
-
-| Channel | Tag pattern | Notes |
-|---------|-------------|--------|
-| stable | `v1.0.0`, `v1.0.1`, … | Default for all users |
-| pre-release | GitHub “Pre-release” flag | Only if app has prerelease enabled |
-
----
-
-*Maintained for AI Novel desktop auto-update. Empty of application source.*
+- **Tác giả / Developer**: [khanhtran0393](https://github.com/khanhtran0393)
+- **Báo lỗi & Đóng góp**: [GitHub Issues](https://github.com/khanhtran0393/AI-Novel-release/issues)

@@ -7,7 +7,7 @@ import {
   randomTemplateAction,
   generateOutlineAction,
   analyzeYoutubePlotAction,
-  fetchYoutubeSourceAction,
+  fetchSourceIngestAction,
   buildYoutubeMetadataSeed,
   getFriendlyErrorMessage,
   summarizeSetupErrorForToast,
@@ -19,6 +19,7 @@ function isRawYoutubeMoTa(mo: string): boolean {
   const t = (mo || '').trim();
   return (
     t.startsWith('[NGUỒN YOUTUBE') ||
+    t.startsWith('[NGUỒN WEB') ||
     t.startsWith('[RAW YOUTUBE') ||
     t.includes('BẢN CHÉP LỜI (phụ đề nguồn):')
   );
@@ -112,17 +113,17 @@ export function useSetupActions() {
   };
 
   /**
-   * Nút «Phân tích» (YouTube setup):
-   * 1) Lấy captions/chép lời → cache (youtubeSourceText) để đối chiếu % trùng
+   * Nút «Phân tích» (Setup link nguồn — YouTube hoặc web):
+   * 1) Lấy nội dung (YT: captions/Whisper · Web: article extract) → cache (youtubeSourceText)
    * 2) AI bóc cốt truyện → điền ô «3. Cốt truyện» (mo_ta)
-   * Không dump transcript thô vào mo_ta.
-   * Nếu YouTube chặn phụ đề: soft-seed từ tiêu đề + mô tả (metadata) — vẫn điền ô 3.
+   * Không dump text thô vào mo_ta.
+   * Soft-seed metadata khi body/captions fail — vẫn điền ô 3 nếu đủ title+desc.
    */
   const handlePhanTichYoutube = async (urlOverride?: string) => {
     const store = getStore();
     const url = (urlOverride ?? store.youtubeRewriteUrl ?? '').trim();
     if (!url) {
-      failSetup('Phân tích YouTube', '⚠️ Dán link YouTube trước khi Phân tích.');
+      failSetup('Phân tích nguồn', '⚠️ Dán link YouTube hoặc bài viết web trước khi Phân tích.');
       return;
     }
 
@@ -132,7 +133,7 @@ export function useSetupActions() {
     );
     if (!hasKey) {
       failSetup(
-        'Phân tích YouTube',
+        'Phân tích nguồn',
         '⚠️ Chưa có API Key LLM. Mở Cài đặt (⚙️) → dán Gemini/OpenAI key rồi thử lại.',
       );
       return;
@@ -141,8 +142,8 @@ export function useSetupActions() {
     setPromptError('');
     setIsAnalyzingPlot(true);
     toast.info(
-      'Phân tích YouTube',
-      'Đang lấy nội dung video (phụ đề → audio/Whisper nếu cần) + tóm cốt truyện theo % trùng… Có thể mất 1–3 phút.',
+      'Phân tích nguồn',
+      'Đang lấy nội dung (YouTube: phụ đề/Whisper · Web: bài viết) + tóm cốt truyện theo % trùng… Có thể mất 1–3 phút.',
     );
     try {
       const ngon = (store.setup.ngon_ngu || '').toLowerCase();
@@ -153,11 +154,12 @@ export function useSetupActions() {
             ? ['en', 'en-US', 'vi']
             : ['vi', 'en', 'en-US', 'ja', 'ko', 'zh'];
 
-      // Reuse cache if same URL already has captions
+      // Reuse cache if same URL already has body/captions
       let transcript = (store.youtubeSourceText || '').trim();
       let title = store.youtubeSourceTitle || '';
       let sourceKind: 'captions' | 'metadata' = 'captions';
       let contentSource = '';
+      let platform: 'youtube' | 'web' | 'unsupported' = 'youtube';
       let captionsBlockedNote = '';
       const cachedUrl = (store.youtubeRewriteUrl || '').trim();
       const canReuseCache =
@@ -165,43 +167,57 @@ export function useSetupActions() {
         cachedUrl &&
         (url === cachedUrl || url.includes(cachedUrl) || cachedUrl.includes(url));
 
+      let isMultiSource = false;
+      let sourcesCount = 0;
+
       if (!canReuseCache) {
-        const data = await fetchYoutubeSourceAction({ url, preferredLangs });
-        transcript = (data.transcript || '').trim();
+        const data = await fetchSourceIngestAction({ url, preferredLangs });
+        isMultiSource = !!data.isMultiSource;
+        sourcesCount = data.sourcesCount || 0;
+        platform =
+          data.platform === 'web' || data.platform === 'youtube' ? data.platform : 'youtube';
+        transcript = String(data.text || data.transcript || '').trim();
         title = data.title || title;
         contentSource = String(data.source || '');
 
         if (transcript.length < 20) {
-          // Soft path cuối: metadata — chỉ khi audio/whisper cũng fail
+          // Soft path cuối: metadata — chỉ khi body/captions fail
           const metaSeed = buildYoutubeMetadataSeed({
             title: data.title || title,
             description: data.description || '',
-            channel: data.channel || '',
+            channel: data.channel || data.author || '',
             url: data.url || url,
+            platform: platform === 'web' ? 'web' : 'youtube',
           });
           if (metaSeed.length >= 40) {
             sourceKind = 'metadata';
             transcript = metaSeed;
             captionsBlockedNote =
               (data.error || '').trim() ||
-              'Không lấy được lời thoại video — đang bóc cốt truyện từ tiêu đề + mô tả.';
+              (platform === 'web'
+                ? 'Không trích được thân bài — đang bóc cốt truyện từ tiêu đề + mô tả.'
+                : 'Không lấy được lời thoại video — đang bóc cốt truyện từ tiêu đề + mô tả.');
             store.setYoutubeRewrite({
               url: data.url || url,
               sourceTitle: title || data.title || '',
               sourceText: '',
             });
             toast.info(
-              'Chưa có lời thoại',
-              'Đã thử phụ đề + audio. Dùng metadata tạm — % trùng sẽ lỏng. Gõ tay ô 3 nếu cần.',
+              platform === 'web' ? 'Chưa có thân bài' : 'Chưa có lời thoại',
+              platform === 'web'
+                ? 'Dùng metadata tạm — % trùng sẽ lỏng. Gõ tay ô 3 nếu cần.'
+                : 'Đã thử phụ đề + audio. Dùng metadata tạm — % trùng sẽ lỏng. Gõ tay ô 3 nếu cần.',
             );
           } else {
             throw new Error(
               (data.error || '').trim() ||
-                '❌ Không lấy được nội dung video.\n\n🔎 Vì sao: YouTube chặn phụ đề và không tải/transcribe được audio.\n📍 Ở đâu: Bước «Phân tích»\n✅ Cách khắc phục: pip install yt-dlp openai-whisper · có ffmpeg · thử lại / gõ cốt truyện tay ô 3.',
+                (platform === 'web'
+                  ? '❌ Không lấy được nội dung trang web.\n\n🔎 Vì sao: Site chặn bot / SPA / login wall.\n📍 Ở đâu: Bước «Phân tích»\n✅ Cách khắc phục: copy text bài dán ô 3 Cốt truyện.'
+                  : '❌ Không lấy được nội dung video.\n\n🔎 Vì sao: YouTube chặn phụ đề và không tải/transcribe được audio.\n📍 Ở đâu: Bước «Phân tích»\n✅ Cách khắc phục: pip install yt-dlp openai-whisper · có ffmpeg · thử lại / gõ cốt truyện tay ô 3.'),
             );
           }
         } else {
-          // Cache lời thoại (CC hoặc Whisper) — bắt buộc cho canh % trùng
+          // Cache body/captions — bắt buộc cho canh % trùng
           store.setYoutubeRewrite({
             url: data.url || url,
             sourceTitle: title,
@@ -225,32 +241,44 @@ export function useSetupActions() {
         if (captionsBlockedNote) setPromptError(captionsBlockedNote);
         toast.success(
           'Cốt truyện gợi ý (metadata)',
-          `Ô 3 đã điền · mục tiêu ~${sim}% — chỉnh tay rồi Sinh kịch bản (chưa có cache lời thoại).`,
+          `Ô 3 đã điền · mục tiêu ~${sim}% — chỉnh tay rồi Sinh kịch bản (chưa có cache nội dung đầy đủ).`,
         );
       } else {
         const via =
-          contentSource === 'audio_whisper'
-            ? 'audio+Whisper'
-            : contentSource === 'ytdlp_captions'
-              ? 'yt-dlp sub'
-              : contentSource === 'cache'
-                ? 'cache'
-                : 'phụ đề';
+          isMultiSource
+            ? `Agent-Reach ${sourcesCount || 2} nguồn`
+            : contentSource === 'audio_whisper'
+              ? 'audio+Whisper'
+              : contentSource === 'ytdlp_captions'
+                ? 'yt-dlp sub'
+                : contentSource === 'web_readability'
+                  ? 'web·bài viết'
+                  : contentSource === 'web_direct'
+                    ? 'web·HTML'
+                    : contentSource === 'web_jina'
+                      ? 'web·Jina'
+                      : contentSource === 'cache'
+                        ? 'cache'
+                        : platform === 'web'
+                          ? 'web'
+                          : 'phụ đề';
         toast.success(
           'Phân tích xong',
-          `Đã cache lời thoại (${via}) + cốt truyện ô 3 · mục tiêu trùng ~${sim}%. Chỉnh rồi Sinh kịch bản.`,
+          `Đã cache nội dung (${via}) + cốt truyện ô 3 · mục tiêu trùng ~${sim}%. Chỉnh rồi Sinh kịch bản.`,
         );
       }
     } catch (err: unknown) {
       const friendly = getFriendlyErrorMessage(err);
       setPromptError(friendly);
       // Toast: tóm tắt vì sao + 1 bước sửa (ô lỗi sticky giữ full message)
-      toast.error('Phân tích YouTube', summarizeSetupErrorForToast(friendly, 240));
+      toast.error('Phân tích nguồn', summarizeSetupErrorForToast(friendly, 240));
     } finally {
       setIsAnalyzingPlot(false);
     }
   };
 
+  /** Alias — multi-source analyze (YouTube | web) */
+  const handlePhanTichNguon = handlePhanTichYoutube;
   /** @deprecated alias — UI YouTube dùng handlePhanTichYoutube */
   const handleAnalyzeYoutubePlot = () => handlePhanTichYoutube();
 
@@ -503,6 +531,7 @@ export function useSetupActions() {
     handleRandomTemplate,
     handleAnalyzeYoutubePlot,
     handlePhanTichYoutube,
+    handlePhanTichNguon,
     handleGenerateOutline,
   };
 }

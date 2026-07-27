@@ -1,6 +1,7 @@
 import type { NovelStore } from './novelTypes';
 import { imageAssetKey, sceneAssetKey } from '@/contracts';
 import { YOUTUBE_HOOK_SCENE_INDEX } from '@/lib/youtubeSafe';
+import { effectiveSetupWordGoal } from '@/lib/commercial/freeLimitsPolicy';
 
 export const selectIsHydrated = (state: NovelStore) => state.isHydrated;
 export const selectActiveChannelId = (state: NovelStore) => state.activeChannelId;
@@ -29,7 +30,7 @@ export const selectIsVip = (state: NovelStore) => state.is_vip;
 export const selectIsTrial = (state: NovelStore) => state.is_trial;
 export const selectCredits = (state: NovelStore) => state.credits;
 export const selectTargetWords = (state: NovelStore) =>
-  state.setup.so_tu_chuong || 4250;
+  effectiveSetupWordGoal(state.setup?.so_tu_chuong, state);
 export const selectMemoryPipelineStatus = (state: NovelStore) =>
   state.memoryPipelineStatus;
 export const selectSetGiaiDoan = (state: NovelStore) => state.setGiaiDoan;

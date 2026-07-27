@@ -1,6 +1,7 @@
 import { API } from '@/contracts';
 import { useNovelStore } from '@/store/useNovelStore';
 import { ensureFlowSessionReady } from './flowSessionPreflight';
+import { stripImageCacheBust } from '@/lib/mediaReference';
 
 export interface CharacterJSON {
   id: string;
@@ -492,8 +493,8 @@ export async function generateVideoAction(
     const hasStart = Boolean(params.startImage);
     const hasEnd = Boolean(
       params.endImage &&
-        String(params.endImage).split('?')[0] !==
-          String(params.startImage || '').split('?')[0],
+        stripImageCacheBust(params.endImage) !==
+          stripImageCacheBust(params.startImage),
     );
     const ingredients = Array.isArray(params.ingredientPaths)
       ? params.ingredientPaths.length

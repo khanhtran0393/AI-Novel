@@ -801,9 +801,21 @@ export async function POST(req: Request) {
       route: '/api/generate-tts',
       chapter: chapterNum,
       scene: sceneIndex,
-      provider: platform,
       durationMs: Date.now() - started,
     });
+
+    // Auto-save generated TTS audio into active channel audio folder
+    try {
+      const { autoSaveToChannelFolder } = require('@/lib/channelMediaMirror');
+      autoSaveToChannelFolder({
+        channelName: body.ten_tac_pham || 'Kênh Chính',
+        resourceType: 'audio',
+        sourceFilePath: audioPathRet,
+      });
+    } catch {
+      /* ignore */
+    }
+
     return NextResponse.json(
       {
         success: true,

@@ -33,6 +33,7 @@ export type ImageProviderCtx = {
   imageCount: number;
   referenceImageB64: string;
   referenceMime: string;
+  ingredientPaths: string[];
   saveImage: SaveImageFn;
   saveImageBuffers: SaveImageBuffersFn;
   // gemini extras

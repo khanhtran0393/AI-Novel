@@ -64,6 +64,7 @@ import type {
   FlowTaskKind,
   RetryCategory,
 } from './types';
+import { resolveImageReferenceTransportPath } from '@/lib/mediaReference';
 
 function taskId(): string {
   return `ft_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -146,7 +147,7 @@ async function downloadToFile(
 
 function resolveLocalImage(ref?: string): string | null {
   if (!ref) return null;
-  let s = String(ref).trim().split('?')[0];
+  const s = resolveImageReferenceTransportPath(ref);
   if (!s) return null;
   if (path.isAbsolute(s) && fs.existsSync(s)) return s;
   const candidates = [
@@ -348,7 +349,10 @@ export class FlowQueueEngine {
           : '';
       const endP = body.endImagePath ? String(body.endImagePath) : '';
       const dualI2vEnqueue = Boolean(
-        startP && endP && startP.split('?')[0] !== endP.split('?')[0],
+        startP &&
+          endP &&
+          resolveImageReferenceTransportPath(startP) !==
+            resolveImageReferenceTransportPath(endP),
       );
       const videoMode = body.videoMode
         ? (String(body.videoMode) as FlowTask['videoMode'])
@@ -799,6 +803,7 @@ export class FlowQueueEngine {
                   waitExtensionMs: 25000,
                   waitLoginMs: 15000,
                   accountId: task.accountId,
+                  mode: 'background',
                 });
               }
             } catch {
@@ -989,6 +994,7 @@ export class FlowQueueEngine {
             waitExtensionMs: 25_000,
             waitLoginMs: 12_000,
             accountId: task.accountId,
+            mode: 'background',
           });
         }
       } catch (bootErr) {
@@ -1114,22 +1120,38 @@ export class FlowQueueEngine {
     bridge: typeof import('./bridgeServer'),
   ) {
     let imageMediaIds: string[] | undefined;
-    const refPath = resolveLocalImage(task.referenceImagePath);
+    const referencePaths: string[] = [];
+    const addReference = (raw?: string) => {
+      const resolved = resolveLocalImage(raw);
+      if (resolved && !referencePaths.includes(resolved)) {
+        referencePaths.push(resolved);
+      }
+    };
+    addReference(task.referenceImagePath);
+    for (const ingredientPath of task.ingredientPaths || []) {
+      if (referencePaths.length >= 3) break;
+      addReference(ingredientPath);
+    }
+    const refPath = referencePaths[0] || null;
     // A supplied face/cast ref is part of the requested identity lock. If its
     // upload fails, hard-fail instead of silently producing a text-only result.
-    if (refPath) {
+    if (referencePaths.length) {
       applyFlowTaskStep(task, 'submit', {
         progress: 12,
         message: 'Nén + upload ảnh ref / identity lock…',
       });
       try {
-        const mid = await this.uploadLocalImage(
-          refPath,
-          projectId,
-          bridge,
-          task.accountId,
-        );
-        if (mid) imageMediaIds = [mid];
+        const mediaIds: string[] = [];
+        for (const localReference of referencePaths) {
+          const mid = await this.uploadLocalImage(
+            localReference,
+            projectId,
+            bridge,
+            task.accountId,
+          );
+          if (mid && !mediaIds.includes(mid)) mediaIds.push(mid);
+        }
+        if (mediaIds.length) imageMediaIds = mediaIds;
         applyFlowTaskStep(task, 'submit', {
           progress: 22,
           message: 'Đã upload ref — chuẩn bị gen ảnh…',

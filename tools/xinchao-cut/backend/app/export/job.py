@@ -1342,16 +1342,6 @@ def run_job(
                     permit.release()
                 # Artifact probing can take tens of seconds on network disks. Do
                 # not hold the cancellation lifecycle lock while probing.
-                artifact = None
-                if code == 0 and job.diag.get("validateArtifact") and job.status != "cancelled":
-                    from .artifact import validate_export_artifact
-
-                    artifact = validate_export_artifact(
-                        job.temp_path or job.out_path,
-                        expected_duration=job.duration,
-                        expect_audio=bool(job.diag.get("expectAudio")),
-                    )
-
                 with job._lifecycle_lock:
                     if job.status == "cancelled":
                         from .integrity import cleanup_job_fs
@@ -1363,7 +1353,14 @@ def run_job(
                         # Cancel either wins before this scope, or observes done.
                         from .integrity import cleanup_job_fs, publish_atomic
                         try:
-                            if artifact is not None:
+                            if job.diag.get("validateArtifact") and job.status != "cancelled":
+                                from .artifact import validate_export_artifact
+
+                                artifact = validate_export_artifact(
+                                    job.temp_path or job.out_path,
+                                    expected_duration=job.duration,
+                                    expect_audio=bool(job.diag.get("expectAudio")),
+                                )
                                 job.diag = {**job.diag, "artifact": artifact}
                             if (
                                 job.temp_path

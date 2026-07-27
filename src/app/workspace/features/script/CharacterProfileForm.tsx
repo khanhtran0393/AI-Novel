@@ -14,6 +14,7 @@ import {
 } from '@/lib/characterVoice';
 import { prepareVoiceCatalog } from '@/lib/voiceCatalogPrep';
 import { characterWardrobeImageKey } from '@/contracts';
+import { stripImageCacheBust } from '@/lib/mediaReference';
 
 type CharacterProfileDraft = NhanVatProfile;
 
@@ -98,7 +99,7 @@ export default function CharacterProfileForm(props: CharacterProfileFormProps) {
     // Fallback face_ref (auto-saved on gen) → displayable serve URL
     const face = s.nhan_vat_prompts?.[editingChar]?.face_ref;
     if (!face || !String(face).trim()) return undefined;
-    const raw = String(face).trim().split('?')[0];
+    const raw = stripImageCacheBust(String(face).trim());
     if (raw.startsWith('/api/serve-image')) return raw;
     if (raw.includes('serve-image')) return raw;
     const base = raw.replace(/\\/g, '/').split('/').pop() || '';

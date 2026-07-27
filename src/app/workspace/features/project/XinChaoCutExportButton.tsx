@@ -1,5 +1,5 @@
 /**
- * Alias tương thích — GUI dùng tên CapCut (CapCutExportButton).
- * Engine multi-track vẫn là tools/xinchao-cut.
+ * Alias tương thích — product name is CapCut (CapCutExportButton).
+ * Prefer importing CapCutExportButton; this re-export stays for old paths only.
  */
 export { default } from './CapCutExportButton';

@@ -21,6 +21,7 @@ export async function generateWithFlow(
     imageCount,
     referenceImageB64,
     referenceMime,
+    ingredientPaths,
     saveImage,
     saveImageBuffers,
     model,
@@ -52,6 +53,7 @@ export async function generateWithFlow(
         waitExtensionMs: 40000,
         // OAuth needs minutes; 25s was failing with "Extension connected, login required"
         waitLoginMs: 120000,
+        mode: 'background',
       });
       snap = await getBridgeSnapshotAsync();
       const activeAfterBootstrap = snap.accounts?.find(
@@ -105,8 +107,10 @@ export async function generateWithFlow(
       );
     }
 
-    let referenceImagePath: string | undefined;
-    if (referenceImageB64) {
+    // Prefer the already-resolved real file path. Re-materializing the same
+    // reference from base64 creates a second path and uploads one sheet twice.
+    let referenceImagePath: string | undefined = ingredientPaths[0];
+    if (!referenceImagePath && referenceImageB64) {
       const tmpDir = path.join(process.cwd(), 'scratch', 'flow-refs');
       fs.mkdirSync(tmpDir, { recursive: true });
       const ext =
@@ -154,6 +158,7 @@ export async function generateWithFlow(
       // resolveFlowImageModelName applied inside payloadBuilder
       imageModel: explicitFlowModel,
       referenceImagePath,
+      ingredientPaths: ingredientPaths.length ? ingredientPaths : undefined,
       quality,
       camera:
         ctx.body.camera && typeof ctx.body.camera === 'object'

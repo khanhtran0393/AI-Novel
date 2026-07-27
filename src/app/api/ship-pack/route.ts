@@ -207,6 +207,18 @@ export async function POST(req: Request) {
       }),
     );
 
+    // Auto-save Ship Pack into active channel ship_pack folder
+    try {
+      const { autoSaveToChannelFolder } = require('@/lib/channelMediaMirror');
+      autoSaveToChannelFolder({
+        channelName: body.ten_tac_pham || pack.channelId || 'Kênh Chính',
+        resourceType: 'ship_pack',
+        sourceFilePath: outDir,
+      });
+    } catch {
+      /* ignore */
+    }
+
     return NextResponse.json({
       ok: true,
       mode: pack.mode,

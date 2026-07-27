@@ -8,6 +8,7 @@ import {
   computeArcBoundary,
   extractForeshadowCandidates,
   evaluateMediaPreflight,
+  evaluateVideoReady,
   resolveLongformConfig,
   ensureChapterQuality,
   setChapterQuality,
@@ -121,4 +122,87 @@ assert.ok(blocked, 'TTS without platform must hard-fail');
 
 assert.ok(getChapterQuality(1)?.mediaReady);
 
-console.log('OK smoke-pipeline-import (+ stage batch + TTS preflight)');
+// Video-ready ladder (workflow board domain)
+const vrEmpty = evaluateVideoReady({
+  chapter: 1,
+  chapterContent: '',
+  chu_de: '',
+  phong_cach: '',
+});
+assert.ok(vrEmpty.percent < 20, 'empty project stays low percent');
+assert.strictEqual(vrEmpty.nextStationId, 'setup');
+
+const vrPartial = evaluateVideoReady({
+  chapter: 1,
+  chu_de: 'Kiếm hiệp',
+  phong_cach: 'Hành động',
+  visualDna: 'cinematic wuxia',
+  wpm: 140,
+  secondsPerBeat: 6,
+  chapterContent: fat,
+  wordGoal: 4250,
+  qualityMediaReady: true,
+  qualityHardErrors: 0,
+  hookContent: 'Hook cold open thử nghiệm khoảng ba mươi giây kể chuyện.',
+  generatedAudioPaths: {
+    '1_990': { path: '/audio/hook.mp3', duration: 28 },
+    '1_1': { path: '/audio/s1.mp3', duration: 40 },
+  },
+  generatedPrompts: {
+    '1_1': [
+      {
+        image_prompt: 'hero in valley, still',
+        video_prompt: 'hero walks forward',
+        timestamp: '0-6s',
+      },
+    ],
+  },
+  generatedImages: { '1_1_0': '/images/s1.png' },
+  generatedVideos: {},
+});
+assert.ok(vrPartial.setupOk);
+assert.ok(vrPartial.scriptOk);
+assert.ok(vrPartial.percent > 40 && vrPartial.percent < 100);
+assert.ok(vrPartial.stations.some((s) => s.id === 'tts' && s.done >= 1));
+const videoSt = vrPartial.stations.find((s) => s.id === 'video');
+assert.ok(
+  videoSt && videoSt.status !== 'ready' && videoSt.done < videoSt.total,
+  'missing video shots must not be ready',
+);
+assert.ok(vrPartial.nextMessage.includes('Tiếp:') || vrPartial.nextStationId);
+
+const vrPack = evaluateVideoReady({
+  chapter: 1,
+  chu_de: 'Kiếm hiệp',
+  phong_cach: 'Hành động',
+  visualDna: 'cinematic',
+  wpm: 140,
+  secondsPerBeat: 6,
+  chapterContent: fat,
+  wordGoal: 4250,
+  qualityMediaReady: true,
+  generatedAudioPaths: {
+    '1_0': { path: 'a.mp3', duration: 10 },
+    '1_1': { path: 'b.mp3', duration: 10 },
+    '1_2': { path: 'c.mp3', duration: 10 },
+  },
+  generatedPrompts: {
+    '1_0': [{ image_prompt: 'a', video_prompt: 'va' }],
+    '1_1': [{ image_prompt: 'b', video_prompt: 'vb' }],
+    '1_2': [{ image_prompt: 'c', video_prompt: 'vc' }],
+  },
+  generatedImages: {
+    '1_0_0': 'a.png',
+    '1_1_0': 'b.png',
+    '1_2_0': 'c.png',
+  },
+  generatedVideos: {
+    '1_0_0_video': 'a.mp4',
+    '1_1_0_video': 'b.mp4',
+    '1_2_0_video': 'c.mp4',
+  },
+});
+assert.ok(vrPack.canPack, 'TTS + images/videos unlock CapCut pack gate');
+assert.ok(vrPack.percent >= 85);
+
+console.log('OK smoke-pipeline-import (+ stage batch + TTS preflight + video-ready)');

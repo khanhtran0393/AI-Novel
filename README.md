@@ -31,7 +31,11 @@ Dự án không chỉ sinh chữ, mà là một cỗ máy sản xuất phim phâ
 - **Tích hợp Job Queue**: Quản lý tiến trình Gen Media đa luồng (pause/cancel/resume).
 - **Quản lý Media Path**: Mọi file ảnh/video/audio đều lưu trữ vật lý trên đĩa và được map thông qua `sceneAssetKey`.
 
-## 🚀 HƯỚNG DẪN BẮT ĐẦU NHANH
+## 🚀 HƯỚNG DẪN BẮT ĐẦU NHANH & TẢI BẢN BÀN GIAO
+
+- **Tải ứng dụng cài đặt (Desktop Installer)**:
+  Tải bản phát hành mới nhất dành cho Windows x64 tại: **[GitHub Releases — AI Novel Release](https://github.com/khanhtran0393/AI-Novel-release/releases)**
+
 - **Chạy Dev Web**: 
   ```bash
   npm run dev
@@ -45,3 +49,4 @@ Dự án không chỉ sinh chữ, mà là một cỗ máy sản xuất phim phâ
   ```
 
 > ⚠️ **Lưu ý**: Mọi đóng góp, can thiệp hay sửa chữa mã nguồn từ AI/Developer đều phải bám sát tuyệt đối quy chuẩn trong tài liệu `AGENTS.md` (Bách khoa toàn thư dự án). Không phá vỡ hệ thống modular đang vận hành. Tuyệt đối không fallback ngầm nếu gặp lỗi (luật B10).
+

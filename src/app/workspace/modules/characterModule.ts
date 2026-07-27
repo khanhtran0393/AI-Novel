@@ -264,6 +264,7 @@ async function generateCharImageCore(params: {
   const data = (await res.json()) as {
     imagePath?: string;
     driveFilePath?: string;
+    localFilePath?: string;
     projectUrl?: string;
   };
   const imagePath = String(data.imagePath || '').trim();
@@ -272,7 +273,7 @@ async function generateCharImageCore(params: {
   }
   // Prefer absolute save-folder copy for face_ref (survives public/images wipe)
   const durablePath =
-    String(data.driveFilePath || '').trim() || imagePath.split('?')[0];
+    String(data.driveFilePath || data.localFilePath || '').trim() || imagePath;
   return {
     imagePath: toServeImageUrl(imagePath) || imagePath,
     durablePath,

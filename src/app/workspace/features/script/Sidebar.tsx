@@ -218,10 +218,10 @@ export default function Sidebar({
           type="button"
           onClick={openYoutubeSetup}
           className="relative flex w-full min-h-[2.25rem] items-center justify-center gap-1.5 rounded-lg border border-red-800/50 bg-red-500/10 px-2 py-2 text-[10px] font-bold uppercase leading-snug tracking-wide text-red-400 transition-all hover:bg-red-500/20 hover:border-red-600/60"
-          title="Link YouTube · lấy chép lời · % trùng · viết lại tương tự"
+          title="Link YouTube & Đa Nguồn Web (Agent-Reach) · lấy chép lời/bài viết · % trùng · viết lại tương tự"
         >
           <Video className="h-3.5 w-3.5 shrink-0" />
-          <span className="text-center leading-snug">Link YouTube · viết lại tương tự</span>
+          <span className="text-center leading-snug">Link YouTube & Đa Nguồn Web</span>
           {setupKind === 'youtube' && (
             <CheckCircle className="absolute right-3 h-4 w-4 text-emerald-500" />
           )}

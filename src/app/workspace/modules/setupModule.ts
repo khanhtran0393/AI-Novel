@@ -123,8 +123,79 @@ export type YoutubeSourcePayload = {
   errorCode?: string;
 };
 
+/** Multi-source ingest payload (YouTube + web). */
+export type SourceIngestPayload = YoutubeSourcePayload & {
+  platform?: 'youtube' | 'web' | 'unsupported';
+  /** Canonical body text (same as transcript for YT). */
+  text?: string;
+  author?: string;
+  isMultiSource?: boolean;
+  sourcesCount?: number;
+};
+
 /**
- * Lấy tiêu đề / mô tả / phụ đề YouTube.
+ * Multi-source: YouTube captions chain | web article extract.
+ * 400/422 → structured fail + title/description for soft-seed (không throw).
+ */
+export async function fetchSourceIngestAction(params: {
+  url: string;
+  preferredLangs?: string[];
+}): Promise<SourceIngestPayload> {
+  const res = await fetch(API.sourceIngest, {
+    method: 'POST',
+    headers: buildClientApiHeaders(),
+    body: JSON.stringify({
+      url: params.url,
+      preferredLangs: params.preferredLangs,
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as SourceIngestPayload & {
+    error?: string;
+  };
+
+  const text = String(data.text || data.transcript || '').trim();
+  const channel = String(data.channel || data.author || '').trim();
+
+  if (res.ok) {
+    return {
+      ...data,
+      success: data.success !== false,
+      ok: data.ok !== false,
+      transcript: text || data.transcript,
+      text: text || data.text,
+      channel,
+      author: data.author || channel,
+    };
+  }
+
+  if (res.status === 400 || res.status === 422) {
+    return {
+      success: false,
+      ok: false,
+      platform: data.platform || 'unsupported',
+      error: String(data.error || `HTTP ${res.status}`),
+      errorCode: data.errorCode,
+      videoId: data.videoId,
+      url: data.url || params.url,
+      title: data.title || '',
+      channel,
+      author: data.author || channel,
+      description: data.description || '',
+      transcript: text,
+      text,
+      source: data.source,
+      chain: data.chain,
+    };
+  }
+
+  throw new Error(
+    String(data.error || `HTTP ${res.status} source-ingest`).trim() ||
+      'Không gọi được /api/source-ingest.',
+  );
+}
+
+/**
+ * Lấy tiêu đề / mô tả / phụ đề YouTube (legacy endpoint).
  * 422 (captions fail) → trả object success:false + title/description (không throw),
  * để client soft-seed cốt truyện khi YouTube chặn phụ đề.
  * Chỉ throw khi mạng/HTTP 5xx / body rỗng.
@@ -175,24 +246,33 @@ export async function fetchYoutubeSourceAction(params: {
   );
 }
 
-/** Ghép title+mô tả thành seed phân tích khi không lấy được phụ đề. */
+/** Ghép title+mô tả thành seed phân tích khi không lấy được phụ đề / body. */
 export function buildYoutubeMetadataSeed(meta: {
   title?: string;
   description?: string;
   channel?: string;
   url?: string;
+  /** youtube (default) | web */
+  platform?: 'youtube' | 'web';
 }): string {
   const title = String(meta.title || '').trim();
   const channel = String(meta.channel || '').trim();
   const description = String(meta.description || '').trim();
   const url = String(meta.url || '').trim();
+  const isWeb = meta.platform === 'web';
   const parts = [
-    '[NGUỒN YOUTUBE — METADATA, KHÔNG PHẢI PHỤ ĐỀ]',
-    'Lưu ý: Phụ đề (captions) không lấy được. Chỉ có tiêu đề + mô tả video — bóc cốt truyện gợi ý, không bịa phụ đề.',
+    isWeb
+      ? '[NGUỒN WEB — METADATA, KHÔNG PHẢI THÂN BÀI]'
+      : '[NGUỒN YOUTUBE — METADATA, KHÔNG PHẢI PHỤ ĐỀ]',
+    isWeb
+      ? 'Lưu ý: Không trích được thân bài. Chỉ có tiêu đề + mô tả — bóc cốt truyện gợi ý, không bịa nội dung.'
+      : 'Lưu ý: Phụ đề (captions) không lấy được. Chỉ có tiêu đề + mô tả video — bóc cốt truyện gợi ý, không bịa phụ đề.',
     title ? `Tiêu đề: ${title}` : '',
-    channel ? `Kênh: ${channel}` : '',
+    channel ? (isWeb ? `Nguồn/site: ${channel}` : `Kênh: ${channel}`) : '',
     url ? `URL: ${url}` : '',
-    description ? `Mô tả video:\n${description.slice(0, 6000)}` : '',
+    description
+      ? `${isWeb ? 'Mô tả trang' : 'Mô tả video'}:\n${description.slice(0, 6000)}`
+      : '',
   ].filter(Boolean);
   return parts.join('\n\n').trim();
 }

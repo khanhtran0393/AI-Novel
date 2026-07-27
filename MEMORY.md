@@ -74,7 +74,7 @@ Badge UI: **TRIAL → PRO → FREE**. `is_trial` không gộp nhầm PRO trả p
 | tts | `features/tts`, generate-tts, voiceCast, chapter TTS export |
 | media-image | imageModule, generate-image, flow-bridge |
 | media-video | videoModule, generate-video, seedance, video-api (HeyGen detect) |
-| youtube | youtubeSource (không Flow browser), psych55, safe |
+| youtube | youtubeSource + source-ingest (YT+web, không Flow browser), psych55, safe |
 | channels | multi-channel DNA + ship |
 | export | CapCut/XinChao-Cut + ship-pack |
 | credentials | license, entitlement, keys |
@@ -213,6 +213,7 @@ Chi tiết item: `resources/commercial/release-notes.json`.
 | Credits Free/Trial | Batch gen preflight `assertBatchCreditsOrToast` — hết tín dụng toast rõ |
 | Telegram admin | Day keys 3/7/15/30 · menu/buttons · pending-escape · deploy-bridge |
 | YouTube source | Caption chain python/timedtext/yt-dlp — **không** dùng Flow browser |
+| Multi-source rewrite | `/api/source-ingest` · YT giữ nguyên chain · Web = direct HTML extract · Jina optional `AINOVEL_SOURCE_JINA=1` · Proof: `npx tsx scripts/smoke-source-ingest.mts` |
 | Defense pack | Grace offline · ASAR integrity · deny log · labyrinth/anti-tamper smokes |
 | Word gate | Band theo `so_tu_chuong` · condense overshoot · Free quality gate |
 

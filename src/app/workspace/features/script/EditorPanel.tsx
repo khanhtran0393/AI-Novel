@@ -21,6 +21,8 @@ export default function EditorPanel({
   const review = useNovelStore((s) => s.editorReviews[chapterIndex]);
 
   if (!review || !review.summary) return null;
+  // Hide panel when chapter is accepted (passed review)
+  if (review.verdict === 'accept') return null;
 
   const { dimensions, verdict, summary } = review;
   const dims = Array.isArray(dimensions) ? dimensions : [];
@@ -36,25 +38,18 @@ export default function EditorPanel({
   return (
     <div
       className={`mt-4 rounded-lg border p-4 ${
-        verdict === 'accept'
-          ? 'border-emerald-900/50 bg-emerald-950/10'
-          : verdict === 'polish'
-            ? 'border-amber-900/50 bg-amber-950/10'
-            : 'border-red-900/50 bg-red-950/10'
+        verdict === 'polish'
+          ? 'border-amber-900/50 bg-amber-950/10'
+          : 'border-red-900/50 bg-red-950/10'
       }`}
     >
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          {verdict === 'accept' && <ShieldCheck className="h-5 w-5 text-emerald-500" />}
           {verdict === 'polish' && <AlertTriangle className="h-5 w-5 text-amber-500" />}
           {verdict === 'rewrite' && <ShieldAlert className="h-5 w-5 text-red-500" />}
           <h4
             className={`font-bold uppercase tracking-wider text-sm ${
-              verdict === 'accept'
-                ? 'text-emerald-400'
-                : verdict === 'polish'
-                  ? 'text-amber-400'
-                  : 'text-red-400'
+              verdict === 'polish' ? 'text-amber-400' : 'text-red-400'
             }`}
           >
             AI Editor Review {averageScore}/100 · {verdict}
@@ -62,41 +57,37 @@ export default function EditorPanel({
         </div>
 
         <div className="flex items-center gap-2">
-          {verdict !== 'accept' && (
-            <>
-              <button
-                type="button"
-                onClick={onRevise}
-                disabled={isRewriting}
-                className="flex items-center gap-1.5 rounded bg-amber-500/20 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
-              >
-                {isRewriting ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Wand2 className="h-3.5 w-3.5" />
-                )}
-                {verdict === 'polish' ? 'TRAU CHUỐT THEO NHẬN XÉT' : 'SỬA THEO NHẬN XÉT'}
-              </button>
-              <button
-                type="button"
-                onClick={onFullRewrite}
-                disabled={isRewriting}
-                className="flex items-center gap-1.5 rounded bg-red-500/20 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                VIẾT LẠI TỪ ĐẦU
-              </button>
-              <button
-                type="button"
-                onClick={dismiss}
-                disabled={isRewriting}
-                title="Bỏ qua nhận xét — giữ bản hiện tại"
-                className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
-              >
-                BỎ QUA
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={onRevise}
+            disabled={isRewriting}
+            className="flex items-center gap-1.5 rounded bg-amber-500/20 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+          >
+            {isRewriting ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5" />
+            )}
+            {verdict === 'polish' ? 'TRAU CHUỐT THEO NHẬN XÉT' : 'SỬA THEO NHẬN XÉT'}
+          </button>
+          <button
+            type="button"
+            onClick={onFullRewrite}
+            disabled={isRewriting}
+            className="flex items-center gap-1.5 rounded bg-red-500/20 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            VIẾT LẠI TỪ ĐẦU
+          </button>
+          <button
+            type="button"
+            onClick={dismiss}
+            disabled={isRewriting}
+            title="Bỏ qua nhận xét — giữ bản hiện tại"
+            className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            BỎ QUA
+          </button>
           <button
             type="button"
             onClick={() => useNovelStore.getState().clearEditorReview(chapterIndex)}

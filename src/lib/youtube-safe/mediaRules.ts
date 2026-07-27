@@ -1,4 +1,5 @@
 import { SHOT_SCALE_CYCLE } from './config';
+import { stripImageCacheBust } from '@/lib/mediaReference';
 
 export function buildShotDiversityBlock(): string {
   return `
@@ -59,11 +60,13 @@ export function checkImagePathReuse(
   existing: Record<string, string>,
   currentKey: string,
 ): { reused: boolean; otherKey?: string } {
-  const norm = (imagePath || '').split('?')[0].replace(/\\/g, '/').toLowerCase();
+  const norm = stripImageCacheBust(imagePath)
+    .replace(/\\/g, '/')
+    .toLowerCase();
   if (!norm) return { reused: false };
   for (const [k, v] of Object.entries(existing || {})) {
     if (k === currentKey) continue;
-    const ov = (v || '').split('?')[0].replace(/\\/g, '/').toLowerCase();
+    const ov = stripImageCacheBust(v).replace(/\\/g, '/').toLowerCase();
     if (ov && ov === norm) return { reused: true, otherKey: k };
   }
   return { reused: false };

@@ -12,6 +12,7 @@ import { responseForGateFailure } from '@/lib/commercial/apiGate';
 import { probeVisualArtifact } from '@/lib/mediaArtifactValidation';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
+import { resolveImageReferenceTransportPath } from '@/lib/mediaReference';
 
 // Hàm tìm kiếm đường dẫn Chrome
 function findChromePath(): string | null {
@@ -96,29 +97,24 @@ async function uploadToPublicTempHost(localFilePath: string): Promise<string | n
 
 function resolveLocalImagePath(imageRef?: string): string | null {
   if (!imageRef) return null;
-  if (/^https?:\/\//i.test(imageRef)) return null;
-  if (path.isAbsolute(imageRef) && fs.existsSync(imageRef)) return imageRef;
-
-  let fileName = '';
-  try {
-    const url = new URL(imageRef, 'http://local.app');
-    fileName = url.searchParams.get('file') || '';
-  } catch {}
-
-  if (!fileName && imageRef.includes('file=')) {
-    fileName = imageRef.split('file=')[1].split('&')[0];
-  }
-  if (!fileName && imageRef.startsWith('/images/')) {
-    fileName = imageRef.replace('/images/', '');
-  }
-  if (!fileName && imageRef.startsWith('/api/serve-image/')) {
-    fileName = path.basename(imageRef);
-  }
-
-  if (!fileName) return null;
-  fileName = decodeURIComponent(fileName).split('?')[0].split('#')[0];
-  const localImagePath = path.join(process.cwd(), 'public', 'images', path.basename(fileName));
-  return fs.existsSync(localImagePath) ? localImagePath : null;
+  const resolved = resolveImageReferenceTransportPath(imageRef);
+  if (!resolved || /^https?:\/\//iu.test(resolved)) return null;
+  const candidates = path.isAbsolute(resolved)
+    ? [resolved]
+    : [
+        path.join(process.cwd(), resolved),
+        path.join(process.cwd(), 'public', resolved.replace(/^\//u, '')),
+        path.join(process.cwd(), 'public', 'images', path.basename(resolved)),
+      ];
+  return (
+    candidates.find((candidate) => {
+      try {
+        return fs.existsSync(candidate) && fs.statSync(candidate).isFile();
+      } catch {
+        return false;
+      }
+    }) || null
+  );
 }
 
 function runwayRatioFromAspect(aspectRatio: string, model: string): string {
@@ -246,6 +242,16 @@ export async function POST(req: Request) {
     }
     if (!supportedVideoProviders.includes(videoProvider as (typeof SUPPORTED_GENERATE_VIDEO_PROVIDERS)[number])) {
       return NextResponse.json({ error: `[Video API] Provider ${videoProvider} khong duoc ho tro trong che do production.` }, { status: 400 });
+    }
+    const requestedVideoModel = typeof model === 'string' ? model.trim() : '';
+    if (videoProvider !== 'ffmpeg' && !requestedVideoModel) {
+      return NextResponse.json(
+        {
+          error:
+            '[Video API] Thieu video model. He thong khong tu chon model mac dinh.',
+        },
+        { status: 400 },
+      );
     }
     if (videoProvider === 'flow' && ![4, 6, 8].includes(videoDuration)) {
       return NextResponse.json({ error: `[Video API] Flow chi nhan thoi luong 4/6/8 giay, khong nhan ${videoDuration}s.` }, { status: 400 });
@@ -410,6 +416,7 @@ export async function POST(req: Request) {
             engine: 'auto',
             waitExtensionMs: 40000,
             waitLoginMs: 120000,
+            mode: 'background',
           });
           snap = await getBridgeSnapshotAsync();
           const activeAfterBootstrap = snap.accounts?.find(
@@ -1637,6 +1644,18 @@ async function createSuccessResponse(
 
   const mids = Array.isArray(mediaIds) ? mediaIds.filter(Boolean) : [];
   const videoPath = `/video/${filename}`;
+
+  // Auto-save generated video into active channel video folder
+  try {
+    const { autoSaveToChannelFolder } = require('@/lib/channelMediaMirror');
+    autoSaveToChannelFolder({
+      channelName: 'Kênh Chính',
+      resourceType: 'video',
+      sourceFilePath: localSavePath,
+    });
+  } catch {
+    /* ignore */
+  }
   let seedanceMeta: { clipId?: string; accepted?: boolean } = {};
   if (seedanceCtx) {
     seedanceMeta = await tryMarkSeedanceGenerated({

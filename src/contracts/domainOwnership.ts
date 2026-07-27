@@ -179,13 +179,10 @@ export const DOMAIN_OWNERSHIP: DomainOwnership[] = [
     owns: [
       'workspace/features/project',
       'api/export-capcut',
-      'api/export-xinchao',
       'api/ship-pack',
       'lib/shipPack',
-      'lib/integrations/xinchaoCut',
-      'tools/xinchao-cut',
     ],
-    apis: ['exportCapcut', 'exportXinchao', 'shipPack'],
+    apis: ['exportCapcut', 'shipPack'],
     contracts: [],
   },
 ];

@@ -14,6 +14,7 @@ import SceneCard from './SceneCard';
 import EditorPanel from './EditorPanel';
 import EmptyWorkspaceHint from './EmptyWorkspaceHint';
 import YoutubeSafeChecklist from '../youtube/YoutubeSafeChecklist';
+import VideoReadyBoard from './VideoReadyBoard';
 import { useStreamUi } from '../../modules/streamUiStore';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -447,6 +448,36 @@ export default function ContentTab(props: ContentTabProps) {
     });
   }, [isStreaming, chapterNum, setExpandedScene, phanGroups]);
 
+  const focusSceneFromBoard = useCallback(
+    (sceneIndex: number) => {
+      setExpandedScene(sceneIndex);
+      for (const g of phanGroups) {
+        if (g.sceneIndices.includes(sceneIndex)) {
+          setPhanOpenMap((prev) => ({ ...prev, [g.phan]: true }));
+          break;
+        }
+      }
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          document
+            .getElementById(
+              sceneIndex === HOOK
+                ? 'scene-card-container-hook'
+                : `scene-card-container-${sceneIndex}`,
+            )
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
+      });
+    },
+    [HOOK, phanGroups, setExpandedScene],
+  );
+
+  const openSetupFromBoard = useCallback(() => {
+    const st = useNovelStore.getState();
+    st.setSetupKind('classic');
+    st.setGiaiDoan(1);
+  }, []);
+
   if (isStreaming) {
     return <StreamingScriptView />;
   }
@@ -461,6 +492,12 @@ export default function ContentTab(props: ContentTabProps) {
     return (
       <div className="flex flex-col gap-4 w-full min-w-0">
         <YoutubeSafeChecklist />
+
+        <VideoReadyBoard
+          chapter={chapterNum}
+          onFocusScene={focusSceneFromBoard}
+          onOpenSetup={openSetupFromBoard}
+        />
 
         {/* One Hook only — merges store 990 + body [CẢNH 0] (no double hook cards) */}
         <div id="scene-card-container-hook" className={`${scrollMt} w-full min-w-0`}>

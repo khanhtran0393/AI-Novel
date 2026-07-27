@@ -135,10 +135,9 @@ export function evaluateChapterQuality(input: QualityGateInput): ChapterQualityR
     });
   }
   if (gate.wordCount > band.max) {
-    // Hard over max (+20%): error so media/quality flag overshoot (e.g. 208%)
-    const hardOver = Math.round(band.goal * 1.35);
+    // Overshoot of target (+20%): warning only so media generation is never blocked for longer scripts
     findings.push({
-      severity: gate.wordCount > hardOver ? 'error' : 'warning',
+      severity: 'warning',
       code: 'word_over_max',
       message: `Cổng từ vượt quy định: ${gate.wordCount}/${band.goal} từ (${Math.round((gate.wordCount / band.goal) * 100)}%) — trần ${band.max} (+20%).`,
     });

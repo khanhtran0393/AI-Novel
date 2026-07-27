@@ -5,7 +5,7 @@ import { RefreshCw } from 'lucide-react';
 import { useCapCutExport } from '../../hooks/useCapCutExport';
 
 /**
- * Nút CapCut (tên GUI cũ) — engine: pack media + editor multi-track trong app.
+ * Nút CapCut — pack media chương + mở editor multi-track nội bộ (tên sản phẩm: CapCut).
  * Component chỉ render; hook sở hữu toàn bộ orchestration.
  */
 export default function CapCutExportButton() {

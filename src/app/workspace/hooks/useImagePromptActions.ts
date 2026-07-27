@@ -37,6 +37,11 @@ import {
   readStageMeta,
 } from '@/lib/pipeline';
 import { scheduleAppWork } from '@/lib/appWork';
+import {
+  appendImageCacheBust,
+  resolveImageReferenceTransportPath,
+  stripImageCacheBust,
+} from '@/lib/mediaReference';
 
 /** Paid Pro (not trial) ignores local credit balance. Free + Trial meter. */
 function isUnlimitedCreditPlan(
@@ -472,8 +477,10 @@ export function useImagePromptActions() {
         data.imagePaths && data.imagePaths.length > 0 ? data.imagePaths : [data.imagePath];
       const cacheBustedImagePaths = imagePaths
         .filter(Boolean)
-        .map((path) => `${path}?t=${cacheBust}`);
-      const primary = cacheBustedImagePaths[0] || `${data.imagePath}?t=${cacheBust}`;
+        .map((path) => appendImageCacheBust(path, cacheBust));
+      const primary =
+        cacheBustedImagePaths[0] ||
+        appendImageCacheBust(data.imagePath, cacheBust);
       const yt = mergeYoutubeSafe(useNovelStore.getState().youtubeSafe);
       if (yt.enforceAntiReuse) {
         const reuse = checkImagePathReuse(primary, useNovelStore.getState().generatedImages, key);
@@ -714,8 +721,8 @@ export function useImagePromptActions() {
           hasEndImage: Boolean(
             st.generatedImages?.[startKey] &&
               st.generatedImages?.[endKey] &&
-              String(st.generatedImages[startKey]).split('?')[0] !==
-                String(st.generatedImages[endKey]).split('?')[0],
+              stripImageCacheBust(st.generatedImages[startKey]) !==
+                stripImageCacheBust(st.generatedImages[endKey]),
           ),
           videoProvider: st.videoProvider,
           videoModel: st.videoModel,
@@ -757,7 +764,7 @@ export function useImagePromptActions() {
       const hasDualStills = Boolean(
         startImage &&
           endImage &&
-          String(startImage).split('?')[0] !== String(endImage).split('?')[0],
+          stripImageCacheBust(startImage) !== stripImageCacheBust(endImage),
       );
 
       // Flow: T2V (text only) or I2V (1+ images). Legacy providers need 2 frames for interpol.
@@ -863,7 +870,7 @@ export function useImagePromptActions() {
         } else if (wantsR2v) {
           const seen = new Set<string>();
           for (const p of [...castPaths, startImage, endImage]) {
-            const n = p ? String(p).split('?')[0] : '';
+            const n = resolveImageReferenceTransportPath(p);
             if (n && !seen.has(n)) {
               seen.add(n);
               ingredientPaths.push(n);
@@ -879,7 +886,7 @@ export function useImagePromptActions() {
         // Legacy providers: keep prior multi-ref packing
         ingredientPaths = [...castPaths];
         for (const p of [startImage, endImage]) {
-          const n = p ? String(p).split('?')[0] : '';
+          const n = resolveImageReferenceTransportPath(p);
           if (n && !ingredientPaths.includes(n)) ingredientPaths.push(n);
         }
         videoMode =

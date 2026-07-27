@@ -40,7 +40,9 @@ export function WordGatePill() {
     : getWordCount(chapterContent);
   const progressPercent =
     targetWords > 0 ? Math.round((wordsCount / targetWords) * 100) : 0;
-  const overCap = targetWords > 0 && wordsCount > targetWords;
+  const maxCapWords = Math.round(targetWords * 1.2);
+  const overCap = targetWords > 0 && wordsCount > maxCapWords;
+  const isOptimal = progressPercent >= 92 && progressPercent <= 120;
   const progressBarPct = Math.min(100, Math.max(0, progressPercent));
   const tierHint = freeTier
     ? 'Free ≤600 từ/chương'
@@ -53,16 +55,18 @@ export function WordGatePill() {
       className={`relative inline-flex items-center gap-1.5 overflow-hidden rounded border px-2 py-0.5 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ${
         overCap
           ? 'border-rose-800/60 bg-rose-950/40 text-rose-300'
-          : progressPercent >= 92
+          : isOptimal
             ? 'border-emerald-900/50 bg-emerald-950/30 text-emerald-400'
             : 'border-amber-900/50 bg-amber-950/30 text-amber-400'
       } ${isStreaming ? 'ring-1 ring-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.15)]' : ''}`}
       title={
         overCap
-          ? `Vượt mục tiêu ${wordsCount}/${targetWords} từ${tierHint ? ` · ${tierHint}` : ''}. Cắt bớt, Pro, hoặc hạ mục tiêu Setup.`
-          : isStreaming
-            ? `Đang sinh… ${wordsCount}/${targetWords} từ (live)`
-            : `Tối thiểu ${Math.round(targetWords * 0.92)} từ (92%)${tierHint ? ` · ${tierHint}` : ''}`
+          ? `Vượt trần cổng từ (+20%) ${wordsCount}/${targetWords} từ (max ${maxCapWords})${tierHint ? ` · ${tierHint}` : ''}.`
+          : isOptimal
+            ? `Đạt dải cổng từ tối ưu (${wordsCount}/${targetWords} từ · 92%–120%)${tierHint ? ` · ${tierHint}` : ''}.`
+            : isStreaming
+              ? `Đang sinh… ${wordsCount}/${targetWords} từ (live)`
+              : `Biên độ tối ưu 92%–120% (${Math.round(targetWords * 0.92)}–${maxCapWords} từ)${tierHint ? ` · ${tierHint}` : ''}`
       }
       aria-live="polite"
       aria-atomic="true"
@@ -72,7 +76,7 @@ export function WordGatePill() {
         className={`pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-150 ease-out ${
           overCap
             ? 'bg-rose-500/30'
-            : progressPercent >= 92
+            : isOptimal
               ? 'bg-emerald-500/25'
               : isStreaming
                 ? 'bg-amber-500/20'
@@ -81,9 +85,9 @@ export function WordGatePill() {
         style={{ width: `${Math.min(100, progressBarPct)}%` }}
       />
       <span className="relative z-[1]">
-        {overCap ? '⚠ ' : ''}
+        {overCap ? '⚠ ' : isOptimal ? '✓ ' : ''}
         Cổng từ {wordsCount}/{targetWords} · {progressPercent}%
-        {overCap ? ' · vượt' : ''}
+        {overCap ? ' · Vượt trần' : isOptimal ? ' · Đạt' : ''}
         {isStreaming && (
           <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current align-middle opacity-80" />
         )}
