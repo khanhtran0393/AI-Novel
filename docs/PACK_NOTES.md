@@ -82,12 +82,15 @@ npm run preflight:pack
 - **FAIL** → sửa theo log, **chưa** pack.
 - **PASS** → đọc lướt banner (LICENSE · update · cấm nhầm lệnh).
 
-Checklist tay (bổ sung preflight):
+Checklist tay (bổ sung preflight & security gate):
 
 - [ ] Biết mình vừa sửa gì (Bước 1).
+- [ ] **Dependency Audit Gate**: `npm audit --omit=dev --audit-level=high` exit code 0 (không còn lỗ hổng High/Critical).
+- [ ] **Flow Bridge Auth Gate**: CSPRNG secret (`crypto.randomBytes(32)`), WS origin/secret validation, proxy allowlist (`labs.google`, `aisandbox-pa`), binary sink canonical path.
+- [ ] **Cloud Trial & Crown IP Auth**: Require user auth + device HWID verification (`claims.hwid` vs `bodyHwid`).
 - [ ] **Ship cho user / cần auto-update?** → **bump** `package.json` `version` + block trong `resources/commercial/release-notes.json` (preflight **fail** nếu thiếu notes cho version hiện tại).
 - [ ] Chỉ QA nội bộ, **không** đẩy feed → có thể không bump; **không** nhầm version với feed public đang live.
-- [ ] `resources/commercial/public.env`: `enforce`, không secret, update dual-feed (`PROVIDER=github`, `FEED_URL`, `CHECK_ON_LAUNCH=1`, `ALLOW_UNSIGNED=1`).
+- [ ] `resources/commercial/public.env`: `enforce`, `AINOVEL_UPDATE_ALLOW_UNSIGNED=0`, không secret, update dual-feed (`PROVIDER=github`, `FEED_URL`, `CHECK_ON_LAUNCH=1`).
 - [ ] Không còn `package.json.pack-backup` kẹt từ pack dở.
 - [ ] (Sẽ publish) GitHub login / `GH_TOKEN` sẵn — **không** nhét token vào gói.
 - [ ] (Bán signed) `CSC_*` sẵn → dùng `pack:commercial`, không `pack:ship`.
