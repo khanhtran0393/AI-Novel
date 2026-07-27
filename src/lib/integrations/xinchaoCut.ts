@@ -1,6 +1,6 @@
 /**
- * XinChao-Cut bridge — packs chapter media for the vendored multi-track editor
- * at tools/xinchao-cut (full repo structure, not forked into workspace).
+ * CapCut export packer — packs chapter media for the in-app multi-track editor.
+ * Runtime path remains tools/xinchao-cut (vendored engine folder); product name is CapCut.
  */
 import fs from 'fs';
 import path from 'path';
@@ -8,9 +8,21 @@ import {
   collectChapterAudioDiskPaths,
   collectChapterImageDiskPaths,
   collectChapterVideoDiskPaths,
+  isFullChapterAudioKey,
+  selectChapterTimelineAudioPaths,
 } from '@/lib/integrations/mediaPaths';
 import { getIntegrationPaths } from '@/lib/integrations/paths';
-import { chapterAssetPrefix } from '@/contracts';
+import {
+  assetKeyBelongsToChapter,
+  chapterAssetPrefix,
+  parseSceneAssetKey,
+} from '@/contracts';
+import { probeDurationSec } from '@/lib/audioStudio';
+import {
+  buildChapterTimelineReservation,
+  type ChapterTimelineReservation,
+} from '@/lib/integrations/timelineReservation';
+import type { TimedPrompt } from '@/lib/timestampSync';
 
 export const XINCHAO_DEFAULT_DEV_PORT = 5173;
 
@@ -18,6 +30,7 @@ export interface XinChaoPackInput {
   chapterNum: number;
   ten_tac_pham?: string;
   generatedAudioPaths?: Record<string, { path: string; duration: number }>;
+  generatedPrompts?: Record<string, TimedPrompt[]>;
   generatedImages?: Record<string, string>;
   generatedVideos?: Record<string, string>;
   aspect: string;
@@ -39,6 +52,7 @@ export interface XinChaoPackResult {
   openEditorHint: string;
   media: { images: number; videos: number; audios: number; files: number };
   timelineClips: number;
+  timelineReservation?: ChapterTimelineReservation;
   error?: string;
 }
 
@@ -102,13 +116,14 @@ export function isXinChaoPresent(cwd = process.cwd()): boolean {
 }
 
 /**
- * Build a media pack under exports/integrations/xinchao-cut for the editor.
- * The bundled XinChao-Cut runtime imports this pack through --ainovel-pack.
+ * Build a media pack under exports/integrations/capcut for the CapCut editor.
+ * Runtime imports this pack through --ainovel-pack.
  */
 export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
   const cwd = input.cwd || process.cwd();
   const paths = getIntegrationPaths(cwd);
-  const packBase = path.join(paths.workRoot, 'xinchao-cut');
+  // Product name CapCut (not xinchao_cut). Keep legacy folder as secondary write target only if needed.
+  const packBase = path.join(paths.workRoot, 'capcut');
   fs.mkdirSync(packBase, { recursive: true });
 
   const ch = Number(input.chapterNum);
@@ -138,19 +153,6 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
       error: 'aspect phải được cấu hình rõ: 16:9, 9:16, 1:1 hoặc 4:5',
     };
   }
-  const configuredDuration = Number(input.videoDuration);
-  if (!Number.isFinite(configuredDuration) || configuredDuration <= 0) {
-    return {
-      success: false,
-      packRoot: packBase,
-      mediaDir: '',
-      manifestPath: '',
-      openEditorHint: '',
-      media: { images: 0, videos: 0, audios: 0, files: 0 },
-      timelineClips: 0,
-      error: 'videoDuration phải được cấu hình rõ và lớn hơn 0',
-    };
-  }
   const imageProvider = String(input.imageProvider || '').trim();
   const videoProvider = String(input.videoProvider || '').trim();
   if (!imageProvider || !videoProvider) {
@@ -174,7 +176,15 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
 
   const images = collectChapterImageDiskPaths(ch, input.generatedImages || {});
   const videos = collectChapterVideoDiskPaths(ch, input.generatedVideos || {});
-  const audios = collectChapterAudioDiskPaths(ch, input.generatedAudioPaths || {});
+  const rawAudios = collectChapterAudioDiskPaths(
+    ch,
+    input.generatedAudioPaths || {},
+  );
+  const audios = selectChapterTimelineAudioPaths(
+    ch,
+    rawAudios,
+    (diskPath) => probeDurationSec(diskPath, cwd),
+  );
   const chapterPrefix = chapterAssetPrefix(ch);
   const requestedImageKeys = Object.entries(input.generatedImages || {})
     .filter(
@@ -191,16 +201,19 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
     )
     .map(([key]) => key);
   const requestedAudioKeys = Object.entries(input.generatedAudioPaths || {})
-    .filter(
-      ([key, value]) =>
-        (key.startsWith(chapterPrefix) || key === String(ch)) &&
-        Boolean(String(value?.path || '').trim()),
-    )
+    .filter(([key, value]) => {
+      if (!key.startsWith(chapterPrefix) && key !== String(ch) && !assetKeyBelongsToChapter(key, ch)) return false;
+      const vObj = value as unknown as { path?: string } | string;
+      const pathVal = typeof vObj === 'string' ? vObj.trim() : String(vObj?.path || '').trim();
+      return Boolean(pathVal);
+    })
     .map(([key]) => key);
   const unresolved = [
     ...requestedImageKeys.filter((key) => !images.some((entry) => entry.key === key)),
     ...requestedVideoKeys.filter((key) => !videos.some((entry) => entry.key === key)),
-    ...requestedAudioKeys.filter((key) => !audios.some((entry) => entry.key === key)),
+    ...requestedAudioKeys.filter(
+      (key) => !rawAudios.some((entry) => entry.key === key),
+    ),
   ];
   if (unresolved.length > 0) {
     return {
@@ -219,8 +232,6 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
   const width = input.width || size.width;
   const height = input.height || size.height;
   const fps = input.fps || 30;
-  const durationHint = Math.max(1, Math.min(30, configuredDuration));
-
   type FileEntry = {
     key: string;
     kind: 'image' | 'video' | 'audio';
@@ -312,47 +323,116 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
       media: { images: 0, videos: 0, audios: 0, files: 0 },
       timelineClips: 0,
       error:
-        'Không có media trên đĩa cho chương này. Gen ảnh/video/TTS trước khi mở XinChao-Cut.',
+        'Không có media trên đĩa cho chương này. Gen ảnh/video/TTS trước khi xuất CapCut.',
     };
   }
 
-  const visual = files.filter((f) => f.kind === 'video' || f.kind === 'image');
-  const audioOnly = files.filter((f) => f.kind === 'audio');
-  const totalAudioDur = audioOnly.reduce((s, a) => s + (a.duration || 0), 0);
-  const perClip =
-    visual.length > 0 && totalAudioDur > 0
-      ? Math.max(2, totalAudioDur / visual.length)
-      : Math.max(2, durationHint);
+  const audioFiles = files
+    .filter((f) => f.kind === 'audio')
+    .map((f) => ({ ...f }));
 
-  const timeline: Array<Record<string, unknown>> = [];
-  let cursor = 0;
-  for (const v of visual) {
-    timeline.push({
-      key: v.key,
-      kind: v.kind,
-      path: v.rel,
-      startSec: cursor,
-      durationSec: perClip,
+  let timelineReservation: ChapterTimelineReservation;
+  try {
+    const copiedPathByKey = new Map(files.map((file) => [file.key, file.rel]));
+    timelineReservation = buildChapterTimelineReservation({
+      chapterNum: ch,
+      projectName: input.ten_tac_pham || 'AI-Novel',
+      prompts: input.generatedPrompts || {},
+      audio: rawAudios.map((audio) => ({
+        key: audio.key,
+        path: copiedPathByKey.get(audio.key),
+        durationSec:
+          probeDurationSec(audio.disk, cwd) || Number(audio.duration) || 0,
+      })),
+      images: files
+        .filter((file) => file.kind === 'image')
+        .map((file) => ({ key: file.key, path: file.rel })),
+      videos: files
+        .filter((file) => file.kind === 'video')
+        .map((file) => ({ key: file.key, path: file.rel })),
     });
-    cursor += perClip;
+  } catch (error) {
+    return {
+      success: false,
+      packRoot,
+      mediaDir,
+      manifestPath: '',
+      openEditorHint: '',
+      media: { images: 0, videos: 0, audios: 0, files: 0 },
+      timelineClips: 0,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
-  let audioCursor = 0;
-  for (const a of audioOnly) {
-    const dur = a.duration && a.duration > 0 ? a.duration : perClip;
-    timeline.push({
-      key: a.key,
+
+  const reservedTimeline: Array<Record<string, unknown>> =
+    timelineReservation.slots
+      .filter(
+        (slot): slot is typeof slot & {
+          mediaKey: string;
+          mediaKind: 'image' | 'video';
+          mediaPath: string;
+        } => Boolean(slot.mediaKey && slot.mediaKind && slot.mediaPath),
+      )
+      .map((slot) => ({
+        key: slot.mediaKey,
+        slotId: slot.slotId,
+        kind: slot.mediaKind,
+        path: slot.mediaPath,
+        startSec: slot.startSec,
+        durationSec: slot.durationSec,
+      }));
+
+  if (audioFiles.length === 1 && isFullChapterAudioKey(audioFiles[0].key)) {
+    reservedTimeline.push({
+      key: audioFiles[0].key,
+      slotId: `chapter:${ch}:audio`,
       kind: 'audio',
-      path: a.rel,
-      startSec: audioCursor,
-      durationSec: dur,
+      path: audioFiles[0].rel,
+      startSec: 0,
+      durationSec: timelineReservation.durationSec,
     });
-    audioCursor += dur;
+  } else {
+    let audioCursor = 0;
+    const orderedAudio = [...audioFiles].sort((left, right) => {
+      const leftScene = parseSceneAssetKey(left.key)?.sceneIndex ?? 0;
+      const rightScene = parseSceneAssetKey(right.key)?.sceneIndex ?? 0;
+      const rank = (sceneIndex: number) => (sceneIndex === 990 ? -1 : sceneIndex);
+      return rank(leftScene) - rank(rightScene) || left.key.localeCompare(right.key);
+    });
+    for (const audio of orderedAudio) {
+      const durationSec =
+        Number(audio.duration) > 0
+          ? Number(audio.duration)
+          : probeDurationSec(audio.disk, cwd);
+      if (!(durationSec > 0)) {
+        return {
+          success: false,
+          packRoot,
+          mediaDir,
+          manifestPath: '',
+          openEditorHint: '',
+          media: { images: 0, videos: 0, audios: 0, files: 0 },
+          timelineClips: 0,
+          error: `Không đọc được duration audio ${audio.key}`,
+        };
+      }
+      reservedTimeline.push({
+        key: audio.key,
+        slotId: `chapter:${ch}:audio:${audio.key}`,
+        kind: 'audio',
+        path: audio.rel,
+        startSec: audioCursor,
+        durationSec,
+      });
+      audioCursor += durationSec;
+    }
   }
 
   const manifest = {
     version: 1,
     source: 'ai-novel',
-    editor: 'xinchao-cut',
+    /** Product name CapCut; 'xinchao-cut' kept as legacy wire alias accepted by runtime. */
+    editor: 'capcut',
     name: `${safeName(input.ten_tac_pham || 'AI-Novel')} — Chương ${ch}`,
     chapterNum: ch,
     ten_tac_pham: input.ten_tac_pham || 'AI-Novel',
@@ -370,38 +450,40 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
       path: f.rel,
       durationSec: f.duration ?? null,
     })),
-    suggestedTimeline: timeline,
+    timelineReservation,
+    suggestedTimeline: reservedTimeline,
     howToImport: [
       'Bấm nút CapCut trong AI Novel.',
-      'Runtime XinChao-Cut nội bộ tự tạo project đúng tỷ lệ.',
+      'Runtime CapCut nội bộ tự tạo project đúng tỷ lệ.',
       'Runtime tự nhập file thật trong media/ bằng path-backed asset.',
       'Runtime tự dựng timeline theo suggestedTimeline (startSec / durationSec).',
     ],
   };
 
+  // Wire filename kept for native/web runtime seam; product name is CapCut.
   const manifestPath = path.join(packRoot, 'ainovel-xinchao-pack.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
   // README for user
   const readme = [
-    `# XinChao-Cut pack — Chương ${ch}`,
+    `# CapCut pack — Chương ${ch}`,
     '',
     `Tác phẩm: ${input.ten_tac_pham || 'AI-Novel'}`,
     `Aspect: ${aspect} · ${width}x${height} @ ${fps}fps`,
     '',
     '## Mở project thật',
     '1. Bấm nút ✂️ CapCut trong AI Novel.',
-    '2. Runtime XinChao-Cut nội bộ tự đọc manifest này.',
+    '2. Runtime CapCut nội bộ tự đọc manifest này.',
     '3. Media trong `media/` được nhập trực tiếp từ đĩa, không dùng dữ liệu mẫu.',
-    '4. Timeline được tạo từ `suggestedTimeline` và lưu như project XinChao-Cut thật.',
+    '4. Timeline được tạo từ `suggestedTimeline` và lưu như project CapCut thật.',
     '',
   ].join('\n');
   fs.writeFileSync(path.join(packRoot, 'README.md'), readme, 'utf8');
 
-  const xinchaoRoot = resolveXinChaoRoot(cwd);
-  const openEditorHint = fs.existsSync(path.join(xinchaoRoot, 'package.json'))
-    ? `npm run xinchao:dev  (root: ${xinchaoRoot})`
-    : 'Cài tools/xinchao-cut (npm run xinchao:install)';
+  const editorRoot = resolveXinChaoRoot(cwd);
+  const openEditorHint = fs.existsSync(path.join(editorRoot, 'package.json'))
+    ? `Mở nút CapCut trong AI Novel (runtime: ${editorRoot})`
+    : 'Thiếu runtime CapCut nội bộ — chạy npm run xinchao:install';
 
   return {
     success: true,
@@ -415,6 +497,7 @@ export function buildXinChaoPack(input: XinChaoPackInput): XinChaoPackResult {
       audios: files.filter((file) => file.kind === 'audio').length,
       files: files.length,
     },
-    timelineClips: timeline.length,
+    timelineClips: reservedTimeline.length,
+    timelineReservation,
   };
 }

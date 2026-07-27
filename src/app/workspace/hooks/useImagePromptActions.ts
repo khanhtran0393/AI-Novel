@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import {
   API,
   imageAssetKey,
@@ -250,6 +250,12 @@ export function useImagePromptActions() {
 
       // Shot graph already applied server-side — do not double-prefix on client
       useNovelStore.getState().addGeneratedPrompts(assetKey, prompts);
+      // TTS durations + prompt timestamps now define immutable CapCut slots.
+      // Reserve them before any image/video is required.
+      scheduleSilentChapterTimeline({
+        chapterNum: st0.chuong_dang_chon,
+        delayMs: 250,
+      });
       toast.success('Prompt Studio', `Đã sinh ${prompts.length} prompt.`);
     } catch (err: unknown) {
       toast.error('Lỗi sinh Prompt', err instanceof Error ? err.message : String(err));
@@ -409,7 +415,7 @@ export function useImagePromptActions() {
         throw new Error('Chưa chọn imageCount hợp lệ. App không tự gán số lượng ảnh.');
       }
       if (st.imageProvider === 'flow') {
-        await ensureFlowSessionReady({ kind: 'image', notify: true });
+        await ensureFlowSessionReady({ kind: 'image', notify: !silentError });
         beginMediaGenProgress(key, {
           type: 'flow',
           kind: 'image',
@@ -484,6 +490,10 @@ export function useImagePromptActions() {
       const live = useNovelStore.getState();
       live.addGeneratedImage(key, primary);
       live.addGeneratedImageVariants(key, cacheBustedImagePaths);
+      scheduleSilentChapterTimeline({
+        chapterNum: stStart.chuong_dang_chon,
+        delayMs: 350,
+      });
       if (data.projectUrl) {
         live.addProjectUrl(key, data.projectUrl);
       }
@@ -595,16 +605,24 @@ export function useImagePromptActions() {
       `${promptsAsset.length} shot · stage=image · ${isFlow ? 'tuần tự + nghỉ Flow' : 'tuần tự'} · Jobs panel`,
     );
 
-    const finished = await runStageBatch(job.id, async (item) => {
-      const stage = readStageMeta(item);
-      const meta = item.meta || {};
-      await handleGenerateImage(
-        stage?.sceneIndex ?? Number(meta.sceneIndex),
-        stage?.promptIndex ?? Number(meta.pIdx),
-        String(meta.prompt || ''),
-        String(meta.sentence || ''),
-        true,
-      );
+    if (isFlow) {
+      await ensureFlowSessionReady({ kind: 'image', notify: true });
+    }
+
+    const { runWithPersistMuted, yieldToUi } = await import('@/store/persistStorage');
+    const finished = await runWithPersistMuted(async () => {
+      return await runStageBatch(job.id, async (item) => {
+        const stage = readStageMeta(item);
+        const meta = item.meta || {};
+        await handleGenerateImage(
+          stage?.sceneIndex ?? Number(meta.sceneIndex),
+          stage?.promptIndex ?? Number(meta.pIdx),
+          String(meta.prompt || ''),
+          String(meta.sentence || ''),
+          true,
+        );
+        await yieldToUi();
+      });
     });
 
     const p = finished ? jobProgress(finished) : null;
@@ -619,7 +637,7 @@ export function useImagePromptActions() {
         /* ignore */
       }
     }
-    scheduleSilentChapterTimeline({ chapterNum: useNovelStore.getState().chuong_dang_chon });
+    scheduleSilentChapterTimeline({ chapterNum: ch });
   };
 
   /** Step 3 — video. Progress chỉ mediaGenSlotStore(key). */
@@ -919,7 +937,7 @@ export function useImagePromptActions() {
       }
       completeMediaGenProgress(key, true);
       scheduleSilentChapterTimeline({
-        chapterNum: useNovelStore.getState().chuong_dang_chon,
+        chapterNum: stStart.chuong_dang_chon,
         delayMs: 800,
       });
       if (!silentError) {
@@ -1196,16 +1214,20 @@ export function useImagePromptActions() {
       `${pairs.length} clip · stage=video · Jobs panel pause/cancel/retry`,
     );
 
-    const finished = await runStageBatch(job.id, async (item) => {
-      const stage = readStageMeta(item);
-      const meta = item.meta || {};
-      await handleGenerateVideo(
-        stage?.sceneIndex ?? Number(meta.sceneIndex),
-        Number(meta.startIdx),
-        Number(meta.endIdx),
-        String(meta.prompt || ''),
-        true,
-      );
+    const { runWithPersistMuted, yieldToUi } = await import('@/store/persistStorage');
+    const finished = await runWithPersistMuted(async () => {
+      return await runStageBatch(job.id, async (item) => {
+        const stage = readStageMeta(item);
+        const meta = item.meta || {};
+        await handleGenerateVideo(
+          stage?.sceneIndex ?? Number(meta.sceneIndex),
+          Number(meta.startIdx),
+          Number(meta.endIdx),
+          String(meta.prompt || ''),
+          true,
+        );
+        await yieldToUi();
+      });
     });
 
     const p = finished ? jobProgress(finished) : null;
@@ -1215,7 +1237,7 @@ export function useImagePromptActions() {
       toast.success('Gen video hoàn tất', p ? `${p.done}/${p.total}` : undefined);
     }
     scheduleSilentChapterTimeline({
-      chapterNum: useNovelStore.getState().chuong_dang_chon,
+      chapterNum: chV,
       delayMs: 400,
     });
   };

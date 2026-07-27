@@ -43,7 +43,7 @@ $native = $null
 $backendPid = $null
 try {
   $native = Start-Process -FilePath $nativeExe `
-    -ArgumentList @("--ainovel-pack", $PackRoot) `
+    -ArgumentList @("--ainovel-pack", "`"$PackRoot`"") `
     -WorkingDirectory $editorRoot `
     -PassThru
 
@@ -73,6 +73,31 @@ try {
   if (-not $health -or $health.status -ne "ok") {
     throw "XinChao-Cut backend did not reach status=ok."
   }
+  $receiptPath = Join-Path $PackRoot "ainovel-xinchao-import-receipt.json"
+  $receiptDeadline = (Get-Date).AddSeconds(30)
+  while (
+    -not (Test-Path -LiteralPath $receiptPath -PathType Leaf) -and
+    (Get-Date) -lt $receiptDeadline
+  ) {
+    Start-Sleep -Milliseconds 250
+    $native.Refresh()
+    if ($native.HasExited) {
+      throw "XinChao-Cut exited before writing the import receipt."
+    }
+  }
+  if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+    throw "XinChao-Cut did not write the real-media import receipt: $receiptPath"
+  }
+  $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+  if ($receipt.mediaCount -le 0 -or $receipt.clipCount -le 0) {
+    throw "XinChao-Cut receipt has invalid media/clip counts."
+  }
+  if (($receipt.replacedCount + $receipt.insertedCount) -ne $receipt.clipCount) {
+    throw "XinChao-Cut receipt does not account for all reservation upserts."
+  }
+  if ($receipt.verifiedSlotCount -ne $receipt.clipCount) {
+    throw "XinChao-Cut did not persist exact start/duration for every reservation slot."
+  }
 
   $listener = Get-NetTCPConnection -LocalPort 8000 -State Listen
   $backendPid = $listener.OwningProcess
@@ -94,6 +119,13 @@ try {
     version = $health.version
     export = $health.capabilities.export
     packRoot = $PackRoot
+    receiptPath = $receiptPath
+    projectId = $receipt.projectId
+    mediaCount = $receipt.mediaCount
+    clipCount = $receipt.clipCount
+    replacedCount = $receipt.replacedCount
+    insertedCount = $receipt.insertedCount
+    verifiedSlotCount = $receipt.verifiedSlotCount
   } | ConvertTo-Json -Compress
   Write-Output "SMOKE_OK xinchao-native-desktop"
 } finally {

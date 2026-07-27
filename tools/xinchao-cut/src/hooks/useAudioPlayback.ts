@@ -20,6 +20,7 @@ import { useToastStore } from '@store/toast-store'
 
 let warnedDecoderStall = false
 let warnedStreamCapacity = false
+let warnedMissingAudioSource = false
 const CRITICAL_AUDIO_HORIZON_SEC = 0.5
 /**
  * Short standalone audio files are much cheaper to play as WebAudio PCM than
@@ -76,6 +77,23 @@ async function getPcmBlob(assetId: string, asset: MediaAsset | undefined): Promi
   return mediaManager.getBlob(assetId)
 }
 
+/**
+ * Tauri's asset protocol can play directly through HTMLAudioElement even when
+ * a renderer fetch for full-buffer WebAudio decode is rejected by WebView2's
+ * asset/CORS policy. Never turn that fetch failure into silent playback.
+ */
+function installDirectStreamFallback(
+  assetId: string,
+  asset: MediaAsset | undefined,
+): boolean {
+  const streamUrl =
+    asset?.playbackUrl ||
+    (asset?.sourcePath ? pathToMediaUrl(asset.sourcePath) : '')
+  if (!streamUrl) return false
+  audioEngine.ensureStreamSource(assetId, streamUrl)
+  return audioEngine.hasPlaybackSource(assetId)
+}
+
 function collectDetachedAudioAssetIds(timeline: TimelineState): Set<string> {
   const trackKinds = new Map(timeline.tracks.map((track) => [track.id, track.kind]))
   const mutedVideoKeys = new Set(
@@ -120,8 +138,15 @@ function predecodeIds(
       void queuePcmDecode(id, async () => {
         if (cancelled()) return
         const blob = await getPcmBlob(id, asset)
-        if (cancelled() || !blob) return
+        if (cancelled()) return
+        if (!blob) {
+          installDirectStreamFallback(id, asset)
+          return
+        }
         await audioEngine.ensureDecoded(id, blob)
+        if (!audioEngine.hasPlaybackSource(id)) {
+          installDirectStreamFallback(id, asset)
+        }
         warnIfDecoderStalled(id)
       }).catch(() => {})
       continue
@@ -148,8 +173,14 @@ async function ensurePlaybackSource(
   if (shouldDecodeStandaloneAudio(asset, detached)) {
     await queuePcmDecode(assetId, async () => {
       const blob = await getPcmBlob(assetId, asset)
-      if (!blob) return
+      if (!blob) {
+        installDirectStreamFallback(assetId, asset)
+        return
+      }
       await audioEngine.ensureDecoded(assetId, blob)
+      if (!audioEngine.hasPlaybackSource(assetId)) {
+        installDirectStreamFallback(assetId, asset)
+      }
       warnIfDecoderStalled(assetId)
     })
     return
@@ -270,6 +301,17 @@ export function useAudioPlayback(): void {
         await Promise.allSettled(criticalTasks)
       }
       if (cancelled) return
+      const missingCritical = [...critical].filter(
+        (id) => !audioEngine.hasPlaybackSource(id),
+      )
+      if (!warnedMissingAudioSource && missingCritical.length > 0) {
+        warnedMissingAudioSource = true
+        useToastStore.getState().push(
+          `Không đọc được âm thanh preview cho ${missingCritical.length} clip tại playhead. ` +
+            'Kiểm tra file nguồn hoặc quyền đọc media.',
+          'error',
+        )
+      }
       const backgroundIds = [...need].filter((id) => !critical.has(id))
       predecodeIds(backgroundIds, assetById, () => cancelled, detachedIds)
       // Re-check the live play state — the user may have paused while decoding.

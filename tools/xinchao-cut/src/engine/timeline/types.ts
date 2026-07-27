@@ -237,6 +237,8 @@ export interface Clip {
    * produced from one caption). This is metadata only: audio remains independently
    * editable and does not follow video/text link operations. */
   syncToClipId?: string
+  /** Stable AI Novel reservation slot. Re-import replaces this clip in place. */
+  aiNovelSlotKey?: string
   /** Compound clip: when set, this clip is a nested sub-timeline (no asset). The
    *  sub-timeline lives in the store's `compounds` registry under this id;
    *  double-click enters it. inPoint/outPoint window into the compound's content. */

@@ -31,6 +31,7 @@ import {
   runChapterCastPreflightReport,
 } from './chapterTtsActions';
 import { assertTtsMediaPreflight } from '@/lib/pipeline';
+import { scheduleSilentChapterTimeline } from '../modules/integrationsModule';
 
 export type { ChapterTTSOptions, SceneAutomationOptions } from './ttsActionHelpers';
 
@@ -317,6 +318,10 @@ export function useTTSActions() {
       } catch {
         /* non-fatal */
       }
+      scheduleSilentChapterTimeline({
+        chapterNum: chapterNumber,
+        delayMs: 350,
+      });
 
       void recordEngineCheckpoint({
         step: 'tts_audio',

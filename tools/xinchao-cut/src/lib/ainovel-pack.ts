@@ -2,6 +2,7 @@ import type { MediaAsset } from '@engine/media'
 
 export interface AiNovelPackMedia {
   key: string
+  slotId?: string
   kind: MediaAsset['kind']
   path: string
   startSec: number
@@ -18,10 +19,24 @@ export interface AiNovelPackPayload {
 
 export interface AiNovelPackClipPlan {
   key: string
+  slotId: string
   assetId: string
   trackKind: 'video' | 'audio'
   startSec: number
   durationSec: number
+  sourceDurationSec: number
+}
+
+export interface ExistingAiNovelSlotClip {
+  clipId: string
+  slotId: string
+  trackKind: 'video' | 'audio'
+}
+
+export interface AiNovelPackClipUpserts {
+  replace: Array<{ clipId: string; clip: AiNovelPackClipPlan }>
+  insert: AiNovelPackClipPlan[]
+  remove: string[]
 }
 
 function comparablePath(value: string): string {
@@ -55,21 +70,64 @@ export function planAiNovelPackClips(
       throw new Error(`Thời lượng timeline không hợp lệ: ${item.key}`)
     }
 
-    // Still images may intentionally stay on screen longer than their probe's
-    // conventional 5-second duration. Audio/video must not run beyond the real
-    // source and create a silent/black tail.
     const sourceDuration = Number(asset.durationSec)
-    const durationSec =
-      asset.kind !== 'image' && Number.isFinite(sourceDuration) && sourceDuration > 0
-        ? Math.min(item.durationSec, sourceDuration)
-        : item.durationSec
+    if (
+      asset.kind !== 'image' &&
+      (!Number.isFinite(sourceDuration) || sourceDuration <= 0)
+    ) {
+      throw new Error(`Không đọc được duration media thật: ${item.key}`)
+    }
+    if (
+      asset.kind !== 'image' &&
+      sourceDuration < item.durationSec * 0.1
+    ) {
+      throw new Error(
+        `Media ${item.key} không thể phủ kín slot ${item.durationSec}s trong giới hạn tốc độ editor`,
+      )
+    }
+    const sourceDurationSec =
+      asset.kind === 'image'
+        ? item.durationSec
+        : Math.min(sourceDuration, item.durationSec * 4)
 
     return {
       key: item.key,
+      slotId: item.slotId || item.key,
       assetId: asset.id,
       trackKind: asset.kind === 'audio' ? 'audio' : 'video',
       startSec: item.startSec,
-      durationSec,
+      // The reserved timeline footprint is authoritative. Import code fits the
+      // real source span into this duration instead of shrinking/reflowing it.
+      durationSec: item.durationSec,
+      sourceDurationSec,
     }
   })
+}
+
+/** Match incoming media to the stable reservation key, independent of kind. */
+export function planAiNovelPackClipUpserts(
+  incoming: readonly AiNovelPackClipPlan[],
+  existing: readonly ExistingAiNovelSlotClip[],
+): AiNovelPackClipUpserts {
+  const incomingSlotKeys = new Set(
+    incoming.map((clip) => `${clip.trackKind}:${clip.slotId}`),
+  )
+  const existingBySlot = new Map<string, ExistingAiNovelSlotClip>()
+  const remove: string[] = []
+  for (const clip of existing) {
+    const key = `${clip.trackKind}:${clip.slotId}`
+    if (!incomingSlotKeys.has(key) || existingBySlot.has(key)) {
+      remove.push(clip.clipId)
+    } else {
+      existingBySlot.set(key, clip)
+    }
+  }
+  const replace: AiNovelPackClipUpserts['replace'] = []
+  const insert: AiNovelPackClipPlan[] = []
+  for (const clip of incoming) {
+    const current = existingBySlot.get(`${clip.trackKind}:${clip.slotId}`)
+    if (current) replace.push({ clipId: current.clipId, clip })
+    else insert.push(clip)
+  }
+  return { replace, insert, remove }
 }

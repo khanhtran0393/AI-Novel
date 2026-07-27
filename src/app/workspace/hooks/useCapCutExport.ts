@@ -18,7 +18,7 @@ import {
 import { useProAccess } from './useProAccess';
 
 /**
- * CapCut/XinChao export orchestration. UI components only invoke this hook;
+ * CapCut export orchestration. UI components only invoke this hook;
  * API and Electron bridge details remain in the module layer.
  */
 export function useCapCutExport() {
@@ -31,19 +31,6 @@ export function useCapCutExport() {
       toast.info('Pro', gatePro.message);
       return;
     }
-    const okExport = await appConfirm({
-      title: 'Xuất CapCut',
-      message:
-        'Xuất kịch bản chương hiện tại ra CapCut (audio, video, ảnh gắn với chương).',
-      details: [
-        'Cần gói Pro hoặc Trial',
-        'Đóng gói media + mở editor multi-track trong app',
-      ],
-      confirmLabel: 'Xuất CapCut',
-      cancelLabel: 'Hủy',
-      tone: 'info',
-    });
-    if (!okExport) return;
 
     try {
       setExporting(true);
@@ -227,6 +214,7 @@ export function useCapCutExport() {
         chapterNum: store.chuong_dang_chon,
         ten_tac_pham: store.ten_tac_pham,
         generatedAudioPaths: store.generatedAudioPaths,
+        generatedPrompts: store.generatedPrompts,
         generatedImages: store.generatedImages,
         generatedVideos: store.generatedVideos,
         imageAspectRatio: imageAspect,

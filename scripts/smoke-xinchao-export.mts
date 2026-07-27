@@ -79,6 +79,9 @@ const pack = buildXinChaoPack({
   videoProvider: 'flow',
   generatedImages: { '1_1_0': realImage },
   generatedAudioPaths: { '1_1': { path: realAudio, duration: 20 } },
+  generatedPrompts: {
+    '1_1': [{ timestamp: '0-75.048s', image_prompt: 'real smoke still' }],
+  },
   cwd: root,
 });
 assert.equal(pack.success, true, pack.error);
@@ -96,6 +99,36 @@ for (const item of manifest.files) {
     `Pack media is not a real disk artifact: ${item.path}`,
   );
 }
+
+const duplicateNarrationPack = buildXinChaoPack({
+  chapterNum: 1,
+  ten_tac_pham: 'AI Novel duplicate narration regression',
+  aspect: '16:9',
+  videoDuration: 6,
+  imageProvider: 'flow',
+  videoProvider: 'flow',
+  generatedImages: { '1_1_0': realImage },
+  generatedPrompts: {
+    '1_1': [{ timestamp: '0-75.048s', image_prompt: 'real smoke still' }],
+  },
+  generatedAudioPaths: {
+    '1_1': { path: realAudio, duration: 20 },
+    '1_full': { path: realAudio, duration: 20 },
+  },
+  cwd: root,
+});
+assert.equal(duplicateNarrationPack.success, true, duplicateNarrationPack.error);
+const duplicateManifest = JSON.parse(
+  fs.readFileSync(duplicateNarrationPack.manifestPath, 'utf8'),
+);
+const duplicateAudio = duplicateManifest.suggestedTimeline.filter(
+  (item: { kind?: string }) => item.kind === 'audio',
+);
+assert.deepEqual(
+  duplicateAudio.map((item: { key: string }) => item.key),
+  ['1_1'],
+  'Audio full và audio từng cảnh không được cùng xuất hiện trên timeline',
+);
 
 const mainJs = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 assert.match(mainJs, /launchXinChaoNative/);

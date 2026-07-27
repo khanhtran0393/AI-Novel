@@ -370,6 +370,32 @@ describe('magnetic main track', () => {
     expect(startOf('capB')).toBeCloseTo(0)
   })
 
+  it('AI Novel cleanup removes only tagged clips without link-delete or ripple', () => {
+    st().replaceTimeline(
+      [
+        clip({
+          id: 'reservedA',
+          trackId: 'v1',
+          startSec: 0,
+          inPointSec: 0,
+          outPointSec: 2,
+          aiNovelSlotKey: '1_0_0',
+        }),
+        clip({ id: 'manualB', trackId: 'v1', startSec: 2, inPointSec: 0, outPointSec: 2 }),
+        clip({ id: 'captionA', trackId: 't1', assetId: null, startSec: 0, inPointSec: 0, outPointSec: 2 }),
+      ],
+      magTracks,
+      30,
+      4,
+    )
+
+    st().removeAiNovelClips(['reservedA', 'manualB', 'captionA'])
+
+    expect(st().timeline.clips.map((item) => item.id)).toEqual(['manualB', 'captionA'])
+    expect(startOf('manualB')).toBeCloseTo(2)
+    expect(startOf('captionA')).toBeCloseTo(0)
+  })
+
   it('delete/ripple never removes or moves overlapping audio', () => {
     st().replaceTimeline(
       [

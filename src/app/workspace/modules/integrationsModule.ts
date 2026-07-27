@@ -11,6 +11,9 @@ export type SilentTimelineResult = {
   imagesResolved?: number;
   projectPath?: string;
   clipCount?: number;
+  reservationPath?: string;
+  reservationSlots?: number;
+  reservationFilled?: number;
   error?: string;
 };
 
@@ -32,33 +35,40 @@ function sceneTextsForChapter(
   return [ch.noi_dung.slice(0, 2000)];
 }
 
-/** Debounced chapter timeline rebuild (FableCut project on disk). Never opens UI. */
-let timelineTimer: ReturnType<typeof setTimeout> | null = null;
-let timelineInFlight = false;
+/** Debounced per-chapter timeline rebuild (FableCut project on disk). Never opens UI. */
+const timelineTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const timelineInFlightChapters = new Set<number>();
+const timelineDirtyChapters = new Set<number>();
 
 export function scheduleSilentChapterTimeline(opts?: {
   chapterNum?: number;
   delayMs?: number;
 }): void {
   const delay = opts?.delayMs ?? 1200;
-  if (timelineTimer) clearTimeout(timelineTimer);
-  timelineTimer = setTimeout(() => {
-    void runSilentChapterTimeline({ chapterNum: opts?.chapterNum }).catch((err) => {
+  const chapterNum =
+    opts?.chapterNum ?? useNovelStore.getState().chuong_dang_chon;
+  const pending = timelineTimers.get(chapterNum);
+  if (pending) clearTimeout(pending);
+  const timer = setTimeout(() => {
+    timelineTimers.delete(chapterNum);
+    void runSilentChapterTimeline({ chapterNum }).catch((err) => {
       console.warn('[IntegrationsRuntime] timeline:', err);
     });
   }, delay);
+  timelineTimers.set(chapterNum, timer);
 }
 
 export async function runSilentChapterTimeline(opts?: {
   chapterNum?: number;
 }): Promise<SilentTimelineResult> {
-  if (timelineInFlight) {
+  const store = useNovelStore.getState();
+  const chapterNum = opts?.chapterNum ?? store.chuong_dang_chon;
+  if (timelineInFlightChapters.has(chapterNum)) {
+    timelineDirtyChapters.add(chapterNum);
     return { ok: false, error: 'busy' };
   }
-  timelineInFlight = true;
+  timelineInFlightChapters.add(chapterNum);
   try {
-    const store = useNovelStore.getState();
-    const chapterNum = opts?.chapterNum ?? store.chuong_dang_chon;
     const ch = store.danh_sach_chuong.find((c) => c.so_chuong === chapterNum);
     const title = (ch?.tieu_de || '').trim();
     if (!title) {
@@ -124,6 +134,9 @@ export async function runSilentChapterTimeline(opts?: {
       }),
     });
     const data = await res.json();
+    const reservationPath = String(data.timelineReservationPath || '').trim();
+    const reservationSlots = Number(data.timelineReservation?.slots?.length) || 0;
+    const reservationFilled = Number(data.timelineReservation?.filledSlots) || 0;
     if (data.fablecut?.success) {
       console.info(
         `[IntegrationsRuntime] FableCut ch${chapterNum} clips=${data.fablecut.clipCount} → ${data.fablecut.projectPath}`,
@@ -137,6 +150,9 @@ export async function runSilentChapterTimeline(opts?: {
               chapterNum,
               clipCount: data.fablecut.clipCount,
               projectPath: data.fablecut.projectPath,
+              reservationPath,
+              reservationSlots,
+              reservationFilled,
               at: Date.now(),
             }),
           );
@@ -149,6 +165,38 @@ export async function runSilentChapterTimeline(opts?: {
         imagesResolved: data.imagesResolved,
         projectPath: data.fablecut.projectPath,
         clipCount: data.fablecut.clipCount,
+        reservationPath: reservationPath || undefined,
+        reservationSlots,
+        reservationFilled,
+      };
+    }
+    if (reservationPath && reservationSlots > 0) {
+      console.info(
+        `[IntegrationsRuntime] CapCut reservation ch${chapterNum} slots=${reservationSlots} filled=${reservationFilled} → ${reservationPath}`,
+      );
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(
+            'ainovel_last_timeline',
+            JSON.stringify({
+              ok: true,
+              chapterNum,
+              reservationPath,
+              reservationSlots,
+              reservationFilled,
+              at: Date.now(),
+            }),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      return {
+        ok: true,
+        imagesResolved: data.imagesResolved,
+        reservationPath,
+        reservationSlots,
+        reservationFilled,
       };
     }
     const err = data.fablecut?.error || data.error || 'no timeline';
@@ -167,7 +215,10 @@ export async function runSilentChapterTimeline(opts?: {
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   } finally {
-    timelineInFlight = false;
+    timelineInFlightChapters.delete(chapterNum);
+    if (timelineDirtyChapters.delete(chapterNum)) {
+      scheduleSilentChapterTimeline({ chapterNum, delayMs: 150 });
+    }
   }
 }
 

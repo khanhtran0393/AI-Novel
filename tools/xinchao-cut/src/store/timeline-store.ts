@@ -479,6 +479,7 @@ interface InsertClipParams {
   assetId: string
   startSec: number
   durationSec: number
+  aiNovelSlotKey?: string
 }
 
 interface TimelineStoreState {
@@ -572,6 +573,8 @@ interface TimelineStoreState {
    *  Silent normalization for programmatic pushes — no history entry. */
   normalizeTrackOverlaps: (trackIds: string[]) => void
   removeClips: (ids: string[]) => void
+  /** Remove only tagged AI Novel clips; never link-delete or magnetic-ripple. */
+  removeAiNovelClips: (ids: string[]) => void
   moveClip: (id: string, newStartSec: number) => void
   trimClipLeft: (id: string, newStartSec: number, newInPointSec: number) => void
   /** Left-trim a text clip: it has no source media, so the left edge moves the
@@ -589,6 +592,13 @@ interface TimelineStoreState {
   splitClipEveryNSeconds: (clipId: string, intervalSec: number) => number
   setClipSpeed: (id: string, speed: number) => void
   setClipSpeedDuration: (id: string, startSec: number, durationSec: number) => void
+  /** Exact, non-rippling placement for an AI Novel reservation slot. */
+  setAiNovelClipSlot: (
+    id: string,
+    startSec: number,
+    durationSec: number,
+    sourceSpanSec: number,
+  ) => void
   setClipOpacity: (id: string, opacity: number) => void
   setClipVolume: (id: string, volume: number) => void
   /** Live plural setters (no history; caller wraps the interaction in
@@ -833,7 +843,7 @@ export const useTimelineStore = create<TimelineStoreState>((set, get) => ({
   canUndo: false,
   canRedo: false,
 
-  insertClip: ({ trackId, assetId, startSec, durationSec }) => {
+  insertClip: ({ trackId, assetId, startSec, durationSec, aiNovelSlotKey }) => {
     const id = createId('clip')
     const start = Math.max(0, startSec)
     set((s) => {
@@ -854,6 +864,7 @@ export const useTimelineStore = create<TimelineStoreState>((set, get) => ({
         trackId: finalTrack,
         startSec: start,
         outPointSec: durationSec,
+        aiNovelSlotKey,
       })
       const clips = [...s.timeline.clips, clip]
       return {
@@ -1255,6 +1266,30 @@ export const useTimelineStore = create<TimelineStoreState>((set, get) => ({
       }
     }),
 
+  removeAiNovelClips: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return s
+      const requested = new Set(ids)
+      const toRemove = new Set(
+        s.timeline.clips
+          .filter(
+            (clip) =>
+              requested.has(clip.id) && Boolean(clip.aiNovelSlotKey),
+          )
+          .map((clip) => clip.id),
+      )
+      if (toRemove.size === 0) return s
+      const clips = s.timeline.clips.filter((clip) => !toRemove.has(clip.id))
+      return {
+        selectedClipIds: s.selectedClipIds.filter((id) => !toRemove.has(id)),
+        timeline: {
+          ...s.timeline,
+          clips,
+          durationSec: recalcDuration(clips),
+        },
+      }
+    }),
+
   moveClip: (id, newStartSec) =>
     set((s) => {
       const clips = s.timeline.clips.map((c) =>
@@ -1554,6 +1589,42 @@ export const useTimelineStore = create<TimelineStoreState>((set, get) => ({
       clips = rippleAfterSpeedChange(clips, s.timeline.tracks, target)
       return {
         timeline: { ...s.timeline, clips, durationSec: recalcDuration(clips) },
+      }
+    }),
+
+  setAiNovelClipSlot: (id, startSec, durationSec, sourceSpanSec) =>
+    set((s) => {
+      if (
+        !Number.isFinite(startSec) ||
+        !Number.isFinite(durationSec) ||
+        !Number.isFinite(sourceSpanSec) ||
+        startSec < 0 ||
+        durationSec <= 0 ||
+        sourceSpanSec <= 0
+      ) {
+        return s
+      }
+      const target = s.timeline.clips.find((clip) => clip.id === id)
+      if (!target?.aiNovelSlotKey) return s
+      const speed = sourceSpanSec / durationSec
+      if (speed < 0.1 || speed > 4) return s
+      const clips = s.timeline.clips.map((clip) =>
+        clip.id === id
+          ? {
+              ...clip,
+              startSec,
+              inPointSec: 0,
+              outPointSec: sourceSpanSec,
+              speed,
+            }
+          : clip,
+      )
+      return {
+        timeline: {
+          ...s.timeline,
+          clips,
+          durationSec: recalcDuration(clips),
+        },
       }
     }),
 

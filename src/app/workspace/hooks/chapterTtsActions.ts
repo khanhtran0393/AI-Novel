@@ -602,6 +602,11 @@ async function exportChapterFullAudioAndSrt(input: {
       data.audioPath,
       Number(data.duration) || scenes.reduce((a, s) => a + (s.durationSec || 0), 0),
     );
+    // Full narration is authoritative: persist absolute CapCut slots against it.
+    scheduleSilentChapterTimeline({
+      chapterNum: input.chapterNumber,
+      delayMs: 250,
+    });
   } catch {
     /* optional */
   }

@@ -3,7 +3,11 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { chapterAssetPrefix, imageAssetKey } from '@/contracts';
+import {
+  chapterAssetPrefix,
+  imageAssetKey,
+  parseSceneAssetKey,
+} from '@/contracts';
 import { persistSeedanceCompile, type SeedanceCompileResult } from './seedance';
 import { resolveCompileSeedancePrompt } from '@/lib/commercial/ip/seedanceCloudBridge';
 import {
@@ -16,8 +20,15 @@ import {
   collectChapterAudioDiskPaths,
   collectChapterImageDiskPaths,
   collectChapterVideoDiskPaths,
+  isFullChapterAudioKey,
+  selectChapterTimelineAudioPaths,
 } from './mediaPaths';
 import { ensureWorkDirs, getIntegrationPaths } from './paths';
+import {
+  persistChapterTimelineReservation,
+  type ChapterTimelineReservation,
+} from './timelineReservation';
+import { probeDurationSec } from '@/lib/audioStudio';
 
 export interface ChapterPipelineInput {
   chapterNum: number;
@@ -30,7 +41,13 @@ export interface ChapterPipelineInput {
   generatedImages?: Record<string, string>;
   generatedAudioPaths?: Record<string, { path: string; duration: number }>;
   generatedVideos?: Record<string, string>;
-  generatedPrompts?: Record<string, Array<{ prompt?: string; image_prompt?: string; video_prompt?: string; sentence?: string }>>;
+  generatedPrompts?: Record<string, Array<{
+    timestamp?: string;
+    prompt?: string;
+    image_prompt?: string;
+    video_prompt?: string;
+    sentence?: string;
+  }>>;
   /** Enhance all prompts with Seedance */
   runSeedance?: boolean;
   /** Packaged cloud IP token for Seedance compile */
@@ -57,6 +74,9 @@ export interface ChapterPipelineResult {
   fablecut?: FableProjectBuildResult & { server?: ReturnType<typeof startFableCutServer> };
   enhancedPrompts?: Record<string, Array<{ video_prompt: string; intention?: string }>>;
   assetIndexPath?: string;
+  timelineReservation?: ChapterTimelineReservation;
+  timelineReservationPath?: string;
+  timelineReservationError?: string;
   error?: string;
   logs: string[];
 }
@@ -84,6 +104,34 @@ export async function runChapterPipeline(
       videosResolved: videos.length,
       logs,
     };
+
+    // Stable CapCut placement contract. This file exists as soon as TTS +
+    // storyboard timestamps exist; later image/video runs only fill its slots.
+    try {
+      const persisted = persistChapterTimelineReservation({
+        cwd,
+        chapterNum,
+        projectName: input.ten_tac_pham || input.title || `Chương ${chapterNum}`,
+        prompts: input.generatedPrompts || {},
+        audio: audios.map((item) => ({
+          key: item.key,
+          path: item.disk,
+          durationSec:
+            probeDurationSec(item.disk, cwd) || Number(item.duration) || 0,
+        })),
+        images: images.map((item) => ({ key: item.key, path: item.disk })),
+        videos: videos.map((item) => ({ key: item.key, path: item.disk })),
+      });
+      result.timelineReservation = persisted.reservation;
+      result.timelineReservationPath = persisted.filePath;
+      logs.push(
+        `capcut-reservation:slots=${persisted.reservation.slots.length} filled=${persisted.reservation.filledSlots} duration=${persisted.reservation.durationSec}`,
+      );
+    } catch (error) {
+      result.timelineReservationError =
+        error instanceof Error ? error.message : String(error);
+      logs.push(`capcut-reservation:pending=${result.timelineReservationError}`);
+    }
 
     // Asset index for debugging
     const assetIndex = {
@@ -199,8 +247,93 @@ export async function runChapterPipeline(
 
     // --- FableCut ---
     if (input.runFableCut !== false) {
-      if (images.length === 0 && videos.length === 0) {
-        logs.push('fablecut: skipped — no resolved image/video files on disk');
+      if (result.timelineReservation) {
+        const reservation = result.timelineReservation;
+        const clips: Parameters<typeof buildFableCutProject>[0]['clips'] =
+          reservation.slots
+            .filter(
+              (slot): slot is typeof slot & {
+                mediaPath: string;
+                mediaKind: 'image' | 'video';
+              } => Boolean(slot.mediaPath && slot.mediaKind),
+            )
+            .map((slot, index) => ({
+              mediaPath: slot.mediaPath,
+              kind: slot.mediaKind,
+              track: 0,
+              startSec: slot.startSec,
+              durationSec: slot.durationSec,
+              label: slot.slotId,
+              titleText:
+                index === 0
+                  ? input.title || `Chương ${chapterNum}`
+                  : undefined,
+            }));
+        const timelineAudio = selectChapterTimelineAudioPaths(
+          chapterNum,
+          audios,
+          (diskPath) => probeDurationSec(diskPath, cwd),
+        );
+        if (
+          timelineAudio.length === 1 &&
+          isFullChapterAudioKey(timelineAudio[0].key)
+        ) {
+          clips.push({
+            mediaPath: timelineAudio[0].disk,
+            kind: 'audio',
+            track: 4,
+            startSec: 0,
+            durationSec: reservation.durationSec,
+            label: timelineAudio[0].key,
+          });
+        } else {
+          let cursor = 0;
+          const orderedAudio = [...timelineAudio].sort((left, right) => {
+            const leftScene = parseSceneAssetKey(left.key)?.sceneIndex ?? 0;
+            const rightScene = parseSceneAssetKey(right.key)?.sceneIndex ?? 0;
+            const rank = (sceneIndex: number) =>
+              sceneIndex === 990 ? -1 : sceneIndex;
+            return (
+              rank(leftScene) - rank(rightScene) ||
+              left.key.localeCompare(right.key)
+            );
+          });
+          for (const audio of orderedAudio) {
+            const durationSec =
+              probeDurationSec(audio.disk, cwd) || Number(audio.duration) || 0;
+            if (!(durationSec > 0)) {
+              throw new Error(
+                `FableCut: không đọc được duration audio ${audio.key}`,
+              );
+            }
+            clips.push({
+              mediaPath: audio.disk,
+              kind: 'audio',
+              track: 4,
+              startSec: cursor,
+              durationSec,
+              label: audio.key,
+            });
+            cursor += durationSec;
+          }
+        }
+        const fc = buildFableCutProject({
+          name: `${input.ten_tac_pham || 'AI-Novel'}_c${chapterNum}`,
+          clips,
+          aspect: input.aspect || '9:16',
+          liveEditor: input.liveEditor !== false,
+        });
+        result.fablecut = fc;
+        logs.push(
+          fc.success
+            ? `fablecut:reservation slots=${reservation.slots.length} filled=${reservation.filledSlots} clips=${fc.clipCount}`
+            : `fablecut:reservation:fail=${fc.error}`,
+        );
+      } else if (!result.timelineReservation) {
+        const reservationError =
+          result.timelineReservationError ||
+          'Thiếu TTS từng cảnh hoặc prompt timestamp để khóa timeline';
+        logs.push(`fablecut: blocked — ${reservationError}`);
         result.fablecut = {
           success: false,
           projectPath: '',
@@ -208,8 +341,7 @@ export async function runChapterPipeline(
           project: {},
           clipCount: 0,
           mediaCount: 0,
-          error:
-            'Không resolve được file ảnh/video trên đĩa. Cần gen ảnh trước (public/images). Store URL dạng /api/serve-image?file=... sẽ được map sang public/images/.',
+          error: `Không dựng timeline theo số lượng media. ${reservationError}`,
         };
       } else {
         // Prefer video clips if available, else image slideshow + audio
@@ -333,13 +465,17 @@ export async function runChapterPipeline(
     }
 
     result.success =
-      (result.seedance?.count ?? 0) > 0 ||
-      Boolean(result.fablecut?.success) ||
-      images.length > 0;
+      input.runFableCut !== false
+        ? Boolean(result.fablecut?.success)
+        : input.runSeedance !== false
+          ? (result.seedance?.count ?? 0) > 0
+          : false;
 
     if (!result.success && !result.error) {
       result.error =
-        'Pipeline không tạo được seedance/fablecut — gen ảnh chương trước hoặc truyền sceneTexts.';
+        result.fablecut?.error ||
+        result.timelineReservationError ||
+        'Pipeline không tạo được seedance/fablecut — gen TTS + prompt timestamp trước.';
     }
 
     return result;

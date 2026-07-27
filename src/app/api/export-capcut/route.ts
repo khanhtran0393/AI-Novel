@@ -3,6 +3,8 @@ import {
   collectChapterAudioDiskPaths,
   collectChapterImageDiskPaths,
   collectChapterVideoDiskPaths,
+  isFullChapterAudioKey,
+  selectChapterTimelineAudioPaths,
 } from '@/lib/integrations/mediaPaths';
 import { buildXinChaoPack } from '@/lib/integrations/xinchaoCut';
 import { runChapterPipeline } from '@/lib/integrations/chapterPipeline';
@@ -10,6 +12,7 @@ import { assertPremiumAccessHard } from '@/lib/commercial/proGateHard';
 import { responseForGateFailure } from '@/lib/commercial/apiGate';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { type CapCutAspect } from '@/lib/outputCriteria';
+import { probeDurationSec } from '@/lib/audioStudio';
 
 export const runtime = 'nodejs';
 
@@ -41,8 +44,8 @@ function normalizeAudioMap(
 }
 
 /**
- * Xuất CapCut (tên GUI) — engine = pack media + mở editor multi-track (tools/xinchao-cut).
- * cutsdk draft CapCut desktop: soft-try, không hard-fail khi máy chưa cài CapCut.
+ * Xuất CapCut — pack media + mở editor multi-track nội bộ (product name: CapCut).
+ * cutsdk draft CapCut desktop: soft-try, không hard-fail khi máy chưa cài CapCut OS.
  */
 export async function POST(req: Request) {
   try {
@@ -56,6 +59,7 @@ export async function POST(req: Request) {
       chapterNum,
       ten_tac_pham,
       generatedAudioPaths,
+      generatedPrompts,
       generatedImages,
       generatedVideos,
       imageAspectRatio,
@@ -98,7 +102,12 @@ export async function POST(req: Request) {
 
     const images = collectChapterImageDiskPaths(ch, generatedImages || {});
     const videos = collectChapterVideoDiskPaths(ch, generatedVideos || {});
-    const audios = collectChapterAudioDiskPaths(ch, audioMap);
+    const rawAudios = collectChapterAudioDiskPaths(ch, audioMap);
+    const audios = selectChapterTimelineAudioPaths(
+      ch,
+      rawAudios,
+      (diskPath) => probeDurationSec(diskPath),
+    );
 
     if (images.length + videos.length + audios.length === 0) {
       return NextResponse.json(
@@ -115,6 +124,7 @@ export async function POST(req: Request) {
       chapterNum: ch,
       ten_tac_pham: ten_tac_pham || 'AI-Novel',
       generatedAudioPaths: audioMap,
+      generatedPrompts: generatedPrompts || {},
       generatedImages: generatedImages || {},
       generatedVideos: generatedVideos || {},
       aspect: capCutAspect,
@@ -139,6 +149,7 @@ export async function POST(req: Request) {
         ten_tac_pham: ten_tac_pham || 'AI-Novel',
         generatedImages: generatedImages || {},
         generatedAudioPaths: audioMap,
+        generatedPrompts: generatedPrompts || {},
         generatedVideos: generatedVideos || {},
         runSeedance: false,
         runFableCut: true,
@@ -158,57 +169,232 @@ export async function POST(req: Request) {
     let cutsdkError: string | undefined;
     try {
       const { createDraftFromSpec } = await import('cutsdk');
-      // Loose shapes — cutsdk soft path; never block primary pack success
+      const parseSceneIndices = (key: string) => {
+        const clean = String(key || '').replace(/_video$/, '').trim();
+        const mPrompt = clean.match(/(?:scene[_-]?|s)(\d+)[_-](?:prompt[_-]?|p)(\d+)/i);
+        if (mPrompt) {
+          return { sceneIndex: Number(mPrompt[1]) || 0, promptIndex: Number(mPrompt[2]) || 0 };
+        }
+        const mScene = clean.match(/(?:scene[_-]?|s)(\d+)/i);
+        if (mScene) {
+          return { sceneIndex: Number(mScene[1]) || 0, promptIndex: 0 };
+        }
+        const parts = clean.split('_');
+        if (parts.length >= 3) {
+          return { sceneIndex: Number(parts[1]) || 0, promptIndex: Number(parts[2]) || 0 };
+        } else if (parts.length === 2) {
+          return { sceneIndex: Number(parts[1]) || 0, promptIndex: 0 };
+        }
+        return { sceneIndex: 0, promptIndex: 0 };
+      };
+
+      const getSceneRank = (sceneIdx: number) => {
+        if (sceneIdx === 990) return -1;
+        return sceneIdx;
+      };
+
+      const rawVisuals = [
+        ...videos.map((v) => {
+          const idx = parseSceneIndices(v.key);
+          return { key: v.key, path: v.disk, kind: 'video' as const, ...idx };
+        }),
+        ...images.map((i) => {
+          const idx = parseSceneIndices(i.key);
+          return { key: i.key, path: i.disk, kind: 'image' as const, ...idx };
+        }),
+      ];
+
+      // Prefer video over image for the same base prompt key
+      const seenVisualKeys = new Set<string>();
+      const visuals: typeof rawVisuals = [];
+      rawVisuals.sort((a, b) =>
+        a.kind === b.kind ? 0 : a.kind === 'video' ? -1 : 1,
+      );
+      for (const v of rawVisuals) {
+        const baseKey = v.key.replace(/_video$/, '');
+        if (seenVisualKeys.has(baseKey)) continue;
+        seenVisualKeys.add(baseKey);
+        visuals.push(v);
+      }
+
+      const parsedAudios = audios.map((a) => {
+        const idx = parseSceneIndices(a.key);
+        let dur = a.duration || 0;
+        if (a.disk) {
+          try {
+            const probed = probeDurationSec(a.disk);
+            if (probed > 0.1) dur = probed;
+          } catch {
+            /* keep existing dur */
+          }
+        }
+        return { key: a.key, path: a.disk, duration: dur, ...idx };
+      });
+
+      const uniqueScenes = Array.from(
+        new Set<number>([
+          ...visuals.map((v) => v.sceneIndex),
+          ...parsedAudios.map((a) => a.sceneIndex),
+        ]),
+      ).sort((a, b) => getSceneRank(a) - getSceneRank(b));
+      const hasFullChapterAudio =
+        parsedAudios.length === 1 &&
+        isFullChapterAudioKey(parsedAudios[0].key);
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const videoClips: any[] = [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const audioClips: any[] = [];
-      let currentTime = 0;
       const transitions = ['fade_in', 'fade_out', 'zoom_in', 'slide_left'];
+      let timelineCursor = 0;
 
-      const visual = [
-        ...videos.map((v) => ({ key: v.key, path: v.disk, kind: 'video' as const })),
-        ...images.map((i) => ({ key: i.key, path: i.disk, kind: 'image' as const })),
-      ].sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
-
-      const seen = new Set<string>();
-      const visuals: typeof visual = [];
-      for (const v of visual) {
-        const baseKey = v.key.replace(/_video$/, '');
-        if (seen.has(baseKey) && v.kind === 'image') continue;
-        if (v.kind === 'video') seen.add(baseKey);
-        else if (!seen.has(baseKey)) seen.add(baseKey);
-        else continue;
-        visuals.push(v);
-      }
-
-      const totalAudioDur = audios.reduce((s, a) => s + (a.duration || 0), 0);
-      const perClip =
-        visuals.length > 0 && totalAudioDur > 0
-          ? Math.max(2, totalAudioDur / visuals.length)
-          : Math.max(2, durationHint);
-
-      for (let i = 0; i < visuals.length; i++) {
-        const v = visuals[i];
-        videoClips.push({
-          type: v.kind,
-          src: v.path,
-          start: currentTime,
-          duration: perClip,
-          transition: { name: transitions[i % transitions.length], duration: 0.8 },
-        });
-        currentTime += perClip;
-      }
-      let audioCursor = 0;
-      for (const a of audios) {
-        const dur = a.duration > 0 ? a.duration : perClip;
+      if (pack.timelineReservation) {
+        const diskByKey = new Map([
+          ...images.map((item) => [item.key, item.disk] as const),
+          ...videos.map((item) => [item.key, item.disk] as const),
+        ]);
+        for (
+          let index = 0;
+          index < pack.timelineReservation.slots.length;
+          index += 1
+        ) {
+          const slot = pack.timelineReservation.slots[index];
+          if (!slot.mediaKey || !slot.mediaKind) continue;
+          const disk = diskByKey.get(slot.mediaKey);
+          if (!disk) continue;
+          videoClips.push({
+            type: slot.mediaKind,
+            src: disk,
+            start: slot.startSec,
+            duration: slot.durationSec,
+            sourceDuration:
+              slot.mediaKind === 'video'
+                ? probeDurationSec(disk)
+                : undefined,
+            transition: {
+              name: transitions[index % transitions.length],
+              duration: 0.8,
+            },
+          });
+        }
+        if (hasFullChapterAudio) {
+          const fullAudio = parsedAudios[0];
+          audioClips.push({
+            type: 'audio',
+            src: fullAudio.path,
+            start: 0,
+            duration: pack.timelineReservation.durationSec,
+            sourceDuration: fullAudio.duration,
+            volume: 1.0,
+          });
+        } else {
+          let cursor = 0;
+          for (const audio of [...parsedAudios].sort(
+            (left, right) =>
+              getSceneRank(left.sceneIndex) - getSceneRank(right.sceneIndex),
+          )) {
+            audioClips.push({
+              type: 'audio',
+              src: audio.path,
+              start: cursor,
+              duration: audio.duration,
+              sourceDuration: audio.duration,
+              volume: 1.0,
+            });
+            cursor += audio.duration;
+          }
+        }
+      } else if (hasFullChapterAudio) {
+        const fullAudio = parsedAudios[0];
+        const fullDuration = fullAudio.duration;
+        if (!Number.isFinite(fullDuration) || fullDuration <= 0.1) {
+          throw new Error('Không đọc được thời lượng audio full trên đĩa');
+        }
+        const orderedVisuals = [...visuals].sort(
+          (left, right) =>
+            getSceneRank(left.sceneIndex) - getSceneRank(right.sceneIndex) ||
+            left.promptIndex - right.promptIndex,
+        );
+        const perVisualDuration =
+          orderedVisuals.length > 0
+            ? fullDuration / orderedVisuals.length
+            : 0;
+        let visualCursor = 0;
+        for (let index = 0; index < orderedVisuals.length; index += 1) {
+          const visual = orderedVisuals[index];
+          videoClips.push({
+            type: visual.kind,
+            src: visual.path,
+            start: visualCursor,
+            duration: perVisualDuration,
+            sourceDuration:
+              visual.kind === 'video' ? perVisualDuration : undefined,
+            transition: {
+              name: transitions[index % transitions.length],
+              duration: 0.8,
+            },
+          });
+          visualCursor += perVisualDuration;
+        }
         audioClips.push({
           type: 'audio',
-          src: a.disk,
-          start: audioCursor,
-          duration: dur,
+          src: fullAudio.path,
+          start: 0,
+          duration: fullDuration,
+          sourceDuration: fullDuration,
+          volume: 1.0,
         });
-        audioCursor += dur;
+        timelineCursor = fullDuration;
+      }
+
+      for (const sceneIdx of pack.timelineReservation || hasFullChapterAudio ? [] : uniqueScenes) {
+        const sceneAudios = parsedAudios.filter((a) => a.sceneIndex === sceneIdx);
+        const sceneVisuals = visuals
+          .filter((v) => v.sceneIndex === sceneIdx)
+          .sort((a, b) => a.promptIndex - b.promptIndex);
+
+        const totalAudioDur = sceneAudios.reduce((s, a) => s + (a.duration || 0), 0);
+        const effectiveAudioDur = totalAudioDur > 0.1 ? totalAudioDur : 0;
+
+        const perVisualDur =
+          sceneVisuals.length > 0
+            ? effectiveAudioDur > 0
+              ? effectiveAudioDur / sceneVisuals.length
+              : Math.max(2, durationHint)
+            : Math.max(2, durationHint);
+
+        const sceneVisualTotalDur = sceneVisuals.length * perVisualDur;
+        const sceneTotalDur = Math.max(effectiveAudioDur, sceneVisualTotalDur);
+
+        let visCursor = timelineCursor;
+        for (let i = 0; i < sceneVisuals.length; i++) {
+          const v = sceneVisuals[i];
+          videoClips.push({
+            type: v.kind,
+            src: v.path,
+            start: visCursor,
+            duration: perVisualDur,
+            sourceDuration: v.kind === 'video' ? perVisualDur : undefined,
+            transition: { name: transitions[i % transitions.length], duration: 0.8 },
+          });
+          visCursor += perVisualDur;
+        }
+
+        let audCursor = timelineCursor;
+        for (const a of sceneAudios) {
+          const dur = a.duration > 0.1 ? a.duration : sceneTotalDur;
+          audioClips.push({
+            type: 'audio',
+            src: a.path,
+            start: audCursor,
+            duration: dur,
+            sourceDuration: dur,
+            volume: 1.0,
+          });
+          audCursor += dur;
+        }
+
+        timelineCursor += sceneTotalDur;
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -243,12 +429,24 @@ export async function POST(req: Request) {
         language: ttsConfig?.language || null,
       },
       source: 'toolbar: Ảnh/Video + TTS + CapCut',
-      engine: 'xinchao-cut-pack',
+      engine: 'capcut-pack',
     };
 
     console.log(
       `[Export CapCut] aspect=${capCutAspect} pack=${pack.packRoot} files=${pack.media.files} cutsdk=${draftId ? 'ok' : 'skip'}`,
     );
+
+    // Auto-save CapCut pack into active channel ship_pack folder
+    try {
+      const { autoSaveToChannelFolder } = require('@/lib/channelMediaMirror');
+      autoSaveToChannelFolder({
+        channelName: ten_tac_pham || 'Kênh Chính',
+        resourceType: 'ship_pack',
+        sourceFilePath: pack.packRoot,
+      });
+    } catch {
+      /* ignore */
+    }
 
     return NextResponse.json({
       success: true,
@@ -268,6 +466,12 @@ export async function POST(req: Request) {
         audios: audios.length,
         files: pack.media.files,
         clips: pack.timelineClips,
+      },
+      reservation: {
+        slots: pack.timelineReservation?.slots.length || 0,
+        filled: pack.timelineReservation?.filledSlots || 0,
+        durationSec: pack.timelineReservation?.durationSec || 0,
+        manifestPath: pack.manifestPath,
       },
       criteria,
     });

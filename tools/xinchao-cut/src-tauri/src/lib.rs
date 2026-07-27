@@ -23,6 +23,7 @@ struct SetupProc(Mutex<SetupRuntime>);
 #[serde(rename_all = "camelCase")]
 struct AiNovelPackClip {
     key: String,
+    slot_id: String,
     kind: String,
     path: String,
     start_sec: f64,
@@ -54,6 +55,8 @@ struct AiNovelPackManifest {
 #[serde(rename_all = "camelCase")]
 struct AiNovelPackManifestClip {
     key: String,
+    #[serde(default)]
+    slot_id: Option<String>,
     kind: String,
     path: String,
     start_sec: f64,
@@ -75,6 +78,9 @@ struct AiNovelPackImportReport {
     project_id: String,
     media_count: usize,
     clip_count: usize,
+    replaced_count: usize,
+    inserted_count: usize,
+    verified_slot_count: usize,
 }
 
 fn load_ainovel_pack(pack_root: &Path) -> Result<AiNovelPackPayload, String> {
@@ -97,8 +103,10 @@ fn load_ainovel_pack(pack_root: &Path) -> Result<AiNovelPackPayload, String> {
     let manifest: AiNovelPackManifest = serde_json::from_str(&manifest_text)
         .map_err(|error| format!("Manifest AI Novel không hợp lệ: {error}"))?;
 
-    if manifest.version != 1 || manifest.source != "ai-novel" || manifest.editor != "xinchao-cut" {
-        return Err("Manifest không thuộc cầu nối AI Novel → XinChao-Cut v1".to_string());
+    // Product name CapCut; accept legacy wire editor id "xinchao-cut".
+    let editor_ok = matches!(manifest.editor.as_str(), "capcut" | "xinchao-cut");
+    if manifest.version != 1 || manifest.source != "ai-novel" || !editor_ok {
+        return Err("Manifest không thuộc cầu nối AI Novel → CapCut v1".to_string());
     }
     if manifest.name.trim().is_empty() {
         return Err("Manifest thiếu tên project".to_string());
@@ -136,6 +144,7 @@ fn load_ainovel_pack(pack_root: &Path) -> Result<AiNovelPackPayload, String> {
             return Err(format!("Media {} nằm ngoài gói AI Novel", clip.key));
         }
         media.push(AiNovelPackClip {
+            slot_id: clip.slot_id.unwrap_or_else(|| clip.key.clone()),
             key: clip.key,
             kind: clip.kind,
             path: absolute_path.to_string_lossy().into_owned(),
@@ -206,6 +215,8 @@ fn report_ainovel_pack_import(
         || report.media_count == 0
         || report.clip_count != active.media.len()
         || report.media_count > report.clip_count
+        || report.replaced_count + report.inserted_count != report.clip_count
+        || report.verified_slot_count != report.clip_count
     {
         return Err("Số liệu project/timeline vừa nhập không hợp lệ".to_string());
     }
@@ -221,6 +232,9 @@ fn report_ainovel_pack_import(
         "aspect": active.aspect,
         "mediaCount": report.media_count,
         "clipCount": report.clip_count,
+        "replacedCount": report.replaced_count,
+        "insertedCount": report.inserted_count,
+        "verifiedSlotCount": report.verified_slot_count,
         "media": active.media,
         "importedAt": std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

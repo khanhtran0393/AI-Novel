@@ -35,8 +35,18 @@ const SKIP_PATHS = new Set([
 // permitted source deltas: a narrow install-owned bridge that consumes an
 // AI Novel media manifest through the original project/media/timeline engines.
 const INTEGRATION_OVERLAY_CHANGED = new Set([
+  'backend/app/export/job.py',
   'src/app/App.tsx',
   'src-tauri/src/lib.rs',
+  'src-tauri/tauri.conf.json',
+  'src/components/home/HomeScreen.tsx',
+  'src/components/top-bar/TopBar.tsx',
+  'src/engine/export/exporter.test.ts',
+  'src/engine/export/exporter.ts',
+  'src/engine/timeline/types.ts',
+  'src/hooks/useAudioPlayback.ts',
+  'src/store/timeline-store.test.ts',
+  'src/store/timeline-store.ts',
 ]);
 const INTEGRATION_OVERLAY_ADDED = new Set([
   'src/components/shared/AiNovelPackBootstrap.tsx',
