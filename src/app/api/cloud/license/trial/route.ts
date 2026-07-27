@@ -30,15 +30,9 @@ export async function POST(req: Request) {
     }
 
     let userId: string | null = null;
-    if (extractBearer(req)) {
-      try {
-        userId = (await requireUserFromRequest(req)).userId;
-      } catch {
-        /* optional */
-      }
-    }
-
     if (isSupabaseAdminConfigured()) {
+      const user = await requireUserFromRequest(req);
+      userId = user.userId;
       const service = createServiceSupabase();
       const result = await startCloudTrial({ service, hwid, userId });
       return NextResponse.json({

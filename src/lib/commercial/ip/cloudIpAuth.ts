@@ -63,11 +63,19 @@ export function assertCloudIpToken(
     typeof (body as { hwid?: string }).hwid === 'string'
       ? String((body as { hwid: string }).hwid).trim().toLowerCase()
       : '';
-  if (bodyHwid && claims.hwid && bodyHwid !== claims.hwid.toLowerCase()) {
-    throw new AppError('HWID body không khớp license token.', {
-      code: 'AUTH',
-      status: 403,
-    });
+  if (claims.hwid) {
+    if (!bodyHwid) {
+      throw new AppError('Thiếu HWID xác thực thiết bị trong request.', {
+        code: 'AUTH',
+        status: 403,
+      });
+    }
+    if (bodyHwid !== claims.hwid.toLowerCase()) {
+      throw new AppError('HWID body không khớp license token.', {
+        code: 'AUTH',
+        status: 403,
+      });
+    }
   }
   const tier = claimsToTier(claims);
   if (TIER_RANK[tier] < TIER_RANK[minTier]) {

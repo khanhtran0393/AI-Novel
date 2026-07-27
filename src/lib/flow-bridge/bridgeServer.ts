@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
+import crypto from 'crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { FLOW_DEFAULTS, FLOW_HOST, FLOW_HTTP_PORT, FLOW_WS_PORT } from './config';
 import {
@@ -152,7 +153,7 @@ function state(): BridgeState {
       },
       pending: new Map(),
       queue: new FlowQueueEngine(),
-      callbackSecret: `ainovel_${Date.now().toString(36)}`,
+      callbackSecret: crypto.randomBytes(32).toString('hex'),
       extApiChain: Promise.resolve(),
       bodyStash: new Map(),
     };
@@ -2178,15 +2179,69 @@ async function readJson(
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
+function isSecretValid(providedSecret: string, expectedSecret: string): boolean {
+  if (!providedSecret || !expectedSecret) return false;
+  try {
+    const a = Buffer.from(providedSecret, 'utf8');
+    const b = Buffer.from(expectedSecret, 'utf8');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+  /^http:\/\/localhost:\d+$/,
+  /^chrome-extension:\/\/[a-z]{32}$/,
+  /^app:\/\//,
+];
+
+function resolveAllowedOrigin(req: http.IncomingMessage): string | null {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return null;
+  if (ALLOWED_ORIGIN_PATTERNS.some((pat) => pat.test(origin))) {
+    return origin;
+  }
+  return null;
+}
+
+const ALLOWED_PROXY_HOSTS = new Set([
+  'aisandbox-pa.googleapis.com',
+  'labs.google',
+  'notebooklm.google',
+  'content-aisandbox.googleapis.com',
+  'clients6.google.com',
+]);
+
+export function isAllowedProxyUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'https:') return false;
+    return ALLOWED_PROXY_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function sendJson(
   res: http.ServerResponse,
   status: number,
   body: unknown,
+  req?: http.IncomingMessage,
 ): void {
-  res.writeHead(status, {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-  });
+  };
+  if (req) {
+    const origin = resolveAllowedOrigin(req);
+    if (origin) {
+      headers['Access-Control-Allow-Origin'] = origin;
+      headers['Vary'] = 'Origin';
+    }
+  }
+  res.writeHead(status, headers);
   res.end(JSON.stringify(body));
 }
 
@@ -2215,8 +2270,6 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           `[FlowBridge] cleared fake projectId on ${p} account(s)`,
         );
       }
-      // SESSION_BUNDLE remains diagnostic metadata. Only a live extension
-      // socket may repopulate generation bearers after process startup.
       const { loadSessionBundle } = await import('./sessionInherit');
       let rehydrated = 0;
       for (const a of ALLOW_DURABLE_BEARER_REHYDRATION ? loadAccounts() : []) {
@@ -2240,10 +2293,8 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
       /* ignore */
     }
   }
-  // Local server already running in this process
   if (s.httpServer) return getBridgeSnapshot();
 
-  // Adopted daemon — re-probe; if it died, clear flag and start local bridge
   if (s.adoptedExternal) {
     if (await probeExistingBridge()) {
       return getBridgeSnapshotAsync();
@@ -2254,7 +2305,6 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
     s.adoptedExternal = false;
   }
 
-  // If something already listens (previous process), adopt instead of failing
   if (await probeExistingBridge()) {
     s.adoptedExternal = true;
     console.warn(
@@ -2268,11 +2318,16 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
       try {
         const url = new URL(req.url || '/', `http://${FLOW_HOST}:${FLOW_HTTP_PORT}`);
         if (req.method === 'OPTIONS') {
-          res.writeHead(204, {
-            'Access-Control-Allow-Origin': '*',
+          const origin = resolveAllowedOrigin(req);
+          const headers: Record<string, string> = {
             'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          });
+            'Access-Control-Allow-Headers': 'Content-Type,x-callback-secret,x-dest-path',
+          };
+          if (origin) {
+            headers['Access-Control-Allow-Origin'] = origin;
+            headers['Vary'] = 'Origin';
+          }
+          res.writeHead(204, headers);
           res.end();
           return;
         }
@@ -2283,8 +2338,8 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           req.method === 'GET'
         ) {
           const secret = String(req.headers['x-callback-secret'] || '');
-          if (s.callbackSecret && secret && secret !== s.callbackSecret) {
-            sendJson(res, 403, { error: 'bad secret' });
+          if (!isSecretValid(secret, s.callbackSecret)) {
+            sendJson(res, 403, { error: 'bad secret' }, req);
             return;
           }
           const stashId = decodeURIComponent(
@@ -2293,15 +2348,20 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           purgeExpiredBodyStash(s);
           const row = s.bodyStash.get(stashId);
           if (!row) {
-            sendJson(res, 404, { error: 'stash not found or expired' });
+            sendJson(res, 404, { error: 'stash not found or expired' }, req);
             return;
           }
           s.bodyStash.delete(stashId);
-          res.writeHead(200, {
+          const origin = resolveAllowedOrigin(req);
+          const headers: Record<string, string> = {
             'Content-Type': 'application/json; charset=utf-8',
-            'Content-Length': Buffer.byteLength(row.json),
-            'Access-Control-Allow-Origin': '*',
-          });
+            'Content-Length': String(Buffer.byteLength(row.json)),
+          };
+          if (origin) {
+            headers['Access-Control-Allow-Origin'] = origin;
+            headers['Vary'] = 'Origin';
+          }
+          res.writeHead(200, headers);
           res.end(row.json);
           return;
         }
@@ -2312,26 +2372,34 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
           req.method === 'POST'
         ) {
           const secret = String(req.headers['x-callback-secret'] || '');
-          if (secret && secret !== s.callbackSecret) {
-            // Allow empty secret on first connect race; reject wrong secret only
-            if (s.callbackSecret && secret !== s.callbackSecret) {
-              sendJson(res, 403, { error: 'bad secret' });
-              return;
-            }
+          if (!isSecretValid(secret, s.callbackSecret)) {
+            sendJson(res, 403, { error: 'bad secret' }, req);
+            return;
           }
           const destHint = String(req.headers['x-dest-path'] || '').trim();
           const chunks: Buffer[] = [];
           for await (const c of req) chunks.push(c as Buffer);
           const buf = Buffer.concat(chunks);
           if (buf.length < 64) {
-            sendJson(res, 400, { error: 'empty body', bytes: buf.length });
+            sendJson(res, 400, { error: 'empty body', bytes: buf.length }, req);
             return;
           }
-          let dest = destHint;
+          if (buf.length > 500 * 1024 * 1024) {
+            sendJson(res, 413, { error: 'payload too large', bytes: buf.length }, req);
+            return;
+          }
+          const projectRoot = path.resolve(process.cwd());
+          let dest = '';
+          if (destHint) {
+            const resolved = path.resolve(destHint);
+            if (resolved.startsWith(projectRoot) && !path.relative(projectRoot, resolved).startsWith('..')) {
+              dest = resolved;
+            }
+          }
           if (!dest) {
-            const dir = path.join(process.cwd(), 'public', 'video', '_sink');
+            const dir = path.join(projectRoot, 'public', 'video', '_sink');
             fs.mkdirSync(dir, { recursive: true });
-            dest = path.join(dir, `recv_${Date.now()}.bin`);
+            dest = path.join(dir, `recv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.bin`);
           }
           try {
             fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -2343,11 +2411,11 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
               ok: true,
               destPath: dest,
               bytes: buf.length,
-            });
+            }, req);
           } catch (e) {
             sendJson(res, 500, {
               error: e instanceof Error ? e.message : String(e),
-            });
+            }, req);
           }
           return;
         }
@@ -2717,6 +2785,18 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
       s.wss = wss;
       wss.on('connection', (socket, req) => {
         const url = new URL(req.url || '', `http://${FLOW_HOST}`);
+        const providedSecret = url.searchParams.get('secret') || String(req.headers['x-callback-secret'] || '');
+        const origin = String(req.headers.origin || '').trim();
+
+        const hasSecret = isSecretValid(providedSecret, s.callbackSecret);
+        const isAllowedOrigin = !origin || ALLOWED_ORIGIN_PATTERNS.some((pat) => pat.test(origin));
+
+        if (!hasSecret && !isAllowedOrigin) {
+          console.warn(`[FlowBridge] Unauthorized WS connection attempt rejected: origin="${origin}"`);
+          socket.close(4001, 'Unauthorized');
+          return;
+        }
+
         const accountId = url.searchParams.get('accountId') || 'default';
         console.log(`[FlowBridge] Extension connected accountId=${accountId}`);
         s.sockets.set(accountId, socket);

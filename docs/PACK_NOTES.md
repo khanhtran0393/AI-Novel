@@ -337,29 +337,42 @@ Smoke: `npm run smoke:latest-yml` · `npm run smoke:auto-update`.
 
 ---
 
-## 11. BẢNG TIÊU CHUẨN BẢO MẬT KHI ĐÓNG GÓI (SECURITY STANDARDS AUDIT)
+## 11. SECURITY STOP-GATE TRƯỚC KHI ĐÓNG GÓI
 
-Bất kỳ lượt đóng gói nào bằng lệnh `npm run pack:ship` hoặc `npm run pack:commercial` đều bắt buộc tuân thủ 6 tiêu chuẩn bảo mật sau đây:
+Kiểm toán đầy đủ: [`SECURITY_PREPACK_AUDIT.md`](SECURITY_PREPACK_AUDIT.md).
 
-### 🛡️ 1. 7 Lá chắn bảo mật tự động kích hoạt
-1. **Crown IP Sealing (`with-crown-sealed-build.cjs`):** Mã hóa/Tạo stub các công thức độc quyền (Seedance, Labyrinth, NAV Analyzer) khi biên dịch production.
-2. **Bytenode V8 Bytecode (`build:bytenode`):** Biên dịch toàn bộ `main.js` thành mã máy nhị phân `main.jsc` (V8 Bytecode). Khóa chặt 100% khả năng giải nén decompiled source code.
-3. **Bản quyền Chữ ký số Ed25519:** Xác thực bất đối ứng 256-bit offline/online. Ngăn chặn việc sửa file config để lách quyền Pro.
-4. **Hardware Binding (HWID Lock):** Ràng buộc license theo vân tay phần cứng (CPU, Mainboard, Disk ID). Token không thể dùng chéo máy.
-5. **Cơ chế Fail-Closed (`AINOVEL_ENTITLEMENT_MODE=enforce`):** Tự động bật chế độ siết chặt trên gói khách. Thiếu License/HWID sai = Khóa tính năng Pro.
-6. **Python Host Guard (`python_core/ainovel_host_guard.py`):** Ép `AINOVEL_HOST_BINDING=enforce`. Ngăn chặn trích xuất và gọi các script Python độc lập ngoài App.
-7. **Anti-Tamper & Integrity Fuse (`smoke-anti-tamper`):** Kiểm tra tính toàn vẹn của file gói, tự động hủy lệnh pack nếu dính leak API Key bí mật.
+Kế hoạch triển khai theo ticket: [`SECURITY_HARDENING_IMPLEMENTATION_PLAN.md`](SECURITY_HARDENING_IMPLEMENTATION_PLAN.md).
 
-### 📊 2. Ma trận chỉ tiêu bảo mật thương mại
-| Chỉ tiêu bảo mật | Cơ chế áp dụng trong AI Novel | Trạng thái |
-| :--- | :--- | :---: |
-| **Chống xài chùa (Anti-Piracy)** | Chữ ký số Ed25519 + HWID Lock cứng | 🟢 **ĐẠT 100%** |
-| **Chống lộ API Key / Secrets** | Preflight Scanner + Tách `public.env` | 🟢 **ĐẠT 100%** |
-| **Bảo vệ thuật toán (IP Protection)** | Crown IP Sealing mã hóa formula | 🟢 **ĐẠT 100%** |
-| **Bảo vệ script ngầm (Python Guard)** | Host-Binding Token Enforce | 🟢 **ĐẠT 100%** |
-| **Chống phân tích ngược Electron** | Bytenode V8 Bytecode (`main.jsc`) + Minified Bundle | 🟢 **ĐẠT 100% (HOÀN HẢO)** |
+Các cơ chế hiện có như Ed25519, HWID, DPAPI, Crown seal, host guard, Electron fuses và ASAR integrity là **defense-in-depth**. Chúng tăng chi phí can thiệp nhưng không được mô tả là chống dịch ngược hoặc chống crack 100%.
+
+### 11.1. Điều kiện chặn phát hành
+
+Không publish artifact/update feed và không gọi là bản thương mại nếu còn một mục FAIL:
+
+- `npm audit --omit=dev --audit-level=high` chưa exit 0.
+- Flow bridge chưa có xác thực WS/HTTP, origin pin và proxy/path allowlist.
+- Cloud license/Crown IP chưa kiểm tra ledger, revoke và device proof-of-possession.
+- App, installer hoặc child executable chưa có Authenticode hợp lệ và timestamp.
+- Unsigned updater vẫn được phép chạy.
+- Artifact còn source `.ts`, `.tsx`, `.py`, source map, test/dev file ngoài allowlist.
+- Package main không tồn tại hoặc desktop boot smoke chưa chạy chính artifact vừa build.
+- ASAR integrity / `OnlyLoadAppFromAsar` không bật hoặc hook fuse fallback giảm bảo vệ.
+
+### 11.2. Cách diễn giải các lớp bảo vệ
+
+| Lớp bảo vệ | Điều được phép kết luận | Không được kết luận |
+| :--- | :--- | :--- |
+| Ed25519 + HWID | Token hợp lệ và có ràng buộc theo policy đã kiểm thử | Không thể replay/chia sẻ nếu cloud chưa kiểm tra ledger/PoP |
+| DPAPI credential vault | Secret lưu trên đĩa được mã hóa theo user Windows | Renderer/runtime bị chiếm không thể lấy secret |
+| Crown seal / Bytenode | Tăng chi phí đọc và chỉnh source | Không thể giải mã hoặc dịch ngược |
+| ASAR integrity + fuses | Chặn một số kiểu sửa ASAR/inspect Electron | Bảo vệ mọi `extraResources` hoặc child process |
+| Host guard | Hạn chế gọi runtime Python ngoài host theo policy | Bảo vệ source Python nếu source vẫn được ship |
+| Artifact scanner | Chứng minh đúng phạm vi scanner đã quét | Không còn mọi secret/lỗ hổng nếu scanner bỏ qua extraResources |
+
+### 11.3. Gate tối thiểu sau khi sửa
+
+`preflight:pack` + dependency audit + Electron/anti-tamper smokes + artifact audit toàn staging + fuse inspection + Authenticode verification + real desktop boot + Flow auth test + cloud revoke/replay test + media thật phải cùng PASS.
 
 ---
 
 *Cập nhật khi đổi grace / fuse / ledger / update feed / quy trình pack: sửa file này + banner `scripts/preflight-pack.mjs` + `PACKAGING_STANDARD.md` cùng lúc.*
-

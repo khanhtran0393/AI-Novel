@@ -59,6 +59,9 @@ export async function proxyAsAccount(
     return { ok: false, error: 'accountId required', accountId: '' };
   }
   const bridge = await import('./bridgeServer');
+  if (opts.url && !bridge.isAllowedProxyUrl(opts.url)) {
+    return { ok: false, error: 'Proxy URL not in Google Flow allowlist', accountId };
+  }
   const mode = opts.mode || 'api';
   try {
     if (mode === 'trpc') {

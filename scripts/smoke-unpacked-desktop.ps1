@@ -9,7 +9,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $unpacked = Join-Path $root $UnpackedDir
-$exe = Join-Path $unpacked 'AI Novel & Script Generator.exe'
+$exe = Join-Path $unpacked 'Ai Novel.exe'
+if (-not (Test-Path -LiteralPath $exe)) {
+  $exe = Join-Path $unpacked 'AI Novel & Script Generator.exe'
+}
 if (-not (Test-Path -LiteralPath $exe)) {
   throw "Missing unpacked exe: $exe"
 }
