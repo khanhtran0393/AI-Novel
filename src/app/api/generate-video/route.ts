@@ -14,8 +14,11 @@ import { correlationIdFromRequest, slog } from '@/lib/requestContext';
 import { httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { resolveImageReferenceTransportPath } from '@/lib/mediaReference';
 
-// Hàm tìm kiếm đường dẫn Chrome
+let cachedChromePath: string | null | undefined = undefined;
+
+// Hàm tìm kiếm đường dẫn Chrome (cached module-level)
 function findChromePath(): string | null {
+  if (cachedChromePath !== undefined) return cachedChromePath;
   const possiblePaths = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
@@ -23,8 +26,12 @@ function findChromePath(): string | null {
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   ];
   for (const p of possiblePaths) {
-    if (fs.existsSync(p)) return p;
+    if (fs.existsSync(p)) {
+      cachedChromePath = p;
+      return p;
+    }
   }
+  cachedChromePath = null;
   return null;
 }
 
@@ -41,14 +48,25 @@ function getApiKeyPath(): string {
 }
 const APIKEY_PATH = getApiKeyPath();
 
-// Đọc tất cả API keys từ file
+let cachedApiKeys: { keys: string[]; loadedAt: number } | null = null;
+
+// Đọc tất cả API keys từ file (cached TTL 60s)
 function loadApiKeys(): string[] {
+  if (cachedApiKeys && Date.now() - cachedApiKeys.loadedAt < 60_000) {
+    return cachedApiKeys.keys;
+  }
   try {
     if (fs.existsSync(APIKEY_PATH)) {
       const content = fs.readFileSync(APIKEY_PATH, 'utf8');
-      return content.split('\n').map(l => l.trim()).filter(l => l.startsWith('AIzaSy'));
+      const keys = content
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith('AIzaSy'));
+      cachedApiKeys = { keys, loadedAt: Date.now() };
+      return keys;
     }
   } catch {}
+  cachedApiKeys = { keys: [], loadedAt: Date.now() };
   return [];
 }
 

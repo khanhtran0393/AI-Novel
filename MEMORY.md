@@ -3,27 +3,16 @@
 > **Chân lý ngắn:** ghi nhớ theo **code + package.json + release-notes**, không theo log phiên cũ.  
 > Spec dài: `AGENTS.md` · Done Gate: `docs/AGENT_DONE_GATE.md` · Pack: `docs/PACK_NOTES.md` · Update: `docs/APP_UPDATE.md`
 
-**Cập nhật:** 2026-07-26 · **version:** `1.0.12` · **artifact:** `dist-qa-unsigned/AI-Novel-1.0.12-x64.exe` (803 586 753 B) · **GitHub feed v1.0.12 PASS** · Supabase fallback yml vẫn 1.0.0 (413) · go-live **SOFTWARE READY** (residual: Authenticode only)
+**Cập nhật:** 2026-07-27 · **version:** `1.0.15` · **artifact:** `dist-qa-unsigned/AI-Novel-1.0.15-x64.exe` · **Security Audit & Hardening:** UNC path validation added to IPC `ainovel-open-path`, commercial smoke & telegram admin tests synced, third-party notices updated to 1.0.15, `verify:agent-done` PASS.
 
 ---
 
-## 0. License one-path harden + ship 1.0.12 (2026-07-25/26)
+## 0. Security Audit & Pre-Release Hardening 1.0.15 (2026-07-27)
 
-**Không phải bug:** `is_pro=true` + `is_trial=true` = Trial Pro-equivalent (badge TRIAL).
-
-**Code:** Telegram fail-closed + blank token · issue paths ledger-only · activate no vault fallback · verify hash/exp · stale ticket → HWID ledger + clear local · Paid Pro retires local Trial · promote exp = min(token, ledger).
-
-**Ledger HWID f925b0ff…:** 1× pro active · hash ba0f85ec… · exp 2026-07-27 · trial vault retired.
-
-**Ship proof:**
-- `pack:ship` EXIT 0 · postpack checklist failed=[]
-- `release:ship-update` githubPublished=true · supabasePublished=false (413 size)
-- `release:github:verify` PASS · tag v1.0.12
-- `telegram:deploy-bridge` configured=true supabaseLedger=true
-- `commercial:go-live-status` → SOFTWARE READY — ONLY AUTHENTICODE REMAINS
-- typecheck + smoke:license-ledger + one-path + telegram-admin PASS
-
-**Residual:** CSC_* Authenticode; Supabase Storage limit ≥500MB rồi re-publish fallback; white-machine tay.
+- **IPC Security:** `main.js` (`isAllowedShellOpenPath`) updated to reject remote UNC paths (`\\\\` / `//`), preventing NTLM coercion / remote share shell execution.
+- **Test Alignment:** `smoke-commercial.mjs` synced to active route contracts; `smoke-telegram-admin.mts` day presets synced (`[1, 3, 7, 15, 30]`).
+- **Notices Sync:** `npm run commercial:notices` generated 279 third-party packages notice for v1.0.15.
+- **Verification:** `verify:agent-done` (typecheck + license-one-path + ship:check) **PASS**.
 
 ---
 
@@ -32,8 +21,8 @@
 | Hạng mục | Giá trị |
 |----------|---------|
 | Product | Ai Novel desktop (Next 16 + Electron 43 + React 19) |
-| `package.json` | **1.0.12** |
-| Release notes | `resources/commercial/release-notes.json` (1.0.12 license harden) |
+| `package.json` | **1.0.15** |
+| Release notes | `resources/commercial/release-notes.json` (1.0.15 security & entitlement harden) |
 | Pack / feed | **NSIS 1.0.12** local · **GitHub v1.0.12** · Supabase yml residual 1.0.0 |
 | Feed auto-update | Dual: GitHub Releases primary · Supabase Storage fallback (unsigned OK) |
 | Entitlement packaged | `enforce` · sole truth Supabase `licenses` by HWID · token Ed25519 offline verify |

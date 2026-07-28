@@ -106,6 +106,27 @@ export default function LaStudioAutoBootstrap() {
       });
 
     (async () => {
+      // Check sessionStorage cache (TTL 30s) to avoid redundant 15s boot probe on quick reload
+      try {
+        const raw = sessionStorage.getItem(KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            at?: number;
+            online?: boolean;
+            canSynth?: boolean;
+          };
+          if (
+            parsed.at &&
+            Date.now() - parsed.at < 30_000 &&
+            (parsed.online || parsed.canSynth)
+          ) {
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
       // Boot once at workspace load (not when opening LA Studio tab)
       let data = await ensure('boot', true);
       if (!alive()) return;

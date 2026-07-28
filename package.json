@@ -1,6 +1,6 @@
 {
   "name": "ai-novel-script-generator",
-  "version": "1.0.14",
+  "version": "1.0.16",
   "description": "Ai Novel — Free, Trial and Pro desktop application",
   "author": "Ai Novel",
   "private": true,
@@ -312,20 +312,6 @@
         "filter": [
           "**/*.seal",
           "manifest.json"
-        ]
-      },
-      {
-        "from": "src/python_core",
-        "to": "src/python_core",
-        "filter": [
-          "**/*",
-          "!**/__pycache__/**",
-          "!**/*.pyc",
-          "!ffmpeg/**",
-          "!MediaCrawler/**",
-          "!assets/**",
-          "!models/vina_voice/*.onnx",
-          "!**/*.whl"
         ]
       },
       {

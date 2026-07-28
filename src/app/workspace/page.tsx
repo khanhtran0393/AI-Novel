@@ -300,30 +300,27 @@ export default function Workspace() {
     }
   }, []);
 
-  // Drop ghost media paths (store map but file missing) after durable rehydrate settles.
+  // Drop ghost media paths (store map but file missing) once after durable rehydrate settles.
   useEffect(() => {
-    const run = async () => {
-      try {
-        const r =
-          await useNovelStore.getState().reconcileMissingMediaAssets?.();
-        if (r?.changed) {
-          toast.warn(
-            'Media ảo',
-            r.summary ||
-              `Đã gỡ ${r.removedAudio + r.removedImage + r.removedVideo} media ảo (file mất). Gen lại nếu cần.`,
-          );
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r =
+            await useNovelStore.getState().reconcileMissingMediaAssets?.();
+          if (r?.changed) {
+            toast.warn(
+              'Media ảo',
+              r.summary ||
+                `Đã gỡ ${r.removedAudio + r.removedImage + r.removedVideo} media ảo (file mất). Gen lại nếu cần.`,
+            );
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
-      }
-    };
-    // Immediate + delayed (durable merge may arrive late)
-    void run();
-    const t1 = window.setTimeout(() => void run(), 1500);
-    const t2 = window.setTimeout(() => void run(), 4000);
+      })();
+    }, 2000);
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
+      window.clearTimeout(timer);
     };
   }, []);
 

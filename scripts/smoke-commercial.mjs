@@ -132,7 +132,7 @@ const gatedSnippets = [
   ['src/app/api/navtools/gateway/route.ts', "requireFeature(req, 'toolbox_labs'"],
   ['src/app/api/integrations/seedance/route.ts', "requireFeature(req, 'integrations_pipeline'"],
   ['src/app/api/flow/accounts/route.ts', "requireFeature(req, 'flow_multi_account'"],
-  ['src/app/api/suggest-channels/route.ts', "requireFeature(req, 'multi_channel'"],
+  ['src/app/api/integrations/chapter/route.ts', "requireFeature(req, 'integrations_pipeline'"],
 ];
 for (const [rel, needle] of gatedSnippets) {
   const src = fs.readFileSync(path.join(root, rel), 'utf8');

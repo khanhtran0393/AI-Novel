@@ -1431,6 +1431,11 @@ function isAllowedShellOpenPath(absolutePath) {
   try {
     const resolved = path.resolve(absolutePath);
     if (!path.isAbsolute(resolved)) return false;
+    // Reject UNC / remote network paths (e.g. \\evil.host\share or //evil.host/share)
+    if (resolved.startsWith('\\\\') || resolved.startsWith('//') || resolved.startsWith('\\')) {
+      const raw = String(absolutePath || '').trim();
+      if (raw.startsWith('\\\\') || raw.startsWith('//')) return false;
+    }
     const lower = resolved.toLowerCase();
     const blocked = [
       `${path.sep}windows${path.sep}system32`,

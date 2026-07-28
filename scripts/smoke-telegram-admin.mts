@@ -175,8 +175,8 @@ assert.equal(isUnboundLicenseHwid('f925b0ff900599a0'), false);
 assert.ok(unboundHwidForCode('AINOVEL-AAAA-BBBB-CCCC').startsWith('unbound:'));
 ok('unboundHwid helpers');
 
-// Day presets 3/7/15/30
-assert.deepEqual([...DAY_KEY_PRESETS], [3, 7, 15, 30]);
+// Day presets 1/3/7/15/30
+assert.deepEqual([...DAY_KEY_PRESETS], [1, 3, 7, 15, 30]);
 for (const d of DAY_KEY_PRESETS) {
   const r = resolveGencodeExpKey(`${d}d`);
   assert.equal(r.expSeconds, d * 86400, `${d}d seconds`);

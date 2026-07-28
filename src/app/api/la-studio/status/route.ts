@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
     baseUrl: body.baseUrl,
     spawnApp: body.spawnApp !== false,
     hidden: body.hidden !== false,
-    pollMs: typeof body.pollMs === 'number' ? body.pollMs : 45_000,
+    pollMs: typeof body.pollMs === 'number' ? Math.min(body.pollMs, 20_000) : 15_000,
   });
 
   const cliReady = isKokoroCliReady();

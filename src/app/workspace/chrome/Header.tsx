@@ -6,11 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useNovelStore } from '@/store/useNovelStore';
-import {
-  selectIsPro,
-  selectIsVip,
-  selectIsTrial,
-} from '@/store/useNovelStoreSelectors';
+import { useShallow } from 'zustand/react/shallow';
 import { APP_VERSION, formatAppVersionLabel } from '@/lib/appVersion';
 import { SELLER_BANK } from '@/lib/commercial/pricingPlans';
 import { useFolderActions } from '../hooks/useFolderActions';
@@ -177,9 +173,12 @@ function ChannelFolderButton() {
 }
 
 export default function Header() {
-  const isPro = useNovelStore(selectIsPro);
-  const isVip = useNovelStore(selectIsVip);
-  const isTrial = useNovelStore(selectIsTrial);
+  // Selector trả về primitive string — không re-render khi state khác thay đổi
+  const tierTag = useNovelStore((s) =>
+    s.is_trial ? 'TRIAL' : s.is_pro || s.is_vip ? 'PRO' : 'FREE',
+  );
+  const isPro = tierTag === 'PRO';
+  const isTrial = tierTag === 'TRIAL';
   const [appVersion, setAppVersion] = useState(APP_VERSION);
 
   useEffect(() => {
@@ -268,7 +267,7 @@ export default function Header() {
                 <Sparkles className="h-3.5 w-3.5" />
                 TRIAL
               </div>
-            ) : isPro || isVip ? (
+            ) : isPro ? (
               <div
                 className="flex items-center gap-1 rounded-2xl bg-gradient-to-r from-yellow-400 to-yellow-600 px-2.5 py-1.5 text-[clamp(9px,1vw,11px)] font-bold uppercase tracking-wider text-black shadow-lg shadow-yellow-500/20"
                 title="Pro"

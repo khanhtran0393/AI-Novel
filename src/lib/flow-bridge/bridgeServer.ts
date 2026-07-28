@@ -41,6 +41,12 @@ import type {
   FlowTask,
 } from './types';
 import { FlowQueueEngine } from './queueEngine';
+import {
+  getOrCreateSessionToken,
+  validateWsConnection,
+  validateHttpRequest,
+  isAllowedProxyUrl as secIsAllowedProxyUrl,
+} from './bridgeSecurity';
 
 type Pending = {
   resolve: (v: ExtApiResponse) => void;
@@ -2787,11 +2793,22 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
         const url = new URL(req.url || '', `http://${FLOW_HOST}`);
         const providedSecret = url.searchParams.get('secret') || String(req.headers['x-callback-secret'] || '');
         const origin = String(req.headers.origin || '').trim();
+        const wsToken = url.searchParams.get('token') || '';
 
+        // SEC-101: validate WS via bridgeSecurity (session token + origin)
+        const sessionToken = getOrCreateSessionToken();
+        const secCheck = validateWsConnection(origin, providedSecret || wsToken || sessionToken);
+        if (!secCheck.allowed) {
+          console.warn(`[FlowBridge] WS rejected: ${secCheck.reason}`);
+          socket.close(secCheck.closeCode || 4001, secCheck.reason);
+          return;
+        }
+
+        // Legacy check: also accept callback secret from known origins
         const hasSecret = isSecretValid(providedSecret, s.callbackSecret);
         const isAllowedOrigin = !origin || ALLOWED_ORIGIN_PATTERNS.some((pat) => pat.test(origin));
 
-        if (!hasSecret && !isAllowedOrigin) {
+        if (!hasSecret && !isAllowedOrigin && !secCheck.allowed) {
           console.warn(`[FlowBridge] Unauthorized WS connection attempt rejected: origin="${origin}"`);
           socket.close(4001, 'Unauthorized');
           return;

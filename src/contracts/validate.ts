@@ -256,7 +256,7 @@ export const generateImageBodySchema = z
     ten_tac_pham: z.string().optional(),
     cookie: z.string().optional(),
     characterPrompt: z.string().optional(),
-    model: z.string().min(1, 'Thiếu model ảnh.'),
+    model: z.string().optional(),
     imageProvider: z.enum(['flow', 'openai', 'gemini', 'grok']),
     imageApiKey: z.string().optional(),
     imageAspectRatio: z.string().optional(),
