@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
@@ -10,13 +10,15 @@ import {
 import { resolveNvidiaDriverForGpu } from '@/lib/ffmpeg/nvidiaDriverLookup';
 import { resolveFfmpegPath } from '@/lib/capassistant/core';
 import { spawnSync } from 'child_process';
+import { readGpuInstallStatus } from '@/lib/gpuInstallStatus';
+import { resolvePythonExe } from '@/app/api/self-heal/media/mediaHelpers';
 
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 export const runtime = 'nodejs';
 
 const PROFILE_PATH = () => path.join(process.cwd(), 'python_core', 'gpu_profile.json');
-const STATUS_PATH = () => path.join(process.cwd(), 'python_core', 'gpu_install_status.json');
 
 function writeGpuProfile(profile: Record<string, unknown>) {
   try {
@@ -49,6 +51,73 @@ function readGpuProfile(): Record<string, unknown> | null {
   }
 }
 
+type GpuVendor = 'nvidia' | 'amd' | 'intel' | 'generic';
+
+type ScannedGpu = {
+  name: string;
+  ram: string;
+  driverVersion: string;
+  vendor: GpuVendor;
+  hasNvidia: boolean;
+};
+
+function classifyGpuVendor(name: string): GpuVendor {
+  const upper = name.toUpperCase();
+  if (upper.includes('NVIDIA')) return 'nvidia';
+  if (upper.includes('AMD') || upper.includes('RADEON')) return 'amd';
+  if (
+    upper.includes('INTEL') ||
+    upper.includes('IRIS') ||
+    upper.includes('ARC')
+  ) {
+    return 'intel';
+  }
+  return 'generic';
+}
+
+function normalizeGpuEntry(raw: unknown): ScannedGpu | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const name = String(row.Name || row.name || '').trim();
+  if (!name) return null;
+  const ramBytes = Number(row.AdapterRAM || row.adapterRam || 0);
+  const vendor = classifyGpuVendor(name);
+  return {
+    name,
+    ram:
+      Number.isFinite(ramBytes) && ramBytes > 0
+        ? `${(ramBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+        : 'N/A',
+    driverVersion: String(row.DriverVersion || row.driverVersion || '').trim(),
+    vendor,
+    hasNvidia: vendor === 'nvidia',
+  };
+}
+
+async function scanWindowsGpus(): Promise<ScannedGpu[]> {
+  if (process.platform !== 'win32') return [];
+  const script = [
+    '$items = Get-CimInstance -ClassName Win32_VideoController -EA SilentlyContinue |',
+    'Select-Object Name,DriverVersion,AdapterRAM;',
+    "if ($null -eq $items) { '[]' } else { $items | ConvertTo-Json -Compress -Depth 3 }",
+  ].join(' ');
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 7_000,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+  const text = String(stdout || '').trim();
+  if (!text) return [];
+  const parsed = JSON.parse(text) as unknown;
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  return rows.map(normalizeGpuEntry).filter((x): x is ScannedGpu => Boolean(x));
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -61,9 +130,8 @@ export async function GET(req: Request) {
       }
     }
 
-    // 1. Scan display adapters/GPUs from wmic (Windows PC)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const gpus: any[] = [];
+    // 1. Scan display adapters/GPUs from PowerShell CIM (WMIC is absent on many clean Windows 11 PCs).
+    const gpus: ScannedGpu[] = [];
     let primaryGpu = {
       name: 'CPU Only',
       ram: '0 GB',
@@ -73,49 +141,7 @@ export async function GET(req: Request) {
     };
 
     try {
-      const { stdout } = await execAsync(
-        'wmic path win32_VideoController get Name, DriverVersion, AdapterRAM /format:list',
-      );
-      const blocks = stdout.split(/\r?\n\r?\n/);
-
-      for (const block of blocks) {
-        const lines = block.split(/\r?\n/);
-        let name = '';
-        let ramBytes = 0;
-        let driver = '';
-
-        for (const line of lines) {
-          const parts = line.split('=');
-          if (parts.length === 2) {
-            const key = parts[0].trim();
-            const val = parts[1].trim();
-            if (key === 'Name') name = val;
-            else if (key === 'AdapterRAM') ramBytes = parseInt(val, 10) || 0;
-            else if (key === 'DriverVersion') driver = val;
-          }
-        }
-
-        if (name) {
-          const uppercaseName = name.toUpperCase();
-          const vendor = uppercaseName.includes('NVIDIA')
-            ? 'nvidia'
-            : uppercaseName.includes('AMD') || uppercaseName.includes('RADEON')
-              ? 'amd'
-              : uppercaseName.includes('INTEL') ||
-                  uppercaseName.includes('IRIS') ||
-                  uppercaseName.includes('ARC')
-                ? 'intel'
-                : 'generic';
-
-          gpus.push({
-            name,
-            ram: ramBytes ? (ramBytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : 'N/A',
-            driverVersion: driver,
-            vendor,
-            hasNvidia: vendor === 'nvidia',
-          });
-        }
-      }
+      gpus.push(...await scanWindowsGpus());
 
       // Pick primary GPU (Nvidia > AMD > Intel > Generic)
       if (gpus.length > 0) {
@@ -129,7 +155,10 @@ export async function GET(req: Request) {
         primaryGpu = gpus[0];
       }
     } catch (err) {
-      console.error('[System Info] GPU scan failed:', err);
+      console.error(
+        '[System Info] GPU scan failed:',
+        err instanceof Error ? err.message : String(err),
+      );
     }
 
     // Prefer nvidia-smi product name (cleaner than OEM WMIC strings)
@@ -171,8 +200,7 @@ export async function GET(req: Request) {
     }
 
     // 2. Determine python path
-    const localPython = 'D:\\SuperAudioTools\\omnivoice-python\\python.exe';
-    const pythonExe = fs.existsSync(localPython) ? localPython : 'python';
+    const pythonExe = resolvePythonExe();
 
     // 3. Run Python diagnostic script
     let pythonStatus = {
@@ -237,16 +265,8 @@ export async function GET(req: Request) {
     const amf = await testEncoder('h264_amf');
     const qsv = await testEncoder('h264_qsv');
 
-    // 5. Check if installer is running
-    let installStatus = { status: 'idle', progress: 0, message: '' };
-    const statusPath = STATUS_PATH();
-    if (fs.existsSync(statusPath)) {
-      try {
-        installStatus = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
-      } catch {
-        /* ignore */
-      }
-    }
+    // 5. Check if installer is running; stale installs must not keep UI spinning forever.
+    const installStatus = readGpuInstallStatus();
 
     const aiReady =
       Boolean(pythonStatus.cuda) ||

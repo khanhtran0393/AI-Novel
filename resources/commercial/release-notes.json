@@ -2,6 +2,73 @@
   "schema": "ainovel.release-notes.v1",
   "product": "AI Novel",
   "versions": {
+    "1.1.1": {
+      "date": "2026-08-01",
+      "title": "Bản Phát Hành 1.1.1 — Nâng cấp toàn diện quy trình đóng gói & Kiểm thử thực chiến GUI Video Flow",
+      "items": [
+        "Cập nhật phiên bản hệ thống lên 1.1.1 theo bộ quy chuẩn đóng gói PACK_NOTES",
+        "Hoàn thiện kiểm thử tương tác thực chiến GUI (Setup → Outline → Write → Gen Prompt Studio → Gen Ảnh → Gen Video I2V)",
+        "Tối ưu hóa khả năng hồi phục tự động (Auto-Healing) và xác thực quy trình đóng gói ứng dụng độc lập",
+        "Vượt qua 100% các cổng kiểm thử tự động (typecheck, smoke:core, smoke:pipeline, smoke:commercial, defense-pack PASS)"
+      ],
+      "packedAt": "2026-08-01T15:56:12.324Z"
+    },
+    "1.1.0": {
+      "date": "2026-07-30",
+      "title": "Bản Phát Hành 1.1.0 — Nâng cấp toàn diện bộ quy chuẩn đóng gói Desktop App & Commercial Release",
+      "items": [
+        "Cập nhật phiên bản hệ thống lên 1.1.0 — Nâng cấp toàn diện bộ quy chuẩn đóng gói Desktop App & Commercial Release",
+        "Tối ưu hóa pipeline đóng gói tự động (preflight pack, crown sealing, và post-pack validation)",
+        "Đồng bộ ma trận quyền lợi Commercial/Entitlement và bảo toàn tính độc lập của Desktop App package",
+        "Vượt qua 100% các cổng kiểm thử tự động (smoke:core, smoke:pipeline, smoke:commercial, defense-pack PASS)"
+      ],
+      "packedAt": "2026-07-30T15:54:20.617Z"
+    },
+    "1.0.20": {
+      "date": "2026-07-29",
+      "title": "Bản Pack 1.0.20 — Tối ưu đóng gói desktop và chuẩn hóa release notes",
+      "items": [
+        "Cập nhật version và manifest build sang 1.0.20 cho gói QA/desktop",
+        "Chuẩn hóa release notes và preflight pack để ngăn drift version/feed trước khi ship",
+        "Bảo toàn pipeline pack unsigned với kiểm tra artifact và smoke sau đóng gói"
+      ],
+      "packedAt": "2026-07-29T23:39:31.765Z"
+    },
+    "1.0.19": {
+      "date": "2026-07-29",
+      "title": "Hoàn Thiện Tích Hợp Subtitle CapCut Text Track & Tối Ưu Hóa Đóng Gói Desktop 1.0.19",
+      "items": [
+        "CapCut Text Track Integration: Hoàn thiện tính năng chuyển đổi file phụ đề SRT thành Text Track phụ đề chỉnh sửa được trong dự án CapCut Desktop",
+        "VideoReadyBoard UI Simplification: Tối giản bảng 1-Click Audio Dubbing lồng tiếng + BGM auto-ducking gọn gàng",
+        "FFmpeg Stream Mux & Audio Probe: Loại bỏ hoàn toàn re-encode video FFmpeg, ghép lồng tiếng audio bằng stream copy (-c:v copy) siêu nhanh",
+        "Packaging & Defense Validation: Đóng gói và vượt qua 100% các cổng kiểm duyệt tự động (smoke:core, smoke:commercial, defense-pack PASS)"
+      ],
+      "packedAt": "2026-07-29T12:50:12.202Z"
+    },
+    "1.0.18": {
+      "date": "2026-07-29",
+      "title": "Tự Động Xuất Phụ Đề CapCut Text Track + Tối Ưu Hóa Mux Lồng Tiếng Audio + 5 Preset Phong Cách Mới",
+      "items": [
+        "CapCut Text Track Subtitles: Tự động chuyển đổi file phụ đề SRT thành Text Track chỉnh sửa được trực tiếp trên timeline CapCut Desktop (hỗ trợ các preset style Cinema, TikTok, Song Ngữ)",
+        "Audio-Only Video Muxing: Ghép lồng tiếng siêu tốc bằng stream copy (-c:v copy), bỏ re-encode video FFmpeg burn-sub cố định",
+        "FFmpeg Ducking & Audio Probe Fix: Bổ sung probe audio stream cho video gốc và fix asplit filter graph cho Auto-ducking BGM khi TTS phát",
+        "5 Preset Phong Cách Mới: Bổ sung 5 phong cách Võ Hiệp, Cổ Trang, Hài Hước, Kinh Dị, Kể Chuyện vào Setup Genre & Engine viết truyện",
+        "Video OCR / Script Ingestion: Hỗ trợ bóc tách phụ đề/kịch bản từ video mẫu đưa trực tiếp vào bối cảnh Setup",
+        "VideoReadyBoard UI Redesign: Cập nhật giao diện 1-Click Audio Dubbing lồng tiếng + BGM auto-ducking gọn gàng"
+      ],
+      "packedAt": "2026-07-29T04:44:17.115Z"
+    },
+    "1.0.17": {
+      "date": "2026-07-29",
+      "title": "Tối ưu hóa Phân tách API Key Pool + Tự động Reset Cooldown & Khắc phục Lỗi Ngạch",
+      "items": [
+        "Smart Delimiter Parsing: Phân tách linh hoạt danh sách API Keys dán từ textarea theo dòng mới, dấu phẩy (,), dấu chấm phẩy (;), khoảng trắng hoặc ngoặc kép",
+        "Automatic Cooldown Cache Clearing: Tự động xóa sạch bộ nhớ tạm Cooldown khi thay đổi hoặc thêm danh sách Key mới vào Pool",
+        "UI Reset Cooldown Button: Bổ sung nút '⚡ Xóa Cooldown / Làm mới Pool' 1-click trực tiếp trong giao diện Cài đặt",
+        "API Rotation & Quota Guard: Đảm bảo hoạt động trơn tru 100% cho cả tài khoản Free Tier và Pro đối với các mô hình Gemini, OpenAI và Grok"
+      ],
+      "packedAt": "2026-07-28T23:44:13.198Z"
+    },
     "1.0.16": {
       "date": "2026-07-28",
       "title": "Tối ưu hóa Hiệu năng UI/Memory + Module-Level Caching + Chuẩn hóa Quy trình Pack Version",
@@ -208,6 +275,45 @@
         "Engine AI Novel native TypeScript",
         "Gói Free / Trial / Pro"
       ]
+    },
+    "1.1.2": {
+      "date": "2026-08-02",
+      "items": [
+        "Fix python resolution in system-info diagnostic for clean machines."
+      ],
+      "packedAt": "2026-08-02T14:43:02.427Z"
+    },
+    "1.1.4": {
+      "title": "v1.1.4 — Fix auto-update không tự nâng cấp từ GitHub",
+      "date": "2026-08-03",
+      "items": [
+        "FIX: Auto-update ALLOW_UNSIGNED=1 cho phép cài exe chưa ký Authenticode",
+        "FIX: Xóa updater.js root cũ (minified, chỉ generic feed) — dùng đúng electron/updater.js dual-feed",
+        "FIX: Electron-updater từ chối im lặng khi verifyUpdateCodeSignature fail → giờ chấp nhận unsigned",
+        "MAINT: Bump version 1.1.3 → 1.1.4 để user nhận update qua GitHub feed"
+      ],
+      "packedAt": "2026-08-03T13:05:11.503Z"
+    },
+    "1.1.3": {
+      "title": "v1.1.3 — Anti-tamper fix + Browser cleanup",
+      "date": "2026-08-03",
+      "items": [
+        "FIX: Anti-tamper ELECTRON_RUN_AS_NODE false positive (bypassScore now 0)",
+        "FIX: Browser profile cache cleanup on quit + startup (~9MB→0 persistent cache)",
+        "FIX: Clean room boot verified — empty project, no data leak",
+        "FIX: TypeScript type errors in PhantomXToolbar"
+      ],
+      "packedAt": "2026-08-03T11:26:23.367Z"
+    },
+    "1.1.5": {
+      "title": "v1.1.5 — Fix license activation not recognized after kích hoạt",
+      "date": "2026-08-03",
+      "items": [
+        "FIX: LicenseModal — xóa refresh() race condition ghi đè Pro/Trial → Free sau khi kích hoạt thành công",
+        "FIX: handleActivate() và handleStartTrial() dùng claims từ response activate API trực tiếp, không gọi commercial/status",
+        "FIX: Badge PRO/TRIAL hiển thị đúng sau khi kích hoạt key/trial, không bị revert về FREE"
+      ],
+      "packedAt": "2026-08-03T15:48:54.776Z"
     }
   }
 }
