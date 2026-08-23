@@ -2,46 +2,52 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import {
+  gpuInstallStatusPath,
+  readGpuInstallStatus,
+  writeGpuInstallStatus,
+} from '@/lib/gpuInstallStatus';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const vendor = body.vendor || 'nvidia';
-    
-    const statusPath = path.join(process.cwd(), 'python_core', 'gpu_install_status.json');
-    
-    // Check if already running
+    const vendor = String(body.vendor || 'nvidia');
+    const statusPath = gpuInstallStatusPath();
+
     if (fs.existsSync(statusPath)) {
-      try {
-        const currentStatus = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
-        if (currentStatus.status === 'installing') {
-          return NextResponse.json({ success: true, message: 'Bộ cài đặt đang chạy trong nền.', alreadyRunning: true });
-        }
-      } catch {}
+      const currentStatus = readGpuInstallStatus();
+      if (currentStatus.status === 'installing') {
+        return NextResponse.json({
+          success: true,
+          message: currentStatus.stalled
+            ? 'Bo cai GPU dang chay nhung chua co tien do moi. Neu keo dai, mo log hoac thu cai lai sau khi status stale.'
+            : 'Bo cai dat dang chay trong nen.',
+          alreadyRunning: true,
+          status: currentStatus,
+        });
+      }
     }
 
-    // Initialize status file
+    const now = new Date().toISOString();
     const initialStatus = {
-      status: 'installing',
+      status: 'installing' as const,
       progress: 5,
-      message: 'Khởi động bộ cài đặt...',
-      log: `Khởi động bộ cài đặt GPU (${vendor.toUpperCase()}) trong nền...\n`,
-      startTime: new Date().toISOString()
+      message: 'Khoi dong bo cai dat...',
+      log: `Khoi dong bo cai dat GPU (${vendor.toUpperCase()}) trong nen...\n`,
+      startTime: now,
+      updatedAt: now,
     };
-    
-    fs.mkdirSync(path.dirname(statusPath), { recursive: true });
-    fs.writeFileSync(statusPath, JSON.stringify(initialStatus, null, 2), 'utf8');
+    writeGpuInstallStatus(initialStatus);
 
-    // Spawn the background worker script
     const workerPath = path.join(
       /* turbopackIgnore: true */ process.cwd(),
       'python_core',
       'install_gpu_worker.js',
     );
     if (!fs.existsSync(workerPath)) {
-      throw new Error(`Thiếu GPU worker: ${workerPath}`);
+      throw new Error(`Thieu GPU worker: ${workerPath}`);
     }
     const child = spawn(process.execPath, [workerPath, vendor], {
       detached: true,
@@ -52,11 +58,29 @@ export async function POST(req: Request) {
         ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
       },
     });
-    
+
+    writeGpuInstallStatus({
+      ...initialStatus,
+      pid: child.pid,
+      message: `Da khoi dong worker GPU PID ${child.pid || '?'}.`,
+    });
+
     child.unref();
 
-    return NextResponse.json({ success: true, message: `Đã khởi động tiến trình cài đặt GPU ${vendor.toUpperCase()} trong nền.` });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Lỗi khi khởi chạy bộ cài đặt.' }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      message: `Da khoi dong tien trinh cai dat GPU ${vendor.toUpperCase()} trong nen.`,
+      status: readGpuInstallStatus(),
+    });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Loi khi khoi chay bo cai dat.',
+      },
+      { status: 500 },
+    );
   }
 }

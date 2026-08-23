@@ -46,11 +46,18 @@ const required = [
   'src/app/workspace/features/script/QualityGateBadge.tsx',
   'src/app/workspace/features/script/ChapterList.tsx',
   'src/app/workspace/features/script/SceneCard.tsx',
+  'src/app/workspace/hooks/useChapterQualityGate.ts',
   'src/app/workspace/hooks/useImagePromptActions.ts',
   'src/app/workspace/hooks/useTTSActions.ts',
   'src/app/workspace/hooks/chapterTtsActions.ts',
   'src/app/workspace/hooks/writeChapterFinish.ts',
   'src/app/workspace/hooks/writeChapterHelpers.ts',
+  'src/app/workspace/features/youtube/YoutubeSafeChecklist.tsx',
+  'src/app/workspace/features/youtube/YoutubeThumbPanel.tsx',
+  'src/app/workspace/modules/characterModule.ts',
+  'src/app/api/generate-image/route.ts',
+  'src/app/api/generate-image/providers/gemini.ts',
+  'src/app/api/generate-image/imageSave.ts',
   'src/lib/novel-engine/runner.ts',
   'src/lib/novel-engine/tools/writerTools.ts',
   'src/lib/novel-engine/tools/editorTools.ts',
@@ -69,6 +76,15 @@ assert.match(read('src/app/workspace/hooks/chapterTtsActions.ts'), /createStageB
 assert.match(read('src/app/workspace/hooks/useImagePromptActions.ts'), /createStageBatchJob/);
 assert.match(read('src/app/workspace/hooks/useImagePromptActions.ts'), /runStageBatch/);
 assert.match(read('src/app/workspace/hooks/useImagePromptActions.ts'), /evaluateMediaPreflight/);
+assert.match(read('src/app/workspace/hooks/useImagePromptActions.ts'), /force:\s*true/);
+assert.doesNotMatch(
+  read('src/app/workspace/hooks/useImagePromptActions.ts'),
+  /addGeneratedPrompts\(assetKey,\s*\[\]\)/,
+);
+assert.doesNotMatch(
+  read('src/app/workspace/hooks/useTTSActions.ts'),
+  /addGeneratedAudio\(assetKey,\s*['"]{2},\s*0\)/,
+);
 assert.doesNotMatch(
   read('src/app/workspace/hooks/useImagePromptActions.ts'),
   /createBatchJob\(/,
@@ -78,7 +94,20 @@ assert.match(read('src/app/workspace/hooks/writeChapterHelpers.ts'), /enrichMemo
 assert.match(read('src/app/workspace/modules/writeModule.ts'), /lorebookWithMemoryPack/);
 assert.match(read('src/lib/novel-engine/runner.ts'), /buildLayeredRouteExtras/);
 assert.match(read('src/app/workspace/features/script/SceneCard.tsx'), /QualityGateBadge/);
+assert.match(read('src/app/workspace/features/script/SceneCard.tsx'), /productionLocked/);
+assert.match(read('src/app/workspace/features/script/SceneTtsBar.tsx'), /productionLocked/);
+assert.match(read('src/app/workspace/features/script/ScenePromptRow.tsx'), /productionLocked/);
 assert.match(read('src/app/workspace/features/script/ChapterList.tsx'), /QualityGateBadge/);
+assert.match(read('src/app/workspace/features/youtube/YoutubeSafeChecklist.tsx'), /useChapterQualityGate/);
+assert.match(read('src/app/workspace/features/youtube/YoutubeSafeChecklist.tsx'), /qualityGate\.productionBlocked/);
+assert.match(read('src/app/workspace/features/youtube/YoutubeThumbPanel.tsx'), /productionLocked/);
+assert.match(read('src/app/workspace/modules/characterModule.ts'), /apiKeys:\s*resolvedImageKeys/);
+assert.match(read('src/app/workspace/modules/characterModule.ts'), /imageApiKey:\s*resolvedImageKey/);
+assert.match(read('src/app/api/generate-image/route.ts'), /imageApiKey && !keysToTry\.includes\(imageApiKey\)/);
+assert.match(read('src/app/api/generate-image/providers/gemini.ts'), /\[\.\.\.providerKeysToTry,\s*\.\.\.keysToTry\]/s);
+assert.match(read('src/app/api/generate-image/providers/gemini.ts'), /GEMINI_INTERACTIONS_ENDPOINT/);
+assert.match(read('src/app/api/generate-image/providers/gemini.ts'), /BILLING_REQUIRED/);
+assert.match(read('src/app/api/generate-image/imageSave.ts'), /YOUTUBE_THUMB_SCENE_INDEX/);
 
 // --- runtime ---
 let emits = 0;
@@ -160,6 +189,34 @@ const tts = assertTtsMediaPreflight({
   phong_cach: 'Hành động',
 });
 assert.strictEqual(tts.ok, true);
+
+const thin = `[CẢNH 1: TEST]\n${Array(100).fill('từ').join(' ')}`;
+const thinQ = evaluateChapterQuality({
+  chapter: 701,
+  content: thin,
+  characterNames: ['A'],
+  editorVerdict: 'accept',
+  wordGoal: 4250,
+});
+setChapterQuality(thinQ);
+assert.strictEqual(thinQ.mediaReady, false);
+let ttsQualityBlocked = false;
+try {
+  assertTtsMediaPreflight({
+    chapter: 701,
+    sceneText: 'Thoại thử',
+    platform: 'edge_tts',
+    voice: 'vi-VN-HoaiMyNeural',
+    chapterContent: thin,
+    chu_de: 'Kiếm',
+    phong_cach: 'Hành động',
+    wordGoal: 4250,
+  });
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  ttsQualityBlocked = /Quality Gate|word_gate|quality/i.test(msg);
+}
+assert.ok(ttsQualityBlocked, 'TTS must hard-block when word_gate blocks media');
 
 let ttsBlocked = false;
 try {

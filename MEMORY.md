@@ -3,9 +3,21 @@
 > **Chân lý ngắn:** ghi nhớ theo **code + package.json + release-notes**, không theo log phiên cũ.  
 > Spec dài: `AGENTS.md` · Done Gate: `docs/AGENT_DONE_GATE.md` · Pack: `docs/PACK_NOTES.md` · Update: `docs/APP_UPDATE.md`
 
-**Cập nhật:** 2026-07-27 · **version:** `1.0.15` · **artifact:** `dist-qa-unsigned/AI-Novel-1.0.15-x64.exe` · **Security Audit & Hardening:** UNC path validation added to IPC `ainovel-open-path`, commercial smoke & telegram admin tests synced, third-party notices updated to 1.0.15, `verify:agent-done` PASS.
+**Cập nhật:** 2026-08-07 · **version:** `1.1.6` · **artifact:** `dist-qa-unsigned/AI-Novel-1.1.6-x64.exe` · **Pack 1.1.6 theo PACK_NOTES 4 bước:** open mode toàn bộ · dọn cache browser · auto-update unsigned · full verify chain PASS (`audit:package`, anti-tamper, labyrinth, re-harden, crown-ip, defense-pack, postpack).
+
 
 ---
+## Nova Studio GUI Overlay (2026-08-16)
+
+- **Mục tiêu:** chuyển GUI AI Novel sang phong cách **Nova Studio** (nền tối ấm + accent cam + Be Vietnam Pro) — giữ nguyên kiến trúc Next 16 / React 19 / Tailwind v4 / Electron / Zustand.
+- **Design tokens:** Nova đã được trích vào `src/app/globals.css` (`--nova-*`); bổ sung `--nova-text-2`, font-face **Be Vietnam Pro** (bundle local `public/fonts/be-vietnam-pro/*.woff2`, Electron offline), remap `@theme inline`: `zinc` → bề mặt/viền/chữ Nova, `emerald` → family accent cam, `amber` → vàng ấm Nova; shadow `shadow-nova-glow(-sm)/btn/card`.
+- **layout.tsx:** bỏ `next/font/google` Geist (hết phụ thuộc mạng lúc build), `lang="vi"`.
+- **Hex cũ:** `#ff7b00`→`var(--nova-accent)`; slate video-editor → `--nova-surface*`; `#050505`→`--nova-bg`; inline style SceneCard/ContentTab → `var(--nova-green)` (success) / `var(--nova-accent)` (incomplete).
+- **Repair v→a:** 7 file video-editor + FlowAgentStudioModal bị hỏng sẵn trong working tree (`v`→`a`: `dia`, `hoaer`, `aoid`…) → restore từ HEAD + áp lại Nova palette; typecheck hết lỗi.
+- **Ship-check fix:** `docs/NPM_DEPENDENCY_NOTICE.json` version 1.1.6 → 1.1.7 khớp `package.json`.
+- **Proof:** `npm run typecheck` → exit 0; `npm run build` → compiled 38.2s + TS pass; runtime computed-style: bodyFont="Be Vietnam Pro", bodyBg rgb(15,15,18), emeraldBtn rgb(224,122,70)=#e07a46, fontLoaded=true; `npm run verify:agent-done` → **VERDICT: PASS** (typecheck, smoke:vina, tts-integrity, pipeline, license-one-path, core, ship:check đều exit 0).
+
+
 
 ## 0. Security Audit & Pre-Release Hardening 1.0.15 (2026-07-27)
 
@@ -304,4 +316,46 @@ Git status snapshot đầu phiên: **nhiều file modified/untracked** trên `ma
 
 ---
 
+## 11. Tích hợp Bài học từ LaoTonTransDub (Upgrade Pipeline)
+
+Sau khi phân tích giải phẫu phần mềm **LaoTonTransDub (v1.0.8)**, dự án tích hợp 4 chiến lược định hướng sản xuất video & kịch bản:
+
+1. **Prompt Presets cho Văn phong & Tone kịch bản (Style Presets)**:
+   - Đưa hệ thống văn phong (*Võ hiệp giang hồ, Phim cổ trang, Hài hước nhẹ nhàng, Kinh dị căng thẳng, Kể chuyện tự nhiên*) vào System Prompt của Setup & AI Novel Engine.
+2. **Tạo Sub & Burn-Sub tự động cho Video đầu-cuối (End-to-End Subtitle & Dubbing Pipeline)** (Thay thế điểm 2):
+   - Tự động sinh file Sub `.srt`/`.ass` khớp mili-giây theo `generatedAudioPaths` của TTS.
+   - Hỗ trợ **Sub Style Presets** (Phim Điện ảnh, TikTok / Shorts chữ vàng viền đen, Song ngữ Việt-Anh / Việt-Trung).
+   - Tự động Muxing qua FFmpeg: ghép `Video + Voiceover TTS + Hardsub + BGM` xuất ra file `.mp4` hoàn chỉnh ăn liền (hoặc export dự án CapCut).
+3. **Bộ lọc căn chỉnh Audio Mixer thông minh (Auto Ducking & Audio Balance)**:
+   - Căn chỉnh tỉ lệ âm lượng giọng đọc vs nhạc nền BGM, tự động giảm BGM (ducking) khi có lời nói lồng tiếng (`mute_original_audio`, `music_volume_slider`, `original_volume_slider`).
+4. **Module Video OCR & Trích xuất Kịch bản từ Video mẫu (Video-to-Script Ingestion)**:
+   - Sử dụng Video OCR/STT bóc tách chữ & kịch bản thô từ video mẫu (Douyin, YouTube Shorts, Reels) làm dữ liệu đầu vào cho AI Novel chuyển thể thành kịch bản tác phẩm mới 100%.
+
+---
+
 *Ghi chú phiên dài / debug one-off: append mục ngắn phía dưới đây khi cần; **không** nhồi lại dump 1000+ dòng. Ưu tiên bảng + path + lệnh proof.*
+
+---
+
+## 12. Pack 1.1.6 theo PACK_NOTES (2026-08-07)
+
+- **- 2026-08-07:** Pack ver **1.1.6** hoàn tất theo quy trình 4 bước (`docs/PACK_NOTES.md`). Proof: `npm run pack:ship` → log `C:\Users\Khanh\AppData\Local\Temp\cline\background-1786102942464-dhydqyd.log`: preflight PASS · Next build OK · xinchao native BUILD_OK · electron-builder NSIS `AI-Novel-1.1.6-x64.exe` 865.182.979 bytes · `latest.yml` version **1.1.6** sha512 `mTNjnSEYkKMCPb2oGQGDj0I9…` · audit:package PASS (15238 entries, private markers absent) · smoke anti-tamper/labyrinth/re-harden/crown-ip/defense-pack PASS · postpack checklist `failed:[]`. Artifact: **`d:\AI Novel\dist-qa-unsigned\AI-Novel-1.1.6-x64.exe`** (+ `win-unpacked/` portable). Done Gate: `npm run verify:agent-done` → `VERDICT: PASS` (typecheck 0 · smoke:vina 0 · verify:tts-integrity 0 · smoke:pipeline 0 · smoke:license-one-path 0 · smoke:core 0 · ship:check 0), report `scratch/agent-done-gate-report.json`. Nội dung 1.1.6: mở miễn phí toàn bộ (open mode) · dọn cache browser khi boot · auto-update unsigned (`AINOVEL_UPDATE_ALLOW_UNSIGNED=1`). Chưa publish feed (cần `release:ship-update` nếu user muốn auto-update).
+
+---
+
+## 12b. Clean-Room QA máy trắng (2026-08-07)
+
+
+- **- 2026-08-07:** Bug A (SetupPhase spinbuttons invalid) verified **KHÔNG phải bug**. Proof: `node scripts/diag-bug-a-spinbuttons.mjs` → `output/diag-bug-a-result.json`: `modalOpen:true`, `so_chuong` value 2 (min 1, max 2, `:valid`, no invalid attr), `so_tu_chuong` value 600 (min 100, max 600, step 50, `:valid`); clamp test '99999' → afterInput `2`/`600`, afterBlur `2`/`600`. Note: clean-room packaged app (enforce/free).
+- **- 2026-08-07:** Bug B (trial-error banner không hiện khi 401) verified **KHÔNG phải bug**. Proof: `node scripts/diag-bug-b-trial.mjs` → `output/diag-bug-b-result.json`: events `CLICKED(t=7) → ADDED(t=1827) → BANNER_PRESENT(t=2029)`, `finalPresent:true`, text `"⚠️ License server yêu cầu đăng nhập (401)…"`; `/api/entitlement/trial` + `/api/cloud/license/trial` đều 401 AUTH (cloud trial chưa mở). Note: `LicenseModal.tsx` `translateTrialError` map 401 đúng.
+- **- 2026-08-07:** Done Gate clean-room QA PASS. Proof: `npm run verify:agent-done` → `VERDICT: PASS`; log `C:\Users\Khanh\AppData\Local\Temp\cline\background-1786083402802-l6ybzsb.log`: OK typecheck=0 · smoke:vina=0 · verify:tts-integrity=0 · smoke:pipeline=0 · smoke:license-one-path=0 · smoke:core=0 · ship:check=0. Note: clean-room torn down + Chrome CDP killed (không còn process rác).
+
+
+---
+
+## 13. Chuyển GUI/logic sang Nova Studio runtime (2026-08-21)
+
+- **2026-08-21:** App `d:\AI Novel` chuyển GUI + logic chính sang **Nova Studio runtime nội bộ** (`nova/`, trích từ app.asar gốc v0.1.29). Proof: probe boot `electron scratch\nova-probe-main.js` → `FFMPEG_INFO {ffmpeg:true,ffprobe:true}` · `UPSCALE_PROBE ok:true (4 models)` · `MIGAN available:true` · `FLOWBRIDGE running:8792` · fs-log 412 dòng **0 path ngoài repo** (không đọc `D:\Nova Studio`). Boot qua `Khoi_Dong_App.bat` → window `Nova Studio` + HTTP nội bộ 127.0.0.1:47280 (HTTP 200, title Nova Studio) + bridges 8790/8791/8792. `node -e require('./nova/voice-native.js').probe()` → `root: D:\AI Novel\voice-studio, hasRoot:true`. Typecheck: `npm run typecheck` → exit 0 (sau khi xóa `.next` stale types). Note: GUI cũ `src/app/workspace/` + shell main.js/preload.js/index.js/main.jsc/splash đã xóa; package.json `main: nova/main.js` + `productName: chukienmedia-app` (userData `%APPDATA%\chukienmedia-app` kế thừa dữ liệu thật); `src/lib/voiceScriptClean.ts` thay import stringUtils cho route generate-tts; binaries nova trong .gitignore.
+- **2026-08-21 (resume):** Đóng gói Nova portable PASS. Proof: `npx electron-builder --config nova\electron-builder.json --dir` → `dist-nova\win-unpacked\Nova Studio.exe` chạy độc lập: window `Nova Studio` + GUI HTTP 200 (127.0.0.1:47280) + bridges 8790/8791/8792; binaries đúng layout gốc `app.asar.unpacked\nova\*` (ffmpeg.exe, ffprobe.exe, onnxruntime-node, realesrgan + 4 models, migan.onnx, sqlite3.exe, flow-extension) — asar 6.5MB sau khi thêm `!node_modules/**` (lần 1 bị 298MB vì builder tự nhét root production deps; ffmpeg thiếu vì exclude sai trong files). Lần đầu packaged exe crash: do env `ELECTRON_RUN_AS_NODE=1` của agent IDE (bằng chứng `bad option: --enable-logging` = Node parser) — launcher .bat đã clear. Scripts mới: `npm run nova:pack:dir` / `nova:pack`. Note: legacy pack pipeline (`pack:ship`/`preflight:pack`) gắn shell cũ đã xóa — không dùng lại.
+- **2026-08-22:** Clean-room QA Nova packaged (máy trắng thật) + 2 GUI patch + MCP. Proof: boot `dist-nova2\win-unpacked\Nova Studio.exe --remote-debugging-port=9333` sau wipe userData (Chromium Windows IGNORE env APPDATA — phải backup+rename `%APPDATA%\chukienmedia-app` thật) → CDP OK, userData tự tạo mới tinh. Driver Playwright connectOverCDP: **cấm browser.close() (giết app)**; nav ngoài viewport → scrollIntoView trước click; modal `.modal-bg.show` chặn click → đóng trước. Kết quả 3 suite (f1/f2/f3): 13 nav tool click PASS, 0 console error, 0 pageerror, 0 dialog; empty-topic gate đỏ "Nhập chủ đề / tiêu đề trước."; có topic không key → "Lỗi: API 500 claude not recognized" (BUG UX). PATCH 1 `nova-patch-esc-close` (Esc click nút `.modal-close` THẬT — bản đầu inject vào `<script src>` bị ignore, phải vào script cuối body); PATCH 2 `nova-patch-friendly-llm` (wrap callLLM → lỗi CLI/mạng/401 thành hướng dẫn VN). Verify lại trên máy trắng sau repack: `wrapper:true`, `esc closes:true`, lỗi hiện "Chưa cài / chưa đăng nhập gói Claude (CLI). Mở Cấu hình AI…". MCP mới `mcps/nova-clean-room/index.mjs` (stdio, 8 tools: setup_clean_room/launch_app/app_status/ui_eval/ui_click/ui_fill/ui_press_escape/teardown) — smoke PASS `node mcps/nova-clean-room/smoke.mjs` → INIT + TOOLS + TEARDOWN restoredRealUserData:true. EBUSY repack: VS Code giữ handle app.asar → đổi `directories.output` sang `dist-nova2`. Note: userData thật user đã khôi phục từ backup; build sạch nhất nằm ở `dist-nova2`.
+- **2026-08-22 (unlock-all):** Xác nhận + đồng bộ mở khóa toàn bộ chức năng Nova. Audit gate GUI: mọi choke-point đã mở sẵn trong runtime gốc (`isAdmin()=>true`, `isPro()=>true`, `tierConfig()=>TIER_CONFIG.max`, `getMaxScenes/Profiles/Flow/Queue()=>Infinity`, `canAutoRun()=>true`, `isToolAllowed()=>true`, `state.userTier='max'`, `refreshTierFromCloud` force `max`) — TIER_CONFIG chỉ là bảng định nghĩa display. Bug duy nhất: UI guest — `renderTierBadge()` chỉ chạy sau auth → badge sidebar hiện "FREE" + nút "Nâng cấp Pro" dù đã unlock. PATCH 3 `nova-patch-unlock-sync` (gọi `renderTierBadge()` boot + interval 5s, force badge MAX nếu còn FREE). Proof live trên packaged `dist-nova2` sau repack + CDP eval `scratch\verify-unlock.mjs`: `userTier:max, isPro:true, isAdmin:true, tierName:Max, canAutoRun:true, toolAllowed:true, limits:null(=Infinity), tierBadge:"MAX 👑", upgradeBtnVisible:false, tierChipTop:"Admin"`. Không có gate server-side tier trong main process (decode chuỗi main.js không có khái niệm tier; llm-fetch/flow/voice/upscale không check gói).

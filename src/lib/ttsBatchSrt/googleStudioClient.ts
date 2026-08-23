@@ -3,11 +3,10 @@
  * TTS Batch path: STT + translate. Warm keep-alive + key rotate.
  */
 import { langEnName, type BatchLangCode } from './languages';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 export const GOOGLE_STUDIO_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
+  DEFAULT_GEMINI_TEXT_MODEL,
 ] as const;
 
 let lastWorkingKey = '';
@@ -39,8 +38,12 @@ export function warmupGoogleStudio(apiKeys: string[]): Promise<void> {
   if (!key) return Promise.resolve();
   warmupPromise = (async () => {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`;
-      await fetch(url, { method: 'GET', signal: AbortSignal.timeout(12_000) });
+      const url = 'https://generativelanguage.googleapis.com/v1beta/models';
+      await fetch(url, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': key },
+        signal: AbortSignal.timeout(12_000),
+      });
       console.log('[google-studio] warmup OK');
     } catch (e) {
       console.warn(
@@ -73,10 +76,13 @@ export async function callGoogleStudioText(opts: {
     if (exhausted.has(apiKey)) continue;
     for (const model of models) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
           body: JSON.stringify({
             contents: [{ parts: [{ text: opts.prompt }] }],
             generationConfig: {

@@ -19,7 +19,9 @@ import {
   accountWithinBudget,
   recordAccountTaskResult,
   computeHealthScore,
+  isFlowAuthError,
 } from './accountStore';
+import { saveSceneVideoIncrementally } from './progressiveDownloader';
 import {
   buildBrowserHeaders,
   buildCheckVideoStatusBody,
@@ -123,6 +125,7 @@ async function downloadToFile(
       console.log(
         `[FlowQueue] download ${r.via} ${r.bytes}B → ${path.basename(dest)}`,
       );
+      await normalizeVideoFaststart(dest);
       return;
     }
     console.warn('[FlowQueue] downloadAsAccount failed, node fallback', r.error);
@@ -143,6 +146,57 @@ async function downloadToFile(
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, buf);
   await normalizeFlowImageOutput(dest);
+  await normalizeVideoFaststart(dest);
+}
+
+/**
+ * Google Veo ISOM container lacks faststart metadata → player can't open.
+ * Quick remux (no re-encode) moves moov atom to front; <1s for 4-14 MB files.
+ */
+async function normalizeVideoFaststart(filePath: string): Promise<void> {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext !== '.mp4') return;
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < 2048) return;
+  } catch {
+    return;
+  }
+  const ffmpegExe = (() => {
+    const cwd = process.env.AI_NOVEL_ROOT || process.cwd();
+    const candidates = [
+      path.join(cwd, 'bin', 'ffmpeg.exe'),
+      path.join(cwd, 'python_core', 'ffmpeg', 'ffmpeg.exe'),
+      'ffmpeg.exe',
+      'ffmpeg',
+    ];
+    for (const c of candidates) {
+      try { if (fs.existsSync(c)) return c; } catch { /* ignore */ }
+    }
+    return null;
+  })();
+  if (!ffmpegExe) return;
+  const tmp = filePath + '.faststart.tmp.mp4';
+  try {
+    const { execFileSync } = await import('node:child_process');
+    execFileSync(ffmpegExe, [
+      '-y', '-i', filePath, '-c', 'copy', '-movflags', '+faststart',
+      '-f', 'mp4', tmp,
+    ], { stdio: 'ignore', timeout: 120_000, windowsHide: true });
+    if (fs.existsSync(tmp) && fs.statSync(tmp).size > 1024) {
+      const origSize = fs.statSync(filePath).size;
+      fs.renameSync(tmp, filePath);
+      console.log(
+        `[FlowQueue] Video faststart normalized orig=${origSize}B → ${fs.statSync(filePath).size}B ${path.basename(filePath)}`,
+      );
+    }
+  } catch (e) {
+    console.warn(
+      `[FlowQueue] faststart normalize failed for ${path.basename(filePath)}:`,
+      e instanceof Error ? e.message : e,
+    );
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* ignore */ }
+  }
 }
 
 function resolveLocalImage(ref?: string): string | null {
@@ -661,9 +715,17 @@ export class FlowQueueEngine {
         releaseBusyLock();
 
         const acc = this.pickAccountForTask(task);
-        if (acc) {
-          // Standard: 1 concurrent gen per Google account
-          if (
+        if (!acc) {
+          lastErr =
+            'Không có profile Google Flow sẵn sàng: cần đăng nhập/refresh Flow để lấy Bearer hợp lệ trước khi gen.';
+          task.status = 'failed';
+          task.retryCategory = 'token_401';
+          task.error = lastErr;
+          applyFlowTaskStep(task, 'error', { message: lastErr });
+          return;
+        }
+        // Standard: 1 concurrent gen per Google account
+        if (
             FLOW_DEFAULTS.maxConcurrentTasksPerAccount >= 1 &&
             isAccountBusy(acc.id)
           ) {
@@ -696,7 +758,6 @@ export class FlowQueueEngine {
           console.log(
             `[FlowQueue] w${workerId} task→profile ${acc.name || acc.id} project=${acc.projectId || '—'}`,
           );
-        }
 
         try {
           applyFlowTaskStep(task, 'submit');
@@ -756,7 +817,19 @@ export class FlowQueueEngine {
               message: task.error,
             });
             if (task.accountId) {
-              recordAccountTaskResult(task.accountId, false, 0);
+              if (cat === 'quota' || cat === 'forbidden_403') {
+                updateAccount(task.accountId, {
+                  status: 'cooldown',
+                  cooldownUntil: Date.now() + FLOW_DEFAULTS.accountCooldownMs,
+                  lastError: lastErr.slice(0, 200),
+                });
+              }
+              recordAccountTaskResult(
+                task.accountId,
+                false,
+                0,
+                task.error || lastErr,
+              );
             }
             return;
           }
@@ -798,7 +871,7 @@ export class FlowQueueEngine {
                 );
                 const { bootstrapFlow } = await import('./bootstrap');
                 await bootstrapFlow({
-                  forceChrome: true,
+                  forceChrome: false,
                   engine: 'auto',
                   waitExtensionMs: 25000,
                   waitLoginMs: 15000,
@@ -817,7 +890,12 @@ export class FlowQueueEngine {
               cooldownUntil: Date.now() + FLOW_DEFAULTS.accountCooldownMs,
               lastError: lastErr.slice(0, 200),
             });
-            recordAccountTaskResult(task.accountId, false, 0);
+            recordAccountTaskResult(
+              task.accountId,
+              false,
+              0,
+              task.error || lastErr,
+            );
             task.accountId = undefined;
           }
 
@@ -838,7 +916,7 @@ export class FlowQueueEngine {
                 const bridge = await import('./bridgeServer');
                 await bridge.commandExtension(
                   'open_flow_tab',
-                  { stealFocus: false, autoClick: true },
+                  { stealFocus: false, autoClick: false },
                   20_000,
                   task.accountId,
                 );
@@ -866,12 +944,33 @@ export class FlowQueueEngine {
         task.error = 'Max retries exceeded';
       }
       if (task.accountId) {
-        recordAccountTaskResult(task.accountId, false, 0);
+        recordAccountTaskResult(
+          task.accountId,
+          false,
+          0,
+          task.error || lastErr,
+        );
       }
       applyFlowTaskStep(task, 'error', { message: task.error });
     } finally {
       releaseBusyLock();
     }
+  }
+
+  private hasLatestAuthFailure(accountId: string): boolean {
+    const lastTerminalTask = [...this.tasks]
+      .reverse()
+      .find(
+        (task) =>
+          task.accountId === accountId &&
+          (task.status === 'failed' || task.status === 'done'),
+      );
+    return Boolean(
+      lastTerminalTask?.status === 'failed' &&
+        isFlowAuthError(
+          `${lastTerminalTask.retryCategory || ''} ${lastTerminalTask.error || ''} ${lastTerminalTask.progressMessage || ''}`,
+        ),
+    );
   }
 
   private pickAccountForTask(task: FlowTask) {
@@ -915,15 +1014,21 @@ export class FlowQueueEngine {
       }
       return a;
     });
+    const eligibleAccounts = accounts.filter(
+      (a) => !this.hasLatestAuthFailure(a.id),
+    );
     const tried = this.triedAccounts.get(task.id) || new Set();
     const maxPer = Number(FLOW_DEFAULTS.maxConcurrentTasksPerAccount) || 1;
     // Prefer not-yet-tried ready accounts — health + budget + lastTaskAt
     // Standard: skip accounts currently genning (1 captcha/session at a time)
-    const fresh = accounts.filter(
+    const fresh = eligibleAccounts.filter(
       (a) =>
         !tried.has(a.id) &&
         a.sessionVerified &&
         a.email &&
+        a.flowKeyPresent &&
+        !isFlowAuthError(a.lastError) &&
+        !this.hasLatestAuthFailure(a.id) &&
         !(maxPer >= 1 && isAccountBusy(a.id)) &&
         !(a.cooldownUntil && a.cooldownUntil > Date.now()) &&
         !(a.status === 'cooldown' && a.cooldownUntil && a.cooldownUntil > Date.now()) &&
@@ -944,11 +1049,14 @@ export class FlowQueueEngine {
       return fresh[0];
     }
     // Fallback: ignore health floor but still respect budget + busy lock
-    const budgeted = accounts.filter(
+    const budgeted = eligibleAccounts.filter(
       (a) =>
         !tried.has(a.id) &&
         a.sessionVerified &&
         a.email &&
+        a.flowKeyPresent &&
+        !isFlowAuthError(a.lastError) &&
+        !this.hasLatestAuthFailure(a.id) &&
         !(maxPer >= 1 && isAccountBusy(a.id)) &&
         accountWithinBudget(a, need),
     );
@@ -957,13 +1065,16 @@ export class FlowQueueEngine {
       return budgeted[0];
     }
     // Last resort: may return a busy account → caller waits for slot
-    const anyReady = pickReadyAccount(accounts);
+    const anyReady = pickReadyAccount(eligibleAccounts);
     if (anyReady && maxPer >= 1 && isAccountBusy(anyReady.id)) {
       // Prefer a free verified account even if health/budget edge
-      const free = accounts.find(
+      const free = eligibleAccounts.find(
         (a) =>
           a.sessionVerified &&
           a.email &&
+          a.flowKeyPresent &&
+          !isFlowAuthError(a.lastError) &&
+          !this.hasLatestAuthFailure(a.id) &&
           !isAccountBusy(a.id) &&
           !(a.cooldownUntil && a.cooldownUntil > Date.now()),
       );
@@ -989,7 +1100,7 @@ export class FlowQueueEngine {
           );
           const { bootstrapFlow } = await import('./bootstrap');
           await bootstrapFlow({
-            forceChrome: true,
+            forceChrome: false,
             engine: 'auto',
             waitExtensionMs: 25_000,
             waitLoginMs: 12_000,
@@ -1191,7 +1302,7 @@ export class FlowQueueEngine {
           });
 
     // Warm Flow tab so grecaptcha + page XHR are ready (cuts CAPTCHA_TIMEOUT).
-    // Also clears google.com/sorry (restore window + auto-click + wait human).
+    // Also clears google.com/sorry by focusing Chromium and waiting for human verification.
     applyFlowTaskStep(task, 'captcha', {
       progress: 34,
       message: 'Mở Flow + xử lý chặn bot Google (nếu có)…',
@@ -1199,7 +1310,7 @@ export class FlowQueueEngine {
     try {
       const chRes = await bridge.commandExtension(
         'resolve_google_challenge',
-        { timeoutMs: 180_000, autoClick: true },
+        { timeoutMs: 180_000, autoClick: false },
         200_000,
         task.accountId,
       );
@@ -1209,7 +1320,7 @@ export class FlowQueueEngine {
       if (chRes?.result && (chRes.result as { resolved?: boolean }).resolved) {
         applyFlowTaskStep(task, 'captcha', {
           progress: 38,
-          message: 'Đã vượt trang chặn bot — làm nóng tab Flow…',
+          message: 'Đã xác minh trang chặn bot — làm nóng tab Flow…',
         });
       }
     } catch (e) {
@@ -1222,7 +1333,7 @@ export class FlowQueueEngine {
         'open_flow_tab',
         {
           challengeTimeoutMs: 180_000,
-          autoClick: true,
+          autoClick: false,
           // Do not steal OS focus every image gen (only /sorry/ path focuses)
           stealFocus: false,
         },
@@ -1422,7 +1533,7 @@ export class FlowQueueEngine {
         }
         await bridge.commandExtension(
           'open_flow_tab',
-          { stealFocus: false, autoClick: true },
+          { stealFocus: false, autoClick: false },
           25_000,
           accountId,
         );
@@ -1726,7 +1837,7 @@ export class FlowQueueEngine {
       try {
         const chRes = await bridge.commandExtension(
           'resolve_google_challenge',
-          { timeoutMs: 25_000, autoClick: true },
+          { timeoutMs: 25_000, autoClick: false },
           35_000,
           task.accountId,
         );
@@ -1734,7 +1845,7 @@ export class FlowQueueEngine {
           // Real challenge still open — give human more time once
           const longCh = await bridge.commandExtension(
             'resolve_google_challenge',
-            { timeoutMs: 150_000, autoClick: true },
+            { timeoutMs: 150_000, autoClick: false },
             160_000,
             task.accountId,
           );
@@ -1759,7 +1870,7 @@ export class FlowQueueEngine {
           'open_flow_tab',
           {
             challengeTimeoutMs: 30_000,
-            autoClick: true,
+            autoClick: false,
             stealFocus: false,
           },
           45_000,
@@ -1873,7 +1984,7 @@ export class FlowQueueEngine {
       try {
         await bridge.commandExtension(
           'resolve_google_challenge',
-          { timeoutMs: 20_000, autoClick: true },
+          { timeoutMs: 20_000, autoClick: false },
           30_000,
           task.accountId,
         );
@@ -1885,7 +1996,7 @@ export class FlowQueueEngine {
           'open_flow_tab',
           {
             challengeTimeoutMs: 25_000,
-            autoClick: true,
+            autoClick: false,
             stealFocus: false,
           },
           40_000,

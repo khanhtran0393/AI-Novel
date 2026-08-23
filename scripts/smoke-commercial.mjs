@@ -47,8 +47,9 @@ const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 assert.ok(main.includes('AINOVEL_ENTITLEMENT_PUBLIC_KEYS_DIR'));
 assert.ok(main.includes('assertTrustedIpc'));
 assert.ok(main.includes("sandbox: true"));
-assert.ok(main.includes("process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce'"));
-assert.ok(main.includes("process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0'"));
+assert.ok(main.includes("process.env.AINOVEL_ENTITLEMENT_MODE = 'open'"));
+assert.ok(main.includes("process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '1'"));
+
 assert.ok(main.includes('devTools: !app.isPackaged'));
 assert.ok(main.includes('isAllowedShellOpenPath'));
 assert.ok(main.includes('before-input-event'));
@@ -98,14 +99,17 @@ assert.ok(preload.includes('ackChangelog'));
 assert.ok(preload.includes('ainovel-update-ack-changelog'));
 
 assert.ok(entitlement.includes('isCustomerPackagedRuntime'));
-assert.ok(entitlement.includes("return 'enforce'"));
+// OPEN app — mọi user Pro-equivalent. Mode never enforce.
+assert.ok(entitlement.includes("return 'open'"));
 assert.ok(entitlement.includes('getHwidV2'));
 assert.ok(entitlement.includes('hwidMatchesClaim'));
 
 assert.ok(matrix.includes('FREE_TTS_PLATFORMS'));
 assert.ok(matrix.includes('SERVER_GATED_FEATURES'));
-assert.ok(matrix.includes("id: 'tts_premium'") && matrix.includes('serverGated: true'));
-assert.ok(matrix.includes("id: 'toolbox_labs'") && matrix.includes('serverGated: true'));
+// OPEN app — every feature serverGated: false, no tier required.
+assert.ok(matrix.includes("id: 'tts_premium'") && matrix.includes('serverGated: false'));
+assert.ok(matrix.includes("id: 'toolbox_labs'") && matrix.includes('serverGated: false'));
+
 
 const apiGate = fs.readFileSync(path.join(root, 'src/lib/commercial/apiGate.ts'), 'utf8');
 assert.ok(apiGate.includes('requireFeature'));

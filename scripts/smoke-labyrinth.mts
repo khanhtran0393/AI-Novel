@@ -44,12 +44,16 @@ async function main() {
   assert.equal(typeof baseAt.bypassScore, 'number');
   console.log('PASS anti-tamper includes bypassScore');
 
-  // --- Matrix free must not get video ---
+  // --- OPEN app: free tier gets every feature ---
   const { canAccessFeature } = await import(
     '../src/lib/commercial/featureMatrix.ts'
   );
-  assert.equal(canAccessFeature('free', 'gen_video'), false);
-  console.log('PASS matrix free !gen_video');
+  assert.equal(canAccessFeature('free', 'gen_video'), true);
+  assert.equal(canAccessFeature('free', 'export_capcut'), true);
+  assert.equal(canAccessFeature('free', 'ship_pack'), true);
+  assert.equal(canAccessFeature('free', 'toolbox_labs'), true);
+  console.log('PASS matrix free all features (open app)');
+
 
   // --- Decoy unlock ---
   const unlock = lab.unlockProLocal('x', { silent: true });

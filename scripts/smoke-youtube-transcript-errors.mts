@@ -74,12 +74,32 @@ async function runPython(videoId: string): Promise<{ code: number; json: Record<
   });
 }
 
+function youtubeTranscriptPackContractOk(): boolean {
+  const pkgPath = path.join(process.cwd(), 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
+    build?: { extraResources?: Array<{ from?: string; to?: string; filter?: string[] }> };
+  };
+  return Boolean(
+    pkg.build?.extraResources?.some(
+      (entry) =>
+        entry.from === 'src/python_core' &&
+        entry.to === 'python_core' &&
+        Array.isArray(entry.filter) &&
+        entry.filter.includes('fetch_youtube_transcript.py') &&
+        entry.filter.includes('fetch_youtube_audio_transcript.py'),
+    ),
+  );
+}
+
 async function main() {
   let failed = 0;
   const log = (ok: boolean, name: string, extra = '') => {
     if (!ok) failed++;
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? ` — ${extra}` : ''}`);
   };
+
+  // 0) Packaged build must include the Python scripts that the runtime resolver searches.
+  log(youtubeTranscriptPackContractOk(), 'pack/include_youtube_transcript_scripts');
 
   // 1) Every fail code builds full UX sections (user-first, no mid-message jargon dump)
   for (const code of CODES) {

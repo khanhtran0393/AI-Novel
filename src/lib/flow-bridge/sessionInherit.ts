@@ -176,3 +176,102 @@ export function projectsFromBundle(
     }))
     .filter((p) => p.id);
 }
+
+/**
+ * Full Browser Digital Footprint Sync:
+ * Clones 100% of user's PC Chrome User Data (Cookies, Passwords, History, Web Data,
+ * Local Storage, Preferences, Bookmarks) from %LOCALAPPDATA%\Google\Chrome\User Data\Default
+ * into the isolated profile directory for this accountId before Google Flow navigation.
+ */
+export function syncFullChromeFootprintToAccountProfile(
+  accountId: string,
+  stockProfileName = 'Default',
+): { ok: boolean; copiedFiles: number; message: string } {
+  try {
+    const localAppData =
+      process.env.LOCALAPPDATA ||
+      path.join(
+        process.env.USERPROFILE || 'C:\\Users\\Default',
+        'AppData',
+        'Local',
+      );
+    const sourceDir = path.join(
+      localAppData,
+      'Google',
+      'Chrome',
+      'User Data',
+      stockProfileName,
+    );
+
+    if (!fs.existsSync(sourceDir)) {
+      return {
+        ok: false,
+        copiedFiles: 0,
+        message: `Không tìm thấy thư mục Chrome PC tại: ${sourceDir}`,
+      };
+    }
+
+    const targetProfileDir = profileDirForAccount(accountId);
+    const targetDir = path.join(targetProfileDir, 'Default');
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    let copiedCount = 0;
+
+    const copyRecursiveGraceful = (src: string, dest: string) => {
+      if (!fs.existsSync(src)) return;
+      const stat = fs.statSync(src);
+
+      if (stat.isDirectory()) {
+        const baseName = path.basename(src);
+        if (
+          baseName === 'Cache' ||
+          baseName === 'Code Cache' ||
+          baseName === 'GPUCache'
+        ) {
+          return; // Skip heavy binary caches
+        }
+        fs.mkdirSync(dest, { recursive: true });
+        const items = fs.readdirSync(src);
+        for (const item of items) {
+          copyRecursiveGraceful(path.join(src, item), path.join(dest, item));
+        }
+      } else {
+        const baseName = path.basename(src);
+        if (
+          baseName.endsWith('.lock') ||
+          baseName === 'LOCK' ||
+          baseName.startsWith('Singleton')
+        ) {
+          return; // Skip lock files
+        }
+        try {
+          fs.copyFileSync(src, dest);
+          copiedCount++;
+        } catch {
+          // Graceful skip if file is locked by running Chrome
+        }
+      }
+    };
+
+    copyRecursiveGraceful(sourceDir, targetDir);
+
+    writeSessionBundle(accountId, {
+      profileDir: targetProfileDir,
+      inheritedAt: Date.now(),
+      note: `Full Footprint Synced from Chrome PC (${stockProfileName}) — ${copiedCount} files cloned.`,
+    });
+
+    return {
+      ok: true,
+      copiedFiles: copiedCount,
+      message: `Đã đồng bộ thành công ${copiedCount} tệp dữ liệu (Cookie, Mật khẩu, History) từ Chrome PC sang Profile ${accountId}.`,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      copiedFiles: 0,
+      message: `Lỗi đồng bộ vết chân sinh hoạt: ${err?.message || String(err)}`,
+    };
+  }
+}
+

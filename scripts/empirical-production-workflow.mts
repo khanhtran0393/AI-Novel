@@ -1057,7 +1057,7 @@ async function main(): Promise<void> {
     'Export route receives the exact generated audio/image/video maps and creates a real editor pack with all three media kinds.',
     async () => {
       const response = await postJson(
-        '/api/export-xinchao',
+        '/api/export-capcut',
         {
           chapterNum: CHAPTER_NUM,
           ten_tac_pham: `${setup.ten_tac_pham} - empirical ${RUN_ID}`,

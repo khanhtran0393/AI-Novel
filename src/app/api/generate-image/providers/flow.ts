@@ -6,6 +6,9 @@ import {
   bootstrapFlow,
   ensureBridgeStarted,
   getBridgeSnapshotAsync,
+  isLiveFlowGenerationSession,
+  isVerifiedFlowAccountSession,
+  resolveFlowImageModelName,
   runGenerateOne,
 } from '@/lib/flow-bridge';
 
@@ -37,35 +40,39 @@ export async function generateWithFlow(
     const activeAccount = snap.accounts?.find(
       (account) => account.id === snap.activeAccountId,
     );
-    const sessionReady =
-      Boolean(activeAccount?.extensionConnected) &&
-      Boolean(activeAccount?.email && activeAccount.email.includes('@')) &&
-      Boolean(activeAccount?.sessionVerified) &&
-      Boolean(activeAccount?.flowKeyPresent);
+    const profileVerified = isVerifiedFlowAccountSession(activeAccount);
+    const sessionReady = isLiveFlowGenerationSession(activeAccount);
     if (!sessionReady) {
+      if (!profileVerified) {
+        return NextResponse.json(
+          {
+            error:
+              '[Google Flow] Profile chua dang nhap du email/token. Hay vao Anh/Video -> Media Config -> Dang nhap Google tren browser cua app, doi browser tu dong dong roi gen lai.',
+            loginRequired: true,
+            extensionConnected: Boolean(activeAccount?.extensionConnected),
+            flowKeyPresent: Boolean(activeAccount?.flowKeyPresent),
+            chromeLaunched: false,
+          },
+          { status: 503 },
+        );
+      }
       console.log(
         `[Flow Image] Session incomplete ext=${snap.extensionConnected} key=${snap.flowKeyPresent} — auto bootstrap…`,
       );
       const boot = await bootstrapFlow({
-        forceChrome: !sessionReady,
+        forceChrome: false,
         accountId: snap.activeAccountId || undefined,
         engine: 'auto',
         waitExtensionMs: 40000,
-        // OAuth needs minutes; 25s was failing with "Extension connected, login required"
-        waitLoginMs: 120000,
+        waitLoginMs: 15000,
         mode: 'background',
       });
       snap = await getBridgeSnapshotAsync();
       const activeAfterBootstrap = snap.accounts?.find(
         (account) => account.id === snap.activeAccountId,
       );
-      const readyAfterBootstrap = Boolean(
-        activeAfterBootstrap?.extensionConnected &&
-          activeAfterBootstrap?.email &&
-          activeAfterBootstrap.email.includes('@') &&
-          activeAfterBootstrap.sessionVerified &&
-          activeAfterBootstrap.flowKeyPresent,
-      );
+      const readyAfterBootstrap =
+        isLiveFlowGenerationSession(activeAfterBootstrap);
       if (!readyAfterBootstrap) {
         const detail =
           boot.message ||
@@ -75,9 +82,9 @@ export async function generateWithFlow(
         return NextResponse.json(
           {
             error: `[Google Flow] ${detail}`,
-            loginRequired: Boolean(boot.loginRequired) || !snap.flowKeyPresent,
-            extensionConnected: snap.extensionConnected,
-            flowKeyPresent: snap.flowKeyPresent,
+            loginRequired: !isVerifiedFlowAccountSession(activeAfterBootstrap),
+            extensionConnected: Boolean(activeAfterBootstrap?.extensionConnected),
+            flowKeyPresent: Boolean(activeAfterBootstrap?.flowKeyPresent),
             chromeLaunched: boot.chromeLaunched,
             steps: boot.steps?.slice(-12),
           },
@@ -88,20 +95,14 @@ export async function generateWithFlow(
     const activeReady = snap.accounts?.find(
       (account) => account.id === snap.activeAccountId,
     );
-    if (
-      !snap.flowKeyPresent ||
-      !activeReady?.email ||
-      !activeReady.email.includes('@') ||
-      !activeReady.sessionVerified ||
-      !activeReady.flowKeyPresent
-    ) {
+    if (!isLiveFlowGenerationSession(activeReady)) {
       return NextResponse.json(
         {
           error:
             '[Google Flow] Chưa có token. Ảnh/Video → Engine Auto → Đăng nhập Google trên browser app mở.',
-          loginRequired: true,
-          extensionConnected: snap.extensionConnected,
-          flowKeyPresent: false,
+          loginRequired: !isVerifiedFlowAccountSession(activeReady),
+          extensionConnected: Boolean(activeReady?.extensionConnected),
+          flowKeyPresent: Boolean(activeReady?.flowKeyPresent),
         },
         { status: 503 },
       );
@@ -117,9 +118,10 @@ export async function generateWithFlow(
         referenceMime?.includes('jpeg') || referenceMime?.includes('jpg')
           ? 'jpg'
           : 'png';
+      const uniqueTag = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       referenceImagePath = path.join(
         tmpDir,
-        `ref_c${chapterNum}_s${sceneIndex}_p${promptIndex}.${ext}`,
+        `ref_c${chapterNum}_s${sceneIndex}_p${promptIndex}_${uniqueTag}.${ext}`,
       );
       fs.writeFileSync(referenceImagePath, Buffer.from(referenceImageB64, 'base64'));
     }
@@ -132,20 +134,17 @@ export async function generateWithFlow(
           ? ctx.body.quality
           : 'hd';
 
-    const explicitFlowModel = String(model || '').trim();
-    if (
-      !explicitFlowModel ||
-      explicitFlowModel === 'flow' ||
-      explicitFlowModel === 'imagen'
-    ) {
+    const flowImageModel = resolveFlowImageModelName(model);
+    if (!flowImageModel) {
       return NextResponse.json(
         {
-          error:
-            '[Google Flow] FLOW_IMAGE_MODEL_REQUIRED: chọn model ảnh cụ thể trong Cấu hình đầu ra.',
+          error: `[Google Flow] FLOW_IMAGE_MODEL_REQUIRED — model ảnh phải được chỉ định rõ (nhận: ${String(model || '(missing)')}).`,
+          imageModel: null,
         },
         { status: 400 },
       );
     }
+    const explicitFlowModel = flowImageModel;
 
     const result = await runGenerateOne({
       kind: ctx.body.edit === true || ctx.body.kind === 'edit' ? 'edit' : 'image',
@@ -155,7 +154,6 @@ export async function generateWithFlow(
       promptIndex,
       aspectRatio: imageAspectRatio,
       imageCount,
-      // resolveFlowImageModelName applied inside payloadBuilder
       imageModel: explicitFlowModel,
       referenceImagePath,
       ingredientPaths: ingredientPaths.length ? ingredientPaths : undefined,
@@ -175,10 +173,9 @@ export async function generateWithFlow(
       let err =
         result.error ||
         'Sinh ảnh thất bại. Kiểm tra extension + đăng nhập Flow.';
-      // GEM_PIX_2 sometimes 400 INVALID_ARGUMENT on Labs — guide model switch (B10: no silent swap)
       if (
         /invalid.?argument|INVALID_ARGUMENT|imageModelName/i.test(err) &&
-        /GEM_PIX|NANO_BANANA_PRO/i.test(explicitFlowModel)
+        /GEM_PIX|NANO_BANANA_PRO/i.test(flowImageModel)
       ) {
         err +=
           '\n→ Thử model ảnh NARWHAL (Nano Banana 2) trong Cấu hình đầu ra — không tự đổi model.';

@@ -171,3 +171,71 @@ chrome.runtime.onMessage.addListener((msg, _, reply) => {
 
   return true; // keep channel open for async reply
 });
+
+// ============================================================================
+// HUMAN-BEHAVIOR ENGINE (BÉZIER MOUSE & HUMAN TYPING DELAY)
+// ============================================================================
+window.humanEmulation = {
+  // 1. Gõ phím tự nhiên với độ trễ ngẫu nhiên 40ms - 140ms
+  async typeInput(element, text) {
+    if (!element) return;
+    element.focus();
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      element.value = (element.value || '') + char;
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+      const delay = Math.floor(Math.random() * 100) + 40;
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  },
+
+  // 2. Click chuột vật lý có Bézier Jitter & Random Offset (±2px -> 8px)
+  async dispatchHumanClick(element) {
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    const offsetX = (Math.random() - 0.5) * 12;
+    const offsetY = (Math.random() - 0.5) * 12;
+    const targetX = rect.left + rect.width / 2 + offsetX;
+    const targetY = rect.top + rect.height / 2 + offsetY;
+
+    // Bézier curve 12 steps
+    const steps = 12;
+    const startX = targetX - 50;
+    const startY = targetY - 50;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const curX = startX + (targetX - startX) * t;
+      const curY = startY + (targetY - startY) * t;
+      element.dispatchEvent(
+        new MouseEvent('mousemove', {
+          bubbles: true,
+          clientX: curX,
+          clientY: curY,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    element.dispatchEvent(
+      new MouseEvent('mousedown', {
+        bubbles: true,
+        button: 0,
+        clientX: targetX,
+        clientY: targetY,
+      }),
+    );
+    const holdMs = Math.floor(Math.random() * 70) + 50;
+    await new Promise((r) => setTimeout(r, holdMs));
+    element.dispatchEvent(
+      new MouseEvent('mouseup', {
+        bubbles: true,
+        button: 0,
+        clientX: targetX,
+        clientY: targetY,
+      }),
+    );
+    element.click();
+  },
+};
+

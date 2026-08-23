@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
+import { getPrimaryFfmpegPath } from '@/lib/ffmpeg/ffmpegPaths';
 
 const AUDIT_SAMPLE_RATE = 16_000;
 
@@ -23,12 +24,13 @@ export type TtsAudioQuality = {
   differenceEnergyRatio: number;
 };
 
+type DecodedPcm16 = {
+  pcm: Buffer;
+  sampleRate: number;
+};
+
 function resolveFfmpeg(cwd: string): string {
-  const candidates = [
-    path.join(cwd, 'bin', 'ffmpeg.exe'),
-    path.join(cwd, 'bin', 'ffmpeg', 'ffmpeg.exe'),
-  ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) || 'ffmpeg';
+  return getPrimaryFfmpegPath(cwd);
 }
 
 function invalidQuality(reason: string): TtsAudioQuality {
@@ -44,6 +46,69 @@ function invalidQuality(reason: string): TtsAudioQuality {
     discontinuityRatio: 0,
     differenceEnergyRatio: 0,
   };
+}
+
+function decodePcm16Wav(buffer: Buffer): DecodedPcm16 | null {
+  if (buffer.length < 44) return null;
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF') return null;
+  if (buffer.toString('ascii', 8, 12) !== 'WAVE') return null;
+
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let audioFormat = 0;
+  let dataStart = -1;
+  let dataSize = 0;
+
+  for (let offset = 12; offset + 8 <= buffer.length;) {
+    const chunkId = buffer.toString('ascii', offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    const chunkEnd = Math.min(chunkStart + chunkSize, buffer.length);
+
+    if (chunkId === 'fmt ' && chunkSize >= 16 && chunkEnd <= buffer.length) {
+      audioFormat = buffer.readUInt16LE(chunkStart);
+      channels = buffer.readUInt16LE(chunkStart + 2);
+      sampleRate = buffer.readUInt32LE(chunkStart + 4);
+      bitsPerSample = buffer.readUInt16LE(chunkStart + 14);
+    } else if (chunkId === 'data' && chunkSize > 0) {
+      dataStart = chunkStart;
+      dataSize = Math.max(0, chunkEnd - chunkStart);
+    }
+
+    offset = chunkStart + chunkSize + (chunkSize % 2);
+  }
+
+  if (
+    audioFormat !== 1 ||
+    channels <= 0 ||
+    sampleRate <= 0 ||
+    bitsPerSample !== 16 ||
+    dataStart < 0 ||
+    dataSize <= 0
+  ) {
+    return null;
+  }
+
+  const data = buffer.subarray(dataStart, dataStart + dataSize);
+  if (channels === 1) {
+    return { pcm: Buffer.from(data), sampleRate };
+  }
+
+  const frameSize = channels * 2;
+  const frames = Math.floor(data.length / frameSize);
+  const mono = Buffer.alloc(frames * 2);
+  for (let frame = 0; frame < frames; frame += 1) {
+    let sum = 0;
+    const base = frame * frameSize;
+    for (let channel = 0; channel < channels; channel += 1) {
+      sum += data.readInt16LE(base + channel * 2);
+    }
+    const mixed = Math.max(-32768, Math.min(32767, Math.round(sum / channels)));
+    mono.writeInt16LE(mixed, frame * 2);
+  }
+
+  return { pcm: mono, sampleRate };
 }
 
 export function analyzePcm16Signal(
@@ -128,6 +193,12 @@ export function inspectTtsAudioFile(
 ): TtsAudioQuality {
   if (!fs.existsSync(filePath)) return invalidQuality('file audio không tồn tại');
   try {
+    const direct = decodePcm16Wav(fs.readFileSync(filePath));
+    if (direct) return analyzePcm16Signal(direct.pcm, direct.sampleRate);
+  } catch {
+    /* Fall through to FFmpeg for compressed or unusual containers. */
+  }
+  try {
     const pcm = execFileSync(
       resolveFfmpeg(cwd),
       [
@@ -148,7 +219,10 @@ export function inspectTtsAudioFile(
     return analyzePcm16Signal(pcm, AUDIT_SAMPLE_RATE);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return invalidQuality(`FFmpeg không giải mã được audio: ${message.slice(0, 180)}`);
+    return invalidQuality(
+      `FFmpeg không giải mã được audio: ${message.slice(0, 180)}. ` +
+        'Bản app cần kèm bin/ffmpeg.exe hoặc cập nhật bản mới.',
+    );
   }
 }
 
@@ -156,6 +230,9 @@ export function inspectTtsAudioBuffer(
   buffer: Buffer,
   cwd = process.cwd(),
 ): TtsAudioQuality {
+  const direct = decodePcm16Wav(buffer);
+  if (direct) return analyzePcm16Signal(direct.pcm, direct.sampleRate);
+
   const tempPath = path.join(
     os.tmpdir(),
     `ainovel-tts-audit-${process.pid}-${crypto.randomUUID()}.audio`,

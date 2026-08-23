@@ -74,13 +74,41 @@ window.fetch = async function (...args) {
 };
 
 
+function clearGrecaptchaCache() {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('_grecaptcha'))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch (_) {
+    /* ignore cross-origin storage errors */
+  }
+}
+
 window.addEventListener('GET_CAPTCHA', async ({ detail }) => {
   const { requestId, pageAction } = detail;
   try {
     await waitForGrecaptcha();
-    const token = await window.grecaptcha.enterprise.execute(SITE_KEY, {
+    clearGrecaptchaCache();
+    // Discover the reCAPTCHA Enterprise site key DYNAMICALLY from the page.
+    // Google rotates this key; SAT reads it from `script[src*="recaptcha"]`
+    // `render=` param at request time instead of trusting a hardcoded value.
+    let siteKey = SITE_KEY;
+    try {
+      const scripts = document.querySelectorAll('script[src*="recaptcha"]');
+      for (const s of scripts) {
+        const m = (s.src || '').match(/[?&]render=([^&]+)/);
+        if (m) {
+          siteKey = m[1];
+          break;
+        }
+      }
+    } catch (_e) {
+      /* ignore */
+    }
+    const token = await window.grecaptcha.enterprise.execute(siteKey, {
       action: pageAction,
     });
+    clearGrecaptchaCache();
     window.dispatchEvent(new CustomEvent('CAPTCHA_RESULT', {
       detail: { requestId, token },
     }));

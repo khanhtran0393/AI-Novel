@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireFeature } from '@/lib/commercial/apiGate';
+import { callConfiguredProvider } from '../generate/providerClients';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 export const runtime = 'nodejs';
 
@@ -17,11 +19,7 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
     keys = [globalLastWorkingKey, ...keys.filter(k => k !== globalLastWorkingKey)];
   }
 
-  let models = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro'
-  ];
+  let models = [DEFAULT_GEMINI_TEXT_MODEL];
   
   if (globalLastWorkingModel && models.includes(globalLastWorkingModel)) {
     models = [globalLastWorkingModel, ...models.filter(m => m !== globalLastWorkingModel)];
@@ -38,13 +36,14 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
     console.log(`[Translate SRT] Bắt đầu thử các mô hình với API Key index ${i + 1}/${keys.length} (...${apiKey.slice(-4)})...`);
 
     for (const model of models) {
-      const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       
       try {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
@@ -63,10 +62,13 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
         let msg = errorData.error?.message || '';
 
         if (!response.ok && (msg.includes('not found') || msg.includes('not supported') || status === 404)) {
-          const urlBeta = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const urlBeta = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
           const responseBeta = await fetch(urlBeta, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
@@ -83,7 +85,7 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
             const dataBeta = await responseBeta.json();
             const textBeta = dataBeta.candidates?.[0]?.content?.parts?.[0]?.text;
             if (textBeta) {
-              globalLastWorkingKey = apiKey;
+              globalLastWorkingKey = '';
               globalLastWorkingModel = model;
               return textBeta;
             }
@@ -100,7 +102,7 @@ async function callGemini(prompt: string, apiKeyOrKeys: string | string[]) {
           if (!text) {
             throw new Error(`[Key ${i + 1}/${keys.length}]: AI không trả về kết quả hợp lệ.`);
           }
-          globalLastWorkingKey = apiKey;
+          globalLastWorkingKey = '';
           globalLastWorkingModel = model;
           return text;
         }
@@ -189,7 +191,15 @@ YÊU CẦU BẮT BUỘC:
 --- FILE SRT GỐC ---
 ${srtText}`;
 
-    const aiResponse = await callGemini(prompt, keysToUse);
+    const aiResponse = await callConfiguredProvider(
+      prompt,
+      [],
+      keysToUse,
+      {
+        provider: 'gemini',
+        model: DEFAULT_GEMINI_TEXT_MODEL,
+      },
+    );
 
     // Lọc bỏ markdown nếu AI lỡ bọc
     let finalSrt = aiResponse.trim();
@@ -201,9 +211,8 @@ ${srtText}`;
       finalSrt = finalSrt.replace(/[\r\n]*\`\`\`$/, '');
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       translatedSrt: finalSrt.trim(),
-      usedApiKey: globalLastWorkingKey 
     });
 
   } catch (error: unknown) {

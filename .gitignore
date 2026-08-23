@@ -149,3 +149,11 @@ tmp-*.txt
 dev.log
 test_video*
 .vercel
+
+# Nova Studio runtime — binaries lon khong track vao git (JS logic + web GUI van track)
+/nova/node_modules/
+/nova/upscaler-bin/
+/nova/inpaint-bin/
+/nova/voice-backend/
+/nova/sqlite-bin/
+/voice-studio/

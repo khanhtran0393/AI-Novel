@@ -1,34 +1,28 @@
 /**
- * Free + Trial product limits (client + server safe — no fs).
- * Server authority for daily counters: freeQuota.ts (file vault by HWID+day).
- *
- * Free: unchanged product caps (600 words · 2 chapters · 3/day).
- * Trial: Pro-equivalent features · 5/day per free-style bucket · max 10 chapters ·
- *        no word/chapter length cap · 7 days (AINOVEL_TRIAL_DAYS default).
- * Pro: unlimited (no vault metering — LICENSE_ONE_PATH).
+ * OPEN product limits — app is free for every user.
+ * No word/chapter/daily caps anywhere. Kept for API-compat (callers still import).
  */
 
 import type { CommercialFeatureId } from '@/lib/commercial/featureMatrix';
 
-/** Hard product caps for Free tier (LOCKED product — do not change without product OK) */
+/** Effectively unlimited caps — app fully open. */
 export const FREE_LIMITS = {
   /** Max target + content words per chapter */
-  maxWordsPerChapter: 600,
-  /** Max chapters in a Free project */
-  maxChapters: 2,
-  /** Max successful uses per Free feature bucket per calendar day (local HWID) */
-  dailyUsesPerFeature: 3,
+  maxWordsPerChapter: 50_000,
+  /** Max chapters in a project */
+  maxChapters: 500,
+  /** Max successful uses per feature bucket per calendar day */
+  dailyUsesPerFeature: 999_999,
 } as const;
 
 /**
- * Trial caps — Pro feature matrix, metered free-style buckets only.
+ * Trial caps — kept for compat; same unlimited values (trial is dead product).
  */
 export const TRIAL_LIMITS = {
-  /** Max target + content words per chapter (Trial) */
-  maxWordsPerChapter: 3000,
-  maxChapters: 10,
-  dailyUsesPerFeature: 5,
-  /** Default trial length (days) — env AINOVEL_TRIAL_DAYS overrides */
+  maxWordsPerChapter: 50_000,
+  maxChapters: 500,
+  dailyUsesPerFeature: 999_999,
+  /** Default trial length (days) — unused (app open) */
   days: 7,
 } as const;
 
@@ -41,67 +35,50 @@ export type TierLimits = {
 export function limitsForMeteredTier(
   tier: 'free' | 'trial' | 'pro' | string,
 ): TierLimits | null {
-  if (tier === 'free') {
+  if (tier === 'free' || tier === 'trial') {
     return {
       maxWordsPerChapter: FREE_LIMITS.maxWordsPerChapter,
       maxChapters: FREE_LIMITS.maxChapters,
       dailyUsesPerFeature: FREE_LIMITS.dailyUsesPerFeature,
     };
   }
-  if (tier === 'trial') {
-    return {
-      maxWordsPerChapter: TRIAL_LIMITS.maxWordsPerChapter,
-      maxChapters: TRIAL_LIMITS.maxChapters,
-      dailyUsesPerFeature: TRIAL_LIMITS.dailyUsesPerFeature,
-    };
-  }
   return null;
 }
 
-/** True if tier has a finite word/chapter length cap (Free + Trial; Pro no) */
+/** True if tier has a finite word/chapter length cap (none — app open) */
 export function tierHasWordCap(tier: string): boolean {
-  return tier === 'free' || tier === 'trial';
+  return false;
 }
 
-/** Max words per chapter for a metered tier (0/null = unlimited) */
+/** Max words per chapter for a tier (always unlimited) */
 export function maxWordsForTier(tier: string): number {
-  if (tier === 'free') return FREE_LIMITS.maxWordsPerChapter;
-  if (tier === 'trial') return TRIAL_LIMITS.maxWordsPerChapter;
   return Number.POSITIVE_INFINITY;
 }
 
 /**
  * Content hard-stop for write/continue = selected (clamped) goal + 20%.
- * Matches wordBand ceiling so Free/Trial don't toast at exact 600/3000 while
- * Quality Gate still asks for more within the +20% band.
  */
 export const TIER_WORD_HEADROOM_RATIO = 1.2;
 
-/** Ceiling words allowed on disk for a metered tier (goal×1.2 of tier max). */
+/** Ceiling words allowed on disk for a tier (always unlimited) */
 export function contentWordCeilingForTier(tier: string): number {
-  const max = maxWordsForTier(tier);
-  if (!Number.isFinite(max)) return Number.POSITIVE_INFINITY;
-  return Math.round(max * TIER_WORD_HEADROOM_RATIO);
+  return Number.POSITIVE_INFINITY;
 }
 
 /**
- * Effective Setup word goal for Quality Gate / write UI — always clamp Free/Trial
- * so badge never demands 4250 while Free caps at 600.
- * Authority = user's so_tu_chuong (not a fixed constant).
+ * Effective Setup word goal for Quality Gate / write UI — no clamping.
  */
 export function effectiveSetupWordGoal(
   so_tu_chuong: unknown,
   flags: { is_pro?: boolean; is_trial?: boolean; is_vip?: boolean },
 ): number {
-  const tier = resolveMeteredTierFromFlags(flags);
-  return normalizeSetupScaleForTier(1, so_tu_chuong, tier).so_tu_chuong;
+  return normalizeSetupScaleForTier(1, so_tu_chuong, 'pro').so_tu_chuong;
 }
 
 /**
  * Full write plan before gen kịch bản:
- * - goal = so_tu user đã set (clamp gói)
+ * - goal = so_tu user đã set (no clamp)
  * - min/max = band 0.92 / 1.20 of goal
- * Dùng preflight + continue + quality — cấm hardcode 4250.
  */
 export type WriteWordPlan = {
   tier: 'free' | 'trial' | 'pro';
@@ -116,24 +93,22 @@ export function resolveWriteWordPlan(
   so_tu_chuong: unknown,
   flags: { is_pro?: boolean; is_trial?: boolean; is_vip?: boolean },
 ): WriteWordPlan {
-  const tier = resolveMeteredTierFromFlags(flags);
-  const goal = normalizeSetupScaleForTier(1, so_tu_chuong, tier).so_tu_chuong;
+  const goal = normalizeSetupScaleForTier(1, so_tu_chuong, 'pro').so_tu_chuong;
   // Inline band math — avoid importing pipeline into commercial (cycle risk)
   const min = Math.round(goal * 0.92);
   const max = Math.round(goal * 1.2);
   return {
-    tier,
+    tier: 'pro',
     goal,
     min,
     max,
-    source: `setup.so_tu_chuong=${goal}·tier=${tier}`,
+    source: `setup.so_tu_chuong=${goal}·tier=pro`,
   };
 }
 
 /**
  * Free matrix features that share the same daily budget shape.
- * Matches Free group in PRICING_PLANS / FEATURE_MATRIX (minTier free).
- * Trial meters the same buckets (higher daily limit).
+ * Kept for API-compat — no daily metering applies (app open).
  */
 export type FreeQuotaBucket =
   | 'write_chapter'
@@ -161,7 +136,7 @@ export const FREE_BUCKET_LABELS: Record<FreeQuotaBucket, string> = {
   portable_export: 'Project portable export',
 };
 
-/** Feature matrix id → daily quota bucket (Free + Trial) */
+/** Feature matrix id → daily quota bucket (app open — kept for compat) */
 export function featureIdToFreeBucket(
   featureId: CommercialFeatureId,
 ): FreeQuotaBucket | null {
@@ -185,63 +160,36 @@ export function featureIdToFreeBucket(
 
 /**
  * Map /api/generate requestType → Free/Trial daily bucket.
- * Returns null if the request is not metered.
+ * Kept for compat — returns null (no metering).
  */
 export function generateRequestToFreeBucket(
   requestType: string,
 ): FreeQuotaBucket | null {
-  switch (requestType) {
-    case 'WRITE_CHAPTER':
-    case 'REVISE_CHAPTER':
-    case 'EVALUATE_CHAPTER':
-    case 'COMMIT_MEMORY':
-    case 'EXPAND_SCENE':
-    case 'REWRITE_SCENE':
-      return 'write_chapter';
-    case 'GENERATE_IDEAS':
-    case 'GENERATE_IDEA':
-    case 'ANALYZE_YOUTUBE_PLOT':
-    case 'GENERATE_OUTLINE':
-    case 'GENERATE_CHAPTER_OUTLINE':
-    case 'PLAN_ARC':
-    case 'IMPORT_FOUNDATION':
-    case 'SUMMARIZE_SCRIPT_OUTLINE':
-    case 'COMPRESS_CONTEXT':
-      return 'outline_ideas';
-    case 'GENERATE_IMAGE_PROMPT':
-    case 'REGENERATE_PROMPT':
-    case 'EXTRACT_CHARACTERS':
-    case 'GENERATE_CHARACTER_PROMPT':
-    case 'GENERATE_CHARACTER_PROMPT_ONLY':
-    case 'ANALYZE_VISUAL_DNA':
-      return 'gen_prompt';
-    default:
-      return null;
-  }
+  return null;
 }
 
-/** Clamp word goal for Free only */
+/** Clamp word goal — returns raw value (no cap). */
 export function clampFreeWordGoal(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return FREE_LIMITS.maxWordsPerChapter;
   return Math.min(FREE_LIMITS.maxWordsPerChapter, Math.max(1, Math.floor(n)));
 }
 
-/** Clamp word goal for Trial (≤3000) */
+/** Clamp word goal — returns raw value (no cap). */
 export function clampTrialWordGoal(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return TRIAL_LIMITS.maxWordsPerChapter;
   return Math.min(TRIAL_LIMITS.maxWordsPerChapter, Math.max(1, Math.floor(n)));
 }
 
-/** Clamp planned chapter count for Free */
+/** Clamp planned chapter count — returns raw value (no cap). */
 export function clampFreeChapterCount(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 1;
   return Math.min(FREE_LIMITS.maxChapters, Math.max(1, Math.floor(n)));
 }
 
-/** Clamp chapter count for Trial (max 10) */
+/** Clamp chapter count — returns raw value (no cap). */
 export function clampTrialChapterCount(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 1;
@@ -249,27 +197,13 @@ export function clampTrialChapterCount(raw: unknown): number {
 }
 
 /**
- * Normalize Setup scale for outline/write — Free/Trial must NOT be forced to 4250/10.
- * Bug class: so_tu < 500 was rewritten to 4250 (broke Free min 100 · max 600).
+ * Normalize Setup scale for outline/write — no tier clamp (app open).
  */
 export function normalizeSetupScaleForTier(
   so_chuong: unknown,
   so_tu_chuong: unknown,
   tier: 'free' | 'trial' | 'pro' | string,
 ): { so_chuong: number; so_tu_chuong: number } {
-  const t = String(tier || 'free').toLowerCase();
-  if (t === 'free') {
-    return {
-      so_chuong: clampFreeChapterCount(so_chuong),
-      so_tu_chuong: clampFreeWordGoal(so_tu_chuong),
-    };
-  }
-  if (t === 'trial') {
-    return {
-      so_chuong: clampTrialChapterCount(so_chuong),
-      so_tu_chuong: clampTrialWordGoal(so_tu_chuong),
-    };
-  }
   const ch = Number(so_chuong);
   const words = Number(so_tu_chuong);
   return {
@@ -288,22 +222,16 @@ export function resolveMeteredTierFromFlags(flags: {
   is_trial?: boolean;
   is_vip?: boolean;
 }): 'free' | 'trial' | 'pro' {
-  if (flags.is_trial) return 'trial';
-  if (flags.is_pro || flags.is_vip) return 'pro';
-  return 'free';
+  return 'pro';
 }
 
-/** True if chapter number is outside Free cap (1..maxChapters) */
+/** True if chapter number is outside cap — always false (app open). */
 export function isFreeChapterOutOfRange(chapterNum: unknown): boolean {
-  const n = Number(chapterNum);
-  if (!Number.isFinite(n) || n < 1) return true;
-  return n > FREE_LIMITS.maxChapters;
+  return false;
 }
 
 export function isTrialChapterOutOfRange(chapterNum: unknown): boolean {
-  const n = Number(chapterNum);
-  if (!Number.isFinite(n) || n < 1) return true;
-  return n > TRIAL_LIMITS.maxChapters;
+  return false;
 }
 
 /**
@@ -313,9 +241,6 @@ export function isTrialChapterOutOfRange(chapterNum: unknown): boolean {
  * - `chuong_hien_tai`: full chapter object `{ so_chuong, tieu_de, … }` (primary)
  * - or a bare number / string chapter index
  * - `so_chuong` at top level = **planned total** from Setup (NOT current index)
- *
- * Must NOT `Number(chuong_hien_tai)` when it is an object — that is NaN and
- * falsely trips Trial/Free max-chapters (bug: gen chapter 1 → "tối đa 10 chương").
  */
 export function resolveWriteChapterNum(
   payload: Record<string, unknown> | null | undefined,
@@ -358,52 +283,26 @@ export function freeQuotaExhaustedMessage(
   limit: number,
   tier: 'free' | 'trial' = 'free',
 ): string {
-  const label = FREE_BUCKET_LABELS[bucket] || bucket;
-  if (tier === 'trial') {
-    return (
-      `Gói Trial: «${label}» đã dùng ${used}/${limit} lượt hôm nay. ` +
-      `Pro không giới hạn lượt. Nhấp logo → Bản quyền.`
-    );
-  }
-  return (
-    `Gói Free: «${label}» đã dùng ${used}/${limit} lượt hôm nay. ` +
-    `Mở Trial (${TRIAL_LIMITS.days} ngày) hoặc Pro. Nhấp logo → Bản quyền.`
-  );
+  return 'App mở hoàn toàn miễn phí — không giới hạn lượt dùng.';
 }
 
 export function freeWordCapMessage(): string {
-  const goal = FREE_LIMITS.maxWordsPerChapter;
-  return (
-    `Gói Free: cổng từ toàn chương tối đa ~${goal} từ (Setup số từ/chương). ` +
-    `Nâng Trial (≤${TRIAL_LIMITS.maxWordsPerChapter} từ) hoặc Pro. Nhấp logo → Bản quyền.`
-  );
+  return 'App mở hoàn toàn miễn phí — không giới hạn từ/chương.';
 }
 
 export function trialWordCapMessage(): string {
-  const goal = TRIAL_LIMITS.maxWordsPerChapter;
-  return (
-    `Gói Trial: cổng từ toàn chương tối đa ~${goal} từ (Setup số từ/chương). ` +
-    `Nâng Pro để không giới hạn. Nhấp logo → Bản quyền.`
-  );
+  return 'App mở hoàn toàn miễn phí — không giới hạn từ/chương.';
 }
 
 export function freeChapterCapMessage(): string {
-  return (
-    `Gói Free: tối đa ${FREE_LIMITS.maxChapters} chương / dự án. ` +
-    `Nâng Trial (≤${TRIAL_LIMITS.maxChapters} chương) hoặc Pro. Nhấp logo → Bản quyền.`
-  );
+  return 'App mở hoàn toàn miễn phí — không giới hạn số chương.';
 }
 
 export function trialChapterCapMessage(): string {
-  return (
-    `Gói Trial: tối đa ${TRIAL_LIMITS.maxChapters} chương / dự án. ` +
-    `Nâng Pro để không giới hạn. Nhấp logo → Bản quyền.`
-  );
+  return 'App mở hoàn toàn miễn phí — không giới hạn số chương.';
 }
 
-/** Default trial length for UI when status not loaded */
+/** Default trial length for UI when status not loaded (unused — app open) */
 export function defaultTrialDays(): number {
-  const n = Number(process.env.AINOVEL_TRIAL_DAYS || TRIAL_LIMITS.days);
-  if (!Number.isFinite(n) || n <= 0) return TRIAL_LIMITS.days;
-  return Math.min(30, Math.floor(n));
+  return 7;
 }

@@ -1,30 +1,30 @@
 {
-  "name": "Xuyên Không - Viễn Tưởng_c1",
-  "width": 1920,
-  "height": 1080,
+  "name": "e2e_complete_msd3mu22_c1",
+  "width": 1080,
+  "height": 1920,
   "fps": 30,
-  "revision": 5,
+  "revision": 46,
   "media": [
     {
       "id": "m_0",
-      "name": "vid_1_1785141781575.mp4",
-      "path": "media/vid_1_1785141781575.mp4",
-      "kind": "video",
-      "duration": 8
+      "name": "1_0_0_1785753684234.png",
+      "path": "media/1_0_0_1785753684234.png",
+      "kind": "image",
+      "duration": 5
     },
     {
       "id": "m_1",
-      "name": "vid_2_1785141781578.mp4",
-      "path": "media/vid_2_1785141781578.mp4",
-      "kind": "video",
-      "duration": 8
+      "name": "1_0_1_1785753684235.png",
+      "path": "media/1_0_1_1785753684235.png",
+      "kind": "image",
+      "duration": 5
     },
     {
       "id": "m_2",
-      "name": "narration_1785141781580.mp3",
-      "path": "media/narration_1785141781580.mp3",
+      "name": "1_0_1785753684236.mp3",
+      "path": "media/1_0_1785753684236.mp3",
       "kind": "audio",
-      "duration": 73
+      "duration": 881.92
     }
   ],
   "clips": [
@@ -33,9 +33,10 @@
       "mediaId": "m_0",
       "track": 0,
       "start": 0,
-      "duration": 8,
+      "duration": 5,
       "props": {
-        "fit": "cover"
+        "fit": "cover",
+        "filterPreset": "cinematic"
       }
     },
     {
@@ -45,7 +46,7 @@
       "start": 0,
       "duration": 3,
       "props": {
-        "text": "Khoảnh Khắc Bất Chấp",
+        "text": "E2E Chapter",
         "style": "Neon",
         "fontSize": 48,
         "align": "center"
@@ -55,10 +56,11 @@
       "id": "c_2",
       "mediaId": "m_1",
       "track": 0,
-      "start": 8,
-      "duration": 8,
+      "start": 5,
+      "duration": 5,
       "props": {
-        "fit": "cover"
+        "fit": "cover",
+        "filterPreset": "cinematic"
       }
     },
     {
@@ -66,7 +68,7 @@
       "mediaId": "m_2",
       "track": 4,
       "start": 0,
-      "duration": 73,
+      "duration": 881.92,
       "props": {
         "volume": 1
       }
@@ -74,9 +76,9 @@
   ],
   "meta": {
     "source": "ai-novel-fablecut-bridge",
-    "builtAt": "2026-07-27T08:43:01.581Z",
-    "packName": "Xuy_n Kh_ng - Vi_n T_ng_c1_2026-07-27T08-43-01",
+    "builtAt": "2026-08-03T10:41:24.242Z",
+    "packName": "e2e_complete_msd3mu22_c1_2026-08-03T10-41-24",
     "liveEditor": true,
-    "fablecutRoot": "D:\\My app\\AI Novel\\vendor\\FableCut"
+    "fablecutRoot": "D:\\AI Novel\\vendor\\FableCut"
   }
 }

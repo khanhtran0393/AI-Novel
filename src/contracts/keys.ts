@@ -201,9 +201,17 @@ export function sanitizeAssetFilename(raw: unknown): string {
   return base;
 }
 
-/** Local animatic / scene video: chapter_1_scene_0_animatic.mp4 */
-export function localVideoFilename(chapter: number, sceneIndex: number): string {
-  return `chapter_${Number(chapter)}_scene_${Number(sceneIndex)}_animatic.mp4`;
+/** Local animatic / shot video: chapter_1_scene_0_prompt_2_animatic.mp4 */
+export function localVideoFilename(
+  chapter: number,
+  sceneIndex: number,
+  promptIndex?: number,
+): string {
+  const base = `chapter_${Number(chapter)}_scene_${Number(sceneIndex)}`;
+  if (promptIndex !== undefined && Number.isFinite(Number(promptIndex))) {
+    return `${base}_prompt_${Number(promptIndex)}_animatic.mp4`;
+  }
+  return `${base}_animatic.mp4`;
 }
 
 /**
@@ -232,6 +240,9 @@ export function driveMediaFilename(
   if (opts.kind === 'image') {
     const pi = Number(opts.promptIndex ?? 0);
     return `${safe}_Chuong_${ch}_Canh_${sc}_Prompt_${pi}.png`;
+  }
+  if (opts.promptIndex !== undefined && Number.isFinite(Number(opts.promptIndex))) {
+    return `${safe}_Chuong_${ch}_Canh_${sc}_Prompt_${Number(opts.promptIndex)}.mp4`;
   }
   return `${safe}_Chuong_${ch}_Canh_${sc}.mp4`;
 }

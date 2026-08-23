@@ -232,9 +232,9 @@ export function requireDirectorStyle(input: {
   genre?: string;
 }): string {
   const style = String(input.styleHint || '').trim();
-  if (style) return style;
+  if (style) return stripSlop(style).text;
   const genre = String(input.genre || '').trim();
-  if (genre) return genre;
+  if (genre) return stripSlop(genre).text;
   throw new Error(
     'Thieu styleHint/genre cho cong thuc dao dien. Cau hinh Visual DNA / Media Style va Setup (Chu de + Phong cach). App khong tu gan the loai mac dinh.',
   );

@@ -547,33 +547,29 @@ export async function runTtsBatchFromVideo(
     }
   }
 
-  // ── Optional slow path: FFmpeg mux ──
+  // ── Optional slow path: FFmpeg mux (Audio-only) ──
   if (wantMux && hasVideo) {
     emit({
       type: 'phase',
       phase: 'mux',
-      label: burnSubtitles
-        ? 'FFmpeg mux + burn hardsub (chậm — re-encode video)…'
-        : 'FFmpeg mux -c:v copy (thay audio, không burn)…',
+      label: 'FFmpeg mux -c:v copy (lồng tiếng audio, sub -> CapCut)…',
       percent: 92,
     });
     if (!fs.existsSync(voiceoverAbs)) {
       throw new Error('Thiếu voiceover để ghép video.');
     }
     const finalVideoAbs = path.join(workDir, ART_FINAL);
-    const { usedBurn } = muxVideoWithTts({
+    muxVideoWithTts({
       videoPath,
       ttsAudioPath: voiceoverAbs,
-      srtPath: translatedSrtPath,
       outPath: finalVideoAbs,
       muteOriginal,
-      burnSubtitles,
     });
     finalVideoPath = `${baseUrl}/${ART_FINAL}`;
     emit({
       type: 'phase',
       phase: 'mux_ok',
-      label: `Sản phẩm mux · ${ART_FINAL}${usedBurn ? ' (hardsub)' : ' (copy video)'}`,
+      label: `Sản phẩm lồng tiếng · ${ART_FINAL} (CapCut Sub)`,
       percent: 96,
     });
   }

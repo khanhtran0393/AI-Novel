@@ -224,11 +224,19 @@ assert.ok(
 assert.ok(
   source('src/lib/commercial/licenseHeartbeat.ts').includes("'stale'"),
 );
+// OPEN app: client sync force-unlocks Pro-equivalent + credits vô điều kiện
+// (không cần rebindToken vì không còn gate commercial)
 assert.ok(
   source('src/app/workspace/hooks/useEntitlementSync.ts').includes(
-    'rebindToken',
+    'setVipStatus',
   ),
 );
+assert.ok(
+  source('src/app/workspace/hooks/useEntitlementSync.ts').includes(
+    'setCredits',
+  ),
+);
+
 // Cloud trial must not mirror local trial vault (ghost TRIAL after Pro)
 assert.ok(
   !source('src/lib/cloud/licenseBridge.ts').includes('startTrial(hwid)'),

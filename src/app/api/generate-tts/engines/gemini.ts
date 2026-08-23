@@ -1,37 +1,49 @@
-import { createWavHeader, splitTtsText } from '../audioUtils';
+import {
+  GEMINI_INTERACTIONS_ENDPOINT,
+  GEMINI_TTS_MODEL,
+} from '@/lib/geminiModels';
 
-export async function generateGeminiTTS(text: string, apiKey: string, voiceName: string): Promise<Buffer> {
-  const chunks = splitTtsText(text, 900);
-  const pcmBuffers: Buffer[] = [];
-
-  for (const chunk of chunks) {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+export async function generateGeminiTtsPcmChunk(
+  text: string,
+  apiKey: string,
+  voiceName: string,
+): Promise<Buffer> {
+  const response = await fetch(
+    GEMINI_INTERACTIONS_ENDPOINT,
+    {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: chunk }] }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName },
-            },
-          },
+        model: GEMINI_TTS_MODEL,
+        input: text,
+        response_format: { type: 'audio' },
+        generation_config: {
+          speech_config: [{ voice: voiceName }],
         },
       }),
-    });
+    },
+  );
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || `Gemini TTS API error ${response.status}`);
-    }
-
-    const data = await response.json();
-    const audioBase64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioBase64) throw new Error('Gemini TTS API did not return audio data.');
-    pcmBuffers.push(Buffer.from(audioBase64, 'base64'));
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw Object.assign(
+      new Error(
+        errData?.error?.message || `Gemini TTS API error ${response.status}`,
+      ),
+      { providerStatus: response.status },
+    );
   }
 
-  const combinedPcm = Buffer.concat(pcmBuffers);
-  return Buffer.concat([createWavHeader(combinedPcm.length), combinedPcm]);
+  const data = await response.json();
+  const audioBase64 = data?.output_audio?.data;
+  if (!audioBase64) {
+    throw Object.assign(
+      new Error('Gemini TTS API did not return audio data.'),
+      { providerStatus: 502 },
+    );
+  }
+  return Buffer.from(audioBase64, 'base64');
 }

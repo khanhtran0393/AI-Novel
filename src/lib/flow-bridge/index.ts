@@ -112,7 +112,12 @@ export {
   resolvePrimaryCastReference,
 } from './castIngredients';
 export { getFlowMediaId, setFlowMediaId } from './mediaIdIndex';
-export { bootstrapFlow, getBrowserCatalog } from './bootstrap';
+export {
+  bootstrapFlow,
+  getBrowserCatalog,
+  isVerifiedFlowAccountSession,
+  isLiveFlowGenerationSession,
+} from './bootstrap';
 export type { BootstrapResult } from './bootstrap';
 export {
   resolveBrowser,
@@ -151,6 +156,16 @@ export {
   purgeAccountProfile,
   listOrphanProfileDirs,
 } from './chromeSession';
+export {
+  loginWithSystemBrowser,
+  closeSystemBrowserLogin,
+  completeSystemLogin,
+  isSystemBrowserOpen,
+  listSystemBrowserSessions,
+  findSystemChromePath,
+} from './systemBrowserLogin';
+export type { SystemLoginResult } from './systemBrowserLogin';
+
 export type {
   BridgeSnapshot,
   FlowAccount,

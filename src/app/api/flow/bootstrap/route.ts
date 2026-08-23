@@ -12,6 +12,10 @@ export async function POST(req: Request) {
   const started = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
+    const requestedMode =
+      body.mode === 'background' || body.mode === 'login'
+        ? body.mode
+        : undefined;
     const result = await bootstrapFlow({
       forceChrome: Boolean(body.forceChrome),
       browserExe: body.browserExe ? String(body.browserExe) : undefined,
@@ -23,6 +27,7 @@ export async function POST(req: Request) {
         body.waitLoginMs != null ? Number(body.waitLoginMs) : undefined,
       /** Thêm profile mới = hồ sơ trình duyệt trống, không login account cũ */
       freshSession: Boolean(body.freshSession),
+      mode: requestedMode,
     });
     slog({
       level: result.ok ? 'info' : 'warn',

@@ -1,4 +1,5 @@
 import type { VideoApiProviderId } from './types';
+import { DEFAULT_GEMINI_VEO_MODEL } from '@/lib/geminiModels';
 
 export type VideoApiCatalogEntry = {
   id: VideoApiProviderId;
@@ -82,7 +83,7 @@ export const VIDEO_API_CATALOG: VideoApiCatalogEntry[] = [
     id: 'veo',
     label: 'Google Veo (API key)',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-    defaultModel: 'veo-3.0-generate-preview',
+    defaultModel: DEFAULT_GEMINI_VEO_MODEL,
     durationsSec: [4, 6, 8],
     authStyle: 'api-key',
     hostHints: ['googleapis.com', 'generativelanguage'],

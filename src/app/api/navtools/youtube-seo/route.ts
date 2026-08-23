@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveYoutubeMetaIp } from '@/lib/commercial/ip/psychCloudBridge';
 import { extractEntitlementToken } from '@/lib/entitlement';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-2.5-pro',
+  DEFAULT_GEMINI_TEXT_MODEL,
 ] as const;
 
 /** Max Gemini attempts (cùng API — hết round thì hard-fail) */
@@ -368,10 +366,13 @@ async function callGeminiJson(
   for (const key of keys) {
     for (const model of GEMINI_MODELS) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key,
+          },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {

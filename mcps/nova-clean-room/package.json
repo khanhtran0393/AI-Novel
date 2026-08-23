@@ -1,0 +1,11 @@
+{
+  "name": "nova-clean-room-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP clean-room cho Nova Studio packaged app: launch + CDP UI drive + backup/restore userData",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs",
+    "smoke": "node smoke.mjs"
+  }
+}

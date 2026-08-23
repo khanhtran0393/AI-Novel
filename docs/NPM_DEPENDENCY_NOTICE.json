@@ -1,6 +1,6 @@
 {
   "app": "ai-novel-script-generator",
-  "version": "1.0.15",
+  "version": "1.1.7",
   "packages": [
     {
       "name": "@babel/code-frame",
@@ -43,6 +43,14 @@
       "integrity": "sha512-tACJOO/Jkh1rek60NjuRbZo41N8Hmd7zMfJHTKbExmt4eLT4Olrj9G1uMxk7rp60QiOQYJxfyj5Ugf4rRwkXQQ=="
     },
     {
+      "name": "@hono/node-server",
+      "version": "2.0.12",
+      "license": "MIT",
+      "homepage": "https://github.com/honojs/node-server",
+      "repository": "git+https://github.com/honojs/node-server.git",
+      "integrity": "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg=="
+    },
+    {
       "name": "@img/colour",
       "version": "1.1.0",
       "license": "MIT",
@@ -73,6 +81,30 @@
       "homepage": null,
       "repository": "git+ssh://git@github.com:isaacs/cliui",
       "integrity": "sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg=="
+    },
+    {
+      "name": "@modelcontextprotocol/sdk",
+      "version": "1.30.0",
+      "license": "MIT",
+      "homepage": "https://modelcontextprotocol.io",
+      "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
+      "integrity": "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA=="
+    },
+    {
+      "name": "@napi-rs/nice-win32-x64-msvc",
+      "version": "1.1.1",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "git+ssh://git@github.com/Brooooooklyn/nice.git",
+      "integrity": "sha512-vB+4G/jBQCAh0jelMTY3+kgFy00Hlx2f2/1zjMoH821IbplbWZOkLiTYXQkygNTzQJTq5cvwBDgn2ppHD+bglQ=="
+    },
+    {
+      "name": "@napi-rs/nice",
+      "version": "1.1.1",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "git+ssh://git@github.com/Brooooooklyn/nice.git",
+      "integrity": "sha512-xJIPs+bYuc9ASBl+cvGsKbGrJmS6fAKaSZCnT0lhahT5rhA2VVy9/EcIgd2JhtEuFOJNx7UHNn/qiTPTY4nrQw=="
     },
     {
       "name": "@next/env",
@@ -257,6 +289,30 @@
       "homepage": null,
       "repository": "https://github.com/TooTallNate/proxy-agents.git",
       "integrity": "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="
+    },
+    {
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/ajv-validator/ajv-formats#readme",
+      "repository": "git+https://github.com/ajv-validator/ajv-formats.git",
+      "integrity": "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="
+    },
+    {
+      "name": "ajv",
+      "version": "8.20.0",
+      "license": "MIT",
+      "homepage": "https://ajv.js.org",
+      "repository": "ajv-validator/ajv",
+      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="
+    },
+    {
+      "name": "ajv",
+      "version": "8.20.0",
+      "license": "MIT",
+      "homepage": "https://ajv.js.org",
+      "repository": "ajv-validator/ajv",
+      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="
     },
     {
       "name": "ansi-regex",
@@ -568,6 +624,22 @@
       "integrity": "sha512-j/O/d7GcZCyNl7/hwZAb606rzqkyvaDctLmckbxLzHvFBzTJHuGEdodATcP3yIRoDrLHkIATJuvzbFlp/ki2cQ=="
     },
     {
+      "name": "cookie-parser",
+      "version": "1.4.7",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "expressjs/cookie-parser",
+      "integrity": "sha512-nGUvgXnotP3BsjiLX2ypbQnWoGUPIIfHQNZkkC668ntrzGWEZVW70HDEB1qnNGMicPje6EttlIgzo51YSwNQGw=="
+    },
+    {
+      "name": "cookie-signature",
+      "version": "1.0.6",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "https://github.com/visionmedia/node-cookie-signature.git",
+      "integrity": "sha512-QADzlaHc8icV8I7vbaJXJwod9HWYp8uCqf1xa4OfNu1T7JVxQIrUgOWtHdNDtPiywmFbiS12VjotIXLrKM3orQ=="
+    },
+    {
       "name": "cookie-signature",
       "version": "1.2.2",
       "license": "MIT",
@@ -590,6 +662,14 @@
       "homepage": null,
       "repository": "jshttp/cookie",
       "integrity": "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ=="
+    },
+    {
+      "name": "cors",
+      "version": "2.8.6",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "expressjs/cors",
+      "integrity": "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw=="
     },
     {
       "name": "cosmiconfig",
@@ -808,6 +888,30 @@
       "integrity": "sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw=="
     },
     {
+      "name": "eventsource-parser",
+      "version": "3.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/rexxars/eventsource-parser#readme",
+      "repository": "git+ssh://git@github.com/rexxars/eventsource-parser.git",
+      "integrity": "sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg=="
+    },
+    {
+      "name": "eventsource",
+      "version": "3.0.7",
+      "license": "MIT",
+      "homepage": "https://github.com/EventSource/eventsource#readme",
+      "repository": "git://git@github.com/EventSource/eventsource.git",
+      "integrity": "sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA=="
+    },
+    {
+      "name": "express-rate-limit",
+      "version": "8.6.1",
+      "license": "MIT",
+      "homepage": "https://github.com/express-rate-limit/express-rate-limit",
+      "repository": "git+https://github.com/express-rate-limit/express-rate-limit.git",
+      "integrity": "sha512-0D493aP61w0TJ2A0wy27riRsO7FMQ7FK+KUHOKCSfPvYo0R55aiC6emCVgFUeShH0fq0ICPVzNcgoS+BsbXQCA=="
+    },
+    {
       "name": "express",
       "version": "5.2.1",
       "license": "MIT",
@@ -816,12 +920,28 @@
       "integrity": "sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw=="
     },
     {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "license": "MIT",
+      "homepage": "https://github.com/epoberezkin/fast-deep-equal#readme",
+      "repository": "git+https://github.com/epoberezkin/fast-deep-equal.git",
+      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q=="
+    },
+    {
       "name": "fast-fifo",
       "version": "1.3.2",
       "license": "MIT",
       "homepage": "https://github.com/mafintosh/fast-fifo",
       "repository": "https://github.com/mafintosh/fast-fifo.git",
       "integrity": "sha512-/d9sfos4yxzpwkDkuN7k2SqFKtYNmCTzgfEpz82x34IM9/zc8KGxQoXg1liNC/izpRM/MBdt44Nmx41ZWqk+FQ=="
+    },
+    {
+      "name": "fast-uri",
+      "version": "3.1.3",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/fastify/fast-uri",
+      "repository": "git+https://github.com/fastify/fast-uri.git",
+      "integrity": "sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg=="
     },
     {
       "name": "fetch-event-stream",
@@ -1008,6 +1128,14 @@
       "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A=="
     },
     {
+      "name": "hono",
+      "version": "4.12.34",
+      "license": "MIT",
+      "homepage": "https://hono.dev",
+      "repository": "git+https://github.com/honojs/hono.git",
+      "integrity": "sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA=="
+    },
+    {
       "name": "http-errors",
       "version": "2.0.1",
       "license": "MIT",
@@ -1078,6 +1206,14 @@
       "homepage": null,
       "repository": "git://github.com/isaacs/inherits",
       "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ=="
+    },
+    {
+      "name": "ip-address",
+      "version": "10.4.0",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "https://github.com/beaugunderson/ip-address.git",
+      "integrity": "sha512-oSK96Grm3aP6OrS263xVxbNDGVL7rzBtYdpGqlDG8iQdoenDoTs/nkki+DflYbAEE8Xl6o5YxhxlrKvI3nqKXQ=="
     },
     {
       "name": "ipaddr.js",
@@ -1160,6 +1296,14 @@
       "integrity": "sha512-ykkVRwrYvFm1nb2AJfKKYPr0emF6IiXDYUaFx4Zn9ZuIH7MrzEZ3sD5RlqGXNRpHtvUHJyOnCEFxOlNDtGo7wg=="
     },
     {
+      "name": "jose",
+      "version": "6.2.8",
+      "license": "MIT",
+      "homepage": "https://github.com/panva/jose",
+      "repository": "panva/jose",
+      "integrity": "sha512-Bsdjwm3Qsd/P0jR+BHDe3LytDfY7WBq2HmCCLIwuVRHMuEC9ae7/R474GIUdF1NgCyZjzVo/A9DOiOBtXq8ZoQ=="
+    },
+    {
       "name": "js-tokens",
       "version": "4.0.0",
       "license": "MIT",
@@ -1184,6 +1328,30 @@
       "integrity": "sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w=="
     },
     {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/epoberezkin/json-schema-traverse#readme",
+      "repository": "git+https://github.com/epoberezkin/json-schema-traverse.git",
+      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/epoberezkin/json-schema-traverse#readme",
+      "repository": "git+https://github.com/epoberezkin/json-schema-traverse.git",
+      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="
+    },
+    {
+      "name": "json-schema-typed",
+      "version": "8.0.2",
+      "license": "BSD-2-Clause",
+      "homepage": "https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node",
+      "repository": "https://github.com/RemyRylan/json-schema-typed.git",
+      "integrity": "sha512-fQhoXdcvc3V28x7C7BMs4P5+kNlgUURe2jmUT1T//oBRMDrqy1QPelJimwZGo7Hg9VPV3EQV5Bnq4hbFy2vetA=="
+    },
+    {
       "name": "jsonfile",
       "version": "6.2.1",
       "license": "MIT",
@@ -1206,6 +1374,14 @@
       "homepage": "https://github.com/jonschlinkert/kind-of",
       "repository": "jonschlinkert/kind-of",
       "integrity": "sha512-NOW9QQXMoZGg/oqnVNoNTTIFEIid1627WCffUBJEdMxYApq7mNE7CpzucIPc+ZQg25Phej7IJSmX3hO+oblOtQ=="
+    },
+    {
+      "name": "koffi",
+      "version": "2.16.3",
+      "license": "MIT",
+      "homepage": "https://koffi.dev/",
+      "repository": "https://github.com/Koromix/koffi",
+      "integrity": "sha512-E9y1AsgYGlaxMhcZzHr8y96QF2U5XzA12GGVAfbWqIubTwPNMXQarfBzePNXHe0xtIEtNd6ifAv3GAKYGUeBAQ=="
     },
     {
       "name": "lazy-cache",
@@ -1480,6 +1656,22 @@
       "integrity": "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A=="
     },
     {
+      "name": "node-tls-client",
+      "version": "2.1.0",
+      "license": "GPL-3.0",
+      "homepage": null,
+      "repository": "https://github.com/Sahil1337/node-tls-client",
+      "integrity": "sha512-b1Y2WFdQ7BJXa5CT6qRafCFeaNiTsZP+UFqNy+8hrHExlPHe3ccEtFkKt3WDGzGIfNvb4Ws9EEQmzFS9Jztisg=="
+    },
+    {
+      "name": "object-assign",
+      "version": "4.1.1",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "sindresorhus/object-assign",
+      "integrity": "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg=="
+    },
+    {
       "name": "object-inspect",
       "version": "1.13.4",
       "license": "MIT",
@@ -1568,6 +1760,22 @@
       "integrity": "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="
     },
     {
+      "name": "piscina",
+      "version": "5.3.0",
+      "license": "MIT",
+      "homepage": "https://github.com/piscinajs/piscina#readme",
+      "repository": "git+https://github.com/piscinajs/piscina.git",
+      "integrity": "sha512-9D3tPBayfoal6l9l4Y8NrMn1jkV718qJoYrla6P51+hh9h0Q+9/1c8KgEnoBQqhguyfgjay4biADI8HJG3pkoA=="
+    },
+    {
+      "name": "pkce-challenge",
+      "version": "5.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/crouchcd/pkce-challenge#readme",
+      "repository": "git+https://github.com/crouchcd/pkce-challenge.git",
+      "integrity": "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="
+    },
+    {
       "name": "playwright-core",
       "version": "1.61.1",
       "license": "Apache-2.0",
@@ -1616,12 +1824,28 @@
       "integrity": "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA=="
     },
     {
+      "name": "psl",
+      "version": "1.15.0",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "git@github.com:lupomontero/psl.git",
+      "integrity": "sha512-JZd3gMVBAVQkSs6HdNZo9Sdo0LNcQeMNP3CozBJb3JYC/QUYZTnKxP+f8oWRX4rHP5EurWxqAHTSwUCjlNKa1w=="
+    },
+    {
       "name": "pump",
       "version": "3.0.4",
       "license": "MIT",
       "homepage": null,
       "repository": "git://github.com/mafintosh/pump.git",
       "integrity": "sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA=="
+    },
+    {
+      "name": "punycode",
+      "version": "2.3.1",
+      "license": "MIT",
+      "homepage": "https://mths.be/punycode",
+      "repository": "https://github.com/mathiasbynens/punycode.js.git",
+      "integrity": "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg=="
     },
     {
       "name": "puppeteer-core",
@@ -1688,6 +1912,14 @@
       "integrity": "sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A=="
     },
     {
+      "name": "querystringify",
+      "version": "2.2.0",
+      "license": "MIT",
+      "homepage": "https://github.com/unshiftio/querystringify",
+      "repository": "https://github.com/unshiftio/querystringify",
+      "integrity": "sha512-FIqgj2EUvTa7R50u0rGsyTftzjYmv/a3hO345bZNrqabNqjtgiDMgmo4mkUjd+nzU5oF3dClKqFIPUKybUyqoQ=="
+    },
+    {
       "name": "queue",
       "version": "6.0.2",
       "license": "MIT",
@@ -1734,6 +1966,22 @@
       "homepage": "https://github.com/troygoode/node-require-directory/",
       "repository": "git://github.com/troygoode/node-require-directory.git",
       "integrity": "sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q=="
+    },
+    {
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "floatdrop/require-from-string",
+      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw=="
+    },
+    {
+      "name": "requires-port",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/unshiftio/requires-port",
+      "repository": "https://github.com/unshiftio/requires-port",
+      "integrity": "sha512-KigOCHcocU3XODJxsu8i/j8T9tzT4adHiecwORRQ0ZZFcp7ahwXuRU1m+yuO90C5ZUyGeGfocHDI14M3L3yDAQ=="
     },
     {
       "name": "resolve-from",
@@ -2024,6 +2272,14 @@
       "integrity": "sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww=="
     },
     {
+      "name": "tough-cookie",
+      "version": "4.1.4",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/salesforce/tough-cookie",
+      "repository": "git://github.com/salesforce/tough-cookie.git",
+      "integrity": "sha512-Loo5UUvLD9ScZ6jh8beX1T6sO1w2/MpCRpEP7V280GKMVUQ0Jzar2U3UJPsrdbziLEMMhu3Ujnq//rhiFuIeag=="
+    },
+    {
       "name": "tr46",
       "version": "0.0.3",
       "license": "MIT",
@@ -2081,6 +2337,14 @@
     },
     {
       "name": "universalify",
+      "version": "0.2.0",
+      "license": "MIT",
+      "homepage": "https://github.com/RyanZim/universalify#readme",
+      "repository": "git+https://github.com/RyanZim/universalify.git",
+      "integrity": "sha512-CJ1QgKmNg3CwvAv/kOFmtnEN05f0D/cn9QntgNOQlQF9dgvVTHj3t+8JPdjqawCHk7V/KA+fbUqzZ9XWhcqPUg=="
+    },
+    {
+      "name": "universalify",
       "version": "2.0.1",
       "license": "MIT",
       "homepage": "https://github.com/RyanZim/universalify#readme",
@@ -2094,6 +2358,14 @@
       "homepage": null,
       "repository": "stream-utils/unpipe",
       "integrity": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ=="
+    },
+    {
+      "name": "url-parse",
+      "version": "1.5.10",
+      "license": "MIT",
+      "homepage": null,
+      "repository": "https://github.com/unshiftio/url-parse.git",
+      "integrity": "sha512-WypcfiRhfeUP9vvF0j6rw0J3hrWrw6iZv3+22h6iRMJ/8z1Tj6XfLP4DsUix5MhMPnXpiHDoKyoZ/bdCkwBCiQ=="
     },
     {
       "name": "uuid",
@@ -2214,6 +2486,14 @@
       "homepage": "https://github.com/thejoshwolfe/yazl",
       "repository": "git+https://github.com/thejoshwolfe/yazl.git",
       "integrity": "sha512-BbETDVWG+VcMUle37k5Fqp//7SDOK2/1+T7X8TD96M3D9G8jK5VLUdQVdVjGi8im7FGkazX7kk5hkU8X4L5Bng=="
+    },
+    {
+      "name": "zod-to-json-schema",
+      "version": "3.25.2",
+      "license": "ISC",
+      "homepage": null,
+      "repository": "https://github.com/StefanTerdell/zod-to-json-schema",
+      "integrity": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="
     },
     {
       "name": "zod",

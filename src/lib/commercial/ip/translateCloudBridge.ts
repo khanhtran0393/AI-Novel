@@ -17,6 +17,7 @@ import {
   resolvePinnedLicenseApiUrl,
 } from '@/lib/commercial/licenseTrust';
 import { assertApprovedContentUnlock } from '@/lib/commercial/licenseOnePath';
+import { getEntitlementMode } from '@/lib/entitlement';
 import { AppError } from '@/lib/errors';
 
 assertApprovedContentUnlock('cloud_ip_execution', 'translateCloudBridge');
@@ -37,6 +38,8 @@ export type TranslatePromptCloudResult = {
 };
 
 export function shouldUseCloudTranslateIp(): boolean {
+  if (getEntitlementMode() === 'open') return false;
+
   if (
     process.env.AINOVEL_TRANSLATE_CLOUD === '0' ||
     process.env.AINOVEL_TRANSLATE_CLOUD === 'false'

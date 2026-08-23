@@ -316,14 +316,7 @@ function killOrphanVinaOneShots(): void {
       { stdio: 'ignore', timeout: 15_000 },
     );
   } catch {
-    try {
-      execSync(
-        'wmic process where "CommandLine like \'%vina_voice_infer%\'" call terminate',
-        { stdio: 'ignore', timeout: 15_000 },
-      );
-    } catch {
-      /* ignore */
-    }
+    /* ignore */
   }
 }
 

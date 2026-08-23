@@ -5,6 +5,10 @@
 import fs from 'fs';
 import path from 'path';
 import { assetKeyBelongsToChapter, chapterAssetPrefix } from '@/contracts';
+import {
+  getAppPublicPath,
+  getRuntimePublicPath,
+} from '@/lib/runtimePaths';
 
 /** Strip cache-bust and decode URI components. */
 export function stripMediaQuery(raw: string): string {
@@ -77,8 +81,12 @@ export function resolveMediaToDisk(
         /* keep */
       }
       const base = path.basename(fileVal);
-      const disk = path.join(cwd, 'public', 'images', base);
-      if (fs.existsSync(disk)) return disk;
+      for (const disk of [
+        getRuntimePublicPath(path.join('images', base), cwd),
+        getAppPublicPath(path.join('images', base), cwd),
+      ]) {
+        if (fs.existsSync(disk)) return disk;
+      }
     }
     try {
       // Normalize double-? before URL parse
@@ -91,8 +99,12 @@ export function resolveMediaToDisk(
       const file = u.searchParams.get('file');
       if (file) {
         const base = path.basename(decodeURIComponent(file.split('?')[0]));
-        const disk = path.join(cwd, 'public', 'images', base);
-        if (fs.existsSync(disk)) return disk;
+        for (const disk of [
+          getRuntimePublicPath(path.join('images', base), cwd),
+          getAppPublicPath(path.join('images', base), cwd),
+        ]) {
+          if (fs.existsSync(disk)) return disk;
+        }
       }
       const p = u.searchParams.get('path');
       if (p) {
@@ -112,6 +124,7 @@ export function resolveMediaToDisk(
       if (p) {
         const abs = path.resolve(decodeURIComponent(p.split('?')[0]));
         if (fs.existsSync(abs)) return abs;
+        return abs;
       }
     } catch {
       /* fallthrough */
@@ -121,36 +134,54 @@ export function resolveMediaToDisk(
   // /audio/xxx or audio/xxx
   const audioMatch = s.match(/(?:^|\/)audio\/([^?]+)/i);
   if (audioMatch) {
-    const disk = path.join(cwd, 'public', 'audio', path.basename(decodeURIComponent(audioMatch[1])));
+    const audioRel = decodeURIComponent(audioMatch[1]).replace(/^\/+/, '');
+    const disk = getRuntimePublicPath(path.join('audio', path.basename(audioRel)), cwd);
     if (fs.existsSync(disk)) return disk;
     // nested public/audio/previews
-    const nested = path.join(cwd, 'public', 'audio', decodeURIComponent(audioMatch[1]).replace(/^\/+/, ''));
-    if (fs.existsSync(nested)) return nested;
+    for (const nested of [
+      getRuntimePublicPath(path.join('audio', audioRel), cwd),
+      getAppPublicPath(path.join('audio', audioRel), cwd),
+    ]) {
+      if (fs.existsSync(nested)) return nested;
+    }
   }
 
   // /images/xxx
   const imgMatch = s.match(/(?:^|\/)images\/([^?]+)/i);
   if (imgMatch) {
-    const disk = path.join(cwd, 'public', 'images', path.basename(decodeURIComponent(imgMatch[1])));
-    if (fs.existsSync(disk)) return disk;
+    const base = path.basename(decodeURIComponent(imgMatch[1]));
+    for (const disk of [
+      getRuntimePublicPath(path.join('images', base), cwd),
+      getAppPublicPath(path.join('images', base), cwd),
+    ]) {
+      if (fs.existsSync(disk)) return disk;
+    }
   }
 
   // bare filename
   const base = path.basename(stripMediaQuery(s));
   if (base && /\.(png|jpe?g|webp|gif|mp3|wav|mp4|webm|mov)$/i.test(base)) {
     for (const rel of [
-      path.join('public', 'images', base),
-      path.join('public', 'audio', base),
-      path.join('public', 'audio', 'multi', base),
-      path.join('public', 'audio', 'scenes', base),
-      path.join('public', 'audio', 'clones', base),
-      path.join('public', 'audio', 'previews', base),
-      path.join('public', 'video', base),
-      path.join('public', 'renders', base),
+      getRuntimePublicPath(path.join('images', base), cwd),
+      getRuntimePublicPath(path.join('audio', base), cwd),
+      getRuntimePublicPath(path.join('audio', 'multi', base), cwd),
+      getRuntimePublicPath(path.join('audio', 'scenes', base), cwd),
+      getRuntimePublicPath(path.join('audio', 'clones', base), cwd),
+      getRuntimePublicPath(path.join('audio', 'previews', base), cwd),
+      getRuntimePublicPath(path.join('video', base), cwd),
+      getRuntimePublicPath(path.join('renders', base), cwd),
+      getAppPublicPath(path.join('images', base), cwd),
+      getAppPublicPath(path.join('audio', base), cwd),
+      getAppPublicPath(path.join('audio', 'multi', base), cwd),
+      getAppPublicPath(path.join('audio', 'scenes', base), cwd),
+      getAppPublicPath(path.join('audio', 'clones', base), cwd),
+      getAppPublicPath(path.join('audio', 'previews', base), cwd),
+      getAppPublicPath(path.join('video', base), cwd),
+      getAppPublicPath(path.join('renders', base), cwd),
       path.join('.ainovel-app', 'audio', base),
       path.join('.ainovel-app', base),
     ]) {
-      const disk = path.join(cwd, rel);
+      const disk = path.isAbsolute(rel) ? rel : path.join(cwd, rel);
       if (fs.existsSync(disk)) return disk;
     }
   }

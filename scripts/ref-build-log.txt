@@ -1,0 +1,2993 @@
+
+> ai-novel-script-generator@1.1.5 build
+> next build
+
+▲ Next.js 16.2.12 (Turbopack)
+- Environments: .env.local, .env
+
+  Creating an optimized production build ...
+Turbopack build encountered 119 warnings:
+./src/app/api/serve-image/route.ts:104:22
+The file pattern '/ROOT/' matches 10270 files in [project]/
+  [90m102 |[0m   }
+  [90m103 |[0m   [90m// Also allow under cwd for packaged relative paths[0m
+[31m[1m>[0m [90m104 |[0m   [36mif[0m (abs.startsWith(path.resolve(cwd) + path.sep)) [36mreturn[0m abs;
+  [90m    |[0m                      [31m[1m^^^^^^^^^^^^^^^^^[0m
+  [90m105 |[0m   [36mreturn[0m abs;
+  [90m106 |[0m }
+  [90m107 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/serve-image/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/flow-bridge/bridgeServer.ts:2448:31
+The file pattern '/ROOT/' matches 10270 files in [project]/
+  [90m2446 |[0m             [36mreturn[0m;
+  [90m2447 |[0m           }
+[31m[1m>[0m [90m2448 |[0m           [36mconst[0m projectRoot = path.resolve(process.cwd());
+  [90m     |[0m                               [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2449 |[0m           [36mlet[0m dest = [32m''[0m;
+  [90m2450 |[0m           [36mif[0m (destHint) {
+  [90m2451 |[0m             [36mconst[0m resolved = path.resolve(destHint);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/bridgeServer.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/bridgeServer.ts
+    ./src/app/api/flow/proxy/route.ts
+
+
+./src/app/api/open-folder/route.ts:127:10
+The file pattern ('' | '/ROOT/output/channels/' <dynamic> '/' <dynamic> | '/ROOT/output/channels' <dynamic> '/' <dynamic> | '/ROOT/output/channels/Kenh_Chinh/' <dynamic> | '/ROOT/output/channelsKenh_Chinh/' <dynamic> | '/ROOT/output/channels/' <dynamic> | '/ROOT/output/channels' <dynamic> | '/ROOT/output/channels/Kenh_Chinh' <dynamic> | '/ROOT/output/channelsKenh_Chinh' <dynamic> | '/ROOT/output/channels/' <dynamic> | '/ROOT/output/channels' <dynamic> | '/ROOT/output/channels/Kenh_Chinh' | '/ROOT/output/channelsKenh_Chinh' | '/ROOT/output/channels' | <dynamic>) matches 10748 files in [project]/
+  [90m125 |[0m     }
+  [90m126 |[0m
+[31m[1m>[0m [90m127 |[0m     [36mif[0m (!fs.existsSync(resolvedPath)) {
+  [90m    |[0m          [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m128 |[0m       [36mtry[0m {
+  [90m129 |[0m         fs.mkdirSync(resolvedPath, { recursive: [36mtrue[0m });
+  [90m130 |[0m         console.log([32m`[Open Folder] Created: [0m${resolvedPath[32m}`[0m);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/open-folder/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/ship-pack/route.ts:122:22
+The file pattern ('' | <dynamic>) matches 10270 files in [project]/
+  [90m120 |[0m       [36mtry[0m {
+  [90m121 |[0m         [36mconst[0m src = stripQuery(item.sourcePath);
+[31m[1m>[0m [90m122 |[0m         [36mif[0m (!src || !fs.existsSync(src)) {
+  [90m    |[0m                      [31m[1m^^^^^^^^^^^^^^^^^^[0m
+  [90m123 |[0m           copyErrors.push([32m`missing: [0m${item.key[32m} → [0m${src || [32m'(empty)'[0m[32m}`[0m);
+  [90m124 |[0m           [36mcontinue[0m;
+  [90m125 |[0m         }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/ship-pack/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:310:14
+The file pattern ('' | <dynamic>) matches 10270 files in [project]/
+  [90m308 |[0m
+  [90m309 |[0m   [36mconst[0m candidates: string[] = [];
+[31m[1m>[0m [90m310 |[0m   [36mif[0m (raw && fs.existsSync(raw)) candidates.push(raw);
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^^^[0m
+  [90m311 |[0m
+  [90m312 |[0m   [90m// Legacy SuperFreeVoice install → SuperAudioTools on this machine[0m
+  [90m313 |[0m   [36mif[0m (raw) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/app/api/generate-video/route.ts:123:9
+The file pattern ('/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 20540 files in [project]/
+  [90m121 |[0m     ? [resolved]
+  [90m122 |[0m     : [
+[31m[1m>[0m [90m123 |[0m         path.join(process.cwd(), resolved),
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m124 |[0m         path.join(process.cwd(), [32m'public'[0m, resolved.replace([35m/^\//u[0m, [32m''[0m)),
+  [90m125 |[0m         path.join(process.cwd(), [32m'public'[0m, [32m'images'[0m, path.basename(resolved)),
+  [90m126 |[0m       ];
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-video/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/video-dubbing/mux/route.ts:36:10
+The file pattern ('/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 20540 files in [project]/
+  [90m34 |[0m   [36mif[0m (isAbsoluteFsPath(clean)) [36mreturn[0m clean;
+  [90m35 |[0m
+[31m[1m>[0m [90m36 |[0m   [36mreturn[0m path.resolve(process.cwd(), clean.replace([35m/^\/+/[0m, [32m''[0m));
+  [90m   |[0m          [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m37 |[0m }
+  [90m38 |[0m
+  [90m39 |[0m [36mfunction[0m resolveOutputPath(rawOutPath: unknown, videoPath: string): string {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/video-dubbing/mux/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/video-dubbing/mux/route.ts:54:14
+The file pattern ('/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 20540 files in [project]/
+  [90m52 |[0m
+  [90m53 |[0m     [36mif[0m (!clean.includes([32m'serve-local-video'[0m)) {
+[31m[1m>[0m [90m54 |[0m       [36mreturn[0m path.resolve(process.cwd(), clean.replace([35m/^\/+/[0m, [32m''[0m));
+  [90m   |[0m              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m55 |[0m     }
+  [90m56 |[0m   }
+  [90m57 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/video-dubbing/mux/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/channelMediaMirror.ts:64:20
+The file pattern ('/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 20540 files in [project]/
+  [90m62 |[0m
+  [90m63 |[0m     [36mif[0m (!path.isAbsolute(realSource)) {
+[31m[1m>[0m [90m64 |[0m       realSource = path.resolve(cwd, realSource);
+  [90m   |[0m                    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m65 |[0m     }
+  [90m66 |[0m
+  [90m67 |[0m     [36mif[0m (!fs.existsSync(realSource)) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/generate-video/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:89:5
+The file pattern ('/ROOT/bin/ffmpeg.exe' | '/ROOT/bin/ffmpeg/ffmpeg.exe' | '/ROOT/python_core/ffmpeg/ffmpeg.exe' | <dynamic> | 'ffmpeg') matches 10271 files in [project]/
+  [90m87 |[0m   [36mtry[0m {
+  [90m88 |[0m     [90m// 1) mono 44.1k s16[0m
+[31m[1m>[0m [90m89 |[0m     execFileSync(
+  [90m   |[0m     [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m90 |[0m       ff,
+  [90m   |[0m [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m91 |[0m       [[32m'-y'[0m, [32m'-i'[0m, src, [32m'-ac'[0m, [32m'1'[0m, [32m'-ar'[0m, [32m'44100'[0m, [32m'-sample_fmt'[0m, [32m's16'[0m, mid1],
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m92 |[0m       { stdio: [32m'pipe'[0m },
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m93 |[0m     );
+  [90m   |[0m [31m[1m^^^^^[0m
+  [90m94 |[0m     steps.push([32m'mono_44k'[0m);
+  [90m95 |[0m
+  [90m96 |[0m     [90m// 2) trim silence + gentle EQ + loudnorm[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:110:5
+The file pattern ('/ROOT/bin/ffmpeg.exe' | '/ROOT/bin/ffmpeg/ffmpeg.exe' | '/ROOT/python_core/ffmpeg/ffmpeg.exe' | <dynamic> | 'ffmpeg') matches 10271 files in [project]/
+  [90m108 |[0m     ].join([32m','[0m);
+  [90m109 |[0m
+[31m[1m>[0m [90m110 |[0m     execFileSync(
+  [90m    |[0m     [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m111 |[0m       ff,
+  [90m    |[0m [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m112 |[0m       [[32m'-y'[0m, [32m'-i'[0m, mid1, [32m'-af'[0m, af, [32m'-ac'[0m, [32m'1'[0m, [32m'-ar'[0m, [32m'44100'[0m, mid2],
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m113 |[0m       { stdio: [32m'pipe'[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m114 |[0m     );
+  [90m    |[0m [31m[1m^^^^^[0m
+  [90m115 |[0m     steps.push([32m'silence_trim'[0m, [32m'eq'[0m, [32m'loudnorm'[0m);
+  [90m116 |[0m
+  [90m117 |[0m     [36mlet[0m dur = probeDuration(mid2);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:121:7
+The file pattern ('/ROOT/bin/ffmpeg.exe' | '/ROOT/bin/ffmpeg/ffmpeg.exe' | '/ROOT/python_core/ffmpeg/ffmpeg.exe' | <dynamic> | 'ffmpeg') matches 10271 files in [project]/
+  [90m119 |[0m     [36mif[0m (dur > maxSec + [35m0.3[0m) {
+  [90m120 |[0m       [90m// Prefer first maxSec after trim (usually has speech start)[0m
+[31m[1m>[0m [90m121 |[0m       execFileSync(
+  [90m    |[0m       [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m122 |[0m         ff,
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m123 |[0m         [
+  [90m    |[0m [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m124 |[0m           [32m'-y'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m125 |[0m           [32m'-i'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m126 |[0m           mid2,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m127 |[0m           [32m'-t'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m128 |[0m           [33mString[0m(maxSec),
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m129 |[0m           [32m'-ac'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m130 |[0m           [32m'1'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m131 |[0m           [32m'-ar'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m132 |[0m           [32m'44100'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m133 |[0m           dst,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m134 |[0m         ],
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m135 |[0m         { stdio: [32m'pipe'[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m136 |[0m       );
+  [90m    |[0m [31m[1m^^^^^^^[0m
+  [90m137 |[0m       steps.push([32m`cap_[0m${maxSec[32m}s`[0m);
+  [90m138 |[0m       dur = [33mMath[0m.min(dur, maxSec);
+  [90m139 |[0m     } [36melse[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:29:9
+The file pattern ('/ROOT/bin/ffmpeg.exe' | '/ROOT/bin/ffmpeg/ffmpeg.exe' | '/ROOT/python_core/ffmpeg/ffmpeg.exe' | <dynamic>) matches 10271 files in [project]/
+  [90m27 |[0m   ];
+  [90m28 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m candidates) {
+[31m[1m>[0m [90m29 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m30 |[0m   }
+  [90m31 |[0m   [36mreturn[0m [32m'ffmpeg'[0m;
+  [90m32 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:49:17
+The file pattern ('/ROOT/bin/ffprobe.exe' | '/ROOT/bin/ffmpeg/ffprobe.exe' | '/ROOT/python_core/ffmpeg/ffprobe.exe' | <dynamic> | 'ffprobe') matches 10271 files in [project]/
+  [90m47 |[0m [36mexport[0m [36mfunction[0m probeDuration(file: string): number {
+  [90m48 |[0m   [36mtry[0m {
+[31m[1m>[0m [90m49 |[0m     [36mconst[0m out = execFileSync(
+  [90m   |[0m                 [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m50 |[0m       findFfprobe(),
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m51 |[0m       [
+  [90m   |[0m [31m[1m^^^^^^^[0m
+[31m[1m>[0m [90m52 |[0m         [32m'-v'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m53 |[0m         [32m'error'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m54 |[0m         [32m'-show_entries'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m55 |[0m         [32m'format=duration'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m56 |[0m         [32m'-of'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m57 |[0m         [32m'default=noprint_wrappers=1:nokey=1'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m58 |[0m         file,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m59 |[0m       ],
+  [90m   |[0m [31m[1m^^^^^^^^[0m
+[31m[1m>[0m [90m60 |[0m       { encoding: [32m'utf8'[0m, stdio: [[32m'pipe'[0m, [32m'pipe'[0m, [32m'pipe'[0m] },
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m61 |[0m     );
+  [90m   |[0m [31m[1m^^^^^[0m
+  [90m62 |[0m     [36mconst[0m n = parseFloat([33mString[0m(out).trim());
+  [90m63 |[0m     [36mreturn[0m [33mNumber[0m.isFinite(n) ? n : [35m0[0m;
+  [90m64 |[0m   } [36mcatch[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:42:9
+The file pattern ('/ROOT/bin/ffprobe.exe' | '/ROOT/bin/ffmpeg/ffprobe.exe' | '/ROOT/python_core/ffmpeg/ffprobe.exe' | <dynamic>) matches 10271 files in [project]/
+  [90m40 |[0m   ];
+  [90m41 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m candidates) {
+[31m[1m>[0m [90m42 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m43 |[0m   }
+  [90m44 |[0m   [36mreturn[0m [32m'ffprobe'[0m;
+  [90m45 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/flow-bridge/flowVideoFinalize.ts:180:10
+The file pattern ('/ROOT/public/video/' <dynamic> | '/ROOT/public/video' <dynamic> | '/ROOT/public/video/c' <dynamic> '_s' <dynamic> '_p' <dynamic> '.mp4' | '/ROOT/public/videoc' <dynamic> '_s' <dynamic> '_p' <dynamic> '.mp4' | '/ROOT/public/video/c' <dynamic> '_s' <dynamic> '_p0.mp4' | '/ROOT/public/videoc' <dynamic> '_s' <dynamic> '_p0.mp4' | <dynamic>) matches 10304 files in [project]/
+  [90m178 |[0m   ];
+  [90m179 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m candidates) {
+[31m[1m>[0m [90m180 |[0m     [36mif[0m (!fs.existsSync(p)) [36mcontinue[0m;
+  [90m    |[0m          [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m181 |[0m     [36mconst[0m artifact = probeVisualArtifact(p, [32m'video'[0m);
+  [90m182 |[0m     [36mif[0m (!artifact.ok) [36mcontinue[0m;
+  [90m183 |[0m     [36mreturn[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/flowVideoFinalize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/flowVideoFinalize.ts
+    ./src/app/api/video-artifact/route.ts
+
+
+./src/app/api/self-heal/media/mediaHelpers.ts:84:9
+The file pattern ('/ROOT/python_core/ffmpeg/ffmpeg.exe' | '/ROOT/python_core/ffmpeg/bin/ffmpeg.exe' | '/ROOT/bin/ffmpeg.exe' | 'ffmpeg' | <dynamic>) matches 10271 files in [project]/
+  [90m82 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m possiblePaths) {
+  [90m83 |[0m     [36mif[0m (p === [32m'ffmpeg'[0m) [36mcontinue[0m;
+[31m[1m>[0m [90m84 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m85 |[0m   }
+  [90m86 |[0m   [36mreturn[0m [32m'ffmpeg'[0m;
+  [90m87 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/self-heal/media/mediaHelpers.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/self-heal/media/mediaHelpers.ts
+    ./src/lib/youtubeSource.ts
+    ./src/app/api/youtube-source/route.ts
+
+
+./src/app/api/self-heal/media/mediaHelpers.ts:101:9
+The file pattern ('/ROOT/python_core/ffmpeg/ffprobe.exe' | '/ROOT/python_core/ffmpeg/bin/ffprobe.exe' | '/ROOT/bin/ffprobe.exe' | 'ffprobe' | <dynamic>) matches 10271 files in [project]/
+  [90m 99 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m possiblePaths) {
+  [90m100 |[0m     [36mif[0m (p === [32m'ffprobe'[0m) [36mcontinue[0m;
+[31m[1m>[0m [90m101 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m102 |[0m   }
+  [90m103 |[0m   [36mreturn[0m [32m'ffprobe'[0m;
+  [90m104 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/self-heal/media/mediaHelpers.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/self-heal/media/mediaHelpers.ts
+    ./src/lib/youtubeSource.ts
+    ./src/app/api/youtube-source/route.ts
+
+
+./src/lib/entitlement.ts:103:11
+The file pattern ('/ROOT/resources/license/public-keys' | '/ROOT/license/public-keys' | <dynamic>) matches 10270 files in [project]/
+  [90m101 |[0m   [36mfor[0m ([36mconst[0m d [36mof[0m candidates) {
+  [90m102 |[0m     [36mtry[0m {
+[31m[1m>[0m [90m103 |[0m       [36mif[0m (fs.existsSync(d) && fs.statSync(d).isDirectory()) [36mreturn[0m d;
+  [90m    |[0m           [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m104 |[0m     } [36mcatch[0m {
+  [90m105 |[0m       [90m/* ignore */[0m
+  [90m106 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/entitlement/verify/route.ts
+
+  #3 [Instrumentation]:
+    ./src/lib/entitlement.ts
+    ./src/lib/commercial/telegramWebhookHandler.ts
+    ./src/lib/commercial/telegramPoller.ts
+    ./src/instrumentation.ts
+
+
+./src/lib/entitlement.ts:103:31
+The file pattern ('/ROOT/resources/license/public-keys' | '/ROOT/license/public-keys' | <dynamic>) matches 10270 files in [project]/
+  [90m101 |[0m   [36mfor[0m ([36mconst[0m d [36mof[0m candidates) {
+  [90m102 |[0m     [36mtry[0m {
+[31m[1m>[0m [90m103 |[0m       [36mif[0m (fs.existsSync(d) && fs.statSync(d).isDirectory()) [36mreturn[0m d;
+  [90m    |[0m                               [31m[1m^^^^^^^^^^^^^^[0m
+  [90m104 |[0m     } [36mcatch[0m {
+  [90m105 |[0m       [90m/* ignore */[0m
+  [90m106 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/entitlement/verify/route.ts
+
+  #3 [Instrumentation]:
+    ./src/lib/entitlement.ts
+    ./src/lib/commercial/telegramWebhookHandler.ts
+    ./src/lib/commercial/telegramPoller.ts
+    ./src/instrumentation.ts
+
+
+./src/app/api/generate-video/route.ts:29:9
+The file pattern ('C:/Program Files/Google/Chrome/Application/chrome.exe' | 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe' | 'C:/Program Files/Microsoft/Edge/Application/msedge.exe' | 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m27 |[0m   ];
+  [90m28 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m possiblePaths) {
+[31m[1m>[0m [90m29 |[0m     [36mif[0m (fs.existsSync(p)) {
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m30 |[0m       cachedChromePath = p;
+  [90m31 |[0m       [36mreturn[0m p;
+  [90m32 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-video/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/generate-image/chromePath.ts:18:9
+The file pattern ('C:/Program Files/Google/Chrome/Application/chrome.exe' | 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m16 |[0m   }
+  [90m17 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m paths) {
+[31m[1m>[0m [90m18 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m19 |[0m   }
+  [90m20 |[0m   [36mreturn[0m [36mundefined[0m;
+  [90m21 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/generate-image/chromePath.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/generate-image/chromePath.ts
+    ./src/app/api/generate-image/providers/whisk.ts
+    ./src/app/api/generate-image/providers/gemini.ts
+    ./src/app/api/generate-image/route.ts
+
+
+./src/app/api/get-cookie/route.ts:25:9
+The file pattern ('C:/Program Files/Google/Chrome/Application/chrome.exe' | 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m23 |[0m
+  [90m24 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m paths) {
+[31m[1m>[0m [90m25 |[0m     [36mif[0m (fs.existsSync(p)) {
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m26 |[0m       [36mreturn[0m p;
+  [90m27 |[0m     }
+  [90m28 |[0m   }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/get-cookie/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/rpa-profile-manager/route.ts:20:9
+The file pattern ('C:/Program Files/Google/Chrome/Application/chrome.exe' | 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m18 |[0m
+  [90m19 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m paths) {
+[31m[1m>[0m [90m20 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m21 |[0m   }
+  [90m22 |[0m   [36mreturn[0m [36mundefined[0m;
+  [90m23 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/rpa-profile-manager/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/rpa-translate-srt/route.ts:26:9
+The file pattern ('C:/Program Files/Google/Chrome/Application/chrome.exe' | 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m24 |[0m
+  [90m25 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m paths) {
+[31m[1m>[0m [90m26 |[0m     [36mif[0m (fs.existsSync(p)) {
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m27 |[0m       [36mreturn[0m p;
+  [90m28 |[0m     }
+  [90m29 |[0m   }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/rpa-translate-srt/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/laStudioLocal.ts:218:14
+The file pattern ('D:/LA Studio/bin/LA Studio.exe' | <dynamic> '/Programs/LA Studio/bin/LA Studio.exe' | '/Programs/LA Studio/bin/LA Studio.exe' | <dynamic> 'Programs/LA Studio/bin/LA Studio.exe' | 'Programs/LA Studio/bin/LA Studio.exe' | <dynamic> '/LA Studio/bin/LA Studio.exe' | 'C:/Program Files/LA Studio/bin/LA Studio.exe' | <dynamic> 'LA Studio/bin/LA Studio.exe' | 'C:/Program FilesLA Studio/bin/LA Studio.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m216 |[0m   [36mif[0m (env && fs.existsSync(env)) [36mreturn[0m env;
+  [90m217 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m [33mDEFAULT_EXE_CANDIDATES[0m) {
+[31m[1m>[0m [90m218 |[0m     [36mif[0m (c && fs.existsSync(c)) [36mreturn[0m c;
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m219 |[0m   }
+  [90m220 |[0m   [36mreturn[0m [36mnull[0m;
+  [90m221 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/laStudioLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/laStudioLocal.ts
+    ./src/app/api/la-studio/voices/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:238:11
+The file pattern ('D:/SuperAudioTools/omnivoice-profiles' | <dynamic> '/omnivoice-profiles' | <dynamic> 'omnivoice-profiles' | <dynamic> '/data/omnivoice-profiles' | <dynamic> 'data/omnivoice-profiles' | <dynamic> '/public/omnivoice-profiles' | <dynamic> 'public/omnivoice-profiles' | <dynamic>) matches 10270 files in [project]/
+  [90m236 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m candidates) {
+  [90m237 |[0m     [36mtry[0m {
+[31m[1m>[0m [90m238 |[0m       [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m    |[0m           [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m239 |[0m     } [36mcatch[0m {
+  [90m240 |[0m       [90m/* next */[0m
+  [90m241 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/app/api/generate-video/route.ts:883:32
+The file pattern ('null' | <dynamic>) matches 10270 files in [project]/
+  [90m881 |[0m ...     [36mreturn[0m [33mNextResponse[0m.json({ error: [32m'[Grok Imagine Video Error] Vui long cau hinh x...[0m
+  [90m882 |[0m ...   }
+[31m[1m>[0m [90m883 |[0m ...   [36mif[0m (!sourceImagePath || !fs.existsSync(sourceImagePath)) {
+  [90m    |[0m                                [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m884 |[0m ...     [36mreturn[0m [33mNextResponse[0m.json({ error: [32m'[Grok Imagine Video Error] Can sinh anh truoc ...[0m
+  [90m885 |[0m ...   }
+  [90m886 |[0m ...
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-video/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/generate-video/route.ts:978:25
+The file pattern ('null' | <dynamic>) matches 10270 files in [project]/
+  [90m976 |[0m             form.append(
+  [90m977 |[0m               [32m'input_reference'[0m,
+[31m[1m>[0m [90m978 |[0m               [36mnew[0m [33mBlob[0m([fs.readFileSync(sourceImagePath)], { [36mtype[0m: mime }),
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m979 |[0m               path.basename(sourceImagePath),
+  [90m980 |[0m             );
+  [90m981 |[0m           }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-video/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/laStudioClones.ts:82:8
+The file pattern ('null/' <dynamic> | <dynamic> '/' <dynamic> | 'null' <dynamic> | <dynamic>) matches 10270 files in [project]/
+  [90m80 |[0m   [36mif[0m (!meta) [36mreturn[0m [36mnull[0m;
+  [90m81 |[0m   [36mconst[0m audio = path.join(dir, meta.filename);
+[31m[1m>[0m [90m82 |[0m   [36mif[0m (!fs.existsSync(audio)) [36mreturn[0m [36mnull[0m;
+  [90m   |[0m        [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+  [90m83 |[0m   [36mreturn[0m { meta, path: audio };
+  [90m84 |[0m }
+  [90m85 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/laStudioClones.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/laStudioClones.ts
+    ./src/app/api/la-studio/voices/route.ts
+
+
+./src/lib/laStudioClones.ts:81:17
+The file pattern ('null/' <dynamic> | <dynamic> '/' <dynamic> | 'null' <dynamic> | <dynamic>) matches 20511 files in [project]/
+  [90m79 |[0m   [36mconst[0m meta = readMeta(dir);
+  [90m80 |[0m   [36mif[0m (!meta) [36mreturn[0m [36mnull[0m;
+[31m[1m>[0m [90m81 |[0m   [36mconst[0m audio = path.join(dir, meta.filename);
+  [90m   |[0m                 [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m82 |[0m   [36mif[0m (!fs.existsSync(audio)) [36mreturn[0m [36mnull[0m;
+  [90m83 |[0m   [36mreturn[0m { meta, path: audio };
+  [90m84 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/laStudioClones.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/laStudioClones.ts
+    ./src/app/api/la-studio/voices/route.ts
+
+
+./src/lib/youtubeSource.ts:384:19
+The file pattern ('yt-dlp' | <dynamic>) matches 10270 files in [project]/
+  [90m382 |[0m         [36mlet[0m child;
+  [90m383 |[0m         [36mtry[0m {
+[31m[1m>[0m [90m384 |[0m           child = spawn(bin, args, {
+  [90m    |[0m                   [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m385 |[0m             windowsHide: [36mtrue[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m386 |[0m             shell: [36mfalse[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m387 |[0m             env: {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m388 |[0m               ...process.env,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m389 |[0m               [33mPYTHONIOENCODING[0m: [32m'utf-8'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m390 |[0m               [33mPYTHONUTF8[0m: [32m'1'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m391 |[0m             },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m392 |[0m           });
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+  [90m393 |[0m           anySpawned = [36mtrue[0m;
+  [90m394 |[0m         } [36mcatch[0m (e) {
+  [90m395 |[0m           finish({
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/youtubeSource.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/youtubeSource.ts
+    ./src/app/api/youtube-source/route.ts
+
+
+./src/lib/entitlement.ts:169:35
+The file pattern (<dynamic> '/' <dynamic> | '/ROOT/resources/license/public-keys/' <dynamic> | '/ROOT/license/public-keys/' <dynamic> | '/' <dynamic> | <dynamic> | '/ROOT/resources/license/public-keys' <dynamic> | '/ROOT/license/public-keys' <dynamic>) matches 20515 files in [project]/
+  [90m167 |[0m       [36mfor[0m ([36mconst[0m name [36mof[0m fs.readdirSync(path.resolve(dir)).sort()) {
+  [90m168 |[0m         [36mif[0m (![35m/\.(pem|pub)$/i[0m.test(name)) [36mcontinue[0m;
+[31m[1m>[0m [90m169 |[0m         [36mconst[0m value = readKeyFile(path.join(dir, name));
+  [90m    |[0m                                   [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+  [90m170 |[0m         [36mif[0m (value) candidates.push(value);
+  [90m171 |[0m       }
+  [90m172 |[0m     } [36mcatch[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/entitlement/verify/route.ts
+
+  #3 [Instrumentation]:
+    ./src/lib/entitlement.ts
+    ./src/lib/commercial/telegramWebhookHandler.ts
+    ./src/lib/commercial/telegramPoller.ts
+    ./src/instrumentation.ts
+
+
+./src/lib/integrations/fablecut.ts:78:5
+The file pattern (<dynamic> '/' <dynamic> | <dynamic> | <dynamic> '/file' | <dynamic> 'file' | <dynamic> '/' <dynamic> '_' <dynamic> | <dynamic> '_' <dynamic>) matches 10270 files in [project]/
+  [90m76 |[0m   [36mlet[0m dest = path.join([90m/* turbopackIgnore: true */[0m mediaDir, base);
+  [90m77 |[0m   [36mif[0m (
+[31m[1m>[0m [90m78 |[0m     fs.existsSync(dest) &&
+  [90m   |[0m     [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+  [90m79 |[0m     path.resolve([90m/* turbopackIgnore: true */[0m dest) !==
+  [90m80 |[0m       path.resolve([90m/* turbopackIgnore: true */[0m src)
+  [90m81 |[0m   ) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/integrations/fablecut.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/integrations/fablecut.ts
+    ./src/app/api/integrations/pipeline/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:878:22
+The file pattern (<dynamic> '/Default/Service Worker/ScriptCache' | <dynamic> 'Default/Service Worker/ScriptCache' | <dynamic> '/Default/Service WorkerScriptCache' | <dynamic> 'Default/Service WorkerScriptCache' | <dynamic> '/Default/Service Worker/Database' | <dynamic> 'Default/Service Worker/Database' | <dynamic> '/Default/Service WorkerDatabase' | <dynamic> 'Default/Service WorkerDatabase' | <dynamic>) matches 10270 files in [project]/
+  [90m876 |[0m   [36mconst[0m removed: string[] = [];
+  [90m877 |[0m   [36mfor[0m ([36mconst[0m candidate [36mof[0m candidates) {
+[31m[1m>[0m [90m878 |[0m     [36mconst[0m resolved = path.resolve(candidate);
+  [90m    |[0m                      [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m879 |[0m     [36mif[0m (!resolved.startsWith([32m`[0m${root[32m}[0m${path.sep[32m}`[0m) || !fs.existsSync(resolved)) {
+  [90m880 |[0m       [36mcontinue[0m;
+  [90m881 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:879:56
+The file pattern (<dynamic> '/Default/Service Worker/ScriptCache' | <dynamic> 'Default/Service Worker/ScriptCache' | <dynamic> '/Default/Service WorkerScriptCache' | <dynamic> 'Default/Service WorkerScriptCache' | <dynamic> '/Default/Service Worker/Database' | <dynamic> 'Default/Service Worker/Database' | <dynamic> '/Default/Service WorkerDatabase' | <dynamic> 'Default/Service WorkerDatabase' | <dynamic>) matches 10270 files in [project]/
+  [90m877 |[0m   [36mfor[0m ([36mconst[0m candidate [36mof[0m candidates) {
+  [90m878 |[0m     [36mconst[0m resolved = path.resolve(candidate);
+[31m[1m>[0m [90m879 |[0m     [36mif[0m (!resolved.startsWith([32m`[0m${root[32m}[0m${path.sep[32m}`[0m) || !fs.existsSync(resolved)) {
+  [90m    |[0m                                                        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m880 |[0m       [36mcontinue[0m;
+  [90m881 |[0m     }
+  [90m882 |[0m     [36mtry[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:847:22
+The file pattern (<dynamic> '/Default/Sessions' | <dynamic> 'Default/Sessions' | <dynamic> '/DefaultSessions' | <dynamic> 'DefaultSessions' | <dynamic> '/Default/Current Session' | <dynamic> 'Default/Current Session' | <dynamic> '/DefaultCurrent Session' | <dynamic> 'DefaultCurrent Session' | <dynamic> '/Default/Current Tabs' | <dynamic> 'Default/Current Tabs' | <dynamic> '/DefaultCurrent Tabs' | <dynamic> 'DefaultCurrent Tabs' | <dynamic> '/Default/Last Session' | <dynamic> 'Default/Last Session' | <dynamic> '/DefaultLast Session' | <dynamic> 'DefaultLast Session' | <dynamic> '/Default/Last Tabs' | <dynamic> 'Default/Last Tabs' | <dynamic> '/DefaultLast Tabs' | <dynamic> 'DefaultLast Tabs' | <dynamic>) matches 10270 files in [project]/
+  [90m845 |[0m   [36mconst[0m removed: string[] = [];
+  [90m846 |[0m   [36mfor[0m ([36mconst[0m candidate [36mof[0m candidates) {
+[31m[1m>[0m [90m847 |[0m     [36mconst[0m resolved = path.resolve(candidate);
+  [90m    |[0m                      [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m848 |[0m     [36mif[0m (!resolved.startsWith([32m`[0m${root[32m}[0m${path.sep[32m}`[0m) || !fs.existsSync(resolved)) {
+  [90m849 |[0m       [36mcontinue[0m;
+  [90m850 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:848:56
+The file pattern (<dynamic> '/Default/Sessions' | <dynamic> 'Default/Sessions' | <dynamic> '/DefaultSessions' | <dynamic> 'DefaultSessions' | <dynamic> '/Default/Current Session' | <dynamic> 'Default/Current Session' | <dynamic> '/DefaultCurrent Session' | <dynamic> 'DefaultCurrent Session' | <dynamic> '/Default/Current Tabs' | <dynamic> 'Default/Current Tabs' | <dynamic> '/DefaultCurrent Tabs' | <dynamic> 'DefaultCurrent Tabs' | <dynamic> '/Default/Last Session' | <dynamic> 'Default/Last Session' | <dynamic> '/DefaultLast Session' | <dynamic> 'DefaultLast Session' | <dynamic> '/Default/Last Tabs' | <dynamic> 'Default/Last Tabs' | <dynamic> '/DefaultLast Tabs' | <dynamic> 'DefaultLast Tabs' | <dynamic>) matches 10270 files in [project]/
+  [90m846 |[0m   [36mfor[0m ([36mconst[0m candidate [36mof[0m candidates) {
+  [90m847 |[0m     [36mconst[0m resolved = path.resolve(candidate);
+[31m[1m>[0m [90m848 |[0m     [36mif[0m (!resolved.startsWith([32m`[0m${root[32m}[0m${path.sep[32m}`[0m) || !fs.existsSync(resolved)) {
+  [90m    |[0m                                                        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m849 |[0m       [36mcontinue[0m;
+  [90m850 |[0m     }
+  [90m851 |[0m     [36mtry[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/vinaVoice/warmDaemon.ts:277:19
+The file pattern (<dynamic> '/Lib/site-packages/torch/lib' | <dynamic> 'Lib/site-packages/torch/lib' | <dynamic> '/Lib/site-packages/onnxruntime/capi' | <dynamic> 'Lib/site-packages/onnxruntime/capi' | <dynamic> '/lib/site-packages/torch/lib' | <dynamic> 'lib/site-packages/torch/lib' | <dynamic> '/lib/site-packages/onnxruntime/capi' | <dynamic> 'lib/site-packages/onnxruntime/capi' | <dynamic>) matches 10270 files in [project]/
+  [90m275 |[0m     path.join(pyDir, [32m'lib'[0m, [32m'site-packages'[0m, [32m'torch'[0m, [32m'lib'[0m),
+  [90m276 |[0m     path.join(pyDir, [32m'lib'[0m, [32m'site-packages'[0m, [32m'onnxruntime'[0m, [32m'capi'[0m),
+[31m[1m>[0m [90m277 |[0m   ].filter((d) => fs.existsSync(d));
+  [90m    |[0m                   [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m278 |[0m   [36mif[0m (!candidates.length) [36mreturn[0m env;
+  [90m279 |[0m   [36mconst[0m prefix = candidates.join(path.delimiter);
+  [90m280 |[0m   [36mconst[0m prev = env.[33mPATH[0m || env.[33mPath[0m || [32m''[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/warmDaemon.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/warmDaemon.ts
+    ./src/lib/vinaVoice/engine.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/app/api/self-heal/media/mediaHelpers.ts:66:9
+The file pattern (<dynamic> '/Programs/Python/Python314/python.exe' | '/Programs/Python/Python314/python.exe' | <dynamic> 'Programs/Python/Python314/python.exe' | 'Programs/Python/Python314/python.exe' | <dynamic> '/Programs/Python/Python313/python.exe' | '/Programs/Python/Python313/python.exe' | <dynamic> 'Programs/Python/Python313/python.exe' | 'Programs/Python/Python313/python.exe' | <dynamic> '/Programs/Python/Python312/python.exe' | '/Programs/Python/Python312/python.exe' | <dynamic> 'Programs/Python/Python312/python.exe' | 'Programs/Python/Python312/python.exe' | <dynamic> '/Programs/Python/Python311/python.exe' | '/Programs/Python/Python311/python.exe' | <dynamic> 'Programs/Python/Python311/python.exe' | 'Programs/Python/Python311/python.exe' | <dynamic> '/Programs/Python/Python310/python.exe' | '/Programs/Python/Python310/python.exe' | <dynamic> 'Programs/Python/Python310/python.exe' | 'Programs/Python/Python310/python.exe' | <dynamic> '/AppData/Local/Programs/Python/Python314/python.exe' | '/AppData/Local/Programs/Python/Python314/python.exe' | <dynamic> 'AppData/Local/Programs/Python/Python314/python.exe' | 'AppData/Local/Programs/Python/Python314/python.exe' | <dynamic> '/AppData/Local/Programs/Python/Python312/python.exe' | '/AppData/Local/Programs/Python/Python312/python.exe' | <dynamic> 'AppData/Local/Programs/Python/Python312/python.exe' | 'AppData/Local/Programs/Python/Python312/python.exe' | <dynamic> '/AppData/Local/Programs/Python/Python311/python.exe' | '/AppData/Local/Programs/Python/Python311/python.exe' | <dynamic> 'AppData/Local/Programs/Python/Python311/python.exe' | 'AppData/Local/Programs/Python/Python311/python.exe' | 'C:/Python314/python.exe' | 'C:/Python312/python.exe' | 'C:/Python311/python.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m64 |[0m
+  [90m65 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m candidates) {
+[31m[1m>[0m [90m66 |[0m     [36mif[0m (fs.existsSync(c)) [36mreturn[0m c;
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m67 |[0m   }
+  [90m68 |[0m
+  [90m69 |[0m   [36mreturn[0m [32m'python'[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/self-heal/media/mediaHelpers.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/self-heal/media/mediaHelpers.ts
+    ./src/lib/youtubeSource.ts
+    ./src/app/api/youtube-source/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:518:10
+The file pattern (<dynamic> '/accounts_data' | '/ROOT//accounts_data' | <dynamic> 'accounts_data' | '/ROOT/accounts_data' | <dynamic> '/scratch/flow-profiles' | '/ROOT//scratch/flow-profiles' | <dynamic> 'scratch/flow-profiles' | '/ROOT/scratch/flow-profiles' | <dynamic>) matches 10270 files in [project]/
+  [90m516 |[0m   [36mconst[0m orphans: string[] = [];
+  [90m517 |[0m   [36mfor[0m ([36mconst[0m rootDir [36mof[0m roots) {
+[31m[1m>[0m [90m518 |[0m     [36mif[0m (!fs.existsSync(rootDir)) [36mcontinue[0m;
+  [90m    |[0m          [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m519 |[0m     [36mlet[0m names: string[] = [];
+  [90m520 |[0m     [36mtry[0m {
+  [90m521 |[0m       names = fs.readdirSync(rootDir);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:316:35
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic> | <dynamic> '/user-data' | <dynamic> 'user-data') matches 13914 files in [project]/
+  [90m314 |[0m   [36mtry[0m {
+  [90m315 |[0m     killChromeForProfile(profileDir);
+[31m[1m>[0m [90m316 |[0m     [36mif[0m (path.resolve(rootDir) !== path.resolve(profileDir)) {
+  [90m    |[0m                                   [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m317 |[0m       killChromeForProfile(rootDir);
+  [90m318 |[0m     }
+  [90m319 |[0m     [36mtry[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:355:7
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic> | <dynamic> '/user-data' | <dynamic> 'user-data') matches 13914 files in [project]/
+  [90m353 |[0m   [90m// user-data may be rootDir itself or rootDir/user-data[0m
+  [90m354 |[0m   wipeDir(profileDir);
+[31m[1m>[0m [90m355 |[0m   [36mif[0m (path.resolve(profileDir) !== path.resolve(rootDir)) {
+  [90m    |[0m       [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m356 |[0m     wipeDir(rootDir);
+  [90m357 |[0m   }
+  [90m358 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:909:25
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic> | <dynamic> '/user-data' | <dynamic> 'user-data') matches 13914 files in [project]/
+  [90m907 |[0m
+  [90m908 |[0m   [90m// Resolve user-data path first (before extension re-sync needs free files)[0m
+[31m[1m>[0m [90m909 |[0m   [36mconst[0m userDataEarly = path.resolve(profileDirForAccount(accountId));
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m910 |[0m   fs.mkdirSync(userDataEarly, { recursive: [36mtrue[0m });
+  [90m911 |[0m
+  [90m912 |[0m   [36mif[0m (
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:438:56
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic> | <dynamic>) matches 21865 files in [project]/
+  [90m436 |[0m   }
+  [90m437 |[0m
+[31m[1m>[0m [90m438 |[0m   [36mconst[0m uniqueDirs = [...[36mnew[0m [33mSet[0m(candidates.map((c) => path.resolve(c)))];
+  [90m    |[0m                                                        [31m[1m^^^^^^^^^^^^^^^[0m
+  [90m439 |[0m
+  [90m440 |[0m   [36mfor[0m ([36mconst[0m dir [36mof[0m uniqueDirs) {
+  [90m441 |[0m     [36mif[0m (!fs.existsSync(dir)) [36mcontinue[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:89:12
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic>) matches 13914 files in [project]/
+  [90m87 |[0m   [36mconst[0m nested = path.join(rootDir, [32m'user-data'[0m);
+  [90m88 |[0m   [36mif[0m (fs.existsSync(path.join(rootDir, [32m'Default'[0m))) {
+[31m[1m>[0m [90m89 |[0m     [36mreturn[0m path.resolve(rootDir);
+  [90m   |[0m            [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m90 |[0m   }
+  [90m91 |[0m   [36mif[0m (fs.existsSync(path.join(nested, [32m'Default'[0m))) {
+  [90m92 |[0m     [36mreturn[0m path.resolve(nested);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:96:10
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic>) matches 13914 files in [project]/
+  [90m94 |[0m   [90m// New profiles: put Chrome data at profile root (simpler, matches FlowAgent)[0m
+  [90m95 |[0m   fs.mkdirSync(rootDir, { recursive: [36mtrue[0m });
+[31m[1m>[0m [90m96 |[0m   [36mreturn[0m path.resolve(rootDir);
+  [90m   |[0m          [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m97 |[0m }
+  [90m98 |[0m
+  [90m99 |[0m [90m/** Absolute path to source extension (always load from repo — never stale copy). */[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:316:9
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic>) matches 13914 files in [project]/
+  [90m314 |[0m   [36mtry[0m {
+  [90m315 |[0m     killChromeForProfile(profileDir);
+[31m[1m>[0m [90m316 |[0m     [36mif[0m (path.resolve(rootDir) !== path.resolve(profileDir)) {
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m317 |[0m       killChromeForProfile(rootDir);
+  [90m318 |[0m     }
+  [90m319 |[0m     [36mtry[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:355:36
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic>) matches 13914 files in [project]/
+  [90m353 |[0m   [90m// user-data may be rootDir itself or rootDir/user-data[0m
+  [90m354 |[0m   wipeDir(profileDir);
+[31m[1m>[0m [90m355 |[0m   [36mif[0m (path.resolve(profileDir) !== path.resolve(rootDir)) {
+  [90m    |[0m                                    [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m356 |[0m     wipeDir(rootDir);
+  [90m357 |[0m   }
+  [90m358 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:927:11
+The file pattern (<dynamic> '/accounts_data/' <dynamic> | '/ROOT//accounts_data/' <dynamic> | <dynamic> 'accounts_data/' <dynamic> | '/ROOT/accounts_data/' <dynamic> | <dynamic> '/accounts_data' <dynamic> | '/ROOT//accounts_data' <dynamic> | <dynamic> 'accounts_data' <dynamic> | '/ROOT/accounts_data' <dynamic> | <dynamic> '/scratch/flow-profiles/' <dynamic> | '/ROOT//scratch/flow-profiles/' <dynamic> | <dynamic> 'scratch/flow-profiles/' <dynamic> | '/ROOT/scratch/flow-profiles/' <dynamic> | <dynamic> '/scratch/flow-profiles' <dynamic> | '/ROOT//scratch/flow-profiles' <dynamic> | <dynamic> 'scratch/flow-profiles' <dynamic> | '/ROOT/scratch/flow-profiles' <dynamic>) matches 13914 files in [project]/
+  [90m925 |[0m       killed = killChromeForProfile(userDataEarly);
+  [90m926 |[0m       [36mconst[0m root = accountRootDir(accountId);
+[31m[1m>[0m [90m927 |[0m       [36mif[0m (path.resolve(root) !== userDataEarly) {
+  [90m    |[0m           [31m[1m^^^^^^^^^^^^^^^^^^[0m
+  [90m928 |[0m         killed += killChromeForProfile(root);
+  [90m929 |[0m       }
+  [90m930 |[0m       [90m// Legacy scratch path[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/tts/sceneAudioCache.ts:98:14
+The file pattern (<dynamic> '/audio/scene-cache' | <dynamic> 'audio/scene-cache' | <dynamic>) matches 10270 files in [project]/
+  [90m 96 |[0m       }
+  [90m 97 |[0m       [36mif[0m (p === durablePath) {
+[31m[1m>[0m [90m 98 |[0m         [36mif[0m (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: [36mtrue[0m });
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m 99 |[0m         [36mif[0m (!fs.existsSync(publicPath) || fs.statSync(publicPath).size < [35m800[0m) {
+  [90m100 |[0m           fs.copyFileSync(durablePath, publicPath);
+  [90m101 |[0m         }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/generate-tts/route.ts
+
+
+./src/lib/tts/sceneAudioCache.ts:126:8
+The file pattern (<dynamic> '/audio/scene-cache' | <dynamic> 'audio/scene-cache' | <dynamic>) matches 10270 files in [project]/
+  [90m124 |[0m   [36mconst[0m { durable, publicDir } = roots(cwd);
+  [90m125 |[0m   [36mif[0m (!fs.existsSync(durable)) fs.mkdirSync(durable, { recursive: [36mtrue[0m });
+[31m[1m>[0m [90m126 |[0m   [36mif[0m (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: [36mtrue[0m });
+  [90m    |[0m        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m127 |[0m   [36mconst[0m durablePath = path.join(durable, filename);
+  [90m128 |[0m   [36mconst[0m publicPath = path.join(publicDir, filename);
+  [90m129 |[0m   fs.writeFileSync(durablePath, buffer);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/generate-tts/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:189:12
+The file pattern (<dynamic> '/background.js' | '/ROOT/extensions/ainovel-flow/background.js' | <dynamic> 'background.js' | '/ROOT/extensions/ainovel-flowbackground.js' | <dynamic> '/content.js' | '/ROOT/extensions/ainovel-flow/content.js' | <dynamic> 'content.js' | '/ROOT/extensions/ainovel-flowcontent.js' | <dynamic> '/injected.js' | '/ROOT/extensions/ainovel-flow/injected.js' | <dynamic> 'injected.js' | '/ROOT/extensions/ainovel-flowinjected.js' | <dynamic> '/manifest.json' | '/ROOT/extensions/ainovel-flow/manifest.json' | <dynamic> 'manifest.json' | '/ROOT/extensions/ainovel-flowmanifest.json' | <dynamic> '/popup.js' | '/ROOT/extensions/ainovel-flow/popup.js' | <dynamic> 'popup.js' | '/ROOT/extensions/ainovel-flowpopup.js' | <dynamic> '/side_panel.js' | '/ROOT/extensions/ainovel-flow/side_panel.js' | <dynamic> 'side_panel.js' | '/ROOT/extensions/ainovel-flowside_panel.js' | <dynamic> '/tabGuard.js' | '/ROOT/extensions/ainovel-flow/tabGuard.js' | <dynamic> 'tabGuard.js' | '/ROOT/extensions/ainovel-flowtabGuard.js' | <dynamic> '/' <dynamic> | '/ROOT/extensions/ainovel-flow/' <dynamic> | <dynamic> | '/ROOT/extensions/ainovel-flow' <dynamic>) matches 10284 files in [project]/
+  [90m187 |[0m       [36mconst[0m [36mfrom[0m = path.join([90m/* turbopackIgnore: true */[0m src, f);
+  [90m188 |[0m       [36mconst[0m to = path.join([90m/* turbopackIgnore: true */[0m extDest, f);
+[31m[1m>[0m [90m189 |[0m       [36mif[0m (!fs.existsSync([36mfrom[0m)) [36mcontinue[0m;
+  [90m    |[0m            [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+  [90m190 |[0m       [36mtry[0m {
+  [90m191 |[0m         [36mconst[0m srcStat = fs.statSync([36mfrom[0m);
+  [90m192 |[0m         [36mconst[0m destNewer =
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:191:25
+The file pattern (<dynamic> '/background.js' | '/ROOT/extensions/ainovel-flow/background.js' | <dynamic> 'background.js' | '/ROOT/extensions/ainovel-flowbackground.js' | <dynamic> '/content.js' | '/ROOT/extensions/ainovel-flow/content.js' | <dynamic> 'content.js' | '/ROOT/extensions/ainovel-flowcontent.js' | <dynamic> '/injected.js' | '/ROOT/extensions/ainovel-flow/injected.js' | <dynamic> 'injected.js' | '/ROOT/extensions/ainovel-flowinjected.js' | <dynamic> '/manifest.json' | '/ROOT/extensions/ainovel-flow/manifest.json' | <dynamic> 'manifest.json' | '/ROOT/extensions/ainovel-flowmanifest.json' | <dynamic> '/popup.js' | '/ROOT/extensions/ainovel-flow/popup.js' | <dynamic> 'popup.js' | '/ROOT/extensions/ainovel-flowpopup.js' | <dynamic> '/side_panel.js' | '/ROOT/extensions/ainovel-flow/side_panel.js' | <dynamic> 'side_panel.js' | '/ROOT/extensions/ainovel-flowside_panel.js' | <dynamic> '/tabGuard.js' | '/ROOT/extensions/ainovel-flow/tabGuard.js' | <dynamic> 'tabGuard.js' | '/ROOT/extensions/ainovel-flowtabGuard.js' | <dynamic> '/' <dynamic> | '/ROOT/extensions/ainovel-flow/' <dynamic> | <dynamic> | '/ROOT/extensions/ainovel-flow' <dynamic>) matches 10284 files in [project]/
+  [90m189 |[0m       [36mif[0m (!fs.existsSync([36mfrom[0m)) [36mcontinue[0m;
+  [90m190 |[0m       [36mtry[0m {
+[31m[1m>[0m [90m191 |[0m         [36mconst[0m srcStat = fs.statSync([36mfrom[0m);
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^[0m
+  [90m192 |[0m         [36mconst[0m destNewer =
+  [90m193 |[0m           fs.existsSync(to) && fs.statSync(to).mtimeMs >= srcStat.mtimeMs;
+  [90m194 |[0m         [36mif[0m (!destNewer) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/lib/integrations/paths.ts:135:9
+The file pattern (<dynamic> '/bin/ffmpeg.exe' | <dynamic> 'bin/ffmpeg.exe' | <dynamic> '/bin/ffmpeg' | <dynamic> 'bin/ffmpeg' | <dynamic> '/python_core/ffmpeg/ffmpeg.exe' | <dynamic> 'python_core/ffmpeg/ffmpeg.exe' | <dynamic>) matches 10270 files in [project]/
+  [90m133 |[0m   ];
+  [90m134 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m candidates) {
+[31m[1m>[0m [90m135 |[0m     [36mif[0m (fs.existsSync(c)) [36mreturn[0m c;
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m136 |[0m   }
+  [90m137 |[0m   [36mreturn[0m [36mnull[0m;
+  [90m138 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/integrations/paths.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/integrations/paths.ts
+    ./src/app/api/integrations/seedance/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:398:9
+The file pattern (<dynamic> '/bin/ffmpeg.exe' | <dynamic> 'bin/ffmpeg.exe' | <dynamic> '/bin/ffmpeg/ffmpeg.exe' | <dynamic> 'bin/ffmpeg/ffmpeg.exe' | <dynamic> '/python_core/ffmpeg/ffmpeg.exe' | <dynamic> 'python_core/ffmpeg/ffmpeg.exe' | 'ffmpeg' | <dynamic>) matches 10270 files in [project]/
+  [90m396 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m candidates) {
+  [90m397 |[0m     [36mif[0m (p === [32m'ffmpeg'[0m) [36mreturn[0m p;
+[31m[1m>[0m [90m398 |[0m     [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m399 |[0m   }
+  [90m400 |[0m   [36mreturn[0m [32m'ffmpeg'[0m;
+  [90m401 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/flow-bridge/promptInjector.ts:116:5
+The file pattern (<dynamic> '/bin/ffmpeg.exe' | <dynamic> 'bin/ffmpeg.exe' | <dynamic> '/python_core/ffmpeg/ffmpeg.exe' | <dynamic> 'python_core/ffmpeg/ffmpeg.exe' | <dynamic> '/bin/ffmpeg' | <dynamic> 'bin/ffmpeg' | <dynamic> '/' <dynamic> | <dynamic> | 'null') matches 10270 files in [project]/
+  [90m114 |[0m
+  [90m115 |[0m   [36mtry[0m {
+[31m[1m>[0m [90m116 |[0m     execFileSync(
+  [90m    |[0m     [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m117 |[0m       ffmpeg,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m118 |[0m       [
+  [90m    |[0m [31m[1m^^^^^^^[0m
+[31m[1m>[0m [90m119 |[0m         [32m'-y'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m120 |[0m         [32m'-i'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m121 |[0m         original,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m122 |[0m         [32m'-vf'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m123 |[0m         [32m`scale='min([0m${[33mFLOW_UPLOAD_MAX_EDGE[0m[32m},iw)':-2`[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m124 |[0m         [32m'-frames:v'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m125 |[0m         [32m'1'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m126 |[0m         [32m'-q:v'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m127 |[0m         [32m'6'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m128 |[0m         outJpg,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m129 |[0m       ],
+  [90m    |[0m [31m[1m^^^^^^^^[0m
+[31m[1m>[0m [90m130 |[0m       { windowsHide: [36mtrue[0m, stdio: [[32m'ignore'[0m, [32m'ignore'[0m, [32m'pipe'[0m], timeout: [35m60[0m_000 },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m131 |[0m     );
+  [90m    |[0m [31m[1m^^^^^[0m
+  [90m132 |[0m     [36mif[0m (!fs.existsSync(outJpg) || fs.statSync(outJpg).size < [35m500[0m) {
+  [90m133 |[0m       [36mthrow[0m [36mnew[0m [33mError[0m([32m'ffmpeg produced empty output'[0m);
+  [90m134 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/promptInjector.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/promptInjector.ts
+    ./src/lib/flow-bridge/index.ts
+    ./src/app/api/flow/status/route.ts
+
+
+./src/lib/flow-bridge/promptInjector.ts:67:11
+The file pattern (<dynamic> '/bin/ffmpeg.exe' | <dynamic> 'bin/ffmpeg.exe' | <dynamic> '/python_core/ffmpeg/ffmpeg.exe' | <dynamic> 'python_core/ffmpeg/ffmpeg.exe' | <dynamic> '/bin/ffmpeg' | <dynamic> 'bin/ffmpeg' | <dynamic> '/' <dynamic> | <dynamic>) matches 10270 files in [project]/
+  [90m65 |[0m     [36mfor[0m ([36mconst[0m rel [36mof[0m [[32m'bin/ffmpeg.exe'[0m, [32m'python_core/ffmpeg/ffmpeg.exe'[0m, [32m'bin/ffmpeg'[0m]) {
+  [90m66 |[0m       [36mconst[0m p = path.join(root, rel);
+[31m[1m>[0m [90m67 |[0m       [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m   |[0m           [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m68 |[0m     }
+  [90m69 |[0m   }
+  [90m70 |[0m   [36mreturn[0m [36mnull[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/promptInjector.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/promptInjector.ts
+    ./src/lib/flow-bridge/index.ts
+    ./src/app/api/flow/status/route.ts
+
+
+./src/lib/flow-bridge/promptInjector.ts:66:17
+The file pattern (<dynamic> '/bin/ffmpeg.exe' | <dynamic> 'bin/ffmpeg.exe' | <dynamic> '/python_core/ffmpeg/ffmpeg.exe' | <dynamic> 'python_core/ffmpeg/ffmpeg.exe' | <dynamic> '/bin/ffmpeg' | <dynamic> 'bin/ffmpeg' | <dynamic> '/' <dynamic> | <dynamic>) matches 20511 files in [project]/
+  [90m64 |[0m   [36mfor[0m ([36mconst[0m root [36mof[0m roots) {
+  [90m65 |[0m     [36mfor[0m ([36mconst[0m rel [36mof[0m [[32m'bin/ffmpeg.exe'[0m, [32m'python_core/ffmpeg/ffmpeg.exe'[0m, [32m'bin/ffmpeg'[0m]) {
+[31m[1m>[0m [90m66 |[0m       [36mconst[0m p = path.join(root, rel);
+  [90m   |[0m                 [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+  [90m67 |[0m       [36mif[0m (fs.existsSync(p)) [36mreturn[0m p;
+  [90m68 |[0m     }
+  [90m69 |[0m   }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/promptInjector.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/promptInjector.ts
+    ./src/lib/flow-bridge/index.ts
+    ./src/app/api/flow/status/route.ts
+
+
+./src/lib/integrations/paths.ts:146:9
+The file pattern (<dynamic> '/bin/ffprobe.exe' | <dynamic> 'bin/ffprobe.exe' | <dynamic> '/bin/ffprobe' | <dynamic> 'bin/ffprobe' | <dynamic>) matches 10270 files in [project]/
+  [90m144 |[0m   ];
+  [90m145 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m candidates) {
+[31m[1m>[0m [90m146 |[0m     [36mif[0m (fs.existsSync(c)) [36mreturn[0m c;
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m147 |[0m   }
+  [90m148 |[0m   [36mreturn[0m [36mnull[0m;
+  [90m149 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/integrations/paths.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/integrations/paths.ts
+    ./src/app/api/integrations/seedance/route.ts
+
+
+./src/lib/tts/sceneAudioCache.ts:125:8
+The file pattern (<dynamic> '/data/tts-scene-cache' | <dynamic> 'data/tts-scene-cache' | <dynamic>) matches 10270 files in [project]/
+  [90m123 |[0m   [36mconst[0m filename = [32m`sc_[0m${safePlat[32m}_[0m${id[32m}.[0m${ext[32m}`[0m;
+  [90m124 |[0m   [36mconst[0m { durable, publicDir } = roots(cwd);
+[31m[1m>[0m [90m125 |[0m   [36mif[0m (!fs.existsSync(durable)) fs.mkdirSync(durable, { recursive: [36mtrue[0m });
+  [90m    |[0m        [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m126 |[0m   [36mif[0m (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: [36mtrue[0m });
+  [90m127 |[0m   [36mconst[0m durablePath = path.join(durable, filename);
+  [90m128 |[0m   [36mconst[0m publicPath = path.join(publicDir, filename);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/generate-tts/route.ts
+
+
+./src/lib/flow-bridge/chromeSession.ts:111:62
+The file pattern (<dynamic> '/extensions/ainovel-flow' | '/ROOT//extensions/ainovel-flow' | <dynamic> 'extensions/ainovel-flow' | '/ROOT/extensions/ainovel-flow' | <dynamic> '/extension' | '/ROOT//extension' | <dynamic> 'extension' | '/ROOT/extension' | '/ROOT/extensions/ainovel-flow' | <dynamic>) matches 10298 files in [project]/
+  [90m109 |[0m   ];
+  [90m110 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m candidates) {
+[31m[1m>[0m [90m111 |[0m     [36mif[0m (fs.existsSync(path.join(c, [32m'manifest.json'[0m))) [36mreturn[0m path.resolve(c);
+  [90m    |[0m                                                              [31m[1m^^^^^^^^^^^^^^^[0m
+  [90m112 |[0m   }
+  [90m113 |[0m   [36mreturn[0m path.resolve(cwd, [32m'extensions'[0m, [32m'ainovel-flow'[0m);
+  [90m114 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/chromeSession.ts
+    ./src/lib/flow-bridge/bootstrap.ts
+    ./src/app/api/flow/browsers/route.ts
+
+
+./src/app/api/concat-audio/route.ts:135:13
+The file pattern (<dynamic> '/ln_in_' <dynamic> '_' <dynamic> '.mp3' | <dynamic> 'ln_in_' <dynamic> '_' <dynamic> '.mp3' | <dynamic> '/ln_out_' <dynamic> '_' <dynamic> '.mp3' | <dynamic> 'ln_out_' <dynamic> '_' <dynamic> '.mp3' | <dynamic>) matches 10270 files in [project]/
+  [90m133 |[0m     [36mfor[0m ([36mconst[0m p [36mof[0m [inPath, outPath]) {
+  [90m134 |[0m       [36mtry[0m {
+[31m[1m>[0m [90m135 |[0m         [36mif[0m (fs.existsSync(p)) fs.unlinkSync(p);
+  [90m    |[0m             [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m136 |[0m       } [36mcatch[0m {
+  [90m137 |[0m         [90m/* ignore */[0m
+  [90m138 |[0m       }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/concat-audio/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/audioStudio.ts:150:17
+The file pattern (<dynamic> '/mix_' <dynamic> '_' <dynamic> '_out.' <dynamic> | <dynamic> 'mix_' <dynamic> '_' <dynamic> '_out.' <dynamic> | <dynamic>) matches 10270 files in [project]/
+  [90m148 |[0m     execSync(cmd, { encoding: [32m'utf-8'[0m, stdio: [32m'pipe'[0m });
+  [90m149 |[0m
+[31m[1m>[0m [90m150 |[0m     [36mconst[0m out = fs.readFileSync(paths.out);
+  [90m    |[0m                 [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m151 |[0m     cleanup(paths);
+  [90m152 |[0m     [36mreturn[0m { buffer: out, applied };
+  [90m153 |[0m   } [36mcatch[0m (err) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/audioStudio.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/audioStudio.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/vinaVoice/sampleOptimize.ts:146:13
+The file pattern (<dynamic> '/opt_mid1_' <dynamic> '.wav' | <dynamic> 'opt_mid1_' <dynamic> '.wav' | <dynamic> '/opt_mid2_' <dynamic> '.wav' | <dynamic> 'opt_mid2_' <dynamic> '.wav' | <dynamic>) matches 10270 files in [project]/
+  [90m144 |[0m     [36mfor[0m ([36mconst[0m t [36mof[0m [mid1, mid2]) {
+  [90m145 |[0m       [36mtry[0m {
+[31m[1m>[0m [90m146 |[0m         [36mif[0m (fs.existsSync(t)) fs.unlinkSync(t);
+  [90m    |[0m             [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m147 |[0m       } [36mcatch[0m {
+  [90m148 |[0m         [90m/* ignore */[0m
+  [90m149 |[0m       }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/sampleOptimize.ts
+    ./src/app/api/vina-voice/clone/route.ts
+
+
+./src/lib/bypass-engine/buildCommand.ts:212:9
+The file pattern (<dynamic> '/public' | <dynamic> 'public' | <dynamic> '/output' | <dynamic> 'output' | <dynamic> '/.ainovel-app' | <dynamic> '.ainovel-app' | <dynamic>) matches 10270 files in [project]/
+  [90m210 |[0m   ];
+  [90m211 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m candidates) {
+[31m[1m>[0m [90m212 |[0m     [36mif[0m (fs.existsSync(c)) [36mreturn[0m path.resolve(c);
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m213 |[0m   }
+  [90m214 |[0m   [36mreturn[0m path.resolve(cwd);
+  [90m215 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/bypass-engine/buildCommand.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/bypass-engine/buildCommand.ts
+    ./src/app/api/bypass-engine/route.ts
+
+
+./src/lib/bypass-engine/buildCommand.ts:212:34
+The file pattern (<dynamic> '/public' | <dynamic> 'public' | <dynamic> '/output' | <dynamic> 'output' | <dynamic> '/.ainovel-app' | <dynamic> '.ainovel-app' | <dynamic>) matches 10285 files in [project]/
+  [90m210 |[0m   ];
+  [90m211 |[0m   [36mfor[0m ([36mconst[0m c [36mof[0m candidates) {
+[31m[1m>[0m [90m212 |[0m     [36mif[0m (fs.existsSync(c)) [36mreturn[0m path.resolve(c);
+  [90m    |[0m                                  [31m[1m^^^^^^^^^^^^^^^[0m
+  [90m213 |[0m   }
+  [90m214 |[0m   [36mreturn[0m path.resolve(cwd);
+  [90m215 |[0m }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/bypass-engine/buildCommand.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/bypass-engine/buildCommand.ts
+    ./src/app/api/bypass-engine/route.ts
+
+
+./src/lib/integrations/watchVideo.ts:56:9
+The file pattern (<dynamic> '/python_core' | <dynamic> 'python_core' | <dynamic> '/bin' | <dynamic> 'bin' | <dynamic>) matches 10270 files in [project]/
+  [90m54 |[0m   ];
+  [90m55 |[0m   [36mfor[0m ([36mconst[0m d [36mof[0m ytdlpDirs) {
+[31m[1m>[0m [90m56 |[0m     [36mif[0m (fs.existsSync(d)) bins.push(d);
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m57 |[0m   }
+  [90m58 |[0m   [36mif[0m (bins.length) {
+  [90m59 |[0m     env.[33mPATH[0m = [32m`[0m${bins.join(path.delimiter)[32m}[0m${path.delimiter[32m}[0m${env.[33mPATH[0m || [32m''[0m[32m}`[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/integrations/watchVideo.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/integrations/watchVideo.ts
+    ./src/app/api/integrations/watch/route.ts
+
+
+./src/lib/tts/sceneAudioCache.ts:86:10
+The file pattern (<dynamic> '/sc_' <dynamic> '_' <dynamic> '.' <dynamic> | <dynamic> 'sc_' <dynamic> '_' <dynamic> '.' <dynamic> | <dynamic>) matches 10270 files in [project]/
+  [90m84 |[0m
+  [90m85 |[0m   [36mfor[0m ([36mconst[0m p [36mof[0m [publicPath, durablePath]) {
+[31m[1m>[0m [90m86 |[0m     [36mif[0m (!fs.existsSync(p)) [36mcontinue[0m;
+  [90m   |[0m          [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m87 |[0m     [36mtry[0m {
+  [90m88 |[0m       [36mconst[0m st = fs.statSync(p);
+  [90m89 |[0m       [36mif[0m (st.size < [35m800[0m) [36mcontinue[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/generate-tts/route.ts
+
+
+./src/lib/tts/sceneAudioCache.ts:88:18
+The file pattern (<dynamic> '/sc_' <dynamic> '_' <dynamic> '.' <dynamic> | <dynamic> 'sc_' <dynamic> '_' <dynamic> '.' <dynamic> | <dynamic>) matches 10270 files in [project]/
+  [90m86 |[0m     [36mif[0m (!fs.existsSync(p)) [36mcontinue[0m;
+  [90m87 |[0m     [36mtry[0m {
+[31m[1m>[0m [90m88 |[0m       [36mconst[0m st = fs.statSync(p);
+  [90m   |[0m                  [31m[1m^^^^^^^^^^^^^^[0m
+  [90m89 |[0m       [36mif[0m (st.size < [35m800[0m) [36mcontinue[0m;
+  [90m90 |[0m       [36mconst[0m quality = inspectTtsAudioFile(p, cwd);
+  [90m91 |[0m       [36mif[0m (!quality.ok) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/tts/sceneAudioCache.ts
+    ./src/app/api/generate-tts/route.ts
+
+
+./src/app/api/generate-image/route.ts:168:11
+The file pattern (<dynamic> | '') matches 10270 files in [project]/
+  [90m166 |[0m       [36mtry[0m {
+  [90m167 |[0m         [36mif[0m (
+[31m[1m>[0m [90m168 |[0m           fs.existsSync(primaryReferencePath) &&
+  [90m    |[0m           [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m169 |[0m           fs.statSync(primaryReferencePath).isFile()
+  [90m170 |[0m         ) {
+  [90m171 |[0m           [36mconst[0m buf = fs.readFileSync(primaryReferencePath);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-image/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/generate-image/route.ts:169:11
+The file pattern (<dynamic> | '') matches 10270 files in [project]/
+  [90m167 |[0m         [36mif[0m (
+  [90m168 |[0m           fs.existsSync(primaryReferencePath) &&
+[31m[1m>[0m [90m169 |[0m           fs.statSync(primaryReferencePath).isFile()
+  [90m    |[0m           [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m170 |[0m         ) {
+  [90m171 |[0m           [36mconst[0m buf = fs.readFileSync(primaryReferencePath);
+  [90m172 |[0m           [36mif[0m (buf.length <= [35m0[0m) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-image/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/generate-image/route.ts:171:23
+The file pattern (<dynamic> | '') matches 10270 files in [project]/
+  [90m169 |[0m           fs.statSync(primaryReferencePath).isFile()
+  [90m170 |[0m         ) {
+[31m[1m>[0m [90m171 |[0m           [36mconst[0m buf = fs.readFileSync(primaryReferencePath);
+  [90m    |[0m                       [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m172 |[0m           [36mif[0m (buf.length <= [35m0[0m) {
+  [90m173 |[0m             [36mthrow[0m [36mnew[0m [33mAppError[0m(
+  [90m174 |[0m               [32m`[Image API] Reference image is empty: [0m${primaryReferencePath[32m}`[0m,
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-image/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/channelMediaMirror.ts:67:10
+The file pattern (<dynamic> | '/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 10270 files in [project]/
+  [90m65 |[0m     }
+  [90m66 |[0m
+[31m[1m>[0m [90m67 |[0m     [36mif[0m (!fs.existsSync(realSource)) {
+  [90m   |[0m          [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m68 |[0m       [36mreturn[0m [36mnull[0m;
+  [90m69 |[0m     }
+  [90m70 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/generate-video/route.ts
+
+
+./src/lib/channelMediaMirror.ts:87:20
+The file pattern (<dynamic> | '/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 10270 files in [project]/
+  [90m85 |[0m
+  [90m86 |[0m     [36mif[0m (path.resolve(realSource) !== path.resolve(destPath)) {
+[31m[1m>[0m [90m87 |[0m       [36mconst[0m stat = fs.statSync(realSource);
+  [90m   |[0m                    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m88 |[0m       [36mif[0m (stat.isDirectory()) {
+  [90m89 |[0m         fs.cpSync(realSource, destPath, { recursive: [36mtrue[0m });
+  [90m90 |[0m       } [36melse[0m {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/generate-video/route.ts
+
+
+./src/lib/channelMediaMirror.ts:86:9
+The file pattern (<dynamic> | '/ROOT/' <dynamic> | '/ROOT' <dynamic>) matches 30810 files in [project]/
+  [90m84 |[0m     [36mconst[0m destPath = path.join(destDir, filename);
+  [90m85 |[0m
+[31m[1m>[0m [90m86 |[0m     [36mif[0m (path.resolve(realSource) !== path.resolve(destPath)) {
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m87 |[0m       [36mconst[0m stat = fs.statSync(realSource);
+  [90m88 |[0m       [36mif[0m (stat.isDirectory()) {
+  [90m89 |[0m         fs.cpSync(realSource, destPath, { recursive: [36mtrue[0m });
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/channelMediaMirror.ts
+    ./src/app/api/generate-video/route.ts
+
+
+./src/lib/ttsBatchSrt/injectCapCutDraft.ts:70:19
+The file pattern (<dynamic> | '/ROOT/bin/ffprobe.exe' | 'ffprobe') matches 10271 files in [project]/
+  [90m68 |[0m     ];
+  [90m69 |[0m     [36mfor[0m ([36mconst[0m bin [36mof[0m candidates) {
+[31m[1m>[0m [90m70 |[0m       [36mconst[0m res = spawnSync(
+  [90m   |[0m                   [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m71 |[0m         bin,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m72 |[0m         [
+  [90m   |[0m [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m73 |[0m           [32m'-v'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m74 |[0m           [32m'error'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m75 |[0m           [32m'-show_entries'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m76 |[0m           [32m'format=duration'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m77 |[0m           [32m'-of'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m78 |[0m           [32m'default=noprint_wrappers=1:nokey=1'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m79 |[0m           filePath,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m80 |[0m         ],
+  [90m   |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m81 |[0m         { encoding: [32m'utf8'[0m, windowsHide: [36mtrue[0m, timeout: [35m60[0m_000 },
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m82 |[0m       );
+  [90m   |[0m [31m[1m^^^^^^^[0m
+  [90m83 |[0m       [36mif[0m (res.status === [35m0[0m) {
+  [90m84 |[0m         [36mconst[0m n = parseFloat([33mString[0m(res.stdout || [32m''[0m).trim());
+  [90m85 |[0m         [36mif[0m ([33mNumber[0m.isFinite(n) && n > [35m0[0m) [36mreturn[0m n;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/ttsBatchSrt/injectCapCutDraft.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/ttsBatchSrt/injectCapCutDraft.ts
+    ./src/lib/ttsBatchSrt/runVideoPipeline.ts
+    ./src/app/api/tts-batch-srt/route.ts
+
+
+./src/lib/ttsBatchSrt/runVideoPipeline.ts:354:21
+The file pattern (<dynamic> | '/ROOT/public/audio/srt-batch/' <dynamic> '_' <dynamic> '/extract_16k.wav' | '/ROOT/public/audio/srt-batch' <dynamic> '_' <dynamic> '/extract_16k.wav' | '/ROOT/public/audio/srt-batch/job_' <dynamic> '/extract_16k.wav' | '/ROOT/public/audio/srt-batchjob_' <dynamic> '/extract_16k.wav' | '/ROOT/public/audio/srt-batch/' <dynamic> '_' <dynamic> 'extract_16k.wav' | '/ROOT/public/audio/srt-batch' <dynamic> '_' <dynamic> 'extract_16k.wav' | '/ROOT/public/audio/srt-batch/job_' <dynamic> 'extract_16k.wav' | '/ROOT/public/audio/srt-batchjob_' <dynamic> 'extract_16k.wav') matches 10270 files in [project]/
+  [90m352 |[0m       percent: [35m15[0m,
+  [90m353 |[0m     });
+[31m[1m>[0m [90m354 |[0m     [36mif[0m (!wavAbs || !fs.existsSync(wavAbs)) {
+  [90m    |[0m                     [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m355 |[0m       wavAbs = path.join(workDir, [32m'extract_16k.wav'[0m);
+  [90m356 |[0m       extractAudioWav(videoPath, wavAbs);
+  [90m357 |[0m       audioWavPath = [32m`/audio/srt-batch/[0m${path.basename(workDir)[32m}/extract_16k.wav`[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/ttsBatchSrt/runVideoPipeline.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/ttsBatchSrt/runVideoPipeline.ts
+    ./src/app/api/tts-batch-srt/route.ts
+
+
+./src/lib/flow-bridge/flowVideoFinalize.ts:107:31
+The file pattern (<dynamic> | '/ROOT/public/video/' <dynamic> | '/ROOT/public/video' <dynamic>) matches 10406 files in [project]/
+  [90m105 |[0m
+  [90m106 |[0m   [36mtry[0m {
+[31m[1m>[0m [90m107 |[0m     [36mif[0m (path.resolve(src) !== path.resolve(dest)) {
+  [90m    |[0m                               [31m[1m^^^^^^^^^^^^^^^^^^[0m
+  [90m108 |[0m       copyVideoAtomic(src, dest);
+  [90m109 |[0m     }
+  [90m110 |[0m   } [36mcatch[0m (e) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/flowVideoFinalize.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/flowVideoFinalize.ts
+    ./src/app/api/video-artifact/route.ts
+
+
+./src/lib/entitlement.ts:167:41
+The file pattern (<dynamic> | '/ROOT/resources/license/public-keys' | '/ROOT/license/public-keys' | '') matches 10271 files in [project]/
+  [90m165 |[0m   [36mif[0m (dir) {
+  [90m166 |[0m     [36mtry[0m {
+[31m[1m>[0m [90m167 |[0m       [36mfor[0m ([36mconst[0m name [36mof[0m fs.readdirSync(path.resolve(dir)).sort()) {
+  [90m    |[0m                                         [31m[1m^^^^^^^^^^^^^^^^^[0m
+  [90m168 |[0m         [36mif[0m (![35m/\.(pem|pub)$/i[0m.test(name)) [36mcontinue[0m;
+  [90m169 |[0m         [36mconst[0m value = readKeyFile(path.join(dir, name));
+  [90m170 |[0m         [36mif[0m (value) candidates.push(value);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/entitlement.ts
+    ./src/app/api/entitlement/verify/route.ts
+
+  #3 [Instrumentation]:
+    ./src/lib/entitlement.ts
+    ./src/lib/commercial/telegramWebhookHandler.ts
+    ./src/lib/commercial/telegramPoller.ts
+    ./src/instrumentation.ts
+
+
+./src/lib/laStudioLocal.ts:398:19
+The file pattern (<dynamic> | 'D:/LA Studio/bin/LA Studio.exe' | <dynamic> '/Programs/LA Studio/bin/LA Studio.exe' | '/Programs/LA Studio/bin/LA Studio.exe' | <dynamic> 'Programs/LA Studio/bin/LA Studio.exe' | 'Programs/LA Studio/bin/LA Studio.exe' | <dynamic> '/LA Studio/bin/LA Studio.exe' | 'C:/Program Files/LA Studio/bin/LA Studio.exe' | <dynamic> 'LA Studio/bin/LA Studio.exe' | 'C:/Program FilesLA Studio/bin/LA Studio.exe' | 'null') matches 10270 files in [project]/
+  [90m396 |[0m
+  [90m397 |[0m     [90m// Visible spawn (explicit hidden:false only)[0m
+[31m[1m>[0m [90m398 |[0m     [36mconst[0m child = spawn(exe, [], {
+  [90m    |[0m                   [31m[1m^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m399 |[0m       detached: [36mtrue[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m400 |[0m       stdio: [32m'ignore'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m401 |[0m       windowsHide: [36mfalse[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m402 |[0m       cwd: path.dirname(exe),
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m403 |[0m     });
+  [90m    |[0m [31m[1m^^^^^^[0m
+  [90m404 |[0m     child.unref();
+  [90m405 |[0m     lastSpawned = child;
+  [90m406 |[0m     [36mreturn[0m { ok: [36mtrue[0m, exe, pid: child.pid, hidden: [36mfalse[0m };
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/laStudioLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/laStudioLocal.ts
+    ./src/app/api/la-studio/voices/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:255:45
+The file pattern (<dynamic> | 'D:/SuperAudioTools/omnivoice-refs' | <dynamic> '/public/omnivoice-refs' | <dynamic> 'public/omnivoice-refs' | <dynamic> '/omnivoice-refs' | <dynamic> 'omnivoice-refs' | <dynamic> '/data/omnivoice-refs' | <dynamic> 'data/omnivoice-refs') matches 10270 files in [project]/
+  [90m253 |[0m     path.join(cwd, [32m'omnivoice-refs'[0m),
+  [90m254 |[0m     path.join(cwd, [32m'data'[0m, [32m'omnivoice-refs'[0m),
+[31m[1m>[0m [90m255 |[0m   ].filter((p): p is string => [33mBoolean[0m(p && fs.existsSync(p)));
+  [90m    |[0m                                             [31m[1m^^^^^^^^^^^^^^^^[0m
+  [90m256 |[0m }
+  [90m257 |[0m
+  [90m258 |[0m [36mexport[0m [36mfunction[0m loadOmniLibrary(cwd = process.cwd()): [33mOmniLibraryEntry[0m[] {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/vinaVoice/engine.ts:125:3
+The file pattern (<dynamic> | 'ffmpeg') matches 10270 files in [project]/
+  [90m123 |[0m     [32m`[VinaVoice postProcess] speed=[0m${speed.toFixed([35m3[0m)[32m} pitch=[0m${pitch.toFixed([35m2[0m)[32m} af=[0m${af[32m}`[0m,
+  [90m124 |[0m   );
+[31m[1m>[0m [90m125 |[0m   execFileSync(
+  [90m    |[0m   [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m126 |[0m     ffmpeg,
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m127 |[0m     [
+  [90m    |[0m [31m[1m^^^^^[0m
+[31m[1m>[0m [90m128 |[0m       [32m'-y'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m129 |[0m       [32m'-i'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m130 |[0m       inPath,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m131 |[0m       [32m'-af'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m132 |[0m       af,
+  [90m    |[0m [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m133 |[0m       [32m'-ac'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m134 |[0m       [32m'1'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m135 |[0m       [32m'-ar'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m136 |[0m       [32m'44100'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m137 |[0m       [32m'-sample_fmt'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m138 |[0m       [32m's16'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m139 |[0m       outPath,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m140 |[0m     ],
+  [90m    |[0m [31m[1m^^^^^^[0m
+[31m[1m>[0m [90m141 |[0m     { stdio: [32m'pipe'[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m142 |[0m   );
+  [90m    |[0m [31m[1m^^^[0m
+  [90m143 |[0m }
+  [90m144 |[0m
+  [90m145 |[0m [36masync[0m [36mfunction[0m tryNativeEngine(
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/engine.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/engine.ts
+    ./src/app/api/vina-voice/profiles/route.ts
+
+
+./src/lib/vinaVoice/engine.ts:505:5
+The file pattern (<dynamic> | 'ffmpeg') matches 10270 files in [project]/
+  [90m503 |[0m   [36mconst[0m mid = path.join(outDir, [32m`prosody_mid_[0m${[33mDate[0m.now()[32m}.wav`[0m);
+  [90m504 |[0m   [36mtry[0m {
+[31m[1m>[0m [90m505 |[0m     execFileSync(
+  [90m    |[0m     [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m506 |[0m       ffmpeg,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m507 |[0m       [[32m'-y'[0m, [32m'-i'[0m, rawPath, [32m'-ac'[0m, [32m'1'[0m, [32m'-ar'[0m, [32m'44100'[0m, mid],
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m508 |[0m       { stdio: [32m'pipe'[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m509 |[0m     );
+  [90m    |[0m [31m[1m^^^^^[0m
+  [90m510 |[0m   } [36mcatch[0m {
+  [90m511 |[0m     [90m// đã là wav đọc được[0m
+  [90m512 |[0m     fs.copyFileSync(rawPath, mid);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/vinaVoice/engine.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/vinaVoice/engine.ts
+    ./src/app/api/vina-voice/profiles/route.ts
+
+
+./src/app/api/vina-voice/engine/start/route.ts:67:19
+The file pattern (<dynamic> | 'python') matches 10270 files in [project]/
+  [90m65 |[0m
+  [90m66 |[0m     [36mconst[0m py = findPython();
+[31m[1m>[0m [90m67 |[0m     [36mconst[0m child = spawn(py, [script], {
+  [90m   |[0m                   [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m68 |[0m       cwd: path.dirname(script),
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m69 |[0m       detached: [36mtrue[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m70 |[0m       stdio: [32m'ignore'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m71 |[0m       windowsHide: [36mtrue[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m72 |[0m       env: {
+  [90m   |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m73 |[0m         ...process.env,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m74 |[0m         [33mVINA_ENGINE_HOST[0m: [32m'127.0.0.1'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m75 |[0m         [33mVINA_ENGINE_PORT[0m: [32m'8765'[0m,
+  [90m   |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m76 |[0m       },
+  [90m   |[0m [31m[1m^^^^^^^^[0m
+[31m[1m>[0m [90m77 |[0m     });
+  [90m   |[0m [31m[1m^^^^^^[0m
+  [90m78 |[0m     child.unref();
+  [90m79 |[0m
+  [90m80 |[0m     [90m// Chờ tối đa ~8s health[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/vina-voice/engine/start/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:690:21
+The file pattern (<dynamic> | 'python.exe') matches 10270 files in [project]/
+  [90m688 |[0m     [36mtry[0m {
+  [90m689 |[0m       [36mconst[0m logFd = fs.openSync(logPath, [32m'a'[0m);
+[31m[1m>[0m [90m690 |[0m       [36mconst[0m child = spawn(launcher.cmd, cliArgs, {
+  [90m    |[0m                     [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m691 |[0m         cwd: launcher.cwd,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m692 |[0m         detached: [36mtrue[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m693 |[0m         stdio: [[32m'ignore'[0m, logFd, logFd],
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m694 |[0m         windowsHide: [36mtrue[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m695 |[0m         env,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m696 |[0m       });
+  [90m    |[0m [31m[1m^^^^^^^^[0m
+  [90m697 |[0m       lastSpawned = child;
+  [90m698 |[0m       child.on([32m'error'[0m, (err) => {
+  [90m699 |[0m         lastSpawnError = [32m`spawn error: [0m${err.message[32m}`[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/app/api/generate-tts/engines/capcut.ts:124:14
+The file pattern (<dynamic> | 'undefined') matches 10270 files in [project]/
+  [90m122 |[0m   [36mlet[0m output = [32m''[0m;
+  [90m123 |[0m   [36mtry[0m {
+[31m[1m>[0m [90m124 |[0m     output = execFileSync(py, args, {
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m125 |[0m       cwd: capcutDir,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m126 |[0m       encoding: [32m'utf8'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m127 |[0m       stdio: [32m'pipe'[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m128 |[0m       timeout: [35m120[0m_000,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m129 |[0m       env: {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m130 |[0m         ...process.env,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m131 |[0m         [90m// Ensure DLL dir is on PATH for load[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m132 |[0m         [33mPATH[0m: [32m`[0m${hit.appDir[32m}[0m${path.delimiter[32m}[0m${process.env.[33mPATH[0m || [32m''[0m[32m}`[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m133 |[0m       },
+  [90m    |[0m [31m[1m^^^^^^^^[0m
+[31m[1m>[0m [90m134 |[0m       maxBuffer: [35m8[0m * [35m1024[0m * [35m1024[0m,
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m135 |[0m     });
+  [90m    |[0m [31m[1m^^^^^^[0m
+  [90m136 |[0m   } [36mcatch[0m (error: unknown) {
+  [90m137 |[0m     [36mconst[0m e = error [36mas[0m { message?: string; stdout?: string; stderr?: string };
+  [90m138 |[0m     [36mconst[0m detail = [e.stderr, e.stdout, e.message].filter([33mBoolean[0m).join([32m'\n'[0m).slice([35m0[0m, [35m800[0m);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/generate-tts/engines/capcut.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/generate-tts/engines/capcut.ts
+    ./src/app/api/generate-tts/platforms/capcut_tts.ts
+    ./src/app/api/generate-tts/ttsRegistry.ts
+    ./src/app/api/generate-tts/route.ts
+
+
+./src/lib/capassistant/core.ts:531:51
+The file pattern (<dynamic> | 'undefined') matches 10270 files in [project]/
+  [90m529 |[0m   }
+  [90m530 |[0m
+[31m[1m>[0m [90m531 |[0m   [36mif[0m (phantom.enableFrame && phantom.framePath && fs.existsSync(phantom.framePath)) {
+  [90m    |[0m                                                   [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m532 |[0m     inputsRaw.push([32m'-i'[0m, [33mString[0m(phantom.framePath).replace([35m/\\/g[0m, [32m'/'[0m));
+  [90m533 |[0m     vFilters.push([32m`[[0m${ptr[32m}:v]scale=[0m${metadata.width[32m}:[0m${metadata.height[32m}[frm]`[0m);
+  [90m534 |[0m     vFilters.push([32m`[[0m${currV[32m}][frm]overlay=0:0[vfr]`[0m);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/capassistant/thumbnail/route.ts
+
+
+./src/lib/capassistant/core.ts:539:52
+The file pattern (<dynamic> | 'undefined') matches 10270 files in [project]/
+  [90m537 |[0m ...
+  [90m538 |[0m ...
+[31m[1m>[0m [90m539 |[0m ...? [36mtrue[0m) && brand.logoPath && fs.existsSync(brand.logoPath)) {
+  [90m    |[0m                                 [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m540 |[0m ...[32m'[0m, [33mString[0m(brand.logoPath).replace([35m/\\/g[0m, [32m'/'[0m));
+  [90m541 |[0m ...= parseNumber(brand.logoRescale ?? brand.logoSize, [35m12[0m);
+  [90m542 |[0m ...logoPercent > [35m50[0m ? [33mMath[0m.max([35m16[0m, logoPercent) : [33mMath[0m.max([35m16[0m, [33mMath[0m.round(metadata.width ...
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/capassistant/thumbnail/route.ts
+
+
+./src/lib/capassistant/core.ts:554:42
+The file pattern (<dynamic> | 'undefined') matches 10270 files in [project]/
+  [90m552 |[0m ...
+  [90m553 |[0m ...eText ?? [36mtrue[0m) && brand.staticText) {
+[31m[1m>[0m [90m554 |[0m ...= brand.staticFontPath && fs.existsSync(brand.staticFontPath) ? brand.staticFontPath :.[33m..[0m
+  [90m    |[0m                              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m555 |[0m ...brand.staticX !== [36mundefined[0m ? mapX(brand.staticX) : [32m'(w-text_w)/2'[0m;
+  [90m556 |[0m ...brand.staticY !== [36mundefined[0m ? mapY(brand.staticY) : [32m'h-th-20'[0m;
+  [90m557 |[0m ...elay = parseNumber(brand.staticDelay, [35m0[0m);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/capassistant/thumbnail/route.ts
+
+
+./src/lib/capassistant/core.ts:579:43
+The file pattern (<dynamic> | 'undefined') matches 10270 files in [project]/
+  [90m577 |[0m
+  [90m578 |[0m   [36mlet[0m activeSrtContent = [33mString[0m(sub.srtContent || sub.translatedSrtContent || [32m''[0m);
+[31m[1m>[0m [90m579 |[0m   [36mif[0m (!activeSrtContent && sub.srtPath && fs.existsSync(sub.srtPath)) {
+  [90m    |[0m                                           [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m580 |[0m     activeSrtContent = fs.readFileSync(sub.srtPath, [32m'utf8'[0m);
+  [90m581 |[0m   }
+  [90m582 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/capassistant/thumbnail/route.ts
+
+
+./src/lib/capassistant/core.ts:580:24
+The file pattern (<dynamic> | 'undefined') matches 10270 files in [project]/
+  [90m578 |[0m   [36mlet[0m activeSrtContent = [33mString[0m(sub.srtContent || sub.translatedSrtContent || [32m''[0m);
+  [90m579 |[0m   [36mif[0m (!activeSrtContent && sub.srtPath && fs.existsSync(sub.srtPath)) {
+[31m[1m>[0m [90m580 |[0m     activeSrtContent = fs.readFileSync(sub.srtPath, [32m'utf8'[0m);
+  [90m    |[0m                        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m581 |[0m   }
+  [90m582 |[0m
+  [90m583 |[0m   [36mif[0m (sub.enableSub && activeSrtContent.trim()) {
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/capassistant/core.ts
+    ./src/app/api/capassistant/thumbnail/route.ts
+
+
+./src/lib/capassistant/autoMaster.ts:600:8
+The file pattern (<dynamic> | <dynamic> '/AutoMaster_' <dynamic> '_' <dynamic> '.mp4' | '/ROOT/output/auto-master/AutoMaster_' <dynamic> '_' <dynamic> '.mp4' | <dynamic> 'AutoMaster_' <dynamic> '_' <dynamic> '.mp4' | '/ROOT/output/auto-masterAutoMaster_' <dynamic> '_' <dynamic> '.mp4') matches 10270 files in [project]/
+  [90m598 |[0m   }
+  [90m599 |[0m
+[31m[1m>[0m [90m600 |[0m   [36mif[0m (!fs.existsSync(finalName)) [36mthrow[0m [36mnew[0m [33mError[0m([32m'Render finished but output file missing'[0m);
+  [90m    |[0m        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m601 |[0m   artifacts.finalVideoPath = finalName;
+  [90m602 |[0m   log([32m`PROGRESS:100`[0m);
+  [90m603 |[0m   log([32m`[SUCCESS] [0m${finalName[32m}`[0m);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/capassistant/autoMaster.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/capassistant/autoMaster.ts
+    ./src/app/api/capassistant/auto-master/route.ts
+
+
+./src/app/api/generate-image/imageSave.ts:101:16
+The file pattern (<dynamic> | <dynamic> '/Chuong ' <dynamic> | <dynamic> 'Chuong ' <dynamic>) matches 10270 files in [project]/
+  [90m 99 |[0m             driveFolder = path.join(cleanedDrivePath, [32m`Chuong [0m${chapterNum[32m}`[0m);
+  [90m100 |[0m           }
+[31m[1m>[0m [90m101 |[0m           [36mif[0m (!fs.existsSync(driveFolder)) {
+  [90m    |[0m                [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m102 |[0m             fs.mkdirSync(driveFolder, { recursive: [36mtrue[0m });
+  [90m103 |[0m           }
+  [90m104 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/generate-image/imageSave.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/generate-image/imageSave.ts
+    ./src/app/api/generate-image/route.ts
+
+
+./src/app/api/concat-audio/route.ts:250:14
+The file pattern (<dynamic> | <dynamic> '/Chương ' <dynamic> | <dynamic> 'Chương ' <dynamic> | <dynamic> '/Chương 0' | <dynamic> 'Chương 0') matches 10270 files in [project]/
+  [90m248 |[0m           driveFolder = path.join(driveFolder, [32m`Chương [0m${chapterNum[32m}`[0m);
+  [90m249 |[0m         }
+[31m[1m>[0m [90m250 |[0m         [36mif[0m (!fs.existsSync(driveFolder)) fs.mkdirSync(driveFolder, { recursive: [36mtrue[0m });
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m251 |[0m         driveFilePath = path.join(driveFolder, driveFilename);
+  [90m252 |[0m         fs.writeFileSync(driveFilePath, buffer);
+  [90m253 |[0m         driveSaved = [36mtrue[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/concat-audio/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/app/api/generate-image/providers/whisk.ts:308:14
+The file pattern (<dynamic> | <dynamic> '/Chương ' <dynamic> | <dynamic> 'Chương ' <dynamic>) matches 10270 files in [project]/
+  [90m306 |[0m           driveFolder = path.join(cleanedDrivePath, [32m`Chương [0m${chapterNum[32m}`[0m);
+  [90m307 |[0m         }
+[31m[1m>[0m [90m308 |[0m         [36mif[0m (!fs.existsSync(driveFolder)) {
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m309 |[0m           fs.mkdirSync(driveFolder, { recursive: [36mtrue[0m });
+  [90m310 |[0m         }
+  [90m311 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/app/api/generate-image/providers/whisk.ts
+    ./src/app/api/concat-audio/route.ts
+
+  #2 [App Route]:
+    ./src/app/api/generate-image/providers/whisk.ts
+    ./src/app/api/generate-image/providers/gemini.ts
+    ./src/app/api/generate-image/route.ts
+
+
+./src/app/api/generate-tts/route.ts:766:14
+The file pattern (<dynamic> | <dynamic> '/Chương ' <dynamic> | <dynamic> 'Chương ' <dynamic>) matches 10270 files in [project]/
+  [90m764 |[0m           driveFolder = path.join(cleanedDrivePath, [32m`Chương [0m${chapterNum[32m}`[0m);
+  [90m765 |[0m         }
+[31m[1m>[0m [90m766 |[0m         [36mif[0m (!fs.existsSync(driveFolder)) {
+  [90m    |[0m              [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m767 |[0m           fs.mkdirSync(driveFolder, { recursive: [36mtrue[0m });
+  [90m768 |[0m         }
+  [90m769 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import trace:
+  App Route:
+    ./src/app/api/generate-tts/route.ts
+    ./src/app/api/concat-audio/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:832:8
+The file pattern (<dynamic> | <dynamic> '/data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refsref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refsref_clip12s.wav') matches 10270 files in [project]/
+  [90m830 |[0m
+  [90m831 |[0m   [36mconst[0m prepared = prepareOmniCloneRefAssets(refAudioPath, refText, safe);
+[31m[1m>[0m [90m832 |[0m   [36mif[0m (!fs.existsSync(prepared.audioPath)) {
+  [90m    |[0m        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m833 |[0m     [36mthrow[0m [36mnew[0m [33mError[0m([32m`Không tìm thấy file ref audio OmniVoice: [0m${prepared.audioPath[32m}`[0m);
+  [90m834 |[0m   }
+  [90m835 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:836:17
+The file pattern (<dynamic> | <dynamic> '/data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refsref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refsref_clip12s.wav') matches 10270 files in [project]/
+  [90m834 |[0m   }
+  [90m835 |[0m
+[31m[1m>[0m [90m836 |[0m   [36mconst[0m bytes = fs.readFileSync(prepared.audioPath);
+  [90m    |[0m                 [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m837 |[0m   [36mconst[0m form = [36mnew[0m [33mFormData[0m();
+  [90m838 |[0m   form.append([32m'profile_id'[0m, safe);
+  [90m839 |[0m   form.append([32m'overwrite'[0m, [32m'true'[0m);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:918:8
+The file pattern (<dynamic> | <dynamic> '/data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refsref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refsref_clip12s.wav') matches 10270 files in [project]/
+  [90m916 |[0m ): [33mPromise[0m<[33mBuffer[0m> {
+  [90m917 |[0m   [36mconst[0m prepared = prepareOmniCloneRefAssets(refAudioPath, refText, profileIdHint);
+[31m[1m>[0m [90m918 |[0m   [36mif[0m (!fs.existsSync(prepared.audioPath)) {
+  [90m    |[0m        [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m919 |[0m     [36mthrow[0m [36mnew[0m [33mError[0m([32m`Không tìm thấy file ref audio OmniVoice: [0m${prepared.audioPath[32m}`[0m);
+  [90m920 |[0m   }
+  [90m921 |[0m   [36mconst[0m bytes = fs.readFileSync(prepared.audioPath);
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:921:17
+The file pattern (<dynamic> | <dynamic> '/data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs' <dynamic> '_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refs/ref_clip12s.wav' | <dynamic> '/data/cache/omni-clone-refsref_clip12s.wav' | <dynamic> 'data/cache/omni-clone-refsref_clip12s.wav') matches 10270 files in [project]/
+  [90m919 |[0m     [36mthrow[0m [36mnew[0m [33mError[0m([32m`Không tìm thấy file ref audio OmniVoice: [0m${prepared.audioPath[32m}`[0m);
+  [90m920 |[0m   }
+[31m[1m>[0m [90m921 |[0m   [36mconst[0m bytes = fs.readFileSync(prepared.audioPath);
+  [90m    |[0m                 [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m922 |[0m   [36mconst[0m mime = prepared.audioPath.toLowerCase().endsWith([32m'.mp3'[0m) ? [32m'audio/mpeg'[0m : [32m'audio/...[0m
+  [90m923 |[0m   [36mconst[0m fileName = path.basename(prepared.audioPath);
+  [90m924 |[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/omnivoiceLocal.ts:648:9
+The file pattern (<dynamic> | <dynamic> '/data/omnivoice-cache' | <dynamic> 'data/omnivoice-cache') matches 10270 files in [project]/
+  [90m646 |[0m       [33mOMNIVOICE_ENV_FILE[0m: [32m''[0m,
+  [90m647 |[0m     };
+[31m[1m>[0m [90m648 |[0m     [36mif[0m (fs.existsSync(cacheRoot)) {
+  [90m    |[0m         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m649 |[0m       env.[33mHF_HOME[0m = path.join(cacheRoot, [32m'huggingface'[0m);
+  [90m650 |[0m       env.[33mTORCH_HOME[0m = path.join(cacheRoot, [32m'torch'[0m);
+  [90m651 |[0m       env.[33mXDG_CACHE_HOME[0m = cacheRoot;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/omnivoiceLocal.ts
+    ./src/app/api/tts/voices/route.ts
+
+
+./src/lib/flow-bridge/ffmpegService.ts:66:9
+The file pattern (<dynamic> | <dynamic> '/master_combined_' <dynamic> '.mp4' | <dynamic> 'master_combined_' <dynamic> '.mp4') matches 10270 files in [project]/
+  [90m64 |[0m     }
+  [90m65 |[0m
+[31m[1m>[0m [90m66 |[0m     [36mif[0m (fs.existsSync(outputPath) && fs.statSync(outputPath).size > [35m1000[0m) {
+  [90m   |[0m         [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m67 |[0m       console.log([32m`[FFmpegService] Video stitching completed successfully -> [0m${outputPath[32m}`[0m);
+  [90m68 |[0m       [36mreturn[0m { ok: [36mtrue[0m, outputPath };
+  [90m69 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/ffmpegService.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/ffmpegService.ts
+    ./src/app/api/video-dubbing/mux/route.ts
+
+
+./src/lib/flow-bridge/ffmpegService.ts:66:38
+The file pattern (<dynamic> | <dynamic> '/master_combined_' <dynamic> '.mp4' | <dynamic> 'master_combined_' <dynamic> '.mp4') matches 10270 files in [project]/
+  [90m64 |[0m     }
+  [90m65 |[0m
+[31m[1m>[0m [90m66 |[0m     [36mif[0m (fs.existsSync(outputPath) && fs.statSync(outputPath).size > [35m1000[0m) {
+  [90m   |[0m                                      [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m67 |[0m       console.log([32m`[FFmpegService] Video stitching completed successfully -> [0m${outputPath[32m}`[0m);
+  [90m68 |[0m       [36mreturn[0m { ok: [36mtrue[0m, outputPath };
+  [90m69 |[0m     }
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/flow-bridge/ffmpegService.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/flow-bridge/ffmpegService.ts
+    ./src/app/api/video-dubbing/mux/route.ts
+
+
+./src/lib/integrations/fablecut.ts:206:20
+The file pattern (<dynamic> | <dynamic> '/project.json' | <dynamic> 'project.json' | <dynamic> '/project.json' | <dynamic> 'project.json') matches 10270 files in [project]/
+  [90m204 |[0m     [90m// Bump revision if live-editing existing project[0m
+  [90m205 |[0m     [36mlet[0m revision = [35m1[0m;
+[31m[1m>[0m [90m206 |[0m     [36mif[0m (useLive && fs.existsSync(projectPath)) {
+  [90m    |[0m                    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m207 |[0m       [36mtry[0m {
+  [90m208 |[0m         [36mconst[0m prev = [33mJSON[0m.parse(fs.readFileSync(projectPath, [32m'utf8'[0m));
+  [90m209 |[0m         revision = ([33mNumber[0m(prev.revision) || [35m0[0m) + [35m1[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/integrations/fablecut.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/integrations/fablecut.ts
+    ./src/app/api/integrations/pipeline/route.ts
+
+
+./src/lib/integrations/fablecut.ts:208:33
+The file pattern (<dynamic> | <dynamic> '/project.json' | <dynamic> 'project.json' | <dynamic> '/project.json' | <dynamic> 'project.json') matches 10270 files in [project]/
+  [90m206 |[0m     [36mif[0m (useLive && fs.existsSync(projectPath)) {
+  [90m207 |[0m       [36mtry[0m {
+[31m[1m>[0m [90m208 |[0m         [36mconst[0m prev = [33mJSON[0m.parse(fs.readFileSync(projectPath, [32m'utf8'[0m));
+  [90m    |[0m                                 [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m209 |[0m         revision = ([33mNumber[0m(prev.revision) || [35m0[0m) + [35m1[0m;
+  [90m210 |[0m       } [36mcatch[0m {
+  [90m211 |[0m         revision = [35m1[0m;
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/integrations/fablecut.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+  #2 [App Route]:
+    ./src/lib/integrations/fablecut.ts
+    ./src/app/api/integrations/pipeline/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/generate-tts/route.js
+  [output]/.next/server/chunks/[root-of-the-server]__1sre7ke._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/integrations/status/route.js
+  [output]/.next/server/chunks/_1v5w20l._.js
+  [output]/.next/server/chunks/[root-of-the-server]__1khpcmd._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/tts-batch-srt/route.js
+  [output]/.next/server/chunks/[root-of-the-server]__134_qs_._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/clone/route.js
+  [output]/.next/server/chunks/src_lib_1f4bi8l._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/engine/start/route.js
+  [output]/.next/server/chunks/_1_flx0d._.js
+  [output]/.next/server/chunks/src_lib_laStudioClones_ts_1d77ykb._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/profiles/route.js
+  [output]/.next/server/chunks/[root-of-the-server]__1qk_q6q._.js
+  [output]/.next/server/chunks/src_lib_laStudioClones_ts_142sug9._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/runtime/route.js
+  [output]/.next/server/chunks/[root-of-the-server]__0y_-0gq._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/runtime/synthesize/route.js
+  [output]/.next/server/chunks/_1gnb3db._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/status/route.js
+  [output]/.next/server/chunks/src_lib_laStudioClones_ts_1xnr0w4._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/synthesize/route.js
+  [output]/.next/server/chunks/src_lib_laStudioClones_ts_15pxjz8._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/app/api/vina-voice/warm/route.js
+  [output]/.next/server/chunks/_0nx9go1._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/instrumentation.js
+  [output]/.next/server/chunks/src_1ep94zc._.js
+  [output]/.next/server/chunks/[root-of-the-server]__0legxna._.js
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/vina-voice/engine/start/route.ts
+
+
+✓ Compiled successfully in 33.8s
+  Running TypeScript ...
+  Finished TypeScript in 20.0s ...
+  Collecting page data using 55 workers ...
+  Generating static pages using 55 workers (0/84) ...
+  Generating static pages using 55 workers (21/84) 
+  Generating static pages using 55 workers (42/84) 
+  Generating static pages using 55 workers (63/84) 
+✓ Generating static pages using 55 workers (84/84) in 605ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ƒ /api/ainovel/capabilities
+├ ƒ /api/ainovel/chapters
+├ ƒ /api/ainovel/chapters/[id]
+├ ƒ /api/ainovel/config
+├ ƒ /api/ainovel/diag
+├ ƒ /api/ainovel/download-all
+├ ƒ /api/ainovel/resume
+├ ƒ /api/ainovel/start
+├ ƒ /api/ainovel/status
+├ ƒ /api/ainovel/stop
+├ ƒ /api/ainovel/stream
+├ ƒ /api/bypass-engine
+├ ƒ /api/capassistant/auto-master
+├ ƒ /api/capassistant/file-text
+├ ƒ /api/capassistant/join
+├ ƒ /api/capassistant/open-path
+├ ƒ /api/capassistant/save-file
+├ ƒ /api/capassistant/select-file
+├ ƒ /api/capassistant/thumbnail
+├ ƒ /api/cast/auto-tag
+├ ƒ /api/cleanup-assets
+├ ƒ /api/cloud/ip/bypass
+├ ƒ /api/cloud/ip/nav-analyzer
+├ ƒ /api/cloud/ip/psych
+├ ƒ /api/cloud/ip/seedance
+├ ƒ /api/cloud/ip/translate
+├ ƒ /api/cloud/license/issue
+├ ƒ /api/cloud/license/list
+├ ƒ /api/cloud/license/revoke
+├ ƒ /api/cloud/license/trial
+├ ƒ /api/cloud/license/verify
+├ ƒ /api/cloud/orders
+├ ƒ /api/cloud/orders/confirm
+├ ƒ /api/cloud/status
+├ ƒ /api/commercial/status
+├ ƒ /api/concat-audio
+├ ƒ /api/download-video
+├ ƒ /api/engine
+├ ƒ /api/entitlement/activate
+├ ƒ /api/entitlement/codes
+├ ƒ /api/entitlement/hwid
+├ ƒ /api/entitlement/issue
+├ ƒ /api/entitlement/payment-notify
+├ ƒ /api/entitlement/seats
+├ ƒ /api/entitlement/telegram-webhook
+├ ƒ /api/entitlement/trial
+├ ƒ /api/entitlement/verify
+├ ƒ /api/entitlement/webhook
+├ ƒ /api/export-capcut
+├ ƒ /api/flow/accounts
+├ ƒ /api/flow/agent
+├ ƒ /api/flow/bootstrap
+├ ƒ /api/flow/browsers
+├ ƒ /api/flow/connect
+├ ƒ /api/flow/generate-one
+├ ƒ /api/flow/health
+├ ƒ /api/flow/install-browser
+├ ƒ /api/flow/media-id
+├ ƒ /api/flow/models
+├ ƒ /api/flow/ops
+├ ƒ /api/flow/projects
+├ ƒ /api/flow/proxy
+├ ƒ /api/flow/queue
+├ ƒ /api/flow/resources
+├ ƒ /api/flow/status
+├ ƒ /api/flow/task
+├ ƒ /api/generate
+├ ƒ /api/generate-image
+├ ƒ /api/generate-tts
+├ ƒ /api/generate-video
+├ ƒ /api/get-cookie
+├ ƒ /api/get-tiktok-session
+├ ƒ /api/health/runtime
+├ ƒ /api/integrations/chapter
+├ ƒ /api/integrations/fablecut
+├ ƒ /api/integrations/mirofish
+├ ƒ /api/integrations/pipeline
+├ ƒ /api/integrations/seedance
+├ ƒ /api/integrations/status
+├ ƒ /api/integrations/watch
+├ ƒ /api/isolate-vocals
+├ ƒ /api/key-health/check
+├ ƒ /api/key-quota
+├ ƒ /api/la-studio/families
+├ ƒ /api/la-studio/sample-audio
+├ ƒ /api/la-studio/status
+├ ƒ /api/la-studio/voices
+├ ƒ /api/media/reconcile
+├ ƒ /api/navtools/bg_remove
+├ ƒ /api/navtools/gateway
+├ ƒ /api/navtools/script2prompt
+├ ƒ /api/navtools/select-path
+├ ƒ /api/navtools/storyboard
+├ ƒ /api/navtools/subtitle
+├ ƒ /api/navtools/upscale
+├ ƒ /api/navtools/youtube-analyze
+├ ƒ /api/navtools/youtube-seo
+├ ƒ /api/omnivoice/status
+├ ƒ /api/open-folder
+├ ƒ /api/persist-store
+├ ƒ /api/rpa-profile-manager
+├ ƒ /api/rpa-translate-srt
+├ ƒ /api/select-folder
+├ ƒ /api/self-heal/media
+├ ƒ /api/serve-image
+├ ƒ /api/serve-local-video
+├ ƒ /api/ship-pack
+├ ƒ /api/source-ingest
+├ ƒ /api/source-ingest/auto-research
+├ ƒ /api/split-video
+├ ƒ /api/system-info
+├ ƒ /api/system-info/install-gpu
+├ ƒ /api/system-info/install-status
+├ ƒ /api/transcribe
+├ ƒ /api/translate-srt
+├ ƒ /api/tts-batch-srt
+├ ƒ /api/tts/voices
+├ ƒ /api/video-api/detect
+├ ƒ /api/video-artifact
+├ ƒ /api/video-dubbing/mux
+├ ƒ /api/video-editor
+├ ƒ /api/vina-voice/clone
+├ ƒ /api/vina-voice/engine/start
+├ ƒ /api/vina-voice/profiles
+├ ƒ /api/vina-voice/runtime
+├ ƒ /api/vina-voice/runtime/synthesize
+├ ƒ /api/vina-voice/status
+├ ƒ /api/vina-voice/synthesize
+├ ƒ /api/vina-voice/warm
+├ ƒ /api/watermark-audio
+├ ƒ /api/youtube-meta
+├ ƒ /api/youtube-source
+└ ○ /workspace
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

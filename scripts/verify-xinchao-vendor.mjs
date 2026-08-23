@@ -34,6 +34,14 @@ const SKIP_PATHS = new Set([
 // The reference tree remains the behavioral baseline. These are the only
 // permitted source deltas: a narrow install-owned bridge that consumes an
 // AI Novel media manifest through the original project/media/timeline engines.
+//
+// `vite.config.ts` carries one extra integration fix: the Windows drive-letter
+// case bug in vite's html-inline-proxy. When the app is resolved from a
+// lower-case CWD (e.g. `d:\AI Novel`), build-transform cache keys are derived
+// from `config.root` (lower-case `d:`) while rollup canonicalizes module ids
+// to an upper-case `D:` — the inline <style> lookup then misses and vite
+// throws "No matching HTML proxy module found". The config pins `root` to the
+// canonical upper-case drive letter so both sides compute identical keys.
 const INTEGRATION_OVERLAY_CHANGED = new Set([
   'backend/app/export/job.py',
   'src/app/App.tsx',
@@ -47,6 +55,7 @@ const INTEGRATION_OVERLAY_CHANGED = new Set([
   'src/hooks/useAudioPlayback.ts',
   'src/store/timeline-store.test.ts',
   'src/store/timeline-store.ts',
+  'vite.config.ts',
 ]);
 const INTEGRATION_OVERLAY_ADDED = new Set([
   'src/components/shared/AiNovelPackBootstrap.tsx',

@@ -16,6 +16,7 @@ import {
   resolvePinnedLicenseApiUrl,
 } from '@/lib/commercial/licenseTrust';
 import { assertApprovedContentUnlock } from '@/lib/commercial/licenseOnePath';
+import { getEntitlementMode } from '@/lib/entitlement';
 import { AppError } from '@/lib/errors';
 
 assertApprovedContentUnlock('cloud_ip_execution', 'navAnalyzerCloudBridge');
@@ -23,6 +24,8 @@ assertApprovedContentUnlock('cloud_ip_execution', 'navAnalyzerCloudBridge');
 export type NavAnalyzerCloudAction = 'script2prompt' | 'storyboard' | 'capabilities';
 
 export function shouldUseCloudNavAnalyzerIp(): boolean {
+  if (getEntitlementMode() === 'open') return false;
+
   if (
     process.env.AINOVEL_NAV_ANALYZER_CLOUD === '0' ||
     process.env.AINOVEL_NAV_ANALYZER_CLOUD === 'false'

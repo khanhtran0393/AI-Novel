@@ -390,35 +390,51 @@ export function writeEngineRoleLine(
     | 'scene_editor',
 ): string {
   const g = genreLabel.trim() || 'theo Setup user';
+
+  // Inject specific style rules inspired by style presets
+  let styleGuidance = '';
+  const lowerG = g.toLowerCase();
+  if (lowerG.includes('võ hiệp') || lowerG.includes('kiếm hiệp')) {
+    styleGuidance = ' Hướng dẫn style Võ hiệp: Dùng từ ngữ Hán Việt sắc sảo, không khí võ lâm khí chất, đao kiếm uy lực, thoại quyết đoán.';
+  } else if (lowerG.includes('cổ trang') || lowerG.includes('cổ đại')) {
+    styleGuidance = ' Hướng dẫn style Cổ trang: Bối cảnh trang trọng, từ ngữ cố kính, mưu lược trầm lắng, cung đình đại điện rạng rỡ.';
+  } else if (lowerG.includes('hài hước') || lowerG.includes('giải trí')) {
+    styleGuidance = ' Hướng dẫn style Hài hước: Nhịp điệu nhanh, thoại dí dỏm hóm hỉnh, tình huống hài hước tạo tiếng cười tự nhiên.';
+  } else if (lowerG.includes('kinh dị') || lowerG.includes('hắc ám')) {
+    styleGuidance = ' Hướng dẫn style Kinh dị: Bầu không khí u uất, giật gân, nhịp thở dồn dập, chi tiết u ám sống động.';
+  } else if (lowerG.includes('kể chuyện')) {
+    styleGuidance = ' Hướng dẫn style Kể chuyện: Giọng dẫn dắt truyền cảm, nhịp thong thả, lối văn mượt mà giàu cảm xúc.';
+  }
+
   switch (kind) {
     case 'writer':
       return (
         `Bạn là nhà văn / biên kịch kể chuyện chuyên nghiệp — văn xuôi tiếng Việt mượt, có nhịp thở và chiều sâu nhân vật, ` +
-        `vẫn đọc tốt khi narration. Thể loại Setup: ${g}. Ưu tiên cảm giác “truyện hay” hơn checklist sản xuất.`
+        `vẫn đọc tốt khi narration. Thể loại Setup: ${g}.${styleGuidance} Ưu tiên cảm giác “truyện hay” hơn checklist sản xuất.`
       );
     case 'editor':
       return (
         `Bạn là biên tập viên văn học kiêm editor narration — trau chuốt nhịp câu, thoại đời, subtext; ` +
-        `cắt thô cứng / sáo rỗng. Thể loại Setup: ${g}.`
+        `cắt thô cứng / sáo rỗng. Thể loại Setup: ${g}.${styleGuidance}`
       );
     case 'reviewer':
-      return `Bạn là Tổng biên tập khắt khe (văn học + nhịp kể chuyện) — thể loại: ${g}.`;
+      return `Bạn là Tổng biên tập khắt khe (văn học + nhịp kể chuyện) — thể loại: ${g}.${styleGuidance}`;
     case 'memory':
-      return `Bạn là Trợ lý Biên kịch kiêm Bộ Nén Ký Ức logic — thể loại: ${g}.`;
+      return `Bạn là Trợ lý Biên kịch kiêm Bộ Nén Ký Ức logic — thể loại: ${g}.${styleGuidance}`;
     case 'hook_writer':
       return (
-        `Bạn là biên kịch cold-open (~30–45 giây đọc) — câu sắc, hình ảnh đắt, vẫn mượt như văn kể. Thể loại: ${g}.`
+        `Bạn là biên kịch cold-open (~30–45 giây đọc) — câu sắc, hình ảnh đắt, vẫn mượt như văn kể. Thể loại: ${g}.${styleGuidance}`
       );
     case 'hook_editor':
-      return `Bạn là biên tập cold-open (~30 giây đọc) — giữ căng, bớt thô, bớt sáo. Thể loại: ${g}.`;
+      return `Bạn là biên tập cold-open (~30 giây đọc) — giữ căng, bớt thô, bớt sáo. Thể loại: ${g}.${styleGuidance}`;
     case 'scene_writer':
       return (
-        `Bạn là nhà văn / biên kịch phân cảnh — mở rộng bằng nội tâm, subtext và chi tiết đắt, không nhồi checklist. Thể loại: ${g}.`
+        `Bạn là nhà văn / biên kịch phân cảnh — mở rộng bằng nội tâm, subtext và chi tiết đắt, không nhồi checklist. Thể loại: ${g}.${styleGuidance}`
       );
     case 'scene_editor':
-      return `Bạn là biên tập phân cảnh — mượt hóa câu chữ, giữ cốt, chống thô cứng. Thể loại: ${g}.`;
+      return `Bạn là biên tập phân cảnh — mượt hóa câu chữ, giữ cốt, chống thô cứng. Thể loại: ${g}.${styleGuidance}`;
     default:
-      return `Bạn là nhà văn / biên kịch kể chuyện — thể loại: ${g}.`;
+      return `Bạn là nhà văn / biên kịch kể chuyện — thể loại: ${g}.${styleGuidance}`;
   }
 }
 
@@ -431,3 +447,4 @@ export function setupGenreFromPayload(payload: Record<string, unknown> | null | 
     phong_cach: typeof p.phong_cach === 'string' ? p.phong_cach : undefined,
   };
 }
+

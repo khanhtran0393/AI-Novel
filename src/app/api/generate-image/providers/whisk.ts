@@ -155,7 +155,10 @@ export async function runWhiskAutomation(
       whiskPrompt = `${prompt}, reference subject: ${characterPrompt}`;
     }
     
-    const browserAgent = new BrowserAgent(page, aiMasterApiKey || keysToTry[0] || '', 'gemini-1.5-pro');
+    const browserAgent = new BrowserAgent(
+      page,
+      aiMasterApiKey || keysToTry[0] || '',
+    );
     
     // Yêu cầu AI tự xử lý các công việc: tắt popup, tạo project, gõ prompt, ấn nút generate.
     const agentGoal = `

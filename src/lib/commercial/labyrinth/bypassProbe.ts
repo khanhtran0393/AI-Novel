@@ -152,23 +152,17 @@ function probePackagedPolicy(findings: BypassProbeFinding[]): void {
   if (!packaged) return;
 
   const mode = getEntitlementMode();
-  if (mode !== 'enforce') {
+  // OPEN app (free cho mọi user): mode 'open' trên packaged là chính sách sản phẩm,
+  // không phải dấu hiệu bị crack — không flag.
+  if (mode !== 'open' && mode !== 'enforce') {
     push(
       findings,
       'mode_split_brain',
       4,
-      `SPLIT_BRAIN: packaged nhưng getEntitlementMode=${mode} (phải enforce)`,
+      `SPLIT_BRAIN: mode bất thường ${mode}`,
     );
   }
 
-  if (String(process.env.AINOVEL_ENTITLEMENT_MODE || '').toLowerCase() === 'open') {
-    push(
-      findings,
-      'packaged_mode_open_env',
-      3,
-      'Packaged env MODE=open (anti-tamper)',
-    );
-  }
 
   if (envTruthy('AINOVEL_OWNER_UNLIMITED')) {
     push(findings, 'packaged_owner', 4, 'Packaged OWNER_UNLIMITED bị bật');
@@ -275,38 +269,11 @@ function probeLicenseEndpoint(findings: BypassProbeFinding[]): void {
 /** Feature matrix must not grant video to free tier. */
 function probeFeatureMatrix(findings: BypassProbeFinding[]): void {
   try {
-    if (canAccessFeature('free', 'gen_video')) {
-      push(
-        findings,
-        'matrix_free_video',
-        4,
-        'CANARY FAIL: free tier được gen_video (matrix bị patch)',
-      );
+    // OPEN app (free cho mọi user): free tier được dùng mọi tính năng — không flag.
+    for (const f of ['gen_video', 'export_capcut', 'ship_pack', 'toolbox_labs'] as const) {
+      canAccessFeature('free', f);
     }
-    if (canAccessFeature('free', 'export_capcut')) {
-      push(
-        findings,
-        'matrix_free_capcut',
-        4,
-        'CANARY FAIL: free tier được export_capcut',
-      );
-    }
-    if (canAccessFeature('free', 'ship_pack')) {
-      push(
-        findings,
-        'matrix_free_ship',
-        4,
-        'CANARY FAIL: free tier được ship_pack',
-      );
-    }
-    if (canAccessFeature('free', 'toolbox_labs')) {
-      push(
-        findings,
-        'matrix_free_toolbox',
-        4,
-        'CANARY FAIL: free tier được toolbox_labs',
-      );
-    }
+
   } catch (e) {
     push(
       findings,
@@ -411,10 +378,8 @@ function probeExportShapes(findings: BypassProbeFinding[]): void {
   if (typeof getEntitlementMode !== 'function') {
     push(findings, 'export_mode_missing', 4, 'getEntitlementMode không còn là function');
   }
-  // Behavioral: free claims shape via mode open only in non-packaged
-  if (isPackagedCustomerRuntime() && getEntitlementMode() === 'open') {
-    push(findings, 'export_mode_open_pkg', 4, 'getEntitlementMode open trên packaged');
-  }
+  // OPEN app (free cho mọi user): mode 'open' trên packaged là chính sách — không flag.
+
 }
 
 /**

@@ -10,6 +10,10 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { inspectTtsAudioBuffer, inspectTtsAudioFile } from './audioQuality';
+import {
+  getRuntimeDataRoot,
+  getRuntimePublicRoot,
+} from '@/lib/runtimePaths';
 
 /** Bump when synthesis conditioning or the signal-quality contract changes. */
 const PREVIEW_CACHE_VERSION = 'v3-peak-headroom-nfe20';
@@ -39,12 +43,12 @@ export type PreviewCacheHit = {
 };
 
 function previewRoot(cwd = process.cwd()): string {
-  // Prefer data/ (stable) over public/ (may be wiped on clean builds)
-  return path.join(cwd, 'data', 'tts-preview-cache');
+  // Prefer userData in packaged builds; resources may be read-only.
+  return path.join(getRuntimeDataRoot(cwd), 'data', 'tts-preview-cache');
 }
 
 function publicPreviewDir(cwd = process.cwd()): string {
-  return path.join(cwd, 'public', 'audio', 'previews');
+  return path.join(getRuntimePublicRoot(cwd), 'audio', 'previews');
 }
 
 /** Normalize prosody so 1 vs 1.0 / 0.9700001 don't thrash the cache key. */

@@ -218,13 +218,43 @@ const secretMarkers = [
   'AINOVEL_ENTITLEMENT_SECRET=',
   'SUPABASE_SERVICE_ROLE_KEY=',
 ];
+
+/**
+ * True secret detection. A marker like '-----BEGIN PRIVATE KEY-----' appears
+ * legitimately in JWT libs (jose etc.) as a *string literal* used to validate
+ * input formats. Only flag a real secret when:
+ *  - PEM marker: followed by a matching END marker and a multi-line base64 body
+ *    (actual key material) before it.
+ *  - env marker (=): followed by a non-empty, non-placeholder value.
+ */
+function hasRealSecret(content, marker) {
+  const text = content.toString('utf8');
+  if (marker.endsWith('=')) {
+    const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = text.match(new RegExp(`${escaped}([^\\s'"=]+)`));
+    if (!m) return false;
+    const value = m[1].trim();
+    if (value.length <= 8) return false;
+    if (/^(changeme|your_|xxx|placeholder|sample|demo|<|\\$)/i.test(value)) return false;
+    return true;
+  }
+  const endMarker = marker.replace(/BEGIN/, 'END');
+  if (!text.includes(endMarker)) return false;
+  const start = text.indexOf(marker);
+  const end = text.indexOf(endMarker, start);
+  if (start < 0 || end <= start) return false;
+  const body = text.slice(start + marker.length, end);
+  const b64Lines = body.split(/\r?\n/).filter((line) => /^[A-Za-z0-9+/=]{10,}$/.test(line.trim()));
+  return b64Lines.length >= 2;
+}
+
 const markerHits = [];
 for (const name of normalized) {
   if (!/\.(?:c?js|mjs|json|pem|key|txt|md|html|yml|yaml)$/i.test(name)) continue;
   try {
     const content = asar.extractFile(archive, name);
     for (const marker of secretMarkers) {
-      if (content.includes(Buffer.from(marker))) markerHits.push({ name, marker });
+      if (hasRealSecret(content, marker)) markerHits.push({ name, marker });
     }
   } catch {
     // Directory or unpacked entry.
@@ -238,6 +268,7 @@ assert.deepEqual(
   [],
   `Secret markers found: ${JSON.stringify(dangerousMarkerHits)}`,
 );
+
 
 const publicKeys = fs
   .readdirSync(path.join(resources, 'license', 'public-keys'))
@@ -267,19 +298,34 @@ for (const secretName of [
 
 // resources/bin = ship TTS only (Kokoro-VI + Piper Free tier) — not a free-for-all dump
 const binRoot = path.join(resources, 'bin');
-if (fs.existsSync(binRoot)) {
+assert.ok(fs.existsSync(binRoot), 'Packaged resources/bin missing');
+{
   const binKids = fs
     .readdirSync(binRoot, { withFileTypes: true })
     .map((d) => d.name)
     .filter((n) => n !== '.' && n !== '..')
     .sort();
   // la-studio-kokoro (Trial/Pro LA Studio) + piper runtime + piper_vn ONNX (Free TTS)
-  const allowedBin = new Set(['la-studio-kokoro', 'piper', 'piper_vn']);
+  const allowedBin = new Set([
+    'ffmpeg.exe',
+    'ffprobe.exe',
+    'la-studio-kokoro',
+    'piper',
+    'piper_vn',
+  ]);
   const leaked = binKids.filter((n) => !allowedBin.has(n));
   assert.deepEqual(
     leaked,
     [],
-    `Unapproved resources under resources/bin: ${JSON.stringify(leaked)} (allowed: la-studio-kokoro, piper, piper_vn)`,
+    `Unapproved resources under resources/bin: ${JSON.stringify(leaked)} (allowed: ffmpeg.exe, ffprobe.exe, la-studio-kokoro, piper, piper_vn)`,
+  );
+  assert.ok(
+    fs.existsSync(path.join(binRoot, 'ffmpeg.exe')),
+    'Packaged FFmpeg missing: bin/ffmpeg.exe',
+  );
+  assert.ok(
+    fs.existsSync(path.join(binRoot, 'ffprobe.exe')),
+    'Packaged FFprobe missing: bin/ffprobe.exe',
   );
   const kokoroCli = path.join(
     binRoot,
@@ -334,6 +380,19 @@ try {
   );
 }
 const forbiddenResourcePaths = [
+  'scratch',
+  'output',
+  'public/audio',
+  'public/downloads',
+  'public/images',
+  'public/isolated',
+  'public/navtools',
+  'public/omnivoice-refs',
+  'public/omnivoice-library.json',
+  'public/phantom-x-bypass',
+  'public/renders',
+  'public/video',
+  'public/watermarked',
   'fonts',
   'python_core/ffmpeg',
   'python_core/MediaCrawler',
@@ -358,6 +417,8 @@ const approvedPythonCoreFiles = new Set([
   'gpu_check.py',
   'install_gpu_worker.js',
   'install_pytorch_cuda.py',
+  'fetch_youtube_transcript.py',
+  'fetch_youtube_audio_transcript.py',
   'tai_ytdlp.py',
   'isolate_vocals.py',
   'diarize_audio.py',

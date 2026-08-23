@@ -13,7 +13,8 @@ export function mapImageAspectRatio(ratio?: string): string {
   if (r === '9:16' || r === '2:3' || r === '3:4' || r === '4:5') {
     return 'IMAGE_ASPECT_RATIO_PORTRAIT';
   }
-  if (r === '1:1') return 'IMAGE_ASPECT_RATIO_SQUARE';
+  if (r === '1:1' || r === '4:3') return 'IMAGE_ASPECT_RATIO_SQUARE';
+  if (r === '21:9') return 'IMAGE_ASPECT_RATIO_LANDSCAPE';
   return 'IMAGE_ASPECT_RATIO_LANDSCAPE';
 }
 
@@ -22,6 +23,8 @@ export function mapVideoAspectRatio(ratio?: string): string {
   if (r === '9:16' || r === '2:3' || r === '3:4' || r === '4:5') {
     return 'VIDEO_ASPECT_RATIO_PORTRAIT';
   }
+  if (r === '21:9') return 'VIDEO_ASPECT_RATIO_ULTRAWIDE';
+  if (r === '4:3' || r === '1:1') return 'VIDEO_ASPECT_RATIO_SQUARE';
   return 'VIDEO_ASPECT_RATIO_LANDSCAPE';
 }
 
@@ -493,7 +496,7 @@ export function buildVideoIngredientsBody(opts: {
     videoModelKey: model,
     referenceImages: ids.map((mediaId) => ({
       mediaId,
-      imageUsageType: 'IMAGE_USAGE_TYPE_ASSET',
+      imageUsageType: 'CHARACTER_REFERENCE',
     })),
     metadata: {},
   };
@@ -501,7 +504,7 @@ export function buildVideoIngredientsBody(opts: {
   return {
     url: `${FLOW_BASE}/v1/video:batchAsyncGenerateVideoReferenceImages?key=${FLOW_PUBLIC_API_KEY}`,
     body: {
-      mediaGenerationContext: buildMediaGenerationContext(),
+      mediaGenerationContext: buildMediaGenerationContext('BLOCK_SILENCED_VIDEOS'),
       clientContext,
       requests: [req],
       useV2ModelConfig: true,
@@ -861,6 +864,18 @@ export function extractVideoOperations(data: unknown): unknown[] {
 
   if (Array.isArray(root.responses) && root.responses.length) {
     return dedupeOps(root.responses);
+  }
+
+  if (Array.isArray(root.media) && root.media.length) {
+    const cleaned: unknown[] = [];
+    for (const item of root.media) {
+      if (!item || typeof item !== 'object') continue;
+      const mid = String(item.mediaId || item.id || (item as { name?: string }).name || '');
+      if (mid.length >= 8) {
+        cleaned.push({ operation: { name: mid } });
+      }
+    }
+    if (cleaned.length) return dedupeOps(cleaned);
   }
 
   const mediaIds: string[] = [];

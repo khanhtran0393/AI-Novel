@@ -1,5 +1,6 @@
 import { defaultChannelsBootstrap } from '@/lib/channelModel';
 import { EMPTY_VOICE_CAST } from '@/lib/voiceCast';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 import type { NovelState, SetupData } from './novelTypes';
 
 const INITIAL_SETUP: SetupData = {
@@ -71,6 +72,9 @@ export const INITIAL_STATE: NovelState = {
   runwayApiKeys: [],
   falaiApiKey: '',
   falaiApiKeys: [],
+  customApiBaseUrl: '',
+  customApiModel: '',
+  customApiProtocol: 'openai',
   useGpuAcceleration: false,
   googleStudioCookie: '',
   googleStudioCookies: [],
@@ -106,7 +110,8 @@ export const INITIAL_STATE: NovelState = {
   /** FlowAgent parity: model key resolves to abra_t2v_{4|6|8}s by duration. */
   videoModel: 'OMNI_FLASH',
 
-  aiMasterModel: 'aistudio',
+  aiMasterProvider: 'gemini',
+  aiMasterModel: DEFAULT_GEMINI_TEXT_MODEL,
   aiMasterApiKey: '',
   visualDnaPrompt: '',
   mediaStylePreset:
@@ -126,13 +131,12 @@ export const INITIAL_STATE: NovelState = {
   wpm: 140,
   secondsPerBeat: 6,
 
-  // Commercial default = Free. Dev open / owner sync may promote to Pro on boot.
+  // All features available to everyone — no tier system.
   is_vip: false,
-  is_pro: false,
+  is_pro: true,
   is_trial: false,
-  credits: 100,
+  credits: 999_999_999,
   ttsConfig: {
-    /** Free default: Edge. LA Studio = Trial/Pro (tts_premium). */
     platform: 'edge_tts',
     language: 'vi',
     voice: 'vi-VN-HoaiMyNeural',

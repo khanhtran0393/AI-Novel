@@ -8,8 +8,24 @@
 
 import crypto from 'crypto';
 
-let sessionToken: string | null = null;
-let sessionTokenGeneratedAt = 0;
+type FlowBridgeSecurityState = {
+  sessionToken: string | null;
+  sessionTokenGeneratedAt: number;
+};
+
+const securityGlobal = globalThis as unknown as {
+  __ainovelFlowBridgeSecurity?: FlowBridgeSecurityState;
+};
+
+function securityState(): FlowBridgeSecurityState {
+  if (!securityGlobal.__ainovelFlowBridgeSecurity) {
+    securityGlobal.__ainovelFlowBridgeSecurity = {
+      sessionToken: null,
+      sessionTokenGeneratedAt: 0,
+    };
+  }
+  return securityGlobal.__ainovelFlowBridgeSecurity;
+}
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h — session lifetime
 
 /** Extension manifest ID (must match extensions/ainovel-flow/manifest.json key). */
@@ -56,12 +72,16 @@ const FORBIDDEN_REQUEST_HEADERS = [
  */
 export function getOrCreateSessionToken(): string {
   const now = Date.now();
-  if (sessionToken && now - sessionTokenGeneratedAt < TOKEN_TTL_MS) {
-    return sessionToken;
+  const state = securityState();
+  if (
+    state.sessionToken &&
+    now - state.sessionTokenGeneratedAt < TOKEN_TTL_MS
+  ) {
+    return state.sessionToken;
   }
-  sessionToken = crypto.randomBytes(32).toString('hex');
-  sessionTokenGeneratedAt = now;
-  return sessionToken;
+  state.sessionToken = crypto.randomBytes(32).toString('hex');
+  state.sessionTokenGeneratedAt = now;
+  return state.sessionToken;
 }
 
 /**
@@ -69,6 +89,7 @@ export function getOrCreateSessionToken(): string {
  * Uses timing-safe comparison to prevent timing attacks.
  */
 export function validateSessionToken(provided: string | null | undefined): boolean {
+  const { sessionToken } = securityState();
   if (!provided || !sessionToken) return false;
   try {
     const a = Buffer.from(String(provided), 'utf8');
@@ -91,6 +112,13 @@ export function validateWsConnection(
   // Must have valid token OR come from allowed origin
   const originOk = ALLOWED_WS_ORIGINS.some((o) => origin.startsWith(o));
   const tokenOk = validateSessionToken(token);
+  const chromeExtensionOrigin = origin.startsWith('chrome-extension://');
+
+  // Unpacked extensions get a path-derived ID unless manifest.key is pinned.
+  // A valid per-launch token is the stable authenticator for those origins.
+  if (tokenOk && (!origin || originOk || chromeExtensionOrigin)) {
+    return { allowed: true };
+  }
 
   if (!originOk && !tokenOk) {
     return { allowed: false, closeCode: 4001, reason: 'Unauthorized: missing token or origin' };

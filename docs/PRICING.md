@@ -1,34 +1,37 @@
-# Bảng giá gợi ý — AI Novel
+# AI Novel — Bảng giá (trạng thái: mở miễn phí toàn bộ)
 
-Giá tiền do **seller** tự set. Đây là ma trận quyền (sync code `PRICING_PLANS`).
+> **Cập nhật:** App đã chuyển sang **mở miễn phí cho tất cả user** — mọi tính năng (viết, prompt, ảnh, video, TTS, CapCut, ship, pipeline, toolbox, multi-channel, Flow multi-account…) đều miễn phí, không cần license, không quota ngày.
+>
+> `FEATURE_MATRIX` (sync code trong `src/lib/commercial/featureMatrix.ts`) không còn chặn tính năng nào.
 
-| Gói | Giá | Thời hạn | Quyền chính |
-|-----|-----|----------|-------------|
-| Free | 0 | mãi | Viết ≤600 từ · ≤2 chương · 3 lượt/ngày; outline/prompt/TTS Edge-Piper/ảnh BYOK: 3 lượt/ngày mỗi mục |
-| Trial | 0 | 3 ngày / 1 HWID | + video, CapCut, ship, TTS premium |
-| Pro tháng | **478.000đ** | 30 ngày | + pipeline, multi-channel, toolbox, multi Flow |
-| Pro năm | **4.780.000đ** | 365 ngày | như Pro |
-| Pro trọn đời | **8.999.000đ** | không hết hạn | Toàn bộ quyền Pro, không gia hạn |
+## Giá hiện tại
 
-**CK:** Techcombank · STK `1903 2706 3540 18` · **TRAN HUU KHANH**  
-**Nội dung động:** `AI Novel THANG|AI Novel NAM|AI Novel TRON DOI` + mã thiết bị (HWID)  
-**Zalo admin:** 0868.715.114  
-**Telegram admin:** cấu hình `AINOVEL_TELEGRAM_BOT_TOKEN` + `AINOVEL_TELEGRAM_CHAT_ID` — nút **Đã thanh toán** trong modal logo.
-**UI:** nhấp logo app (góc trái header) → modal Bản quyền (không còn trong Cài đặt).
+| Gói | Giá | Thời hạn | Quyền |
+|-----|-----|----------|-------|
+| **Mở miễn phí (Open)** | **0** | mãi mãi | **Toàn bộ tính năng**, không meter, không giới hạn chương/từ |
 
-## Thanh toán
+Badge UI luôn hiển thị **PRO** (màu vàng) với credits 999.999.999. Không có popup mua/trial.
 
-Webhook: `POST /api/entitlement/webhook`  
-→ tạo mã `AINOVEL-…` (gửi email khách) hoặc token gắn HWID nếu checkout có HWID.
+## Thông tin thanh toán cũ (đã ngừng áp dụng)
 
-## Seller issue tay
+Giá cũ (chỉ để tham chiếu nếu bật lại mô hình trả phí):
+
+| Gói cũ | Giá cũ | Quyền cũ |
+|--------|--------|----------|
+| Free | 0 | giới hạn lượt/ngày |
+| Trial | 0 · 3 ngày | 50 lượt/ngày |
+| Pro tháng | 478.000đ · 30 ngày | toàn bộ Pro |
+| Pro năm | 4.780.000đ · 365 ngày | như Pro |
+| Pro trọn đời | 8.999.000đ | toàn bộ Pro |
+
+## Bật lại mô hình trả phí
+
+Xem phần "Bật lại mô hình trả phí" trong [`COMMERCIAL.md`](./COMMERCIAL.md) — bao gồm `entitlement.ts`, `featureMatrix.ts`, `main.js`, `useEntitlementSync.ts`, rebuild `main.jsc`.
+
+## Seller issue tay (chỉ khi đã bật lại)
 
 ```bash
 AINOVEL_LICENSE_API_URL=https://<license-api> \
 AINOVEL_ENTITLEMENT_ADMIN_KEY=<admin-key> \
 npm run license:issue -- --hwid <HWID> --expDays 365
-# batch mã one-path (mọi mã phải có row Supabase trước khi trả về)
-curl -X POST http://localhost:3000/api/entitlement/codes \
-  -H "Content-Type: application/json" \
-  -d "{\"adminKey\":\"…\",\"count\":1,\"plan\":\"pro\"}"
 ```

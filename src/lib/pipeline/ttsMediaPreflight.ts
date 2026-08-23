@@ -1,9 +1,10 @@
 /**
- * P1 — TTS stage preflight (hard-fail platform/voice/scene; quality soft-warn).
+ * P1 — TTS stage preflight (hard-fail platform/voice/scene/quality).
  */
 import { evaluateMediaPreflight, assertMediaPreflight } from './mediaPreflight';
 import { ensureChapterQuality } from './ensureQuality';
 import { getChapterQuality } from './pipelineStore';
+import { formatQualityGateReasons } from './qualityGate';
 import type { MediaPreflightResult } from './types';
 
 export type TtsMediaPreflightInput = {
@@ -19,13 +20,14 @@ export type TtsMediaPreflightInput = {
   wordGoal?: number;
   userRules?: { forbidden_words?: string; fatigue_words?: string };
   editorVerdict?: string;
-  /** Block when quality not mediaReady (default false — warn only) */
+  scriptMode?: string;
+  /** Block when quality is not mediaReady (default true for saved/generated TTS). */
   hardQuality?: boolean;
 };
 
 /**
  * Run media preflight for TTS + ensure quality snapshot.
- * Throws on block (platform / voice / empty scene).
+ * Throws on block (platform / voice / empty scene / Quality Gate).
  */
 export function assertTtsMediaPreflight(
   input: TtsMediaPreflightInput,
@@ -37,8 +39,11 @@ export function assertTtsMediaPreflight(
     wordGoal: input.wordGoal,
     userRules: input.userRules,
     editorVerdict: input.editorVerdict,
+    scriptMode: input.scriptMode,
+    force: true,
   });
 
+  const hardQuality = input.hardQuality !== false;
   const pf = evaluateMediaPreflight({
     stage: 'tts',
     chapter: input.chapter,
@@ -48,26 +53,52 @@ export function assertTtsMediaPreflight(
     ttsVoice: input.voice,
     chu_de: input.chu_de,
     phong_cach: input.phong_cach,
-    requireQualityGate: input.hardQuality === true,
+    requireQualityGate: false,
   });
 
-  // Soft quality warn when not hard-blocking
-  if (input.hardQuality !== true) {
-    const q = getChapterQuality(input.chapter);
+  const q = getChapterQuality(input.chapter);
+  if (hardQuality) {
+    if (!q) {
+      pf.issues.push({
+        level: 'block',
+        code: 'quality_missing',
+        message: `Chua co Quality Gate ch${input.chapter}. Viet/commit chuong truoc khi Gen TTS.`,
+      });
+    } else if (!q.mediaReady) {
+      const reasons = formatQualityGateReasons(q, {
+        maxErrors: 4,
+        maxWarnings: 1,
+        includeMeta: false,
+      });
+      pf.issues.push({
+        level: 'block',
+        code: 'quality_blocked',
+        message:
+          `Quality Gate chan ch${input.chapter}: ${q.hardErrors} loi - viet tiep/sua truoc khi Gen TTS/Prompt/Anh/Video.\n` +
+          (reasons || 'Bam badge Gate de xem nguyen nhan.'),
+      });
+    }
+  } else {
     if (q && !q.mediaReady) {
       pf.issues.push({
         level: 'warn',
         code: 'quality_soft',
-        message: `Quality Gate ch${input.chapter} chưa media-ready (${q.hardErrors} lỗi) — TTS vẫn chạy; Gen Prompt/Ảnh/Video sẽ chặn.`,
+        message: `Quality Gate ch${input.chapter} chua media-ready (${q.hardErrors} loi) - dang cho phep TTS tam thoi.`,
       });
     } else if (!q) {
       pf.issues.push({
         level: 'info',
         code: 'quality_none',
-        message: `Chưa có Quality Gate ch${input.chapter} — đã lazy-scan nếu có nội dung.`,
+        message: `Chua co Quality Gate ch${input.chapter} - da lazy-scan neu co noi dung.`,
       });
     }
   }
+
+  const blocks = pf.issues.filter((i) => i.level === 'block');
+  pf.ok = blocks.length === 0;
+  pf.summary = pf.ok
+    ? `Preflight tts ch${input.chapter}: OK`
+    : `Preflight tts ch${input.chapter}: ${blocks.length} block - ${blocks[0]?.message || ''}`;
 
   assertMediaPreflight(pf);
   return pf;

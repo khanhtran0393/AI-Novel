@@ -6,17 +6,6 @@ import {
 } from '@/contracts';
 import { AppError, httpStatusFromError, toErrorJson } from '@/lib/errors';
 import { correlationIdFromRequest, slog } from '@/lib/requestContext';
-import {
-  FREE_LIMITS,
-  TRIAL_LIMITS,
-  generateRequestToFreeBucket,
-} from '@/lib/commercial/freeLimitsPolicy';
-import {
-  applyFreeWordGoalToPayload,
-  assertAndConsumeFreeQuota,
-  assertFreeOutlineConstraints,
-  assertFreeWriteConstraints,
-} from '@/lib/commercial/freeQuota';
 import { handleVisualDna } from './handlers/visualDna';
 import { handleIdeas } from './handlers/ideas';
 import { handleImagePrompt } from './handlers/imagePrompt';
@@ -26,6 +15,7 @@ import { handleScene } from './handlers/scene';
 import { handleCharacter } from './handlers/character';
 import { handleFoundation } from './handlers/foundation';
 import type { GenerateHandlerContext } from './handlers/types';
+import { runWithModelClientConfig } from './modelClients';
 
 export const runtime = 'nodejs';
 
@@ -52,6 +42,7 @@ export async function POST(req: Request) {
       apiKey: clientApiKey,
       apiKeys: clientApiKeys,
       model,
+      provider,
       payload,
     } = body;
 
@@ -60,7 +51,7 @@ export async function POST(req: Request) {
       msg: 'generate_start',
       correlationId,
       route: '/api/generate',
-      provider: requestType,
+      provider: provider || 'legacy-auto',
       model: model || 'default',
     });
 
@@ -69,11 +60,21 @@ export async function POST(req: Request) {
       keysToUse = clientApiKeys.filter(Boolean);
     } else if (clientApiKey) {
       keysToUse = [clientApiKey];
-    } else if (process.env.GEMINI_API_KEY) {
-      keysToUse = [process.env.GEMINI_API_KEY];
+    } else {
+      const providerEnvKey =
+        provider === 'openai'
+          ? process.env.OPENAI_API_KEY
+          : provider === 'grok'
+            ? process.env.XAI_API_KEY
+            : provider === 'claude'
+              ? process.env.ANTHROPIC_API_KEY
+              : provider === 'custom'
+                ? undefined
+                : process.env.GEMINI_API_KEY;
+      if (providerEnvKey?.trim()) keysToUse = [providerEnvKey.trim()];
     }
 
-    if (keysToUse.length === 0 && model !== 'aistudio') {
+    if (keysToUse.length === 0) {
       throw new AppError(
         'Thiếu API Key. Vui lòng nhập ít nhất một API Key ở góc trên bên phải hoặc cấu hình biến môi trường server.',
         { code: 'AUTH', status: 400 },
@@ -89,58 +90,33 @@ export async function POST(req: Request) {
       });
     }
 
-    // Free: 3/day + ≤600 từ + ≤2 ch. Trial: 5/day + ≤3000 từ + ≤10 ch.
-    const freeBucket = generateRequestToFreeBucket(requestType);
     const payloadObj =
       payload && typeof payload === 'object' && !Array.isArray(payload)
         ? (payload as Record<string, unknown>)
         : {};
-    if (freeBucket === 'write_chapter') {
-      const constrained = await assertFreeWriteConstraints(req, payloadObj, body);
-      if (constrained) {
-        applyFreeWordGoalToPayload(payloadObj, constrained.wordGoal);
-      }
-    } else if (freeBucket === 'outline_ideas') {
-      await assertFreeOutlineConstraints(req, payloadObj, body);
-      // Soft-clamp outline chapter count (Free 2 / Trial 10) when client overshoots
-      const maxChCandidates = [
-        FREE_LIMITS.maxChapters,
-        TRIAL_LIMITS.maxChapters,
-      ];
-      // Prefer larger clamp only if value exceeds Free — trial assert already hard-fails >10
-      if (payloadObj.so_chuong != null) {
-        const n = Number(payloadObj.so_chuong);
-        if (Number.isFinite(n) && n > TRIAL_LIMITS.maxChapters) {
-          payloadObj.so_chuong = TRIAL_LIMITS.maxChapters;
-        } else if (
-          Number.isFinite(n) &&
-          n > FREE_LIMITS.maxChapters &&
-          n <= TRIAL_LIMITS.maxChapters
-        ) {
-          // leave as-is for trial; free path already threw in assertFreeOutlineConstraints
-          void maxChCandidates;
-        }
-      }
-      if (payloadObj.chapterCount != null) {
-        const n = Number(payloadObj.chapterCount);
-        if (Number.isFinite(n) && n > TRIAL_LIMITS.maxChapters) {
-          payloadObj.chapterCount = TRIAL_LIMITS.maxChapters;
-        }
-      }
-    }
-    if (freeBucket) {
-      await assertAndConsumeFreeQuota(req, freeBucket, body);
-    }
 
     const ctx: GenerateHandlerContext = {
       payload: payloadObj,
       keysToUse,
       model,
+      provider,
+      customApiBaseUrl: body.customApiBaseUrl,
+      customApiModel: body.customApiModel,
+      customApiProtocol: body.customApiProtocol,
       req,
       rawBody: body,
     };
 
-    const res = await handler(ctx, requestType);
+    const res = await runWithModelClientConfig(
+      {
+        model,
+        provider,
+        customApiBaseUrl: body.customApiBaseUrl,
+        customApiModel: body.customApiModel,
+        customApiProtocol: body.customApiProtocol,
+      },
+      () => handler(ctx, requestType),
+    );
     if (!res) {
       throw new AppError('Loại yêu cầu không hợp lệ.', {
         code: 'VALIDATION',
@@ -152,7 +128,7 @@ export async function POST(req: Request) {
       msg: 'generate_ok',
       correlationId,
       route: '/api/generate',
-      provider: requestType,
+      provider: provider || 'legacy-auto',
       durationMs: Date.now() - started,
     });
     const headers = new Headers(res.headers);

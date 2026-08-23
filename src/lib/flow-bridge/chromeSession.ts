@@ -377,8 +377,16 @@ export function prepareBlankLoginProfile(
     /* ignore */
   }
 
+  // Tự động đồng bộ toàn bộ Vết chân sinh hoạt (Bookmarks, Passwords, History, Cookies, Autofill) từ Chrome PC
+  try {
+    const { syncFullChromeFootprintToAccountProfile } = require('./sessionInherit');
+    syncFullChromeFootprintToAccountProfile(id, 'Default');
+  } catch (e) {
+    console.warn(`[FlowChrome] Footprint sync warning for account=${id}:`, e);
+  }
+
   console.log(
-    `[FlowChrome] Blank login profile account=${id} wiped=[${wiped.join(',')}] dir=${finalProfile}`,
+    `[FlowChrome] Profile account=${id} prepared with full footprint from Chrome PC. dir=${finalProfile}`,
   );
   return { profileDir: finalProfile, extDir, rootDir, wiped };
 }
@@ -901,6 +909,15 @@ export function launchChrome(opts: {
   const userDataEarly = path.resolve(profileDirForAccount(accountId));
   fs.mkdirSync(userDataEarly, { recursive: true });
 
+  if (
+    opts.mode === 'background' &&
+    opts.forceClean === false &&
+    isProfileBrowserAlive(userDataEarly)
+  ) {
+    console.log(`[FlowChrome] Reuse existing background browser account=${accountId}`);
+    return { launched: false, profileDir: userDataEarly, killed: 0 };
+  }
+
   // Kill ONLY this account's browser BEFORE rewriting extension (file locks)
   let killed = 0;
   if (opts.forceClean !== false) {
@@ -1010,17 +1027,14 @@ export function launchChrome(opts: {
   const flowUrl = `https://labs.google/fx/tools/flow?ainovel_account=${encodeURIComponent(accountId)}`;
 
   // Login: single maximized window + Flow URL.
-  // Background: start minimized + silent launch off-screen (zero window flash on screen).
+  // Background: silent launch off-screen (zero window flash on screen).
   const args =
     opts.mode === 'login'
       ? [...baseArgs, '--start-maximized', flowUrl]
       : [
           ...baseArgs,
-          '--window-state=minimized',
-          '--start-minimized',
-          '--silent-launch',
           '--window-position=-32000,-32000',
-          '--window-size=10,10',
+          '--disable-renderer-backgrounding',
           flowUrl,
         ];
 
@@ -1289,44 +1303,63 @@ export async function closeLoginSessionAfterCapture(opts?: {
   await new Promise((r) => setTimeout(r, delayMs));
 
   try {
-    // 2) Kill login/visible browser for this profile only (docs: auto-close)
-    let killed = killChromeForProfile(profileDir);
-    if (killed === 0) {
-      for (const pid of [s.loginPid, s.bgPid]) {
-        if (pid && isAlive(pid)) {
-          try {
-            process.kill(pid, 'SIGTERM');
-            killed++;
-          } catch {
-            /* ignore */
+    // 2) Login window retained as background —
+    //    keep the authenticated Chrome process alive instead of kill-relaunch.
+    //    Convert loginPid → bgPid if browser is still alive and keepBg is set.
+    let killed = 0;
+
+    if (keepBg && isProfileBrowserAlive(profileDir)) {
+      // Login window retained as background: reuse the same Chrome session.
+      s.bgPid = s.loginPid || s.bgPid;
+      s.loginPid = undefined;
+      s.loginOpen = false;
+      s.lastTokenCloseAt = Date.now();
+      console.log(
+        `[FlowChrome] Login window retained as background account=${accountId} dir=${profileDir}`,
+      );
+    } else {
+      // Kill login/visible browser for this profile only
+      killed = killChromeForProfile(profileDir);
+      if (killed === 0) {
+        for (const pid of [s.loginPid, s.bgPid]) {
+          if (pid && isAlive(pid)) {
+            try {
+              process.kill(pid, 'SIGTERM');
+              killed++;
+            } catch {
+              /* ignore */
+            }
           }
         }
       }
-    }
-    // Retry once if Windows process still holds the profile
-    if (isProfileBrowserAlive(profileDir)) {
-      await new Promise((r) => setTimeout(r, 600));
-      killed += killChromeForProfile(profileDir);
+      // Retry once if Windows process still holds the profile
+      if (isProfileBrowserAlive(profileDir)) {
+        await new Promise((r) => setTimeout(r, 600));
+        killed += killChromeForProfile(profileDir);
+      }
+
+      s.loginOpen = false;
+      s.loginPid = undefined;
+      s.bgPid = undefined;
+      s.lastTokenCloseAt = Date.now();
+      console.log(
+        `[FlowChrome] Login closed account=${accountId} killed=${killed} minimized=${minimized} dir=${profileDir}`,
+      );
     }
 
-    s.loginOpen = false;
-    s.loginPid = undefined;
-    s.bgPid = undefined;
-    s.lastTokenCloseAt = Date.now();
     try {
       const { setLoginSessionOpen } = await import('./bridgeServer');
       setLoginSessionOpen(false);
     } catch {
       /* ignore */
     }
-    console.log(
-      `[FlowChrome] Login closed account=${accountId} killed=${killed} minimized=${minimized} dir=${profileDir}`,
-    );
 
     let relaunched = false;
     let reconnected = false;
-    // 3) Relaunch background (off-screen) so gen/captcha keep working
-    const stillAlive = isProfileBrowserAlive(profileDir);
+    // 3) Relaunch background (off-screen) when browser was killed / missing
+    const stillAlive = Boolean(
+      profileDir && isProfileBrowserAlive(profileDir),
+    );
     if (
       keepBg &&
       !stillAlive &&
@@ -1363,7 +1396,7 @@ export async function closeLoginSessionAfterCapture(opts?: {
       } catch {
         /* ignore */
       }
-    } else if (stillAlive) {
+    } else if (!keepBg && stillAlive) {
       console.warn(
         `[FlowChrome] Browser still alive after kill account=${accountId} — user may need to close manually`,
       );
@@ -1380,7 +1413,7 @@ export async function closeLoginSessionAfterCapture(opts?: {
           : `Đã đóng login; Chrome nền đang nối (${accountId})…`
         : killed > 0
           ? `Đã đóng cửa sổ đăng nhập (${accountId}).`
-          : `Đã đánh dấu đóng login (${accountId}).`,
+          : `Login window retained as background (${accountId}).`,
     };
   } finally {
     s.closing = false;

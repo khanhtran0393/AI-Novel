@@ -1,6 +1,10 @@
 import { NextResponse, NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import {
+  getAppPublicPath,
+  getRuntimePublicPath,
+} from '@/lib/runtimePaths';
 
 export const runtime = 'nodejs';
 
@@ -33,7 +37,8 @@ function resolveAllowedPath(raw: string): string | null {
   decoded = String(decoded || '').trim().split('?')[0];
   if (!decoded || decoded.includes('\0')) return null;
 
-  const publicImages = path.join(process.cwd(), 'public', 'images');
+  const publicImages = getRuntimePublicPath('images');
+  const appPublicImages = getAppPublicPath('images');
   const cwd = process.cwd();
 
   // Relative under public/images
@@ -45,13 +50,16 @@ function resolveAllowedPath(raw: string): string | null {
   ) {
     const base = path.basename(decoded.replace(/\\/g, '/'));
     if (!base || base === '.' || base === '..') return null;
-    const abs = path.join(publicImages, base);
-    return abs;
+    const runtimeAbs = path.join(publicImages, base);
+    return fs.existsSync(runtimeAbs) ? runtimeAbs : path.join(appPublicImages, base);
   }
 
   // Basename only → public/images
   if (!decoded.includes('/') && !decoded.includes('\\') && !/^[A-Za-z]:/.test(decoded)) {
-    return path.join(publicImages, path.basename(decoded));
+    const runtimeAbs = path.join(publicImages, path.basename(decoded));
+    return fs.existsSync(runtimeAbs)
+      ? runtimeAbs
+      : path.join(appPublicImages, path.basename(decoded));
   }
 
   // Absolute path (Windows / Unix)
@@ -72,6 +80,8 @@ function resolveAllowedPath(raw: string): string | null {
   // Allow under project public/images
   const pubNorm = path.resolve(publicImages);
   if (abs === pubNorm || abs.startsWith(pubNorm + path.sep)) return abs;
+  const appPubNorm = path.resolve(appPublicImages);
+  if (abs === appPubNorm || abs.startsWith(appPubNorm + path.sep)) return abs;
 
   // Allow absolute files that exist (durable face_ref in user save folder).
   // Block obvious system roots only.

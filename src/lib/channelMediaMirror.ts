@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  getAppPublicPath,
+  getRuntimeOutputRoot,
+  getRuntimePublicPath,
+} from '@/lib/runtimePaths';
 
 function sanitizeFolderName(name: string): string {
   return (
@@ -41,14 +46,18 @@ export function autoSaveToChannelFolder(opts: {
     if (realSource.startsWith('/api/serve-image')) {
       const match = realSource.match(/[?&]file=([^&]+)/i);
       if (match) {
-        realSource = path.join(cwd, 'public', 'images', decodeURIComponent(match[1]));
+        const name = decodeURIComponent(match[1]);
+        const runtimeImage = getRuntimePublicPath(path.join('images', name), cwd);
+        realSource = fs.existsSync(runtimeImage)
+          ? runtimeImage
+          : getAppPublicPath(path.join('images', name), cwd);
       }
     } else if (realSource.startsWith('/audio/')) {
-      realSource = path.join(cwd, 'public', realSource.slice(1));
+      realSource = getRuntimePublicPath(realSource.slice(1), cwd);
     } else if (realSource.startsWith('/video/')) {
-      realSource = path.join(cwd, 'public', realSource.slice(1));
+      realSource = getRuntimePublicPath(realSource.slice(1), cwd);
     } else if (realSource.startsWith('/images/')) {
-      realSource = path.join(cwd, 'public', realSource.slice(1));
+      realSource = getRuntimePublicPath(realSource.slice(1), cwd);
     }
 
     if (!path.isAbsolute(realSource)) {
@@ -60,7 +69,12 @@ export function autoSaveToChannelFolder(opts: {
     }
 
     const sanitizedChannel = sanitizeFolderName(channelName);
-    const destDir = path.resolve(cwd, 'output', 'channels', sanitizedChannel, resourceType);
+    const destDir = path.resolve(
+      getRuntimeOutputRoot(cwd),
+      'channels',
+      sanitizedChannel,
+      resourceType,
+    );
 
     if (!fs.existsSync(destDir)) {
       fs.mkdirSync(destDir, { recursive: true });

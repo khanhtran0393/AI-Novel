@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { driveMediaFilename, localImageFilename } from '@/contracts';
 import { probeVisualArtifact } from '@/lib/mediaArtifactValidation';
+import { YOUTUBE_THUMB_SCENE_INDEX } from '@/lib/youtube-safe/assets';
 import type {
   ImageSaveContext,
   SaveImageFn,
@@ -30,7 +31,11 @@ export function createImageSavers(ctx: ImageSaveContext): {
     return localImageFilename(chapterNum, sceneIndex, promptIndex, variantIndex);
   };
 
-  const saveImageBuffers: SaveImageBuffersFn = (imageBuffers, method, usedApiKey) => {
+  const saveImageBuffers: SaveImageBuffersFn = (
+    imageBuffers,
+    method,
+    usedApiKey,
+  ) => {
     const buffers = imageBuffers.filter(Boolean).slice(0, imageCount);
     if (buffers.length === 0) {
       return NextResponse.json(
@@ -53,7 +58,10 @@ export function createImageSavers(ctx: ImageSaveContext): {
       // Auto-save generated image/thumbnail into active channel folder
       try {
         const { autoSaveToChannelFolder } = require('@/lib/channelMediaMirror');
-        const resType = sceneIndex === -1 ? 'thumbnails' : 'images';
+        const resType =
+          sceneIndex === -1 || sceneIndex === YOUTUBE_THUMB_SCENE_INDEX
+            ? 'thumbnails'
+            : 'images';
         autoSaveToChannelFolder({
           channelName: ten_tac_pham || 'Kênh Chính',
           resourceType: resType,

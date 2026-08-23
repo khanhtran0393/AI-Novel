@@ -104,6 +104,13 @@ export function loadAccounts(): FlowAccount[] {
   }
 }
 
+const FLOW_AUTH_ERROR_RE =
+  /token_401|http\s*401|invalid authentication credentials|bearer|unauth|oauth|login cookie/i;
+
+export function isFlowAuthError(raw?: string | null): boolean {
+  return FLOW_AUTH_ERROR_RE.test(String(raw || ''));
+}
+
 /** P3 health: token, credits, fail ratio, cooldown. */
 export function computeHealthScore(a: Partial<FlowAccount>): number {
   let score = 50;
@@ -138,6 +145,7 @@ export function computeHealthScore(a: Partial<FlowAccount>): number {
     score -= 25;
   }
   if (a.lastError && /quota|forbidden|unauth/i.test(a.lastError)) score -= 15;
+  if (isFlowAuthError(a.lastError)) score -= 30;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -146,6 +154,7 @@ export function recordAccountTaskResult(
   id: string,
   ok: boolean,
   creditsUsed = 0,
+  error?: string,
 ): void {
   const a = loadAccounts().find((x) => x.id === id);
   if (!a) return;
@@ -158,6 +167,17 @@ export function recordAccountTaskResult(
     creditsSpent,
     lastTaskAt: Date.now(),
   };
+  const message = String(error || '').trim();
+  if (ok) {
+    patch.lastError = null;
+    if (a.status === 'error') patch.status = 'active';
+  } else if (message) {
+    patch.lastError = message.slice(0, 1000);
+    if (isFlowAuthError(message)) {
+      patch.status = 'error';
+      patch.flowKeyPresent = false;
+    }
+  }
   const next = { ...a, ...patch };
   patch.healthScore = computeHealthScore(next);
   updateAccount(id, patch);
@@ -227,10 +247,9 @@ export function createAccount(input: {
   };
   list.push(acc);
   saveAccounts(list);
-  // Pre-create BLANK browser folder (no cookies / no Google session)
+  // Ensure ISOLATED browser profile folder per account ID (cookies/session preserved)
   try {
     const {
-      prepareBlankLoginProfile,
       ensureIsolatedAccountProfile,
     } = require('./chromeSession') as typeof import('./chromeSession');
     const src = path.join(
@@ -239,11 +258,7 @@ export function createAccount(input: {
       'ainovel-flow',
     );
     if (fs.existsSync(path.join(src, 'manifest.json'))) {
-      try {
-        prepareBlankLoginProfile(acc.id, src);
-      } catch {
-        ensureIsolatedAccountProfile(acc.id, src);
-      }
+      ensureIsolatedAccountProfile(acc.id, src);
     }
   } catch {
     /* ignore */

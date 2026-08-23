@@ -175,12 +175,23 @@ export function detectGpu(): GpuType {
   const nvidia = spawnSync('nvidia-smi', [], { windowsHide: true, encoding: 'utf8', timeout: 2500 });
   if (nvidia.status === 0) return 'nvidia';
 
-  const wmic = spawnSync('wmic', ['path', 'win32_VideoController', 'get', 'name'], {
-    windowsHide: true,
-    encoding: 'utf8',
-    timeout: 2500,
-  });
-  const output = `${wmic.stdout || ''} ${wmic.stderr || ''}`.toUpperCase();
+  const ps = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      "Get-CimInstance -ClassName Win32_VideoController -EA SilentlyContinue | Select-Object -ExpandProperty Name",
+    ],
+    {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 2500,
+    },
+  );
+  const output = `${ps.stdout || ''}`.toUpperCase();
   if (output.includes('AMD') || output.includes('RADEON')) return 'amd';
   return null;
 }

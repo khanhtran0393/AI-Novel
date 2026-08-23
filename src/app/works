@@ -1,0 +1,46 @@
+'use client';
+
+/**
+ * Brand logo = public/brand/logo.png — all features available, no tier badges.
+ */
+import React, { useState } from 'react';
+import LicenseModal from './LicenseModal';
+
+/** Cache-bust after transparent-alpha brand regen (avoid stale black-bg PNG). */
+const LOGO_SRC = '/brand/logo.png?v=alpha3';
+
+export default function BrandLogoButton() {
+  const [licenseOpen, setLicenseOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setLicenseOpen(true)}
+        className="group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-950 p-0 shadow-lg shadow-amber-500/30 ring-1 ring-amber-300/40 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-200/90 border-0 overflow-visible"
+        title="Bản quyền / License"
+        aria-label="Mở Bản quyền License"
+      >
+        {/* Dark circular plate under alpha PNG so logo never reads as empty black hole */}
+        <span className="relative z-[1] block h-11 w-11 overflow-hidden rounded-full bg-gradient-to-br from-amber-950/90 via-zinc-950 to-black ring-1 ring-amber-500/30">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={LOGO_SRC}
+            alt="AI Novel"
+            width={44}
+            height={44}
+            className="h-full w-full object-contain bg-transparent"
+            draggable={false}
+          />
+        </span>
+      </button>
+
+      <LicenseModal
+        open={licenseOpen}
+        onClose={() => {
+          setLicenseOpen(false);
+        }}
+      />
+    </>
+  );
+}

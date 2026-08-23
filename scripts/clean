@@ -1,0 +1,145 @@
+const { chromium } = require("playwright");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+const OUT = path.join(os.tmpdir(), "ainovel-audit", "ui-real-user.json");
+fs.mkdirSync(path.dirname(OUT), { recursive: true });
+
+const log = [];
+let step = 0;
+function add(m) {
+  step++;
+  const entry = { step, ...m };
+  log.push(entry);
+  process.stdout.write(`[${step}] ${m.type ?? "INFO"}: ${m.summary}\n`);
+  fs.writeFileSync(OUT, JSON.stringify(log, null, 2));
+}
+
+(async () => {
+  const browser = await chromium.connectOverCDP("http://127.0.0.1:9222");
+  const ctx = browser.contexts()[0];
+  const pages = ctx.pages();
+  add({ type: "INFO", summary: `CDP connected: ${pages.length} pages` });
+
+  const page = pages.length > 0 ? pages[0] : await ctx.newPage();
+  add({ type: "INFO", summary: `Using page: ${page.url().slice(0, 80)}` });
+
+  const errors = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(`console: ${msg.text()}`);
+  });
+  page.on("pageerror", (err) => errors.push(`page: ${err.message}`));
+
+  // 1. Ensure workspace is loaded
+  if (!page.url().includes("workspace")) {
+    add({ type: "NAV", summary: "Navigating to /workspace" });
+    await page.goto("http://127.0.0.1:3000/workspace", { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(5000);
+  }
+  await page.screenshot({ path: path.join(path.dirname(OUT), "real_0_workspace.png") });
+  add({ type: "OK", summary: `Workspace loaded, title=${await page.title()}` });
+
+  // 2. Check hydration — B1: isHydrated true
+  const body = (await page.textContent("body")) ?? "";
+  if (body.includes("Đang nạp")) add({ type: "WARN", summary: "Hydration text 'Đang nạp' visible (B1: isHydrated must be true)" });
+  else add({ type: "OK", summary: "No hydration stuck text" });
+
+  // 3. Click all visible buttons in header
+  add({ type: "SECTION", summary: "=== HEADER CLICKS ===" });
+  const headerButtons = page.locator("header button:not([disabled])");
+  const headerCount = await headerButtons.count();
+  add({ type: "INFO", summary: `Header buttons: ${headerCount}` });
+  for (let i = 0; i < headerCount; i++) {
+    try {
+      const btn = headerButtons.nth(i);
+      const txt = (await btn.textContent())?.trim().slice(0, 60) || `btn#${i}`;
+      await btn.click({ timeout: 3000 });
+      await page.waitForTimeout(500);
+      add({ type: "CLICK", summary: `Header: "${txt}"` });
+    } catch (e) {
+      add({ type: "CLICK_ERR", summary: `Header btn#${i}: ${e.message.slice(0, 80)}` });
+    }
+  }
+
+  // 4. Open Setup sidebar
+  add({ type: "SECTION", summary: "=== SETUP AREA ===" });
+  const setupBtn = page.locator("button:has-text('Setup'), button:has-text('Mở Setup'), [data-testid='setup-toggle']").first();
+  try {
+    if (await setupBtn.isVisible({ timeout: 2000 })) {
+      await setupBtn.click({ timeout: 3000 });
+      await page.waitForTimeout(1500);
+      add({ type: "CLICK", summary: "Opened Setup" });
+      await page.screenshot({ path: path.join(path.dirname(OUT), "real_1_setup.png") });
+    }
+  } catch (e) {
+    add({ type: "INFO", summary: `Setup button not found: ${e.message.slice(0, 60)}` });
+  }
+
+  // 5. Check for visible input fields (chu_de, phong_cach, mo_ta)
+  for (const label of ["Chủ đề", "Phong cách", "Mô tả", "Số chương", "Số từ"]) {
+    try {
+      const el = page.locator(`text=${label}`).first();
+      if (await el.isVisible({ timeout: 1000 })) {
+        add({ type: "CHECK", summary: `Field "${label}" visible` });
+      }
+    } catch {}
+  }
+
+  // 6. Click Lorebook
+  add({ type: "SECTION", summary: "=== LOREBOOK AREA ===" });
+  const loreBtn = page.locator("button:has-text('Lorebook'), button:has-text('Luật Lorebook')").first();
+  try {
+    if (await loreBtn.isVisible({ timeout: 2000 })) {
+      await loreBtn.click({ timeout: 3000 });
+      await page.waitForTimeout(1000);
+      add({ type: "CLICK", summary: "Opened Lorebook" });
+    }
+  } catch (e) {
+    add({ type: "INFO", summary: `Lorebook not found: ${e.message.slice(0, 60)}` });
+  }
+
+  // 7. Click chapter buttons
+  add({ type: "SECTION", summary: "=== CHAPTER AREA ===" });
+  const chapterBtns = page.locator("button:has-text('Viết Tiếp'), button:has-text('Viết lại'), button:has-text('Sinh phần'), button:has-text('Tóm Tắt')");
+  const chCount = await chapterBtns.count();
+  add({ type: "INFO", summary: `Chapter action buttons: ${chCount}` });
+  for (let i = 0; i < chCount; i++) {
+    try {
+      const btn = chapterBtns.nth(i);
+      const txt = (await btn.textContent())?.trim().slice(0, 60);
+      await btn.click({ timeout: 3000 });
+      await page.waitForTimeout(500);
+      add({ type: "CLICK", summary: `Chapter: "${txt}"` });
+    } catch (e) {
+      add({ type: "CLICK_ERR", summary: `Chapter btn#${i}: ${e.message.slice(0, 80)}` });
+    }
+  }
+
+  // 8. Click media/TTS buttons
+  add({ type: "SECTION", summary: "=== MEDIA/TTS AREA ===" });
+  for (const label of ["Ảnh", "Video", "TTS", "CÔNG CỤ", "Cài đặt"]) {
+    try {
+      const btn = page.locator(`button:has-text('${label}')`).first();
+      if (await btn.isVisible({ timeout: 1000 })) {
+        await btn.click({ timeout: 3000 });
+        await page.waitForTimeout(800);
+        add({ type: "CLICK", summary: `Clicked "${label}"` });
+      }
+    } catch {}
+  }
+
+  // 9. Check chapter list in sidebar
+  add({ type: "SECTION", summary: "=== SIDEBAR CHAPTERS ===" });
+  const chapters = page.locator("text=Chương").first();
+  add({ type: "CHECK", summary: `"Chương" text visible: ${await chapters.isVisible().catch(() => false)}` });
+
+  // 10. Final screenshot
+  await page.screenshot({ path: path.join(path.dirname(OUT), "real_2_final.png"), fullPage: true });
+
+  // 11. Error summary
+  add({ type: "ERRORS", summary: `Total console/page errors: ${errors.length}`, detail: errors });
+
+  add({ type: "DONE", summary: "Real-user UI audit complete", outFile: OUT, totalSteps: step, totalErrors: errors.length });
+  await browser.close();
+})();

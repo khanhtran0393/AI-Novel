@@ -1,6 +1,7 @@
 import { Page } from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 import crypto from 'crypto';
 
 export interface AgentResult {
@@ -25,7 +26,7 @@ export class BrowserAgent {
   private model: string;
   private cachePath: string;
 
-  constructor(page: Page, apiKey: string, model: string = 'gemini-1.5-pro', maxSteps: number = 10) {
+  constructor(page: Page, apiKey: string, model: string = DEFAULT_GEMINI_TEXT_MODEL, maxSteps: number = 10) {
     this.page = page;
     this.apiKey = apiKey;
     this.model = model;
@@ -214,9 +215,12 @@ If you are completely stuck or encounter an error page, return action="fail".
 If you are waiting for a loading spinner or generation process, return action="wait" with milliseconds (e.g. 5000).`;
 
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey,
+        },
         body: JSON.stringify({
           contents: [{
             parts: [

@@ -1,18 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  ALL_NAV_GATEWAY_ACTIONS,
-  callNavGateway,
-  type NavGatewayAction,
-} from '@/lib/nav/navPythonBridge';
-import { requireFeature } from '@/lib/commercial/apiGate';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
 
-const ALLOWED_ACTIONS = new Set<NavGatewayAction>(ALL_NAV_GATEWAY_ACTIONS);
+// Lazy-load heavy modules to prevent OOM during cold-start compilation
+async function getCallNavGateway() {
+  const mod = await import('@/lib/nav/navPythonBridge');
+  return { callNavGateway: mod.callNavGateway, ALL_NAV_GATEWAY_ACTIONS: mod.ALL_NAV_GATEWAY_ACTIONS, type: null as never };
+}
+type NavGatewayAction = import('@/lib/nav/navPythonBridge').NavGatewayAction;
 
 export async function GET(req: NextRequest) {
+  const { requireFeature } = await import('@/lib/commercial/apiGate');
   const denied = await requireFeature(req, 'toolbox_labs');
   if (denied) return denied;
+  const { callNavGateway } = await getCallNavGateway();
   const result = await callNavGateway({ action: 'capabilities', timeoutMs: 30_000 });
   const status = result.success ? 200 : 500;
   return NextResponse.json(result, { status });
@@ -21,8 +23,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const { requireFeature } = await import('@/lib/commercial/apiGate');
     const denied = await requireFeature(req, 'toolbox_labs', body);
     if (denied) return denied;
+    const { callNavGateway, ALL_NAV_GATEWAY_ACTIONS } = await getCallNavGateway();
+    const ALLOWED_ACTIONS = new Set<NavGatewayAction>(ALL_NAV_GATEWAY_ACTIONS);
     const action = String(body.action || body.op || '').trim() as NavGatewayAction;
 
     if (!action || !ALLOWED_ACTIONS.has(action)) {
@@ -37,7 +42,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // payload may be nested or flat (action-only stripped)
     let payload: Record<string, unknown> = {};
     if (body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)) {
       payload = { ...(body.payload as Record<string, unknown>) };

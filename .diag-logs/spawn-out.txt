@@ -1,0 +1,27 @@
+
+[Updater] ALLOW_UNSIGNED=1 — skip update code-signature check
+[Updater] feed active provider=github channel=stable url=https://github.com/khanhtran0393/AI-Novel-release-/releases
+[DurableStore] Boot source=none score=0 primary=C:\Users\Khanh\AppData\Local\Temp\ainovel-clean-room\AppData\Roaming\ai-novel-script-generator\novel_store_backup.json
+[Window] transparent-splash icon=d:\AI Novel\dist-qa-unsigned\win-unpacked\resources\app\electron\icon.ico logo=d:\AI Novel\dist-qa-unsigned\win-unpacked\resources\app\electron\splash-logo.png splashMinMs=0
+[Window] pin primary force=true from={"x":260,"y":70,"width":1400,"height":900} → 260,70 1400x900
+[Startup] next.prepare()… floating logo splash (min 0ms, logo=yes)
+[LA Studio] spawned minimized+hidden: D:\LA Studio\bin\LA Studio.exe
+Next.js local server listening on http://127.0.0.1:3000
+[Splash] enter workspace minElapsed=true serverReady=true shownForMs=1439 minMs=0
+[Window] loadURL http://127.0.0.1:3000/workspace
+[Window] did-finish-load data:text/html;charset=utf-8,%3C!DOCTYPE%20html%3E%0A%3Chtml%20lang%3D%22vi%22%3E%3Chead%3E%0A%3Cmeta%20charset%3D%22utf
+[Window] did-finish-load http://127.0.0.1:3000/workspace
+[FlowChrome] shutdown hooks registered (kill browsers on process exit)
+[FlowBridge] listening HTTP :8101 WS :9223
+[FlowBridge] bridge-only boot running=true ext=false token=false
+[DurableStore] Saved score=3326 keys=0 chars=0 → C:\Users\Khanh\AppData\Local\Temp\ainovel-clean-room\AppData\Roaming\ai-novel-script-generator\novel_store_backup.json
+[Shutdown] main window closed
+[DurableStore] Saved score=3326 keys=0 chars=0 → C:\Users\Khanh\AppData\Local\Temp\ainovel-clean-room\AppData\Roaming\ai-novel-script-generator\novel_store_backup.json
+[Shutdown] killFlowBrowsers reason=main window closed killed=0 roots=2
+[Shutdown] killFlowBrowsers reason=before-quit killed=0 roots=2
+[Profile] skip before-quit cleanup — no window
+[FlowChrome] killAllFlowBrowsers reason=process:exit killed=0 needles=3
+[Updater] feed active provider=github channel=stable url=https://github.com/khanhtran0393/AI-Novel-release-/releases
+Checking for update
+[Updater] checking…
+Generated new staging user ID: b69ef132-4016-57a5-b479-9b8a785e6779

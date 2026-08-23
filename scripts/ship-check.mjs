@@ -150,6 +150,8 @@ check(
   resources.includes('release-notes.json'),
   'extraResources includes commercial/release-notes.json (update changelog)',
 );
+check(resources.includes('bin/ffmpeg.exe'), 'extraResources includes bin/ffmpeg.exe');
+check(resources.includes('bin/ffprobe.exe'), 'extraResources includes bin/ffprobe.exe');
 // PACKAGING_STANDARD §3: unsigned still installable — forceCodeSigning MUST be false.
 check(pkg.build?.forceCodeSigning === false, 'forceCodeSigning disabled (unsigned install allowed)');
 check(pkg.build?.win?.signAndEditExecutable === true, 'Windows signing enabled');
@@ -360,14 +362,16 @@ check(
 );
 check(main.includes('assertTrustedIpc'), 'IPC sender validation wired');
 check(main.includes('sandbox: true'), 'renderer sandbox enabled');
+// OPEN app: shell force-opens entitlement mode + allows local trial for all users
 check(
-  main.includes("process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce'"),
-  'packaged shell force-enforces entitlement mode',
+  main.includes("process.env.AINOVEL_ENTITLEMENT_MODE = 'open'"),
+  'packaged shell force-opens entitlement mode (free for all)',
 );
 check(
-  main.includes("process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0'"),
-  'packaged shell disables local trial escape',
+  main.includes("process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '1'"),
+  'packaged shell allows local trial (open app)',
 );
+
 // Customer .env.commercial must not be able to flip MODE / local trial
 check(
   !/customerEnvKeys\s*=\s*new Set\(\[[\s\S]*?'AINOVEL_ENTITLEMENT_MODE'/.test(main),
@@ -381,11 +385,13 @@ const entitlementSrc = fs.readFileSync(
   path.join(root, 'src', 'lib', 'entitlement.ts'),
   'utf8',
 );
+// OPEN app: getEntitlementMode() always returns 'open' (every feature free)
 check(
-  entitlementSrc.includes('isCustomerPackagedRuntime') &&
-    /if\s*\(\s*isCustomerPackagedRuntime\(\)\s*\)\s*return\s*'enforce'/.test(entitlementSrc),
-  'entitlement.ts forces enforce on packaged/publish runtime',
+  entitlementSrc.includes('export function getEntitlementMode') &&
+    /return\s*'open'/.test(entitlementSrc),
+  'entitlement.ts forces open on every runtime (free for all)',
 );
+
 check(
   fs.existsSync(path.join(root, 'docs', 'DEFENSE_LAYERS.md')) ||
     fs.existsSync(path.join(root, 'scripts', 'electron-fuses.cjs')),

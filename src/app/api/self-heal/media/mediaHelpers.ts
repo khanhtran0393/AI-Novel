@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 const execFileAsync = promisify(execFile);
 
@@ -156,7 +157,7 @@ Yêu cầu bắt buộc:
 3. CHỈ TRẢ VỀ mã code SRT thuần túy. KHÔNG có tag code markdown \`\`\`srt, không mô tả thêm, không giới thiệu. Chỉ xuất trực tiếp text SRT.
   `.trim();
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_TEXT_MODEL}:generateContent`;
   const payload = {
     contents: [
       {
@@ -175,7 +176,10 @@ Yêu cầu bắt buộc:
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify(payload)
   });
 

@@ -1,4 +1,4 @@
-import { clearAllKeyCooldowns } from '@/lib/apiKeyRotate';
+import { clearAllKeyState } from '@/lib/apiKeyRotate';
 import {
   cloneFactoryAppState,
   cloneFreshProjectState,
@@ -13,6 +13,7 @@ type CredentialActions = Pick<
   | 'setGrokApiKey' | 'setGrokApiKeys' | 'setClaudeApiKey' | 'setClaudeApiKeys'
   | 'setLumaApiKey' | 'setLumaApiKeys'
   | 'setRunwayApiKey' | 'setRunwayApiKeys' | 'setFalaiApiKey' | 'setFalaiApiKeys'
+  | 'setCustomApiBaseUrl' | 'setCustomApiModel' | 'setCustomApiProtocol'
   | 'prioritizeApiKey' | 'setGoogleStudioCookie' | 'addGoogleCookie' | 'removeGoogleCookie'
   | 'addTikTokSession' | 'removeTikTokSession' | 'setTikTokSessionIds'
   | 'setHydrated' | 'resetStore' | 'factoryResetKeepPlan'
@@ -24,30 +25,51 @@ export function createCredentialActions(
   set: StoreSet,
   get: StoreGet,
 ): CredentialActions {
+  const normalizePool = (keys: string[]) =>
+    Array.from(
+      new Set(keys.map((key) => String(key || '').trim()).filter(Boolean)),
+    );
+  const replacePool = <K extends keyof ReturnType<StoreGet>>(
+    field: K,
+    value: ReturnType<StoreGet>[K],
+  ) => {
+    try {
+      clearAllKeyState();
+    } catch {
+      /* ignore */
+    }
+    set({ [field]: value });
+  };
   return {
-      setApiKey: (apiKey) => set({ apiKey }),
+      setApiKey: (apiKey) => replacePool('apiKey', apiKey),
 
       setApiKeys: (apiKeys) => {
         // New key pool — clear auth/rpm cooldowns so user is not stuck after replace
         try {
-          clearAllKeyCooldowns();
+          clearAllKeyState();
         } catch {
           /* ignore */
         }
-        set({ apiKeys });
+        set({ apiKeys: normalizePool(apiKeys) });
       },
 
-      setOpenaiApiKey: (openaiApiKey) => set({ openaiApiKey }),
+      setOpenaiApiKey: (openaiApiKey) =>
+        replacePool('openaiApiKey', openaiApiKey),
 
-      setOpenaiApiKeys: (openaiApiKeys) => set({ openaiApiKeys }),
+      setOpenaiApiKeys: (openaiApiKeys) =>
+        replacePool('openaiApiKeys', normalizePool(openaiApiKeys)),
 
-      setGrokApiKey: (grokApiKey) => set({ grokApiKey }),
+      setGrokApiKey: (grokApiKey) =>
+        replacePool('grokApiKey', grokApiKey),
 
-      setGrokApiKeys: (grokApiKeys) => set({ grokApiKeys }),
+      setGrokApiKeys: (grokApiKeys) =>
+        replacePool('grokApiKeys', normalizePool(grokApiKeys)),
 
-      setClaudeApiKey: (claudeApiKey) => set({ claudeApiKey }),
+      setClaudeApiKey: (claudeApiKey) =>
+        replacePool('claudeApiKey', claudeApiKey),
 
-      setClaudeApiKeys: (claudeApiKeys) => set({ claudeApiKeys }),
+      setClaudeApiKeys: (claudeApiKeys) =>
+        replacePool('claudeApiKeys', normalizePool(claudeApiKeys)),
 
       setLumaApiKey: (lumaApiKey) => set({ lumaApiKey }),
 
@@ -60,6 +82,12 @@ export function createCredentialActions(
       setFalaiApiKey: (falaiApiKey) => set({ falaiApiKey }),
 
       setFalaiApiKeys: (falaiApiKeys) => set({ falaiApiKeys }),
+
+      setCustomApiBaseUrl: (customApiBaseUrl) => set({ customApiBaseUrl }),
+
+      setCustomApiModel: (customApiModel) => set({ customApiModel }),
+
+      setCustomApiProtocol: (customApiProtocol) => set({ customApiProtocol }),
 
       prioritizeApiKey: (apiKey: string) => set((state) => {
         if (!apiKey || !state.apiKeys.includes(apiKey)) return state;
@@ -154,6 +182,9 @@ export function createCredentialActions(
             runwayApiKeys: state.runwayApiKeys,
             falaiApiKey: state.falaiApiKey,
             falaiApiKeys: state.falaiApiKeys,
+            customApiBaseUrl: state.customApiBaseUrl,
+            customApiModel: state.customApiModel,
+            customApiProtocol: state.customApiProtocol,
             googleStudioCookie: state.googleStudioCookie,
             googleStudioCookies: state.googleStudioCookies,
             tiktokSessionIds: state.tiktokSessionIds,
@@ -163,6 +194,7 @@ export function createCredentialActions(
             googleUser: state.googleUser,
 
             // ── KEPT: cài đặt (Settings / media / TTS) ──
+            aiMasterProvider: state.aiMasterProvider,
             aiMasterModel: state.aiMasterModel,
             aiMasterApiKey: state.aiMasterApiKey,
             imageApiKey: state.imageApiKey,

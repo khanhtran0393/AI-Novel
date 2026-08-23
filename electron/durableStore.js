@@ -120,6 +120,7 @@ function scorePersistedStore(raw) {
 }
 
 function getPaths(userData, appRoot) {
+  void appRoot;
   const documents = (() => {
     try {
       return path.join(os.homedir(), 'Documents');
@@ -134,7 +135,7 @@ function getPaths(userData, appRoot) {
     secrets: path.join(userData, 'store', 'secrets.json'),
     historyDir: path.join(userData, 'store', 'history'),
     documents: path.join(documents, 'AINovel', 'novel_store_backup.json'),
-    scratch: path.join(appRoot || process.cwd(), 'scratch', 'novel_store_backup.json'),
+    scratch: path.join(userData, 'scratch', 'novel_store_backup.json'),
   };
 }
 

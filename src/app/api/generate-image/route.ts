@@ -13,12 +13,25 @@ import {
   slog,
 } from '@/lib/requestContext';
 import { createImageSavers } from './imageSave';
-import { generateWithOpenAI } from './providers/openai';
-import { generateWithGrok } from './providers/grok';
-import { generateWithGemini } from './providers/gemini';
-import { generateWithFlow } from './providers/flow';
 import type { ImageProviderCtx } from './imageTypes';
 import { resolveImageReferenceTransportPath } from '@/lib/mediaReference';
+
+// Lazy-load heavy provider modules to prevent cold-start compilation OOM
+async function loadProvider(provider: string): Promise<(ctx: ImageProviderCtx) => Promise<Response>> {
+  switch (provider) {
+    case 'flow': return (await import('./providers/flow')).generateWithFlow;
+    case 'local': return (await import('./providers/local')).generateWithLocalStoryboard;
+    case 'openai': return (await import('./providers/openai')).generateWithOpenAI;
+    case 'grok': return (await import('./providers/grok')).generateWithGrok;
+    case 'gemini':
+    case 'whisk':
+    case 'banana': return (await import('./providers/gemini')).generateWithGemini;
+    default: throw new AppError(
+      `[Image API] Unknown image provider: ${provider}`,
+      { code: 'VALIDATION', status: 400 },
+    );
+  }
+}
 
 export const runtime = 'nodejs';
 
@@ -43,11 +56,47 @@ function resolveReferenceFile(raw?: string): string | null {
   return resolved ? path.resolve(resolved) : null;
 }
 
+export async function GET() {
+  return NextResponse.json(
+    { ok: true, route: "/api/generate-image", method: "GET", hint: "Use POST to generate images." },
+    { status: 200 },
+  );
+}
+
+// Handle unsupported methods
+export async function PATCH() {
+  return NextResponse.json({ error: "Method Not Allowed", hint: "Use POST to generate images." }, { status: 405 });
+}
+export async function DELETE() {
+  return NextResponse.json({ error: "Method Not Allowed", hint: "Use POST to generate images." }, { status: 405 });
+}
+export async function PUT() {
+  return NextResponse.json({ error: "Method Not Allowed", hint: "Use POST to generate images." }, { status: 405 });
+}
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: { Allow: "GET, POST, OPTIONS, HEAD" },
+  });
+}
+
 export async function POST(req: Request) {
   const correlationId = correlationIdFromRequest(req);
   const started = Date.now();
   try {
-    const raw = await req.json();
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body. Send a valid JSON object with imageProvider, prompt, etc.", code: "VALIDATION", correlationId },
+        { status: 400, headers: { "x-correlation-id": correlationId } },
+      );
+    }
     const body = parseOrThrow(generateImageBodySchema, raw, 'Generate-Image');
     const prompt = body.prompt || '';
 
@@ -58,13 +107,13 @@ export async function POST(req: Request) {
     const ten_tac_pham = body.ten_tac_pham || '';
     const cookie = body.cookie || '';
     const characterPrompt = body.characterPrompt || '';
+    const imageProvider = body.imageProvider;
     // Prefer body.model; accept imageModel alias (Media Config / older clients)
     const model = String(
       body.model ||
         (body as { imageModel?: string }).imageModel ||
-        '',
+        (imageProvider === 'flow' ? 'flow' : ''),
     ).trim();
-    const imageProvider = body.imageProvider;
     if (!model) {
       throw new AppError(
         '[Image API] Missing image model. The app does not choose a model implicitly.',
@@ -81,12 +130,6 @@ export async function POST(req: Request) {
       scene: sceneIndex,
       provider: imageProvider,
     });
-
-    // Free: gen_image 3/day · Trial: 5/day (server vault by HWID)
-    const { assertAndConsumeFreeQuota } = await import(
-      '@/lib/commercial/freeQuota'
-    );
-    await assertAndConsumeFreeQuota(req, 'gen_image', body);
 
     const imageApiKey = body.imageApiKey || '';
     const imageAspectRatio = body.imageAspectRatio || '16:9';
@@ -184,6 +227,9 @@ export async function POST(req: Request) {
     const reqApiKeys = body.apiKeys || [];
     let keysToTry: string[] = [];
     if (reqApiKey) keysToTry.push(reqApiKey);
+    if (imageApiKey && !keysToTry.includes(imageApiKey)) {
+      keysToTry.push(imageApiKey);
+    }
     if (Array.isArray(reqApiKeys)) {
       reqApiKeys.forEach((k: string) => {
         if (k && !keysToTry.includes(k)) keysToTry.push(k);
@@ -227,6 +273,9 @@ export async function POST(req: Request) {
 
     const providerKeysToTry: string[] = [];
     if (imageApiKey) providerKeysToTry.push(imageApiKey);
+    if (reqApiKey && !providerKeysToTry.includes(reqApiKey)) {
+      providerKeysToTry.push(reqApiKey);
+    }
     if (Array.isArray(body.apiKeys)) {
       body.apiKeys.forEach((k: string) => {
         if (k && !providerKeysToTry.includes(k)) providerKeysToTry.push(k);
@@ -286,17 +335,16 @@ export async function POST(req: Request) {
       });
     };
 
-    if (imageProvider === 'flow') return attachCid(await generateWithFlow(ctx));
-    if (imageProvider === 'openai') return attachCid(await generateWithOpenAI(ctx));
-    if (imageProvider === 'grok') return attachCid(await generateWithGrok(ctx));
-    if (imageProvider === 'gemini' || imageProvider === 'whisk' || imageProvider === 'banana') {
-      return attachCid(await generateWithGemini(ctx));
+    try {
+      const generateFn = await loadProvider(imageProvider);
+      return attachCid(await generateFn(ctx));
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      return NextResponse.json(
+        { error: `Unsupported image provider: ${imageProvider}`, correlationId },
+        { status: 400, headers: { 'x-correlation-id': correlationId } },
+      );
     }
-
-    return NextResponse.json(
-      { error: 'Loại image provider không hợp lệ.', correlationId },
-      { status: 400, headers: { 'x-correlation-id': correlationId } },
-    );
   } catch (err: unknown) {
     slog({
       level: 'error',

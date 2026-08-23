@@ -363,7 +363,7 @@ async function main() {
       'FIX: partial credits → warn then allow partial gen until deduct fails',
       'NOTE: SceneCard buttons still clickable (gate is in handler, not disabled)',
       'NOTE: paid Pro (is_pro && !is_trial) ignores credits balance',
-      'NOTE: Free daily vault gen_image is SEPARATE (3/day) — server freeQuota',
+      'NOTE: Free daily vault gen_image is SEPARATE (10/day) — server freeQuota',
       'NOTE: video also needs Pro/trial assertProAccess on server when enforce',
     ].join('\n'),
   );

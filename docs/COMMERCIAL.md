@@ -1,50 +1,57 @@
-# AI Novel — Commercial readiness (Free · Trial · Pro)
+# AI Novel — Mở miễn phí toàn bộ tính năng (Open / Free-for-all)
 
-Mô hình thương mại duy nhất là **License + BYOK + Free / Trial / Pro**. Tháng, năm và trọn đời chỉ là thời hạn của cùng gói Pro, không phải tier riêng.
+> **Trạng thái hiện tại (LOCKED):** App đã chuyển sang chế độ **mở miễn phí (open)** — **mọi user dùng mọi tính năng miễn phí**, không còn gate Free/Trial/Pro chặn quyền truy cập.
+>
+> - `getEntitlementMode()` luôn trả `'open'` (mọi runtime, kể cả Electron packaged).
+> - `resolvePlanTier()` luôn trả `'pro'`; `FEATURE_MATRIX` không còn hàng `serverGated`.
+> - Mọi gate server (`assertProAccess`, `requireFeature`, `assertAndConsumeFreeQuota`, …) là **no-op / always-grant**.
+> - UI luôn hiển thị badge **PRO** và credits 999.999.999.
 
-> **One-path (bắt buộc trước khi sửa license):** [`LICENSE_ONE_PATH.md`](./LICENSE_ONE_PATH.md) · `src/lib/commercial/licenseOnePath.ts`  
-> Private = **chỉ ký** · Token = **vé** (không phải chìa AES) · IP đắt = **cloud** · Status field `onePath`.
+## Mô hình cũ (đã tắt) — Free / Trial / Pro
 
-## Quyền và hiển thị
+Mô hình thương mại cũ là **License + BYOK + Free / Trial / Pro**; tháng, năm và trọn đời chỉ là thời hạn của cùng gói Pro. Toàn bộ logic cũ vẫn còn trong mã (để tham chiếu / có thể bật lại) nhưng **không còn gate bất kỳ tính năng nào**:
 
-| Tier | Quyền | Badge |
+| Tier (cũ) | Quyền cũ | Badge cũ |
 |---|---|---|
-| Free | Viết (≤600 từ/chương, ≤2 chương, 3 lượt/ngày), outline/prompt/ảnh BYOK/TTS Edge-Piper (mỗi mục 3 lượt/ngày) | FREE + credits |
-| Trial | **Như Pro** · 7 ngày / 1 HWID · 5 lượt/ngày mỗi mục (viết·outline·prompt·ảnh·TTS Edge/Piper) · ≤**3000** từ/chương · ≤10 chương | TRIAL |
-| Pro | Video, CapCut, ship, pipeline, multi-channel, toolbox, Flow multi-account — không meter lượt | PRO |
+| Free | Viết ≤600 từ/chương, ≤5 chương, 20 lượt/ngày, outline/prompt/ảnh BYOK/TTS Edge-Piper | FREE + credits |
+| Trial | Gen video, CapCut, ship, TTS premium · 3 ngày / 1 HWID · 50 lượt/ngày · ≤3000 từ/chương · ≤20 chương | TRIAL |
+| Pro | Video, CapCut, ship, pipeline, multi-channel, toolbox, Flow multi-account — không meter | PRO |
 
-**Free + Trial caps (server):** `src/lib/commercial/freeLimitsPolicy.ts` (`FREE_LIMITS` · `TRIAL_LIMITS`) + machine vault ngoài folder portable (`licenseMachineStore.ts` → `%USER_DATA%/.ainovel-license/` hoặc `~/.ainovel-license/`: `free-usage.json`, `trials.json`) + stamp phụ Windows HKCU. **Cấm** tin vault trong folder app (xóa+giải nén lại không reset). Áp khi `tier === 'free' | 'trial'`. **Không** đếm lượt Pro (LICENSE_ONE_PATH).
+## Thực tế hiện tại (open)
 
-`is_vip` chỉ đọc snapshot/token cũ và được chuẩn hóa thành Pro. Token mới, API và UI không phát hành tier VIP.
+| Hạng mục | Hành vi |
+|----------|---------|
+| Tier trả về | Luôn `'pro'` (client + server) |
+| Mode entitlement | Luôn `'open'` (kể cả Electron packaged — `main.js` force `open`) |
+| Server gate | `assertProAccess` / `assertFeatureAccess` / `requireFeature` / `requireTier` → always-grant |
+| Free quota | `freeLimitsApply` → `{applies:false, tier:'pro'}`; `assertAndConsumeFreeQuota` → null |
+| Word/chương cap | Không áp (50.000 từ/chương · 500 chương kỹ thuật, không gate) |
+| UI | Badge **PRO** cố định · credits 999.999.999 · không popup mua/trial |
+| License | Vẫn giữ cơ chế ký Ed25519 / HWID / Supabase để tương thích + audit — **không** chặn quyền |
+| Labyrinth / mirage | Giữ nguyên — chống bypass/tamper; **không phải** gate commercial, không phá |
 
-## Trust boundary
+## Tại sao giữ License/HWID/Supabase/Labyrinth?
 
-- Token: `AINOVEL2.<kid>.<payload>.<signature>`, ký Ed25519 và gắn HWID (v2 MachineGuid preferred; verify dual-accept v1).
+- **Tương thích snapshot & token cũ**: dữ liệu `is_vip`/token cũ vẫn đọc được, không crash.
+- **One-path license** (`docs/LICENSE_ONE_PATH.md`): chính sách vé/ledger/crown vẫn là chuẩn nếu sau này bật lại bán hàng.
+- **Labyrinth / mirage** (`src/lib/commercial/labyrinth/*`): cơ chế chống bypass bẻ khóa, độc lập với việc có bán hay không — tamper vẫn bị dẫn vào handler decoy. **Cấm** gỡ.
+- **Audit & legal**: còn đủ dấu vết nếu cần chuyển sang mô hình trả phí sau.
+
+## Bật lại mô hình trả phí (nếu sau này cần)
+
+1. `src/lib/entitlement.ts`: bỏ dòng `return 'open'` cứng → trả theo env `AINOVEL_ENTITLEMENT_MODE`.
+2. `src/lib/commercial/featureMatrix.ts`: `resolvePlanTier` → theo flags/token thật; phục hồi `SERVER_GATED_FEATURES`.
+3. `main.js` + `temp-asar-patch/main.js`: đổi `'open'` → `'enforce'` (hoặc xóa dòng force).
+4. `useEntitlementSync.ts`: bỏ force Pro/credits.
+5. Rebuild `main.jsc` bằng `node scripts/build-bytenode-main.cjs`.
+6. Chạy lại chuỗi smoke + `npm run verify:agent-done`.
+
+## Bảo mật / trust boundary (giữ nguyên)
+
 - App khách chỉ đóng gói public key và endpoint HTTPS công khai.
 - Private key, admin key, payment/Telegram secret và Supabase service-role chỉ nằm ở seller/backend.
 - API seller/admin trả 404 trong Electron packaged.
-- Electron packaged **force** `AINOVEL_ENTITLEMENT_MODE=enforce` (env / `.env.commercial` **không** mở được Pro).
-- Server gate: video, CapCut, ship, integrations, toolbox NAV, TTS premium, multi-channel, Flow multi-account — xem [`DEFENSE_LAYERS.md`](./DEFENSE_LAYERS.md).
-- UI `is_pro` / credits chỉ cosmetic; authorization = token + `assertFeatureAccess` / `assertProAccess`.
-
-Backend production hiện dùng `https://ai-novel-flax.vercel.app` với Supabase là authority và Ed25519 để verify offline.
-
-**`licenses.user_id` = mã thiết bị (HWID)** của app user (desktop), không phải uuid `auth.users`. Cùng chuẩn hóa lowercase với cột `hwid`. Migration: `supabase/migrations/003_licenses_user_id_device.sql` · backfill: `npx tsx scripts/backfill-license-user-id-device.mts`.
-
-## Credential local
-
-API key, cookie và session của người dùng được tách khỏi Zustand/localStorage, mã hóa bằng Electron `safeStorage` (Windows DPAPI) tại userData. Snapshot, project export và durable backup không chứa secret.
-
-## Luồng cấp license
-
-1. Khách lấy HWID trong modal Bản quyền.
-2. Seller/backend **ghi row `licenses` active** trên Supabase + phát hành token Pro hoặc mã `AINOVEL-…` (Ed25519).
-3. App gửi mã tới license API qua HTTPS; activate **chỉ bind** token vào row đã có — **không** tự INSERT khi thiếu ledger.
-4. **Supabase = sole truth:** không có row active (xóa / revoked / expired) = Free (ban hoặc hết hạn). Token local không self-heal Pro khi ledger trống.
-
-## Bản public core sạch
-
-Installer thương mại không chứa thành phần development-only chưa có đầy đủ quyền phân phối: FFmpeg/Piper local, Vina Voice ONNX, MediaCrawler, audio tham chiếu và font gốc chưa xác minh. FableCut được giữ cùng MIT/OFL notices. Thiếu thành phần phải hard-fail rõ ràng, không fallback provider/engine.
+- Credential người dùng vẫn tách khỏi Zustand/localStorage, mã hóa `safeStorage` (Windows DPAPI).
 
 ## Release gate
 
@@ -54,6 +61,4 @@ npm run release:verify
 npm run build:desktop
 ```
 
-`release:verify` fail-closed nếu thiếu feed update HTTPS thật, license API HTTPS, chứng thư/publisher Windows hoặc còn blocker trong manifest. License API đã có; auto-update chỉ bật sau khi phát hành installer ký số lên feed thật.
-
-Tài liệu vận hành: `COMMERCIAL_ADMIN.md` (admin HWID/revoke) · `COMMERCIAL_OPS.md` · `COMMERCIAL_RELEASE.md` · `SHIP_GUIDE.md` · `THIRD_PARTY_MANIFEST.md`.
+Tài liệu vận hành liên quan: `COMMERCIAL_ADMIN.md` · `COMMERCIAL_OPS.md` · `COMMERCIAL_RELEASE.md` · `SHIP_GUIDE.md` · `THIRD_PARTY_MANIFEST.md`.

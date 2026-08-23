@@ -300,8 +300,11 @@ async function probeGrok(key: string): Promise<ProviderProbeResult> {
 async function probeGoogle(key: string): Promise<ProviderProbeResult> {
   if (!key) return { provider: 'gemini', ok: false, reason: 'missing_key' };
   try {
-    const res = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetchJsonWithTimeout('https://generativelanguage.googleapis.com/v1beta/models', {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': key,
+      },
     });
     const models = Array.isArray((res.json as { models?: { name?: string }[] } | null)?.models)
       ? ((res.json as { models: { name?: string }[] }).models || []).map((item) => (item.name || '').replace(/^models\//, '')).filter(Boolean)

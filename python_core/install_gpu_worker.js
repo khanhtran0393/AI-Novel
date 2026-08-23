@@ -35,6 +35,8 @@ function updateStatus(status, progress, message, logAppend = '') {
   data.status = status;
   data.progress = progress;
   data.message = message;
+  data.pid = process.pid;
+  data.updatedAt = new Date().toISOString();
   if (logAppend) {
     let newLog = (data.log || '') + logAppend;
     if (newLog.length > 50000) {

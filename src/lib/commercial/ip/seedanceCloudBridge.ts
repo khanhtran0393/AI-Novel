@@ -24,6 +24,7 @@ import {
   resolvePinnedLicenseApiUrl,
 } from '@/lib/commercial/licenseTrust';
 import { assertApprovedContentUnlock } from '@/lib/commercial/licenseOnePath';
+import { getEntitlementMode } from '@/lib/entitlement';
 import { AppError } from '@/lib/errors';
 
 // Policy pin: this module is the approved crown unlock path (not f(token)).
@@ -37,6 +38,9 @@ export type SeedanceCloudAction =
   | 'apply_sequence';
 
 export function shouldUseCloudSeedanceIp(): boolean {
+  // Open mode: never route Seedance to cloud — always local compile
+  if (getEntitlementMode() === 'open') return false;
+
   if (
     process.env.AINOVEL_SEEDANCE_CLOUD === '0' ||
     process.env.AINOVEL_SEEDANCE_CLOUD === 'false'

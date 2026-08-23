@@ -11,8 +11,9 @@ import {
 } from '../src/lib/mediaDiskReconcile.ts';
 import {
   classifyLimitMessage,
-  clearAllKeyCooldowns,
+  clearAllKeyState,
   formatQuotaWaitMessage,
+  getKeyRotateSnapshot,
   getPoolWaitInfo,
   markKeyLimited,
   registerKeys,
@@ -47,15 +48,15 @@ const r = reconcileMediaMapsAgainstDisk({
   cwd: root,
   generatedAudioPaths: {
     keep_a: { path: '/audio/_smoke_reconcile.wav', duration: 3 },
-    ghost_a: { path: '/audio/chapter_1_scene_1.mp3', duration: 44 },
+    ghost_a: { path: '/audio/_smoke_missing_reconcile_audio.mp3', duration: 44 },
     empty_a: { path: '', duration: 1 },
   },
   generatedImages: {
     keep_i: '/api/serve-image?file=_smoke_reconcile.png',
-    ghost_i: '/api/serve-image?file=chapter_1_scene_990_prompt_0.png?t=1',
+    ghost_i: '/api/serve-image?file=_smoke_missing_reconcile_image.png?t=1',
   },
   generatedVideos: {
-    ghost_v: '/video/missing_walk.mp4',
+    ghost_v: '/video/_smoke_missing_reconcile_video.mp4',
   },
   generatedAssetDna: {
     keep_a: { kind: 'audio' },
@@ -81,25 +82,42 @@ assert.equal(classifyLimitMessage('API key not valid', 400), 'auth');
 assert.equal(classifyLimitMessage('quota exceeded', 429), 'rpm');
 assert.equal(classifyLimitMessage('invalid argument', 400), 'payload');
 
-clearAllKeyCooldowns();
+clearAllKeyState();
 const k1 = 'AIzaSySMOKE_AUTH_KEY_000000000001';
 const k2 = 'AIzaSySMOKE_AUTH_KEY_000000000002';
 registerKeys([k1, k2]);
 markKeyLimited(k1, 'API key not valid', 403);
 markKeyLimited(k2, 'PERMISSION_DENIED', 403);
+const permissionSnapshot = getKeyRotateSnapshot([k2]).keys[0];
+assert.equal(
+  permissionSnapshot.available,
+  true,
+  'permission/config errors must not put a valid key into cooldown',
+);
+assert.equal(
+  getPoolWaitInfo([k1, k2]),
+  null,
+  'permission/config key remains available',
+);
+markKeyLimited(k2, 'API key not valid', 403);
 const wait = getPoolWaitInfo([k1, k2]);
 assert.ok(wait, 'pool blocked');
 assert.equal(wait!.reason, 'auth', `expected auth not pacing, got ${wait!.reason}`);
-assert.ok(wait!.waitMs <= 20 * 60_000 + 1000, `auth cool ≤20m, got ${wait!.waitMs}`);
+assert.equal(wait!.waitMs, 0, `invalid auth must not show a fake wait, got ${wait!.waitMs}`);
 const msg = formatQuotaWaitMessage(wait!);
 assert.ok(/key bị từ chối|API key/i.test(msg), msg);
+assert.ok(/Chờ không thể khôi phục/i.test(msg), msg);
 assert.ok(!/Giữ nhịp an toàn/i.test(msg), 'must not mislabel as pacing');
-console.log('OK auth wait message:', msg.slice(0, 120));
+console.log('OK invalid-auth replacement message:', msg.slice(0, 160));
 
-clearAllKeyCooldowns();
+clearAllKeyState();
 const wait2 = getPoolWaitInfo([k1, k2]);
 assert.equal(wait2, null, 'cleared cooldowns → pool free');
-console.log('OK clearAllKeyCooldowns');
+for (const key of getKeyRotateSnapshot([k1, k2]).keys) {
+  assert.equal(key.rpmUsed, 0);
+  assert.equal(key.rpdUsed, 0);
+}
+console.log('OK clearAllKeyState');
 
 // imagen3 alias
 assert.equal(resolveFlowImageModelName('imagen3'), 'GEM_PIX_2');

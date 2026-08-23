@@ -119,12 +119,12 @@ Khác với **reCAPTCHA Enterprise invisible** (token API gen khi đã vào Labs
 | | Enterprise (API gen) | Trang `/sorry/` (chặn bot) |
 |--|--|--|
 | Khi nào | Tab Flow sạch, `grecaptcha.enterprise.execute` | Google risk → redirect `google.com/sorry` |
-| App tự làm | Có (extension inject token) | **Có một phần:** đưa cửa sổ ra màn hình + auto-click checkbox + chờ tới 180s |
-| Còn cần user | Không (khi session sạch) | Captcha **ảnh** / risk cao → tick tay trên cửa sổ Chromium |
+| App tự làm | Có (extension inject token từ trang Flow đang đăng nhập) | Đưa cửa sổ Chromium/profile thật ra màn hình + chờ tối đa theo timeout |
+| Còn cần user | Không (khi session sạch) | Xác minh thủ công checkbox/captcha ảnh trên cửa sổ Chromium |
 
-Luồng: `queueEngine` → `resolve_google_challenge` + `open_flow_tab` → extension `resolveGoogleChallenge` (focus window, click `#recaptcha-anchor`, poll hết `/sorry/`) → rồi mới `solveCaptcha` Enterprise.
+Luồng: `queueEngine` → `resolve_google_challenge` + `open_flow_tab` → extension `resolveGoogleChallenge` (focus window, **không auto-click**, poll hết `/sorry/`) → rồi mới `solveCaptcha` Enterprise.
 
-**Lưu ý:** Chrome for Testing / gen dày / IP risk dễ dính `/sorry/`. Giảm parallel, proxy per account, không minimize cửa sổ lúc đang chờ tick.
+**Lưu ý:** Chrome for Testing / gen dày / IP risk dễ dính `/sorry/`. Giảm parallel, dùng profile sạch/ổn định, và không minimize cửa sổ lúc đang chờ xác minh.
 
 ## Lưu ý an toàn tài khoản
 

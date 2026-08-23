@@ -24,6 +24,22 @@ const GOOGLE_REASON_HINTS: Array<{
   permanent?: boolean;
 }> = [
   {
+    // MUST be checked BEFORE the /recaptcha/ hint.
+    // The bridge timeout message includes the captcha ACTION label
+    // ("reCAPTCHA VIDEO_GENERATION"), which is NOT a Google reCAPTCHA verdict.
+    // Page XHR error + SW fallback "Failed to fetch" are network-level, retryable —
+    // classifying them as forbidden_403 (permanent) wrongly stops the queue.
+    re: /extension api timeout|api timeout sau|page_xhr_error|sw_fallback|exec_timeout|no_flow_tab/i,
+    category: 'network',
+    userMessage:
+      'Extension Flow không phản hồi khi gửi lệnh gen (tab treo / mạng / browser vừa restart).',
+    suggestions: [
+      'Mở lại tab Flow trong profile đang gen; F5 nếu tab treo.',
+      'Kiểm tra trạng thái Bridge + Extension trong Media Config rồi gen lại.',
+      'Nếu lặp lại: restart browser profile trong Media Config (forceClean).',
+    ],
+  },
+  {
     // Explicit Google quota reasons only — avoid bare resource_exhausted (often soft overload)
     re: /public_error_user_quota_reached|per_model_daily_quota|public_error_per_model_daily_quota|\bquotas?\b|\bcredits?\b|\bpaygate\b/i,
     category: 'quota',
@@ -51,12 +67,13 @@ const GOOGLE_REASON_HINTS: Array<{
     re: /google_challenge_timeout|google_challenge_required|google\.com\/sorry|sorry\/index/i,
     category: 'forbidden_403',
     userMessage:
-      'Google chặn bot (trang /sorry/ — tick “Tôi không phải là người máy”). App đã đưa cửa sổ Chromium ra màn hình; nếu còn captcha ảnh hãy tick tay rồi gen lại.',
+      'Google chặn bot (trang /sorry/ — cần xác minh “Tôi không phải là người máy” trên browser profile thật).',
     suggestions: [
-      'Nhìn cửa sổ Chromium/Flow: tick checkbox reCAPTCHA (và captcha ảnh nếu có).',
-      'Không minimize cửa sổ khi đang gen — app cần tab Flow sạch sau /sorry/.',
-      'Giảm parallel / gắn proxy riêng account nếu hay dính /sorry/.',
+      'Hoàn tất reCAPTCHA trong cửa sổ Chromium của app, rồi Sync/gen lại.',
+      'Dừng gen hàng loạt, chờ cooldown và giảm số luồng.',
+      'Nếu vẫn lặp: đổi sang profile Google sạch đã đăng nhập Flow.',
     ],
+    permanent: true,
   },
   {
     re: /public_error_unusual_activity|unusual.?activity|\brecaptcha\b|\bcaptcha\b|verification.?required/i,
@@ -65,10 +82,11 @@ const GOOGLE_REASON_HINTS: Array<{
       'Google Labs yêu cầu xác minh (reCAPTCHA / unusual activity). Phiên trình duyệt cần làm mới.',
     suggestions: [
       'Mở lại tab Flow / đăng nhập lại profile bị dính.',
-      'Nếu thấy trang google.com/sorry: tick captcha trên cửa sổ Chromium (app tự đưa cửa sổ ra).',
-      'Giảm tốc độ gen; bật delay queue (đã có jitter chuẩn).',
-      'Nếu farm nhiều: gắn proxy riêng cho account (Media Config) — không tự đổi engine.',
+      'Nếu thấy trang google.com/sorry: xác minh thủ công trong cửa sổ Chromium của app.',
+      'Giảm tốc độ gen; app chỉ dùng 1 task / profile và có delay queue.',
+      'Nếu vẫn lặp: ngừng auto-check/gen một lúc rồi xác minh lại trong browser profile của app.',
     ],
+    permanent: true,
   },
   {
     re: /public_error_sexual|public_error_unsafe|unsafe.?generation|\bsafety\b|content.?policy|blocked.?by.?policy/i,

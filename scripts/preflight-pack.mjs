@@ -386,6 +386,12 @@ const extra = JSON.stringify(pkg.build?.extraResources || []);
 if (!extra.includes('release-notes.json')) {
   fail('extraResources must include commercial/release-notes.json');
 }
+if (!extra.includes('bin/ffmpeg.exe')) {
+  fail('extraResources must include bin/ffmpeg.exe');
+}
+if (!extra.includes('bin/ffprobe.exe')) {
+  fail('extraResources must include bin/ffprobe.exe');
+}
 if (!extra.includes('la-studio-kokoro')) {
   fail('extraResources must include bin/la-studio-kokoro');
 }

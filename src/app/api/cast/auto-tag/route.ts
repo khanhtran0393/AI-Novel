@@ -3,6 +3,7 @@
  * Budgeted: max 20 segs, ±400 context, 30s timeout, no scene body logs.
  */
 import { NextResponse } from 'next/server';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -53,16 +54,19 @@ function extractJsonArray(raw: string): unknown {
 async function callGemini(
   prompt: string,
   keys: string[],
-  model = 'gemini-2.0-flash',
+  model = DEFAULT_GEMINI_TEXT_MODEL,
 ): Promise<{ text: string; provider: string }> {
   let lastErr: Error | null = null;
   for (const key of keys) {
     if (!key?.trim()) continue;
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key.trim()}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key.trim(),
+        },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {

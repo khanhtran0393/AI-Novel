@@ -8,6 +8,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { driveMediaFilename, localAudioFilename } from '@/contracts';
 import { applyAudioStudioMix } from '@/lib/audioStudio';
+import { getRuntimePublicPath } from '@/lib/runtimePaths';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -36,15 +37,15 @@ function resolvePublicAudioPath(audioPath: string): string | null {
   if (!rel.startsWith('/audio/')) return null;
   // prevent path traversal
   if (rel.includes('..')) return null;
-  const abs = path.join(process.cwd(), 'public', rel.replace(/^\//, ''));
-  const audioRoot = path.join(process.cwd(), 'public', 'audio');
+  const abs = getRuntimePublicPath(rel.replace(/^\//, ''));
+  const audioRoot = getRuntimePublicPath('audio');
   if (!abs.startsWith(audioRoot)) return null;
   if (!fs.existsSync(abs)) return null;
   return abs;
 }
 
 function isDisposableMultiPart(absPath: string): boolean {
-  const audioRoot = path.join(process.cwd(), 'public', 'audio');
+  const audioRoot = getRuntimePublicPath('audio');
   const multiRoot = path.join(audioRoot, 'multi');
   const base = path.basename(absPath);
   const normalized = path.resolve(absPath);
@@ -73,7 +74,7 @@ async function concatFiles(absPaths: string[]): Promise<Buffer> {
   if (absPaths.length === 0) throw new Error('Không có file để nối.');
   if (absPaths.length === 1) return fs.readFileSync(absPaths[0]);
 
-  const scratch = path.join(process.cwd(), 'public', 'audio', 'multi');
+  const scratch = getRuntimePublicPath(path.join('audio', 'multi'));
   if (!fs.existsSync(scratch)) fs.mkdirSync(scratch, { recursive: true });
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const listPath = path.join(scratch, `list_${tag}.txt`);
@@ -118,7 +119,7 @@ async function concatFiles(absPaths: string[]): Promise<Buffer> {
 async function applyLoudnormOnly(input: Buffer): Promise<Buffer> {
   const ffmpeg = resolveFfmpegCmd();
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  const dir = path.join(process.cwd(), 'public', 'audio');
+  const dir = getRuntimePublicPath('audio');
   const inPath = path.join(dir, `ln_in_${tag}.mp3`);
   const outPath = path.join(dir, `ln_out_${tag}.mp3`);
   try {

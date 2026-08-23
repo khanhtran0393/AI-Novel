@@ -30,22 +30,37 @@ for (const id of ids) {
   const ws = m?.[0] || '';
   const bind = JSON.parse(fs.readFileSync(bindPath, 'utf8')) as {
     accountId: string;
+    wsUrl?: string;
   };
+  const redactedWs = ws.replace(/([?&]token=)[^&\s'"]+/i, '$1[redacted]');
+  const redactedBindWs = String(bind.wsUrl || '').replace(
+    /([?&]token=)[^&\s'"]+/i,
+    '$1[redacted]',
+  );
 
   const checks = {
     id,
     root,
     profile,
     extDir: r.extDir,
-    ws,
+    ws: redactedWs,
+    bindWs: redactedBindWs,
     bindId: bind.accountId,
     wsHasId: ws.includes(`accountId=${id}`),
+    wsHasToken: /[?&]token=[0-9a-f]{64}/i.test(ws),
+    bindHasToken: /[?&]token=[0-9a-f]{64}/i.test(String(bind.wsUrl || '')),
     bindOk: bind.accountId === id,
     profileIsolated: profile.includes(id) || root.includes(id),
   };
   console.log(JSON.stringify(checks, null, 2));
 
-  if (!checks.wsHasId || !checks.bindOk || !checks.profileIsolated) {
+  if (
+    !checks.wsHasId ||
+    !checks.wsHasToken ||
+    !checks.bindHasToken ||
+    !checks.bindOk ||
+    !checks.profileIsolated
+  ) {
     console.error('FAIL isolation checks', id);
     ok = false;
   }

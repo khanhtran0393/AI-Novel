@@ -1,0 +1,3 @@
+INIT: {"name":"nova-clean-room-mcp","version":"1.0.0"}
+TOOLS: setup_clean_room, launch_app, app_status, ui_eval, ui_click, ui_fill, ui_press_escape, teardown
+TEARDOWN: {"ok":true,"restoredRealUserData":true}

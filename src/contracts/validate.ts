@@ -160,6 +160,12 @@ export const generateBodySchema = z
     apiKey: z.string().optional(),
     apiKeys: z.array(z.string()).optional(),
     model: z.string().optional(),
+    provider: z
+      .enum(['gemini', 'openai', 'grok', 'claude', 'custom'])
+      .optional(),
+    customApiBaseUrl: z.string().optional(),
+    customApiModel: z.string().optional(),
+    customApiProtocol: z.enum(['openai', 'gemini']).optional(),
     payload: z.record(z.string(), z.unknown()).optional().nullable(),
   })
   .superRefine((val, ctx) => {
@@ -257,7 +263,7 @@ export const generateImageBodySchema = z
     cookie: z.string().optional(),
     characterPrompt: z.string().optional(),
     model: z.string().optional(),
-    imageProvider: z.enum(['flow', 'openai', 'gemini', 'grok']),
+    imageProvider: z.enum(['flow', 'openai', 'gemini', 'grok', 'local']),
     imageApiKey: z.string().optional(),
     imageAspectRatio: z.string().optional(),
     imageCount: z.coerce.number().optional(),

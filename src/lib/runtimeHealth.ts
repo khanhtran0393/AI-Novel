@@ -5,6 +5,11 @@
 import fs from 'fs';
 import path from 'path';
 import type { HealthItem, HealthLevel } from '@/lib/credentialHealth';
+import {
+  getPrimaryFfmpegPath,
+  getPrimaryFfprobePath,
+} from '@/lib/ffmpeg/ffmpegPaths';
+import { getRuntimePublicRoot } from '@/lib/runtimePaths';
 
 export type RuntimeHealthResult = {
   items: HealthItem[];
@@ -25,21 +30,9 @@ function item(
   return { id, label, level, detail };
 }
 
-function resolveFfmpegCandidates(root: string): string[] {
-  const isWin = process.platform === 'win32';
-  const name = isWin ? 'ffmpeg.exe' : 'ffmpeg';
-  return [
-    path.join(root, 'bin', name),
-    path.join(root, 'python_core', 'ffmpeg', name),
-    path.join(root, 'Voice Studio', 'bin', name),
-  ];
-}
-
 export function resolveBundledFfmpeg(root = process.cwd()): string | null {
-  for (const p of resolveFfmpegCandidates(root)) {
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
+  const ffmpeg = getPrimaryFfmpegPath(root);
+  return ffmpeg !== 'ffmpeg' && fs.existsSync(ffmpeg) ? ffmpeg : null;
 }
 
 export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
@@ -110,10 +103,29 @@ export function probeRuntimeHealth(root = process.cwd()): RuntimeHealthResult {
       ),
     );
   }
+  const ffprobe = getPrimaryFfprobePath(root);
+  if (ffprobe !== 'ffprobe' && fs.existsSync(ffprobe)) {
+    items.push(
+      item('ffprobe', 'FFprobe', 'ok', path.relative(root, ffprobe) || ffprobe),
+    );
+  } else {
+    items.push(
+      item(
+        'ffprobe',
+        'FFprobe',
+        'warn',
+        'Không thấy ffprobe nội bộ — đo duration/verify audio có thể fail trên máy user.',
+      ),
+    );
+  }
 
   // Public media dirs
+  const runtimePublic = getRuntimePublicRoot(root);
   for (const rel of ['public/audio', 'public/images', 'public/video']) {
-    const abs = path.join(/* turbopackIgnore: true */ root, rel);
+    const abs = path.join(
+      /* turbopackIgnore: true */ runtimePublic,
+      rel.replace(/^public[\\/]/, ''),
+    );
     try {
       if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true });
       const test = path.join(abs, '.health_write_test');

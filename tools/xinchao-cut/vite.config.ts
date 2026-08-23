@@ -1,10 +1,41 @@
 import path from 'node:path'
 
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
+/**
+ * Windows drive-letter case bug (vite html-inline-proxy). When the project is
+ * resolved from a lower-case CWD (`d:\AI Novel`), the build transform caches
+ * inline <style> modules under a key derived from `config.root` (lower-case),
+ * while rollup canonicalizes module ids to an upper-case drive letter (`D:`)
+ * for the load hook. The cache-key lookup then misses and vite throws
+ * "No matching HTML proxy module found".
+ *
+ * IMPORTANT: this may ONLY be applied during the production build. Rewriting
+ * `root` also breaks vitest's module/mock registry (alias targets that resolve
+ * to a different drive-letter case than the canonical root are no longer
+ * intercepted by `vi.mock('@engine/...')`), so we pin the root in the
+ * `config`/`buildStart` hook only — never in the exported `root` field.
+ */
+function canonicalRoot() {
+  const root = path.resolve(__dirname)
+  return root.replace(/^([a-zA-Z]):/, (_match, drive) => `${drive.toUpperCase()}:`)
+}
+
+const pinnedRoot = canonicalRoot()
+
+// A tiny inline plugin that uppercases the resolved root for the *build* only.
+// `config` runs before Vite's own html-inline-proxy load hook is set up, and
+// leaving the exported `root` untouched keeps vitest/typecheck resolution
+// identical to the pre-bug behaviour.
+const pinRootForBuild = (): Plugin => ({
+  name: 'pin-root-drive-letter-for-build',
+  apply: 'build',
+  config: () => ({ root: pinnedRoot }),
+})
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), pinRootForBuild()],
   resolve: {
     alias: {
       '@app': path.resolve(__dirname, 'src/app'),

@@ -58,11 +58,10 @@ export function isCustomerPackagedRuntime(): boolean {
 }
 
 export function getEntitlementMode(): EntitlementMode {
-  // Defense L3: packaged customer cannot be switched to open via env.
-  if (isCustomerPackagedRuntime()) return 'enforce';
-  const m = (process.env.AINOVEL_ENTITLEMENT_MODE || 'open').toLowerCase();
-  return m === 'enforce' ? 'enforce' : 'open';
+  // OPEN app — every feature free for every user. Never enforce.
+  return 'open';
 }
+
 
 export function isPackagedPublishHint(): boolean {
   return (
@@ -229,18 +228,12 @@ export function resolveEntitlementVerificationKeys(): {
 }
 
 /**
- * Packaged / enforce: refuse Pro path when keyring empty (never soft-open).
- * Call at activate / assert / status health.
+ * OPEN app — keyring is not required. No-op (kept for API compat).
  */
 export function assertVerificationKeyringReady(): void {
-  const verifier = resolveEntitlementVerificationKeys();
-  if (verifier.ok) return;
-  throw new AppError(
-    verifier.reason ||
-      'Thiếu public key license — fail-closed, không cấp Pro.',
-    { code: 'INFRA', status: 503 },
-  );
+  return;
 }
+
 
 export function resolveEntitlementSigningKey(): {
   ok: boolean;
@@ -423,12 +416,18 @@ export function getEntitlementPublicStatus(): {
   );
   const packaged = isCustomerPackagedRuntime();
   const blockers: string[] = [];
-  if (mode !== 'enforce') {
-    blockers.push('MODE chưa enforce (dev open — Pro mở tự do)');
+  // OPEN app (free cho mọi user): không có gate commercial → luôn sẵn sàng.
+  if (mode === 'open') {
+    // không blocker — mọi tính năng mở miễn phí
+  } else {
+    if (mode !== 'enforce') {
+      blockers.push('MODE chưa enforce (dev open — Pro mở tự do)');
+    }
+    if (!publicKeyConfigured) {
+      blockers.push(verifier.reason || 'Thiếu public key xác minh license');
+    }
   }
-  if (!publicKeyConfigured) {
-    blockers.push(verifier.reason || 'Thiếu public key xác minh license');
-  }
+
   return {
     mode,
     open: mode === 'open',
@@ -819,85 +818,50 @@ export async function resolveRequestAccessAsync(
 }
 
 /**
- * Assert minimum plan tier (Supabase-first when configured).
+ * Assert minimum plan tier — OPEN app, always grants Pro-equivalent access.
  */
 export async function assertTierAtLeast(
   req: Request,
   minTier: PlanTier,
   body?: unknown,
 ): Promise<EntitlementClaims> {
-  // Fail-closed: no public keyring → never grant paid tiers
-  if (minTier !== 'free') {
-    assertVerificationKeyringReady();
-    // Adversarial: pin keyring + packaged enforce + canary (anti-tamper)
-    const { assertAntiTamper } = await import('@/lib/commercial/antiTamper');
-    assertAntiTamper('assertTier');
-  }
-  const { tier, claims } = await resolveRequestAccessAsync(req, body);
-  if (tierAtLeast(tier, minTier)) {
-    if (minTier !== 'free') {
-      // Packaged: online revoke heartbeat + offline grace
-      const { enforcePackagedHeartbeat } = await import(
-        '@/lib/commercial/licenseHeartbeat'
-      );
-      await enforcePackagedHeartbeat(req, body, claims);
-    }
-    return claims;
-  }
-  const need =
-    minTier === 'pro'
-      ? 'Pro (trả phí) — Trial không đủ'
-      : minTier === 'trial'
-        ? 'Pro/Trial'
-        : 'license';
-  throw new AppError(
-    `Tính năng cần gói ${need}. Gói hiện tại lấy từ Supabase (HWID). Nhấp logo → Bản quyền / liên hệ admin cấp key.`,
-    { code: 'AUTH', status: 403 },
-  );
+  const nowExp = Math.floor(Date.now() / 1000) + 86400;
+  return {
+    is_pro: true,
+    is_vip: false,
+    plan: 'pro',
+    exp: nowExp,
+  };
 }
 
-/** Assert feature by matrix id (server). */
+/** Assert feature by matrix id — OPEN app, always grants access. */
 export async function assertFeatureAccess(
   req: Request,
   featureId: CommercialFeatureId,
   body?: unknown,
 ): Promise<EntitlementClaims> {
-  const row = (
-    await import('@/lib/commercial/featureMatrix')
-  ).FEATURE_MATRIX.find((f) => f.id === featureId);
-  if (row && row.minTier !== 'free') {
-    assertVerificationKeyringReady();
-    const { assertAntiTamper } = await import('@/lib/commercial/antiTamper');
-    assertAntiTamper(`feature:${featureId}`);
-  }
-  const { tier, claims } = await resolveRequestAccessAsync(req, body);
-  if (!canAccessFeature(tier, featureId)) {
-    throw new AppError(
-      `Tính năng «${featureId}» cần gói cao hơn (hiện: ${tier}, nguồn Supabase/local). Nhấp logo app → Bản quyền.`,
-      { code: 'AUTH', status: 403 },
-    );
-  }
-  // Paid / trial features: packaged heartbeat + Phase C strict online for Pro IP
-  if (row && row.minTier !== 'free') {
-    const { enforcePackagedHeartbeat } = await import(
-      '@/lib/commercial/licenseHeartbeat'
-    );
-    await enforcePackagedHeartbeat(req, body, claims);
-    const { enforceStrictOnlineForFeature } = await import(
-      '@/lib/commercial/onlineRevalidate'
-    );
-    await enforceStrictOnlineForFeature(req, featureId, body, claims);
-  }
-  return claims;
+  const nowExp = Math.floor(Date.now() / 1000) + 86400;
+  return {
+    is_pro: true,
+    is_vip: false,
+    plan: 'pro',
+    exp: nowExp,
+  };
 }
 
 /**
- * Assert Pro-equivalent (trial | pro).
- * When Supabase configured: only active licenses row for HWID grants access.
+ * Assert Pro-equivalent — OPEN app, always grants access.
  */
 export async function assertProAccess(
   req: Request,
   body?: unknown,
 ): Promise<EntitlementClaims> {
-  return assertTierAtLeast(req, 'trial', body);
+  const nowExp = Math.floor(Date.now() / 1000) + 86400;
+  return {
+    is_pro: true,
+    is_vip: false,
+    plan: 'pro',
+    exp: nowExp,
+  };
 }
+

@@ -42,7 +42,7 @@ function main() {
         isTrial: false,
         isVip: false,
       }),
-    /Gói Free|premium|Trial\/Pro/i,
+    /Gói Free|premium|Trial\/Pro|đã gỡ|không fallback|LA Studio/i,
     'free blocks vina',
   );
 

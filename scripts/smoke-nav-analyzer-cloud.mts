@@ -37,7 +37,7 @@ async function main() {
     await bridge.resolveScript2Prompt(
       {
         text: 'x',
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.6-flash',
         apiKeys: ['fake'],
         numScenes: 2,
       },

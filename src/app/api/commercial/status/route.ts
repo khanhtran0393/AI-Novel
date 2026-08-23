@@ -69,9 +69,13 @@ export async function GET(req: Request) {
   let cloudLicenseId: string | null = null;
   let cloudStatus: string | null = null;
 
-  const ownerUnlimited = shouldGrantOwnerUnlimited();
+  // OPEN app: every user gets Pro-equivalent. ownerUnlimited=true makes the
+  // LicenseModal's `if (data.ownerUnlimited)` branch fire first, so a user with
+  // no token is NEVER downgraded back to Free by refresh().
+  const ownerUnlimited = shouldGrantOwnerUnlimited() || pub.mode === 'open';
   const openMode = pub.mode === 'open';
   const sb = supabaseConfigPublic();
+
 
   // ── Supabase licenses (HWID) = sole truth for UI tier ──
   // Cryptographically valid AINOVEL2 token is a ticket only.

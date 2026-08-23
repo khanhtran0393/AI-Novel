@@ -224,7 +224,13 @@ export function writeStoreBackup(raw: string): { ok: boolean; path: string; erro
       primary,
       userData ? path.join(userData, 'store', 'latest.json') : null,
       path.join(os.homedir(), 'Documents', 'AINovel', 'novel_store_backup.json'),
-      path.join(process.env.AI_NOVEL_ROOT?.trim() || process.cwd(), 'scratch', 'novel_store_backup.json'),
+      userData
+        ? null
+        : path.join(
+            process.env.AI_NOVEL_ROOT?.trim() || process.cwd(),
+            'scratch',
+            'novel_store_backup.json',
+          ),
     ].filter(Boolean) as string[];
 
     for (const target of targets) {

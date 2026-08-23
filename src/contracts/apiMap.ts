@@ -190,6 +190,7 @@ export const IMAGE_PROVIDERS = {
   openai: 'openai',
   grok: 'grok',
   gemini: 'gemini',
+  local: 'local',
 } as const;
 
 /**

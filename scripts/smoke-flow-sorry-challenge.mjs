@@ -7,6 +7,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const packageVersion = String(pkg.version || '').trim();
 let failed = 0;
 
 function ok(cond, msg) {
@@ -32,7 +34,7 @@ console.log('smoke-flow-sorry-challenge');
 mustInclude(
   'extensions/ainovel-flow/manifest.json',
   [
-    '"version": "1.0.18"',
+    `"version": "${packageVersion}"`,
     'https://www.google.com/*',
     'https://www.gstatic.com/*',
   ],
@@ -43,12 +45,12 @@ mustInclude(
   'extensions/ainovel-flow/background.js',
   [
     'resolveGoogleChallenge',
-    'tryAutoClickRecaptcha',
     'focusTabAndWindow',
     'resolve_google_challenge',
-    'recaptcha-anchor',
+    'human_verified',
     'GOOGLE_CHALLENGE_TIMEOUT',
     'sorry-challenge-resolve',
+    'does not auto-click or solve Google /sorry/ challenges',
   ],
   'background',
 );
@@ -61,9 +63,19 @@ mustInclude(
 
 mustInclude(
   'src/lib/flow-bridge/flowRuntimeErrors.ts',
-  ['google_challenge_timeout', 'google.com/sorry'],
+  ['google_challenge_timeout', 'google.com/sorry', 'permanent: true'],
   'flowRuntimeErrors',
 );
+
+{
+  const bg = readFileSync(join(root, 'extensions/ainovel-flow/background.js'), 'utf8');
+  ok(
+    !/function\s+tryAutoClickRecaptcha\b/.test(bg) &&
+      !/recaptcha-anchor/.test(bg) &&
+      /does not auto-click or solve Google \/sorry\/ challenges/.test(bg),
+    'background: Google /sorry/ path is manual-only (no auto-click helper)',
+  );
+}
 
 mustInclude(
   'src/lib/flow-bridge/bridgeServer.ts',
@@ -75,7 +87,7 @@ mustInclude(
 try {
   const { spawnSync } = await import('node:child_process');
   const r = spawnSync(
-    'npx tsx -e "import { describeFlowError } from \'./src/lib/flow-bridge/flowRuntimeErrors.ts\'; const d = describeFlowError(undefined, \'GOOGLE_CHALLENGE_TIMEOUT: google.com/sorry\'); if (d.category !== \'forbidden_403\') process.exit(2); if (!/sorry|reCAPTCHA|người máy/i.test(d.userMessage)) process.exit(3); console.log(\'TAXONOMY_OK\');"',
+    'npx tsx -e "import { describeFlowError } from \'./src/lib/flow-bridge/flowRuntimeErrors.ts\'; const d = describeFlowError(undefined, \'GOOGLE_CHALLENGE_TIMEOUT: google.com/sorry\'); if (d.category !== \'forbidden_403\') process.exit(2); if (!d.permanent) process.exit(3); if (!/sorry|reCAPTCHA|người máy/i.test(d.userMessage)) process.exit(4); console.log(\'TAXONOMY_OK\');"',
     {
       cwd: root,
       encoding: 'utf8',

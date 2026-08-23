@@ -51,8 +51,8 @@ export function evaluateCredentialHealth(input: HealthInput): {
     items.push({
       id: 'gemini',
       label: 'Gemini / Studio keys',
-      level: 'ok',
-      detail: `${(input.apiKeys || []).filter(Boolean).length || (input.apiKey ? 1 : 0)} key(s)`,
+      level: 'warn',
+      detail: `${(input.apiKeys || []).filter(Boolean).length || (input.apiKey ? 1 : 0)} key(s), chưa kiểm tra live`,
     });
   } else {
     items.push({
@@ -67,7 +67,7 @@ export function evaluateCredentialHealth(input: HealthInput): {
     items.push({
       id: 'openai',
       label: 'OpenAI',
-      level: 'ok',
+      level: 'warn',
       detail: 'Có key',
     });
   } else {
@@ -83,7 +83,7 @@ export function evaluateCredentialHealth(input: HealthInput): {
     items.push({
       id: 'grok',
       label: 'Grok / xAI',
-      level: 'ok',
+      level: 'warn',
       detail: 'Có key',
     });
   } else {
@@ -97,7 +97,14 @@ export function evaluateCredentialHealth(input: HealthInput): {
 
   // Image engine
   const img = (input.imageProvider || 'gemini').toLowerCase();
-  if (img === 'openai' && !hasAny(input.openaiApiKey, input.openaiApiKeys)) {
+  if (img === 'local') {
+    items.push({
+      id: 'image',
+      label: 'Ảnh: local',
+      level: 'ok',
+      detail: 'Local Storyboard không cần API key',
+    });
+  } else if (img === 'openai' && !hasAny(input.openaiApiKey, input.openaiApiKeys)) {
     items.push({
       id: 'image',
       label: `Ảnh: ${img}`,

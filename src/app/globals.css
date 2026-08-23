@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* ═══ Be Vietnam Pro — font chủ đạo Nova Studio (bundle local → Electron offline) ═══ */
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 300; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-300-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 300; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-300-vietnamese.woff2') format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-400-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-400-vietnamese.woff2') format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-500-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-500-vietnamese.woff2') format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-600-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-600-vietnamese.woff2') format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-700-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-700-vietnamese.woff2') format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 800; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-800-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Be Vietnam Pro'; font-style: normal; font-weight: 800; font-display: swap; src: url('/fonts/be-vietnam-pro/BeVietnamPro-800-vietnamese.woff2') format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+
 :root {
   --background: #000000;
   --foreground: #f4f4f5;
@@ -18,6 +32,30 @@
   --app-border-soft: rgba(63, 63, 70, 0.55);
   --app-surface: #09090b;
   --app-surface-2: #0c0c0e;
+  
+  /* Nova Design Tokens (Dark Mode) */
+  --nova-bg: #0f0f12;
+  /* Nền thanh điều hướng Nova Studio (ấm hơn, khớp app mẫu) */
+  --nova-nav-bg: #171619;
+  --nova-surface: #18181b;
+  --nova-surface-2: #212126;
+  --nova-surface-3: #2a2a30;
+  --nova-border: #2f2f36;
+  --nova-border-bright: #44444c;
+  --nova-text: #ede9e4;
+  --nova-text-2: #d6d0c7;
+  --nova-text-muted: #a29a90;
+  --nova-text-dim: #74706a;
+  --nova-accent: #e07a46;
+  --nova-accent-2: #e8946a;
+  --nova-accent-soft: #2a1810;
+  --nova-teal: #4bb8a6;
+  --nova-violet: #9d8bd0;
+  --nova-rose: #e2879a;
+  --nova-green: #5cb98a;
+  --nova-red: #e08a86;
+  --nova-blue: #7aa3d4;
+  --nova-amber: #e0b565;
 }
 
 @theme inline {
@@ -29,6 +67,67 @@
   --radius-xl: clamp(1.5rem, 2.5vw, 2.75rem);
   --radius-2xl: clamp(1.75rem, 3vw, 3.25rem);
   --radius-3xl: clamp(2rem, 3.5vw, 4rem);
+
+  /* Nova theme colors */
+  --color-nova-bg: var(--nova-bg);
+  --color-nova-surface: var(--nova-surface);
+  --color-nova-surface-2: var(--nova-surface-2);
+  --color-nova-surface-3: var(--nova-surface-3);
+  --color-nova-border: var(--nova-border);
+  --color-nova-border-bright: var(--nova-border-bright);
+  --color-nova-text: var(--nova-text);
+  --color-nova-text-muted: var(--nova-text-muted);
+  --color-nova-text-dim: var(--nova-text-dim);
+  --color-nova-accent: var(--nova-accent);
+  --color-nova-accent-2: var(--nova-accent-2);
+  --color-nova-accent-soft: var(--nova-accent-soft);
+  --color-nova-teal: var(--nova-teal);
+  --color-nova-violet: var(--nova-violet);
+  --color-nova-rose: var(--nova-rose);
+  --color-nova-green: var(--nova-green);
+  --color-nova-red: var(--nova-red);
+  --color-nova-blue: var(--nova-blue);
+  --color-nova-amber: var(--nova-amber);
+
+  /* ─── Nova palette remap — AI Novel chạy trên bảng màu Nova Studio (dark ấm + accent cam) ─── */
+  /* zinc → bề mặt / viền / chữ Nova */
+  --color-zinc-50: var(--nova-text);
+  --color-zinc-100: var(--nova-text);
+  --color-zinc-200: var(--nova-text-2);
+  --color-zinc-300: var(--nova-text-muted);
+  --color-zinc-400: var(--nova-text-muted);
+  --color-zinc-500: var(--nova-text-dim);
+  --color-zinc-600: var(--nova-border-bright);
+  --color-zinc-700: var(--nova-surface-3);
+  --color-zinc-800: var(--nova-surface-2);
+  --color-zinc-900: var(--nova-surface);
+  --color-zinc-950: var(--nova-bg);
+  /* emerald → family accent cam Nova (nút gen / trạng thái active) */
+  --color-emerald-200: var(--nova-accent-2);
+  --color-emerald-300: var(--nova-accent-2);
+  --color-emerald-400: var(--nova-accent-2);
+  --color-emerald-500: var(--nova-accent);
+  --color-emerald-600: #c4652f;
+  --color-emerald-700: #a6531f;
+  --color-emerald-800: #7d3d16;
+  --color-emerald-900: #56290e;
+  --color-emerald-950: var(--nova-accent-soft);
+  /* amber → vàng ấm Nova */
+  --color-amber-300: #eccf96;
+  --color-amber-400: #e6bd76;
+  --color-amber-500: var(--nova-amber);
+  --color-amber-600: #c2944c;
+  --color-amber-700: #9a7336;
+  --color-amber-800: #6e5023;
+  --color-amber-900: #4a3515;
+  --color-amber-950: #2b1e0b;
+  /* font chủ đạo Nova */
+  --font-sans: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Nova glow / shadows */
+  --shadow-nova-glow-sm: 0 0 12px color-mix(in srgb, var(--nova-accent) 18%, transparent);
+  --shadow-nova-glow: 0 0 22px color-mix(in srgb, var(--nova-accent) 28%, transparent);
+  --shadow-nova-btn: 0 6px 16px -8px var(--nova-accent);
+  --shadow-nova-card: 0 12px 32px -16px rgba(0, 0, 0, 0.6);
 }
 
 html {
@@ -42,12 +141,12 @@ html {
 html,
 body {
   /* Nền đặc — Electron transparent: alpha=0 sẽ click-through, làm nút “chết” */
-  background-color: #050505;
+  background-color: var(--nova-bg);
 }
 
 body {
-  color: #f4f4f5;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--nova-text);
+  font-family: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: var(--app-font);
   overflow: hidden;
   height: 100%;
@@ -74,7 +173,7 @@ body {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  background: #050505;
+  background: var(--nova-bg);
   /* Toàn viewport nhận click (trừ vùng drag chrome) */
   -webkit-app-region: no-drag;
   pointer-events: auto;
@@ -91,7 +190,7 @@ body {
   /* Sát mép cửa sổ — bỏ bo tròn + shadow card tạo viền đen vuông */
   border-radius: 0;
   border: none;
-  background: #0a0a0b;
+  background: var(--nova-bg);
   box-shadow: none;
   min-width: 0;
   min-height: 0;
@@ -109,8 +208,8 @@ body {
   display: flex;
   align-items: stretch;
   justify-content: flex-end;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: #18181b;
+  border-bottom: 1px solid var(--nova-border);
+  background: var(--nova-surface);
   z-index: 20;
   position: relative;
 }
@@ -152,7 +251,7 @@ body {
   z-index: 10;
   -webkit-app-region: no-drag;
   pointer-events: auto;
-  background: #0a0a0b;
+  background: var(--nova-bg);
 }
 
 /* Mọi control tương tác trong app không bao giờ bị drag region nuốt click */
@@ -219,16 +318,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #09090b;
+  background: var(--nova-bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--nova-surface-3);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--nova-border-bright);
 }
 
 /* Hiệu ứng nhấp nháy con trỏ AI */
@@ -262,18 +361,18 @@ body {
   width: 12px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #000;
-  border-left: 1px solid #ff7b00;
-  background-image: radial-gradient(#ff7b00 10%, transparent 20%);
+  background: var(--nova-surface);
+  border-left: 1px solid var(--nova-accent);
+  background-image: radial-gradient(var(--nova-accent) 10%, transparent 20%);
   background-size: 4px 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #ff7b00;
+  background: var(--nova-accent);
   border-radius: 6px;
-  border: 2px solid #000;
+  border: 2px solid var(--nova-bg);
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #cc6200;
+  background: var(--nova-accent-2);
 }
 
 /* Free logo: phóng to ↔ thu nhỏ đều đặn + badge "up to PRO" */
@@ -354,4 +453,303 @@ body {
   .ainovel-zalo-support-label {
     animation: none;
   }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   NOVA STUDIO — Design system (replica từ app mẫu D:\Nova\Nova Studio.exe)
+   Sidebar nav · statusbar · topbar user chip
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Nova nav: brand ── */
+.nova-brand-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #1c0f05;
+  background: linear-gradient(135deg, var(--nova-accent-2), var(--nova-accent));
+  box-shadow: 0 8px 20px -10px var(--nova-accent);
+  font-size: 15px;
+  letter-spacing: -0.02em;
+  user-select: none;
+}
+.nova-brand-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--nova-accent);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.nova-brand-sub {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--nova-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-top: 5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* ── Nova nav: group label ── */
+.nova-nav-group {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nova-text-dim);
+  font-weight: 700;
+  padding: 14px 12px 6px;
+}
+
+/* ── Nova nav: item ── */
+.nova-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nova-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, color 0.12s ease;
+  text-align: left;
+}
+.nova-nav-item:hover {
+  background: var(--nova-surface-2);
+  color: var(--nova-text);
+}
+.nova-nav-item:active {
+  transform: scale(0.995);
+}
+.nova-nav-item .nova-nav-ic {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--nova-text-dim);
+  transition: color 0.12s ease;
+}
+.nova-nav-item .nova-nav-ic svg {
+  width: 18px;
+  height: 18px;
+}
+.nova-nav-item:hover .nova-nav-ic {
+  color: var(--nova-text);
+}
+.nova-nav-item.nova-nav-item--active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--nova-accent) 17%, transparent),
+    transparent
+  );
+  color: var(--nova-text);
+  font-weight: 600;
+  border-color: transparent;
+}
+.nova-nav-item.nova-nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--nova-accent);
+}
+.nova-nav-item.nova-nav-item--active .nova-nav-ic {
+  color: var(--nova-accent);
+}
+
+
+/* ── Nova statusbar (bottom) ── */
+.nova-statusbar {
+  height: 46px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 20px;
+  background: var(--nova-surface);
+  border-top: 1px solid var(--nova-border);
+  font-size: 12px;
+  color: var(--nova-text-muted);
+  box-shadow: 0 -6px 20px -14px rgba(0, 0, 0, 0.5);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.nova-statusbar .ns-st {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.nova-statusbar .ns-st b {
+  color: var(--nova-text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.nova-statusbar .ns-gdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nova-text-dim);
+  flex: none;
+}
+.nova-statusbar .ns-gdot.ok {
+  background: var(--nova-green);
+  box-shadow: 0 0 8px var(--nova-green);
+}
+.nova-statusbar .ns-gdot.off {
+  background: var(--nova-red);
+}
+.nova-statusbar .ns-spacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+.nova-statusbar .ns-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(180deg, var(--nova-accent-2), var(--nova-accent));
+  color: #1c0f05;
+  font-weight: 800;
+  font-size: 12px;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 15px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -8px var(--nova-accent);
+  white-space: nowrap;
+}
+.nova-statusbar .ns-export:hover {
+  filter: brightness(1.08);
+}
+.nova-statusbar .ns-export:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.nova-statusbar .ns-hide-sm {
+  display: inline-flex;
+}
+@media (max-width: 900px) {
+  .nova-statusbar .ns-hide-sm {
+    display: none;
+  }
+}
+
+
+/* ── Nova topbar: user chip ── */
+.nova-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 8px 4px 5px;
+  background: var(--nova-surface-2);
+  border: 1px solid var(--nova-border);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s ease;
+}
+.nova-user-chip:hover {
+  border-color: var(--nova-border-bright);
+}
+.nova-user-chip .nu-av {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 12px;
+  color: #1a0e05;
+  background: linear-gradient(135deg, var(--nova-accent-2), var(--nova-accent));
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.nova-user-chip .nu-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nova-user-chip .nu-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--nova-text);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nova-user-chip .nu-role {
+  font-size: 10.5px;
+  color: var(--nova-text-muted);
+  line-height: 1.2;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Nova topbar: nút gradient + tier badge ── */
+.nova-btn-gradient {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(180deg, var(--nova-accent-2), var(--nova-accent));
+  color: #1c0f05;
+  font-weight: 800;
+  font-size: 12.5px;
+  border: none;
+  border-radius: 9px;
+  padding: 7px 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px -4px rgba(224, 122, 70, 0.55);
+  transition: transform 0.12s ease, filter 0.15s ease;
+}
+.nova-btn-gradient:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+.nova-btn-gradient:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.nova-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 9px;
+  white-space: nowrap;
+  background: var(--nova-accent-soft);
+  border: 1px solid var(--nova-accent);
+  color: var(--nova-accent);
+}
+.nova-tier-badge .nt-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nova-accent);
+  flex: none;
+}
+.nova-tier-badge b {
+  color: var(--nova-accent);
+  font-weight: 700;
 }

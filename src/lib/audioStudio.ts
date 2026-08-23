@@ -5,17 +5,20 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import {
+  getPrimaryFfmpegPath,
+  getPrimaryFfprobePath,
+} from '@/lib/ffmpeg/ffmpegPaths';
+import { getRuntimePublicPath } from '@/lib/runtimePaths';
 
 export function resolveFfmpegCmd(cwd = process.cwd()): string {
-  const local = path.join(cwd, 'bin', 'ffmpeg.exe');
-  if (fs.existsSync(local)) return `"${local}"`;
-  return 'ffmpeg';
+  const ffmpeg = getPrimaryFfmpegPath(cwd);
+  return ffmpeg === 'ffmpeg' ? ffmpeg : `"${ffmpeg}"`;
 }
 
 export function resolveFfprobeCmd(cwd = process.cwd()): string {
-  const local = path.join(cwd, 'bin', 'ffprobe.exe');
-  if (fs.existsSync(local)) return `"${local}"`;
-  return 'ffprobe';
+  const ffprobe = getPrimaryFfprobePath(cwd);
+  return ffprobe === 'ffprobe' ? ffprobe : `"${ffprobe}"`;
 }
 
 export function probeDurationSec(filePath: string, cwd = process.cwd()): number {
@@ -41,7 +44,7 @@ function detectAudioExtension(buffer: Buffer): 'wav' | 'mp3' {
 }
 
 function scratchPaths(cwd: string, tag: string, extension: 'wav' | 'mp3') {
-  const dir = path.join(cwd, 'public', 'audio', 'studio');
+  const dir = getRuntimePublicPath(path.join('audio', 'studio'), cwd);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const id = `${tag}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   return {

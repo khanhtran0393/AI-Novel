@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ensureWorkDirs, getIntegrationPaths } from './paths';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 export const MIROFISH_DEFAULT_URL = process.env.AINOVEL_MIROFISH_URL || 'http://127.0.0.1:5001';
 
@@ -79,10 +80,13 @@ function buildPersonas(input: WhatIfInput): MiroPersona[] {
 }
 
 async function callGeminiJson(apiKey: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_TEXT_MODEL}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {

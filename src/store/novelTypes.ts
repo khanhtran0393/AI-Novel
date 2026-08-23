@@ -12,6 +12,7 @@ import type {
   ShipMode,
 } from '@/lib/channelModel';
 import type { SceneLocationAsset } from '@/lib/sceneLocationLibrary';
+import type { AiMasterProvider } from '@/contracts';
 
 export type { NhanVatProfile, NhanVatPromptsMap, ProjectVoiceCast, VoiceRole };
 export type { ChannelProfile, ShipMode };
@@ -223,6 +224,7 @@ export interface NovelState {
   videoModel: string;
   
   // --- H? TH?NG C?U H�NH �?U RA MEDIA ---
+  aiMasterProvider: AiMasterProvider;
   aiMasterModel: string;
   aiMasterApiKey: string;
   visualDnaPrompt: string;
@@ -349,6 +351,9 @@ export interface NovelState {
   runwayApiKeys: string[];
   falaiApiKey: string;
   falaiApiKeys: string[];
+  customApiBaseUrl?: string;
+  customApiModel?: string;
+  customApiProtocol?: 'openai' | 'gemini';
   useGpuAcceleration: boolean;
 }
 
@@ -430,6 +435,7 @@ export interface NovelActions {
     opts?: { mirrorChannel?: boolean },
   ) => void;
 
+  setAiMasterProvider: (provider: AiMasterProvider) => void;
   setAiMasterModel: (model: string) => void;
   setAiMasterApiKey: (key: string) => void;
   setVisualDnaPrompt: (prompt: string) => void;
@@ -567,6 +573,9 @@ export interface NovelActions {
   setRunwayApiKeys: (keys: string[]) => void;
   setFalaiApiKey: (key: string) => void;
   setFalaiApiKeys: (keys: string[]) => void;
+  setCustomApiBaseUrl: (url: string) => void;
+  setCustomApiModel: (model: string) => void;
+  setCustomApiProtocol: (protocol: 'openai' | 'gemini') => void;
   setUseGpuAcceleration: (use: boolean) => void;
   updateWorldState: (data: Partial<NovelState['world_state']>) => void;
   updateSpentEntities: (data: Partial<NovelState['da_dien_ra_entities']>) => void;

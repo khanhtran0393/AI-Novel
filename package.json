@@ -1,10 +1,11 @@
 {
   "name": "ai-novel-script-generator",
-  "version": "1.1.5",
+  "version": "1.1.7",
   "description": "Ai Novel — Free, Trial and Pro desktop application",
   "author": "Ai Novel",
   "private": true,
-  "main": "main.js",
+  "productName": "chukienmedia-app",
+  "main": "nova/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -143,7 +144,9 @@
     "smoke:style-engine:hardened": "npx tsx scripts/smoke-style-engine-hardened.mts",
     "compile:python-gateway": "node scripts/compile-python-gateway.cjs",
     "clean:workspace": "node scripts/clean-workspace.mjs",
-    "smoke:la-studio-preflight": "tsx scripts/smoke-la-studio-preflight.ts"
+    "smoke:la-studio-preflight": "tsx scripts/smoke-la-studio-preflight.ts",
+    "nova:pack:dir": "electron-builder --config nova/electron-builder.json --dir",
+    "nova:pack": "electron-builder --config nova/electron-builder.json"
   },
   "build": {
     "appId": "com.ainovel.desktop",

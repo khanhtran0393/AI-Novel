@@ -4,6 +4,7 @@
  * No CapAssistant.exe / app path dependency.
  */
 import fs from 'fs';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
 import { callNavGateway } from '@/lib/nav/navPythonBridge';
@@ -170,17 +171,20 @@ HARD RULES:
 --- SRT ---
 ${srtText}`;
 
-  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+  const models = [DEFAULT_GEMINI_TEXT_MODEL];
   let lastError: Error | null = null;
 
   for (const apiKey of apiKeys) {
     for (const model of models) {
       try {
         log(`[TRANS] Gemini ${model} key ...${apiKey.slice(-4)}`);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },

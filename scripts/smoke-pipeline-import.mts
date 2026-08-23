@@ -106,6 +106,35 @@ const ttsPf = assertTtsMediaPreflight({
 });
 assert.strictEqual(ttsPf.ok, true);
 
+// TTS must not create audio when the same chapter is not media-ready.
+const thin = `[CẢNH 1: TEST]\n${Array(100).fill('từ').join(' ')}`;
+const thinQ = evaluateChapterQuality({
+  chapter: 321,
+  content: thin,
+  characterNames: ['A'],
+  wordGoal: 4250,
+  editorVerdict: 'accept',
+});
+setChapterQuality(thinQ);
+assert.strictEqual(thinQ.mediaReady, false);
+let ttsQualityBlocked = false;
+try {
+  assertTtsMediaPreflight({
+    chapter: 321,
+    sceneText: 'Thoại thử',
+    platform: 'edge_tts',
+    voice: 'vi-VN-HoaiMyNeural',
+    chapterContent: thin,
+    chu_de: 'Test',
+    phong_cach: 'Test',
+    wordGoal: 4250,
+  });
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  ttsQualityBlocked = /Quality Gate|word_gate|quality/i.test(msg);
+}
+assert.ok(ttsQualityBlocked, 'TTS must hard-block when word_gate blocks media');
+
 // TTS blocks without platform
 let blocked = false;
 try {

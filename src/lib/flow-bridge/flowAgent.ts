@@ -5,6 +5,7 @@
  */
 import { loadFlowOps, applyAgentInstructions } from './opsStore';
 import { estimateTaskCredits, FLOW_VIDEO_MODELS, FLOW_IMAGE_MODELS } from './modelCatalog';
+import { DEFAULT_GEMINI_TEXT_MODEL } from '@/lib/geminiModels';
 
 export type FlowAgentMessage = {
   role: 'user' | 'assistant' | 'system';
@@ -73,11 +74,14 @@ async function callLlm(opts: {
 
   // Prefer Gemini Google AI Studio shape when key looks like AIza
   if (key.startsWith('AIza')) {
-    const model = opts.model || 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+    const model = opts.model || DEFAULT_GEMINI_TEXT_MODEL;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': key,
+      },
       body: JSON.stringify({
         contents: [
           {

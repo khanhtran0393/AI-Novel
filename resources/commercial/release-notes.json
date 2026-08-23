@@ -313,7 +313,33 @@
         "FIX: handleActivate() và handleStartTrial() dùng claims từ response activate API trực tiếp, không gọi commercial/status",
         "FIX: Badge PRO/TRIAL hiển thị đúng sau khi kích hoạt key/trial, không bị revert về FREE"
       ],
-      "packedAt": "2026-08-03T15:48:54.776Z"
+      "packedAt": "2026-08-06T23:02:47.723Z"
+    },
+    "1.1.7": {
+      "title": "v1.1.7 — Fix Cloud IP bridges chặn open mode + Clean-room verified",
+      "date": "2026-08-08",
+      "items": [
+        "FIX: Seedance/Translate/NAV Analyzer/Bypass cloud IP bridges không chặn người dùng open mode trên packaged build (yêu cầu license token sai)",
+        "FIX: 4 module cloud bridge (seedanceCloudBridge, translateCloudBridge, navAnalyzerCloudBridge, bypassCloudBridge) thêm getEntitlementMode() guard — open mode luôn local compile",
+        "FIX: empirical-production-workflow.mts endpoint /api/export-xinchao → /api/export-capcut",
+        "QA: Clean-room testing full workflow (health → write → TTS → Flow → image → video → export) + 41/42 Playwright e2e PASS",
+        "QA: Rebuild ASAR 312MB + NSIS 865MB unsigned, auto-update dual-feed GitHub+Supabase verified"
+      ],
+      "packedAt": "2026-08-08T05:59:01.670Z"
+    },
+    "1.1.6": {
+      "title": "v1.1.6 — Mở miễn phí toàn bộ + Dọn cache browser + Auto-update unsigned",
+      "date": "2026-08-07",
+      "items": [
+        "OPEN: App chuyển sang mở miễn phí toàn bộ — mọi tính năng (Pro/Gen video/Export CapCut/Ship pack/Integrations) dùng miễn phí, badge luôn PRO",
+        "OPEN: getEntitlementMode() luôn trả 'open' + main.js force AINOVEL_ENTITLEMENT_MODE=open khi packaged",
+        "FIX: Dọn cache browser profile tự động khi khởi động/thoát (clearCache, clearCodeCaches, clearStorageData, quota temporary+syncable)",
+        "FIX: Runtime data dir ưu tiên AINOVEL_RUNTIME_DATA_DIR (userData) — giảm lỗi khi cài đặt thư mục bị khóa",
+        "FIX: Auto-update nhận bản cập nhật chưa ký Authenticode (ALLOW_UNSIGNED=1, verifyUpdateCodeSignature=false)",
+        "MAINT: Trial rút về 3 ngày; refactor lớn model clients/flow-bridge ổn định kết nối Flow (cooldown, credit router, durable queue, progressive downloader)",
+        "MAINT: Thêm 5 preset phong cách mới + key rotation tự động (apiKeyRotate/keyHealthTracker)"
+      ],
+      "packedAt": "2026-08-08T03:40:53.784Z"
     }
   }
 }

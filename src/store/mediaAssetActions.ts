@@ -19,7 +19,7 @@ type MediaAssetActions = Pick<
   | 'addGeneratedImage' | 'addGeneratedImageVariants' | 'addGeneratedVideo'
   | 'updateSavePathTTS' | 'updateSavePathImage' | 'updateSavePathCharacter' | 'updateSavePathVideo'
   | 'addProjectUrl'
-  | 'setImageModel' | 'setVideoModel' | 'setAiMasterModel' | 'setAiMasterApiKey'
+  | 'setImageModel' | 'setVideoModel' | 'setAiMasterProvider' | 'setAiMasterModel' | 'setAiMasterApiKey'
   | 'setVisualDnaPrompt' | 'setMediaStylePreset'
   | 'setImageProvider' | 'setImageApiKey' | 'setImageAspectRatio' | 'setImageCount'
   | 'setVideoProvider' | 'setVideoApiKey' | 'setVideoApiBaseUrl'
@@ -145,6 +145,11 @@ export function createMediaAssetActions(
           ? withMirroredOutputDna(state, { videoModel: model })
           : state.channels,
       }));
+      queueMicrotask(() => flushDurableNow());
+    },
+
+    setAiMasterProvider: (provider) => {
+      set({ aiMasterProvider: provider });
       queueMicrotask(() => flushDurableNow());
     },
 

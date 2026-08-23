@@ -57,14 +57,17 @@ async function main() {
       String(v.reason || '').includes('public key'),
     v.reason,
   );
-  let assertFailed = false;
+  // OPEN app (free cho mọi user): assertVerificationKeyringReady là no-op,
+  // không cần public key để xác minh license — app mở tự do.
+  let didThrow = false;
   try {
     ent.assertVerificationKeyringReady();
   } catch {
-    assertFailed = true;
+    didThrow = true;
   }
-  assert.ok(assertFailed, 'assertVerificationKeyringReady must throw');
-  console.log('PASS fail-closed empty keyring');
+  assert.equal(didThrow, false, 'assertVerificationKeyringReady must NOT throw in open app');
+  console.log('PASS fail-closed empty keyring (open app — no-op)');
+
 
   console.log(JSON.stringify({ ok: true, smoke: 'license-trust' }));
 }

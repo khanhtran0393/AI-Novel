@@ -7,6 +7,10 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { inspectTtsAudioFile } from './audioQuality';
+import {
+  getRuntimeDataRoot,
+  getRuntimePublicRoot,
+} from '@/lib/runtimePaths';
 
 /** Invalidate scenes rendered before the conditioning + signal-quality fixes. */
 const SCENE_CACHE_VERSION = 'v2-conditioning-quality';
@@ -60,8 +64,8 @@ export function buildSceneCacheId(input: SceneCacheKeyInput): string {
 
 function roots(cwd = process.cwd()) {
   return {
-    durable: path.join(cwd, 'data', 'tts-scene-cache'),
-    publicDir: path.join(cwd, 'public', 'audio', 'scene-cache'),
+    durable: path.join(getRuntimeDataRoot(cwd), 'data', 'tts-scene-cache'),
+    publicDir: path.join(getRuntimePublicRoot(cwd), 'audio', 'scene-cache'),
   };
 }
 

@@ -1,0 +1,54 @@
+{
+  "appId": "com.novastudio.desktop",
+  "productName": "Nova Studio",
+  "directories": {
+    "output": "dist-nova2"
+  },
+  "files": [
+    "nova/**/*",
+    "!nova/upscaler-bin/**",
+    "!nova/inpaint-bin/**",
+    "!nova/sqlite-bin/**",
+    "!nova/flow-extension/**",
+    "!nova/electron-builder.json",
+    "!node_modules/**"
+  ],
+  "asarUnpack": [
+    "nova/node_modules/ffmpeg-static/**",
+    "nova/node_modules/ffprobe-static/**",
+    "nova/node_modules/onnxruntime-node/**"
+  ],
+  "extraResources": [
+    {
+      "from": "nova/upscaler-bin",
+      "to": "app.asar.unpacked/nova/upscaler-bin"
+    },
+    {
+      "from": "nova/inpaint-bin",
+      "to": "app.asar.unpacked/nova/inpaint-bin"
+    },
+    {
+      "from": "nova/sqlite-bin",
+      "to": "app.asar.unpacked/nova/sqlite-bin"
+    },
+    {
+      "from": "nova/flow-extension",
+      "to": "app.asar.unpacked/nova/flow-extension"
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "build/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}

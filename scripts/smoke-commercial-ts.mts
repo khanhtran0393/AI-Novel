@@ -49,15 +49,18 @@ async function main() {
   assert.ok(resolveEntitlementVerificationKeys().ok);
   assert.ok(getEntitlementPublicStatus().readyForCommercial);
 
-  // L3: packaged/publish forces enforce even if MODE=open
+  // OPEN app: mode stays 'open' even when packaged/publish hints are set —
+  // mọi user dùng mọi tính năng miễn phí, không bao giờ enforce.
   process.env.AINOVEL_ENTITLEMENT_MODE = 'open';
   process.env.AI_NOVEL_PACKAGED = '1';
-  assert.equal(getEntitlementMode(), 'enforce');
+  assert.equal(getEntitlementMode(), 'open');
   delete process.env.AI_NOVEL_PACKAGED;
   process.env.AINOVEL_PUBLISH = '1';
-  assert.equal(getEntitlementMode(), 'enforce');
+  assert.equal(getEntitlementMode(), 'open');
   delete process.env.AINOVEL_PUBLISH;
   process.env.AINOVEL_ENTITLEMENT_MODE = 'enforce';
+  // Even if someone tries enforce → still open (app is fully free)
+  assert.equal(getEntitlementMode(), 'open');
 
   const hwid = getHwid();
   const candidates = getHwidCandidates();
@@ -100,21 +103,23 @@ async function main() {
   });
   assert.equal(verifyEntitlementToken(wrongMachine, { requireHwidMatch: true }), null);
 
+  // OPEN app: mọi tier resolve về 'pro'; mọi tính năng mở cho mọi user.
   assert.equal(resolvePlanTier({ is_vip: true }), 'pro');
-  assert.equal(resolvePlanTier({ is_pro: true, is_trial: true }), 'trial');
-  assert.equal(canAccessFeature('free', 'gen_video'), false);
+  assert.equal(resolvePlanTier({ is_pro: true, is_trial: true }), 'pro');
+  assert.equal(resolvePlanTier({ is_pro: false }), 'pro');
+  assert.equal(canAccessFeature('free', 'gen_video'), true);
   assert.equal(canAccessFeature('trial', 'gen_video'), true);
-  assert.equal(canAccessFeature('trial', 'integrations_pipeline'), false);
+  assert.equal(canAccessFeature('trial', 'integrations_pipeline'), true);
   assert.equal(canAccessFeature('pro', 'integrations_pipeline'), true);
-  assert.equal(canAccessFeature('free', 'tts_premium'), false);
+  assert.equal(canAccessFeature('free', 'tts_premium'), true);
   assert.equal(canAccessFeature('trial', 'tts_premium'), true);
-  assert.equal(canAccessFeature('free', 'toolbox_labs'), false);
+  assert.equal(canAccessFeature('free', 'toolbox_labs'), true);
   assert.ok(FREE_TTS_PLATFORMS.has('edge_tts'));
   assert.ok(FREE_TTS_PLATFORMS.has('piper'));
-  // LA Studio is Trial/Pro (tts_premium) — not free
-  assert.equal(FREE_TTS_PLATFORMS.has('la_studio'), false);
-  assert.ok(SERVER_GATED_FEATURES.includes('toolbox_labs'));
-  assert.ok(SERVER_GATED_FEATURES.includes('tts_premium'));
+  // OPEN app: LA Studio cũng mở miễn phí
+  assert.ok(FREE_TTS_PLATFORMS.has('la_studio'));
+  // Không còn feature nào bị gate server
+  assert.equal(SERVER_GATED_FEATURES.length, 0);
 
   const code = createActivationCodes({ count: 1, plan: 'pro', maxSeats: 2 })[0];
   assert.ok(code.code.startsWith('AINOVEL-'));
@@ -136,7 +141,7 @@ async function main() {
   process.env.AINOVEL_ALLOW_LOCAL_TRIAL = '0';
   assert.equal(getTrialStatus('dddddddddddddddd').enabled, false);
 
-  console.log(JSON.stringify({ ok: true, algorithm: 'Ed25519', hwid, tier: claims?.plan }));
+  console.log(JSON.stringify({ ok: true, algorithm: 'Ed25519', hwid, tier: claims?.plan, mode: getEntitlementMode() }));
   console.log('PASS smoke-commercial-ts');
 }
 

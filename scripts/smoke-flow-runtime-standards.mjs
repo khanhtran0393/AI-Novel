@@ -51,7 +51,7 @@ function main() {
     {
       msg: 'recaptcha unusual_activity PUBLIC_ERROR_UNUSUAL_ACTIVITY',
       cat: 'forbidden_403',
-      permanent: false,
+      permanent: true,
     },
     {
       msg: 'HTTP 429 too many requests rate limit',
@@ -147,11 +147,11 @@ function main() {
   } else {
     console.log('OK recycleAfterSuccess default true');
   }
-  if (flowOps.recycleEveryVideoSuccess !== true) {
-    console.error('FAIL: recycleEveryVideoSuccess default must be true');
+  if (flowOps.recycleEveryVideoSuccess !== false) {
+    console.error('FAIL: recycleEveryVideoSuccess default must be false');
     failed += 1;
   } else {
-    console.log('OK recycleEveryVideoSuccess default true');
+    console.log('OK recycleEveryVideoSuccess default false');
   }
 
   const defs = config.FLOW_DEFAULTS;

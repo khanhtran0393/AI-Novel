@@ -73,6 +73,10 @@ export type FlowAccount = {
   paygateTier?: string | null;
   sessionExpires?: string | null;
   lastSyncedAt?: number | null;
+  /** Live Veo 3.1 remaining credits balance */
+  remainingCredits?: number;
+  /** Disable account routing flag */
+  disabled?: boolean;
   /** Round-robin: last time this profile ran a gen task */
   lastTaskAt?: number | null;
   /** Live: Chrome process for this profile is running (snapshot only) */

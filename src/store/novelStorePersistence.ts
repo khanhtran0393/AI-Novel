@@ -23,8 +23,62 @@ import type {
   ProjectVoiceCast,
   YoutubeSafeConfig,
 } from './novelTypes';
+import type { AiMasterProvider } from '@/contracts';
+import {
+  DEFAULT_GEMINI_TEXT_MODEL,
+  isSupportedGeminiTextModel,
+  normalizeGeminiTextModel,
+} from '@/lib/geminiModels';
 
 const FLOWAGENT_LEGACY_VIDEO_MODEL = 'veo_3_1_i2v_lite_low_priority';
+const RETIRED_MASTER_MODELS = new Set([
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash-preview-image-generation',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3-pro-preview',
+  'claude-3-5-sonnet',
+  'claude-3-5-haiku',
+  'claude-3-opus',
+  'grok-2-1212',
+  'grok-2-vision-1212',
+  'grok-beta',
+  'grok-4.3',
+]);
+
+function inferPersistedMasterProvider(
+  persisted: Partial<NovelState>,
+  fallback: AiMasterProvider,
+): AiMasterProvider {
+  if (persisted.aiMasterProvider) return persisted.aiMasterProvider;
+  if (persisted.customApiBaseUrl?.trim()) return 'custom';
+  const model = String(persisted.aiMasterModel || '').toLowerCase();
+  if (/^(gpt-|o1|o3)/u.test(model) || model === 'gpt4o') return 'openai';
+  if (model.startsWith('claude')) return 'claude';
+  if (model.startsWith('grok') || model === 'llama') return 'grok';
+  return fallback;
+}
+
+function migratePersistedMasterModel(
+  persisted: Partial<NovelState>,
+  currentProvider: AiMasterProvider,
+  currentModel: string,
+): string {
+  const provider = inferPersistedMasterProvider(persisted, currentProvider);
+  const model = persisted.aiMasterModel || currentModel;
+  if (provider === 'gemini') {
+    const geminiModel = normalizeGeminiTextModel(model);
+    return isSupportedGeminiTextModel(geminiModel)
+      ? geminiModel
+      : DEFAULT_GEMINI_TEXT_MODEL;
+  }
+  if (provider === 'custom' || !RETIRED_MASTER_MODELS.has(model)) return model;
+  if (provider === 'claude') return 'claude-sonnet-5';
+  if (provider === 'grok') return 'grok-4.5';
+  if (provider === 'openai') return 'gpt-5.6-luna';
+  return DEFAULT_GEMINI_TEXT_MODEL;
+}
 
 /** One-time persisted-config upgrade to the model family proven by FlowAgent. */
 export function migrateFlowAgentVideoModel(value?: string): string | undefined {
@@ -190,7 +244,15 @@ export function createNovelStorePersistOptions(storeAccess: {
           typeof p.secondsPerBeat === 'number' && p.secondsPerBeat > 0
             ? p.secondsPerBeat
             : current.secondsPerBeat,
-        aiMasterModel: p.aiMasterModel || current.aiMasterModel,
+        aiMasterProvider: inferPersistedMasterProvider(
+          p,
+          current.aiMasterProvider,
+        ),
+        aiMasterModel: migratePersistedMasterModel(
+          p,
+          current.aiMasterProvider,
+          current.aiMasterModel,
+        ),
         aiMasterApiKey: current.aiMasterApiKey,
         setup: { ...current.setup, ...(p.setup || {}) },
         ttsConfig: (() => {
@@ -406,6 +468,7 @@ export function createNovelStorePersistOptions(storeAccess: {
       activeStyleEngineId: state.activeStyleEngineId ?? null,
       useGpuAcceleration: state.useGpuAcceleration,
 
+      aiMasterProvider: state.aiMasterProvider,
       aiMasterModel: state.aiMasterModel,
       visualDnaPrompt: state.visualDnaPrompt,
       mediaStylePreset: state.mediaStylePreset,

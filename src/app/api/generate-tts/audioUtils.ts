@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import {
+  getPrimaryFfmpegPath,
+  getPrimaryFfprobePath,
+} from '@/lib/ffmpeg/ffmpegPaths';
+import { getRuntimePublicPath } from '@/lib/runtimePaths';
 
 export function createWavHeader(
   dataLength: number,
@@ -45,9 +50,13 @@ export function splitTtsText(text: string, maxLen: number): string[] {
 }
 
 export function resolveFfmpegCmd(): string {
-  const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
-  if (fs.existsSync(localFfmpeg)) return `"${localFfmpeg}"`;
-  return 'ffmpeg';
+  const ffmpeg = getPrimaryFfmpegPath();
+  return ffmpeg === 'ffmpeg' ? ffmpeg : `"${ffmpeg}"`;
+}
+
+export function resolveFfprobeCmd(): string {
+  const ffprobe = getPrimaryFfprobePath();
+  return ffprobe === 'ffprobe' ? ffprobe : `"${ffprobe}"`;
 }
 
 /** Nối nhiều buffer audio (mp3/wav) thành 1 file mp3 bằng ffmpeg concat. */
@@ -58,7 +67,7 @@ export async function concatAudioBuffers(
   if (buffers.length === 0) throw new Error('Không có đoạn audio để nối.');
   if (buffers.length === 1) return buffers[0];
 
-  const scratch = path.join(process.cwd(), 'public', 'audio', 'multi');
+  const scratch = getRuntimePublicPath(path.join('audio', 'multi'));
   if (!fs.existsSync(scratch)) fs.mkdirSync(scratch, { recursive: true });
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const ext = preferWav ? 'wav' : 'mp3';
@@ -143,7 +152,7 @@ export async function applyAudioEffects(
   const speed = Number.isFinite(speedFactor) && speedFactor > 0 ? speedFactor : 1;
   const wantLimiter = opts?.peakLimiter !== false;
 
-  const audioDir = path.join(process.cwd(), 'public', 'audio');
+  const audioDir = getRuntimePublicPath('audio');
   if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
   const ext = detectAudioExt(inputBuffer);
@@ -252,13 +261,8 @@ export async function forceAudioDuration(
 
   fs.writeFileSync(tempIn, inputBuffer);
 
-  let ffmpegCmd = 'ffmpeg';
-  let ffprobeCmd = 'ffprobe';
-  const localFfmpeg = path.join(process.cwd(), 'bin', 'ffmpeg.exe');
-  const localFfprobe = path.join(process.cwd(), 'bin', 'ffprobe.exe');
-
-  if (fs.existsSync(localFfmpeg)) ffmpegCmd = `"${localFfmpeg}"`;
-  if (fs.existsSync(localFfprobe)) ffprobeCmd = `"${localFfprobe}"`;
+  const ffmpegCmd = resolveFfmpegCmd();
+  const ffprobeCmd = resolveFfprobeCmd();
 
   try {
     const probeOutput = execSync(

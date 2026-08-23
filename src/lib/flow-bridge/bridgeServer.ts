@@ -15,6 +15,7 @@ import {
   saveAccounts,
   sanitizeAccountProjects,
   sanitizeUnverifiedAccounts,
+  isFlowAuthError,
   updateAccount,
   upsertAccountProject,
 } from './accountStore';
@@ -170,6 +171,9 @@ function state(): BridgeState {
   if (!st.inheritTimers) st.inheritTimers = new Map();
   if (!st.extApiChain) st.extApiChain = Promise.resolve();
   if (!st.bodyStash) st.bodyStash = new Map();
+  if (!(st.queue instanceof FlowQueueEngine)) {
+    Object.setPrototypeOf(st.queue, FlowQueueEngine.prototype);
+  }
   return st;
 }
 
@@ -222,6 +226,16 @@ export function getAccountFlowKey(accountId?: string | null): string | null {
     if (fromMap && fromMap.length >= 20) return fromMap;
     if (s.flowKeyAccountId === aid && s.flowKey && s.flowKey.length >= 20) {
       return s.flowKey;
+    }
+    try {
+      const { loadSessionBundle } = require('./sessionInherit') as typeof import('./sessionInherit');
+      const b = loadSessionBundle(aid);
+      if (b?.flowKey && String(b.flowKey).length >= 20) {
+        s.flowKeysByAccount.set(aid, String(b.flowKey));
+        return String(b.flowKey);
+      }
+    } catch {
+      /* ignore */
     }
     return null;
   }
@@ -509,6 +523,7 @@ export function getBridgeSnapshot(): BridgeSnapshot {
   // NEVER paint global s.flowKey onto every account — that made Account 1 green without login.
   const chromeInfo = getChromeSessionInfo();
   const bridgeUp = isBridgeRunning();
+  const queueSnapshot = s.queue.snapshot();
 
   const accounts = loadAccounts().map((a) => {
     const perChrome = getChromeSessionInfo(a.id);
@@ -529,6 +544,26 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     // (stale SESSION_BUNDLE Bearer was making "Trình duyệt 1 · sẵn sàng" without login).
     const hasEmail = Boolean(a.email && String(a.email).includes('@'));
     const verified = Boolean(hasEmail && a.sessionVerified);
+    const lastTerminalTask = [...queueSnapshot.tasks]
+      .reverse()
+      .find(
+        (task) =>
+          task.accountId === a.id &&
+          (task.status === 'failed' || task.status === 'done'),
+      );
+    const recentAuthFailure =
+      lastTerminalTask?.status === 'failed' &&
+      isFlowAuthError(
+        `${lastTerminalTask.retryCategory || ''} ${lastTerminalTask.error || ''} ${lastTerminalTask.progressMessage || ''}`,
+      )
+        ? lastTerminalTask
+        : undefined;
+    const authBlocked = Boolean(
+      isFlowAuthError(a.lastError) || recentAuthFailure,
+    );
+    const healthScore = authBlocked
+      ? Math.min(Number(a.healthScore) || 0, 20)
+      : a.healthScore;
 
     let browserAlive = Boolean(perChrome.profileBrowserAlive);
     if (!browserAlive && (a.status === 'connecting' || isBound || liveToken)) {
@@ -540,15 +575,16 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     );
 
     // Only real Flow project ids count as ready (reject abc-111 placeholders)
-    const projectId = isPlausibleProjectId(a.projectId) ? String(a.projectId) : '';
-    const projectReady = Boolean(projectId);
-    // Per-profile token (map / bundle) — not global s.flowKey of another card
     const ownKey = Boolean(getAccountFlowKey(a.id));
-    const tokenOk = ownKey;
+    const tokenOk = verified && ownKey && !authBlocked;
+    const projectId = verified && isPlausibleProjectId(a.projectId) ? String(a.projectId) : '';
+    const projectReady = Boolean(projectId);
 
     let status = a.status;
     // Token alone ≠ logged-in ready. Keep active only when email verified.
-    if (verified && tokenOk && status !== 'cooldown' && status !== 'error') {
+    if (authBlocked) {
+      status = 'error';
+    } else if (verified && tokenOk && status !== 'cooldown' && status !== 'error') {
       status = 'active';
     } else if ((!verified || !tokenOk) && status === 'active' && !loginOpen) {
       // Stale "active" from old token paint — idle until real Google login
@@ -572,8 +608,15 @@ export function getBridgeSnapshot(): BridgeSnapshot {
           ? Date.now() - s.tokenCapturedAt
           : a.tokenAgeMs,
       projectId,
+      healthScore,
       browserAlive,
       profileDir: a.profileDir || profileDirForAccount(a.id),
+      lastError: authBlocked
+        ? a.lastError ||
+          recentAuthFailure?.error ||
+          recentAuthFailure?.progressMessage ||
+          'Flow token bị Google từ chối trong lần gen gần nhất'
+        : a.lastError,
       // Per-profile management fields (UI card owns all of these)
       bridgeRunning: bridgeUp,
       extensionConnected: extForProfile,
@@ -642,7 +685,7 @@ export function getBridgeSnapshot(): BridgeSnapshot {
     ),
     metrics: { ...s.metrics },
     accounts,
-    queue: s.queue.snapshot(),
+    queue: queueSnapshot,
   };
 }
 
@@ -792,6 +835,12 @@ export function applyAccountIdentity(
     storedAccount?.sessionExpires ??
     s.identity?.sessionExpires ??
     null;
+  const preserveTrustedState = payloadSessionReady && !email;
+  const alreadyVerified = Boolean(
+    storedAccount?.sessionVerified &&
+      trustedEmail &&
+      trustedEmail.includes('@'),
+  );
 
   // Harvest projects → global catalog + THIS profile only
   const harvested: { id: string; title: string; source: 'capture' }[] = [];
@@ -834,15 +883,15 @@ export function applyAccountIdentity(
     projectCount: harvested.length || loadProjects().length,
   };
 
-  // Verified = real email on profile. Challenge may block gen but must not
-  // erase identity; payload ok=false alone must not demote a known login.
+  // Verified = real email on profile from a healthy poll. Challenge / ok=false
+  // fail closed. Empty service-worker payloads may preserve, but never upgrade,
+  // a profile that was already verified by the live tab.
   const verified = Boolean(
     effectiveEmail &&
       effectiveEmail.includes('@') &&
       !challengeRequired &&
-      (payloadSessionReady ||
-        Boolean(storedAccount?.sessionVerified) ||
-        Boolean(email)),
+      payloadSessionReady &&
+      (Boolean(email) || (preserveTrustedState && alreadyVerified)),
   );
 
   if (targetId) {
@@ -1111,11 +1160,12 @@ export async function inheritAccountSession(accountId: string): Promise<{
     accNow?.email && String(accNow.email).includes('@'),
   );
   const projectCount = accNow?.projects?.length || 0;
-  // sessionVerified = real Google email (login). Do NOT require prior
-  // sessionVerified flag — that created a permanent demotion loop when a
-  // transient poll cleared verified while email/key still lived on disk.
-  const loginVerified = inheritEmail;
-  const authenticated = Boolean(loginVerified && finalKey);
+  // sessionVerified = real Google email that came from a healthy Flow session
+  // poll, not just a remembered email string on disk.
+  const loginVerified = Boolean(inheritEmail && accNow?.sessionVerified);
+  const authenticated = Boolean(
+    inheritEmail && accNow?.sessionVerified && finalKey,
+  );
   const projectReady = Boolean(
     (accNow?.projectId && isPlausibleProjectId(accNow.projectId)) ||
       (accNow?.projects || []).some((project) =>
@@ -1891,7 +1941,8 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
     console.log(
       `[FlowBridge] challenge_status required=${required} account=${socketAccountId || '—'} ${detail}`,
     );
-    // Surface lastError only — do not force cooldown (gen is actively waiting)
+    // Surface lastError only — do not force cooldown while gen is actively
+    // waiting for the user to verify the real Chromium profile.
     const bind =
       socketAccountId ||
       s.activeAccountId ||
@@ -1902,7 +1953,7 @@ export function handleExtMessage(raw: string, socketAccountId?: string): void {
       updateAccount(bind, {
         lastError:
           detail ||
-          'Google /sorry/ — tick reCAPTCHA trên cửa sổ Chromium',
+          'Google /sorry/ — xác minh reCAPTCHA trên cửa sổ Chromium của app',
       });
     } else if (bind && !required) {
       updateAccount(bind, { lastError: null });
@@ -2601,6 +2652,109 @@ export async function ensureBridgeStarted(): Promise<BridgeSnapshot> {
               ...result,
               snapshot: getBridgeSnapshot(),
               flowKeyPresent: Boolean(state().flowKey),
+            });
+          } catch (e) {
+            sendJson(res, 500, {
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
+
+        // System-browser (real Chrome + CDP) login — ported from SuperAutoTools
+        if (url.pathname === '/api/login-system-browser' && req.method === 'POST') {
+          try {
+            const body = await readJson(req);
+            const accountId = String(body.accountId || '').trim();
+            if (!accountId) {
+              sendJson(res, 400, { error: 'accountId required' });
+              return;
+            }
+            const sysLogin = await import('./systemBrowserLogin');
+            const result = await sysLogin.loginWithSystemBrowser(accountId, {
+              chromePath: body.chromePath ? String(body.chromePath) : undefined,
+              proxy: body.proxy ? String(body.proxy) : undefined,
+              timeoutMs:
+                body.timeoutMs != null ? Number(body.timeoutMs) : undefined,
+            });
+            sendJson(res, result.success ? 200 : 502, {
+              ok: result.success,
+              ...result,
+              snapshot: getBridgeSnapshot(),
+            });
+          } catch (e) {
+            sendJson(res, 500, {
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
+
+        // Close real-Chrome login and relaunch clean Chromium + extension on SAME profile dir
+        if (url.pathname === '/api/login-system-complete' && req.method === 'POST') {
+          try {
+            const body = await readJson(req);
+            const accountId = String(body.accountId || '').trim();
+            if (!accountId) {
+              sendJson(res, 400, { error: 'accountId required' });
+              return;
+            }
+            const sysLogin = await import('./systemBrowserLogin');
+            const result = await sysLogin.completeSystemLogin(accountId, {
+              forceChrome: body.forceChrome === true,
+            });
+            sendJson(res, result.relaunched ? 200 : 502, {
+              ok: result.relaunched,
+              ...result,
+              snapshot: getBridgeSnapshot(),
+            });
+
+          } catch (e) {
+            sendJson(res, 500, {
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
+
+        // Abort system-browser login (cookies stay on disk for next attempt)
+        if (url.pathname === '/api/login-system-close' && req.method === 'POST') {
+          try {
+            const body = await readJson(req);
+            const accountId = String(body.accountId || '').trim();
+            if (!accountId) {
+              sendJson(res, 400, { error: 'accountId required' });
+              return;
+            }
+            const sysLogin = await import('./systemBrowserLogin');
+            const result = await sysLogin.closeSystemBrowserLogin(accountId);
+            sendJson(res, 200, {
+              ok: true,
+              ...result,
+            });
+          } catch (e) {
+            sendJson(res, 500, {
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
+
+        // Query system-browser login state (no spawn)
+        if (url.pathname === '/api/login-system-status' && req.method === 'GET') {
+          try {
+            const urlObj = new URL(req.url || '', 'http://127.0.0.1');
+            const accountId = String(urlObj.searchParams.get('accountId') || '');
+            const sysLogin = await import('./systemBrowserLogin');
+            sendJson(res, 200, {
+              ok: true,
+              open: accountId ? sysLogin.isSystemBrowserOpen(accountId) : false,
+              sessions: sysLogin.listSystemBrowserSessions(),
+              chromePath: sysLogin.findSystemChromePath(),
             });
           } catch (e) {
             sendJson(res, 500, {

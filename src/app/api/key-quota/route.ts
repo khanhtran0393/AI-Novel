@@ -14,9 +14,12 @@ import { correlationIdFromRequest } from '@/lib/requestContext';
 export const runtime = 'nodejs';
 
 export async function GET() {
+  const rpmLimit = getRpmLimit();
+  const rpdLimit = getRpdLimit();
   return NextResponse.json({
-    rpmLimit: getRpmLimit(),
-    rpdLimit: getRpdLimit(),
+    rpmLimit,
+    rpdLimit,
+    mode: rpmLimit > 0 || rpdLimit > 0 ? 'local_override' : 'provider_driven',
     hint: 'POST { keys: string[] } để xem đếm thời gian từng key trong pool.',
   });
 }

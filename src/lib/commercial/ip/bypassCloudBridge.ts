@@ -22,6 +22,7 @@ import {
   resolvePinnedLicenseApiUrl,
 } from '@/lib/commercial/licenseTrust';
 import { assertApprovedContentUnlock } from '@/lib/commercial/licenseOnePath';
+import { getEntitlementMode } from '@/lib/entitlement';
 import { AppError } from '@/lib/errors';
 
 assertApprovedContentUnlock('cloud_ip_execution', 'bypassCloudBridge');
@@ -47,6 +48,8 @@ export type BypassCompileResult = {
 };
 
 export function shouldUseCloudBypassIp(): boolean {
+  if (getEntitlementMode() === 'open') return false;
+
   if (
     process.env.AINOVEL_BYPASS_CLOUD === '0' ||
     process.env.AINOVEL_BYPASS_CLOUD === 'false'

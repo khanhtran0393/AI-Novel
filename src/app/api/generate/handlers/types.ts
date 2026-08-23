@@ -1,4 +1,5 @@
 import type { NextResponse } from 'next/server';
+import type { AiMasterProvider } from '@/contracts';
 
 /**
  * Shared context for every /api/generate handler — no UI, no Zustand.
@@ -9,6 +10,10 @@ export type GenerateHandlerContext = {
   payload: any;
   keysToUse: string[];
   model?: string;
+  provider?: AiMasterProvider;
+  customApiBaseUrl?: string;
+  customApiModel?: string;
+  customApiProtocol?: 'openai' | 'gemini';
   /** Original request — entitlement header for cloud IP (Seedance Phase C) */
   req?: Request;
   /** Raw parsed body (includes fields outside payload if any) */

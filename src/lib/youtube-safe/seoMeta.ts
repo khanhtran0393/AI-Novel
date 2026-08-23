@@ -1,4 +1,4 @@
-﻿import {
+import {
   psychLawOrder,
   scoreTitleAgainstPsychLaws,
   detectPsychLawInTitle,
@@ -425,7 +425,9 @@ export function pickBestSeoTitle(
         return false;
       // Reject dialogue dump / FOMO+thoại
       if (/["“”]/.test(p.c)) return false;
-      if (/đừng bỏ lỡ:\s*(cô|anh|hắn|nàng)\b/i.test(p.c)) return false;
+      // Unicode-aware boundary (same anti-pattern as scoreSeoTitle)
+      if (/đừng bỏ lỡ:\s*(cô|anh|hắn|nàng)(?=$|[\s,;.!?…])/iu.test(p.c)) return false;
+
       if (/\bnơi\s+\p{L}+\s+vừa\s+vẽ/iu.test(p.c)) return false;
       if (/^(hắn|nàng|tôi|ta)\s+(nói|thì thầm|hỏi|đáp)/i.test(p.c)) return false;
       return true;
@@ -783,7 +785,10 @@ export function scoreSeoTitle(title: string): number {
   if (PSYCH_DIALOGUE_RE.test(t) || /^(hắn|nàng|tôi|ta)\s/i.test(t)) s -= 2.5;
   if (/^(cô|anh|chị|em)\s+(chỉ|nói|hỏi|thì thầm)/i.test(t)) s -= 2.5;
   // FOMO + dialogue clause is a hard product anti-pattern (must score < pass 8.5)
-  if (/đừng bỏ lỡ:\s*(cô|anh|hắn|nàng)\b/i.test(t)) s -= 3.5;
+  // NOTE: \b is ASCII-only in JS; with Vietnamese diacritics (ô/ắ/à…) the
+  // boundary never fires. Use unicode-aware lookahead instead.
+  if (/đừng bỏ lỡ:\s*(cô|anh|hắn|nàng)(?=$|[\s,;.!?…])/iu.test(t)) s -= 3.5;
+
   if (/\bnơi\s+\p{L}+\s+vừa\s+vẽ/iu.test(t)) s -= 2.5;
   if (/\b(nói|thì thầm|hỏi|đáp)\b/i.test(t) && t.length > 55) s -= 1.5;
   if (PSYCH_POETIC_FLAT_RE.test(t) && !PSYCH_THREAT_RE.test(t)) s -= 1.5;

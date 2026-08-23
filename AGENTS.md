@@ -15,7 +15,8 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 > | [`docs/AGENT_DONE_GATE.md`](docs/AGENT_DONE_GATE.md) | **Chống ảo giác khi báo xong** (Done Gate · status ladder · gatekeeper) |
 > | [`docs/IRON_LAWS.md`](docs/IRON_LAWS.md) | **Quy luật thép + sự thật hiển nhiên (LOCKED)** |
 > | [`docs/DOMAIN_MAP.md`](docs/DOMAIN_MAP.md) | Ownership domain logic |
-> | [`docs/COMMERCIAL.md`](docs/COMMERCIAL.md) | Free / Trial / Pro + entitlement |
+> | [`docs/COMMERCIAL.md`](docs/COMMERCIAL.md) | **Open (mở miễn phí toàn bộ)** + entitlement legacy |
+
 > | [`docs/LICENSE_ONE_PATH.md`](docs/LICENSE_ONE_PATH.md) | **One-path license** (ticket · ledger · crown IP) — cấm f(token) |
 > | [`docs/PACK_NOTES.md`](docs/PACK_NOTES.md) | **Ghi chú pack** — quy trình 4 bước · phiếu tick · ledger · update · checklist |
 > | [`docs/RESET_POINT.md`](docs/RESET_POINT.md) | Làm Mới Dự Án (blank canvas + giữ settings) |
@@ -41,8 +42,9 @@ Tài liệu này là **giải phẫu hệ thống** của app: stack, UI, domain
 > 8. **Tích hợp**: user bấm từng bước Gen Prompt → Ảnh → Video → TTS → Ship. **Không** nút gộp pipeline 1-click.
 > 9. **TTS multi-voice**: gate chỉ `ttsConfig` — **CẤM** nhét `sceneEmotion` vào multi-gate.
 > 10. **CapCut fail** → báo lỗi CapCut; **CẤM** nhảy Edge TTS / Edge audio ngầm.
-> 11. **Commercial**: Free / Trial / Pro. Badge header: **TRIAL → PRO → FREE**. Trial = quyền Pro-equivalent tạm + cờ `is_trial` (không gộp nhầm PRO trả phí); `is_vip` chỉ để đọc dữ liệu legacy.
-> 12. **Entitlement mode**: dev/web mặc định `open`; **Electron packaged** mặc định `enforce` nếu chưa set env.
+> 11. **Commercial**: **Mở miễn phí toàn bộ (open)** — mọi tính năng dùng miễn phí cho mọi user. Mô hình Free/Trial/Pro cũ đã tắt: `getEntitlementMode()` luôn `'open'`, `resolvePlanTier()` luôn `'pro'`, mọi gate server no-op, badge luôn **PRO**. Vẫn giữ License/HWID/Supabase/Labyrinth để tương thích + chống tamper — **không** chặn quyền.
+> 12. **Entitlement mode**: luôn `open` (mọi runtime, kể cả Electron packaged — `main.js` force `open`).
+
 
 ---
 
@@ -156,7 +158,8 @@ serverExternalPackages: [
 src/app/workspace/
 ├── page.tsx                 # Shell workspace
 ├── ARCHITECTURE.md
-├── chrome/Header.tsx        # Brand + badge FREE/TRIAL/PRO + toolbars
+├── chrome/Header.tsx        # Brand + badge PRO (mở miễn phí toàn bộ) + toolbars
+
 ├── layouts/                 # AppShell, WindowControls
 ├── features/
 │   ├── script/              # Setup, Sidebar, SceneCard, Editor, roster…
@@ -196,20 +199,19 @@ src/app/workspace/
 
 ### 2.1 Thẩm mỹ & layout
 
-- Phong cách: **Cyberpunk / Sci-Fi glass**, tối (`zinc`), accent **emerald** (gen) / **cam neon** (media incomplete).
+- Phong cách: **Nova Studio Dark** — nền tối ấm, bảng màu trích xuất từ Nova (design tokens `--nova-*` trong `src/app/globals.css`: bg `#0f0f12`, surface `#18181b`, border `#2f2f36`, text `#ede9e4`), font chủ đạo **Be Vietnam Pro** (bundle local `public/fonts/be-vietnam-pro/`, Electron offline), accent **cam Nova** (`--nova-accent: #e07a46`) cho gen / active / CTA.
+- **Tailwind v4 remap** (khai báo trong `@theme inline` globals.css): bảng `zinc` → bề mặt/viền/chữ Nova; bảng `emerald` → family accent cam Nova; bảng `amber` → vàng ấm Nova. **Cấm** viết hex tùy tiện — ưu tiên `var(--nova-*)` hoặc dùng class remap.
 - **Tỷ lệ 3:7**: Sidebar trái : vùng content phải.
 - **CẤM** modal che navigation cốt lõi; ưu tiên accordion / panel trong khung.
-- Nút gen premium: `bg-emerald-500 hover:bg-emerald-400 text-black shadow-md` — **không** nút chìm.
+- Nút gen premium: `bg-[var(--nova-accent)] hover:bg-[var(--nova-accent-2)] text-black shadow-nova-btn` — **không** nút chìm.
 - Lightbox ảnh: `z-[100]`, `bg-black/90 backdrop-blur-md`, click đóng, `cursor-zoom-out`.
 - Mọi chuỗi VN hiển thị / so khớp tên: **`.normalize('NFC')`**.
 
 ### 2.2 Header (`chrome/Header.tsx`)
 
 - Brand logo → `features/license/BrandLogoButton` (mở **Bản quyền / License**).
-- Badge gói (ưu tiên): **TRIAL → PRO → FREE** (+ credits khi FREE).
-  - **TRIAL** = cyan (trial active, `is_trial`).
-  - **PRO** = vàng (license Pro trả phí, không trial).
-  - Pro tháng/năm/trọn đời đều dùng badge **PRO**.
+- Badge gói: luôn **PRO** (vàng) — app mở miễn phí toàn bộ, không còn badge FREE/TRIAL.
+
 - Channel switcher + job queue.
 - Mở thư mục lưu; Media / TTS toolbar; CapCut export; Toolbox host; Settings.
 
@@ -224,7 +226,7 @@ src/app/workspace/
 
 - **Setup** (`SetupPhase` / `YoutubeSetupPhase`): chủ đề + phong cách + mô tả + số chương/từ + WPM scale.
 - Sticky chapter nav + word-gate (`so_tu_chuong`).
-- **Editor / SceneCard**: tag `[CẢNH N: …]`, Gen Prompt Studio (emerald), TTS duration ưu tiên, prompt rows image/video.
+- **Editor / SceneCard**: tag `[CẢNH N: …]`, Gen Prompt Studio (cam Nova accent), TTS duration ưu tiên, prompt rows image/video.
 - YouTube SEO / thumb / safe checklist.
 - Tab AI Novel: engine dashboard + start flow native.
 
@@ -250,32 +252,31 @@ Nguồn: `src/lib/commercial/featureMatrix.ts` · docs: `docs/COMMERCIAL.md`, `d
 
 | Tier | Ý nghĩa ngắn |
 |------|----------------|
-| `free` | Viết / outline / prompt / gen ảnh BYOK / TTS Edge-Piper cơ bản |
-| `trial` | 7 ngày / 1 HWID — như Pro · 5 lượt/ngày mục cơ bản · ≤3000 từ/chương · ≤10 chương |
+| `free` (legacy) | Viết / outline / prompt / gen ảnh BYOK / TTS Edge-Piper cơ bản |
+| `trial` (legacy) | 3 ngày / 1 HWID — như Pro · 50 lượt/ngày mục cơ bản · ≤3000 từ/chương · ≤10 chương |
 | `pro` | License HWID — thêm integrations pipeline, multi-channel, toolbox, Flow multi-account |
 
-Server gate (`assertProAccess`): **gen video**, **export CapCut**, **ship-pack**, **integrations/pipeline**.
+**Thực tế hiện tại (open):** `resolvePlanTier()` luôn trả `'pro'`, mọi server gate no-op (`assertProAccess`/`assertFeatureAccess` luôn grant). Không còn gate **gen video**, **export CapCut**, **ship-pack**, **integrations/pipeline** — tất cả mở miễn phí.
 
 ### 3.2 Store flags
 
-| Flag | Ý nghĩa |
-|------|---------|
-| `is_vip` | Chỉ tương thích snapshot/token cũ; chuẩn hóa thành Pro |
-| `is_pro` | Pro-equivalent unlock (kể cả trial set true để mở quyền) |
-| `is_trial` | **Đang trial** — badge UI = TRIAL, không hiện PRO trả phí |
-| `credits` | Free: hữu hạn; trial ~50k; paid ~unlimited |
+| Flag | Ý nghĩa (open) |
+|------|----------------|
+| `is_vip` | Chỉ tương thích snapshot/token cũ; luôn chuẩn hóa thành Pro |
+| `is_pro` | Luôn `true` (sync force-set) |
+| `is_trial` | Luôn `false` trong open (không còn trial gate) |
+| `credits` | Luôn 999.999.999 (sync force-set) |
 
-`setVipStatus(legacyVip, is_pro, is_trial?)` — code mới luôn truyền `legacyVip=false`; trial path: `setVipStatus(false, true, true)`.
+`setVipStatus(legacyVip, is_pro, is_trial?)` — `useEntitlementSync` gọi `setVipStatus(false, true, false)` + `setCredits(999_999_999)` vô điều kiện trên mount/focus.
 
 ### 3.3 Mode
 
 | Môi trường | `AINOVEL_ENTITLEMENT_MODE` |
 |------------|----------------------------|
-| Dev / web | Mặc định **`open`** (Pro routes cho phép) |
-| Electron **packaged** | Mặc định **`enforce`** nếu env chưa set (`main.js`) |
-| Secrets | Packaged: `%APPDATA%/…/.env.commercial` |
+| Mọi runtime | Luôn **`open`** — `getEntitlementMode()` hardcode `'open'`; Electron packaged `main.js` force `open` |
 
-`assertProAccess` (enforce): token Ed25519 + HWID **hoặc** trial token active. Fail-closed khi thiếu public key hợp lệ.
+`assertProAccess` (open): luôn grant — không cần token/HWID/public key. Cơ chế ký Ed25519 vẫn giữ cho audit/tương thích, không chặn quyền.
+
 
 ### 3.4 API commercial
 
@@ -418,8 +419,9 @@ Client: `modules/writeModule.ts`, `sceneModule.ts`, `setupModule.ts` + hooks tư
 
 - Ưu tiên `video_prompt` đã Seedance; I2V từ ảnh scene.
 - Client gửi `styleHint` + `genre` Setup + `secondsPerBeat`.
-- Server `/api/generate-video` — **assertProAccess** (trial|pro).
+- Server `/api/generate-video` — open mode: **không gate** (assertProAccess luôn grant).
 - Duration per shot: **bắt buộc** số hợp lệ — **CẤM** `|| 5` / `|| 6` im lặng trong Seedance compile.
+
 
 ### 5.6 TTS
 
@@ -447,9 +449,10 @@ Batch SRT / Tool Dịch: `/api/tts-batch-srt` + `lib/ttsBatchSrt/*` (Cap Gemini 
 ### 5.8 Ship / CapCut / FableCut
 
 - Ship pack resolve **path đĩa thật**.
-- CapCut export: Pro gate `assertProAccess` khi enforce.
+- CapCut export: **không gate** (assertProAccess luôn grant trong open).
 - CapCut thiếu binary → **báo lỗi**, không nhảy Edge.
 - Artifact: `exports/integrations/fablecut/...`
+
 
 ### 5.9 Google Flow Bridge
 
@@ -591,8 +594,9 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 
 | Mode | Ý nghĩa |
 |------|---------|
-| `AINOVEL_ENTITLEMENT_MODE=open` | Dev/web — Pro routes cho phép |
-| `=enforce` | Token Ed25519 / trial token; packaged Electron mặc định |
+| `AINOVEL_ENTITLEMENT_MODE=open` | **Luôn áp dụng** (mọi runtime) — Pro routes cho phép, miễn phí toàn bộ |
+| `=enforce` | (Legacy) Token Ed25519 / trial token — chỉ khi bật lại mô hình trả phí |
+
 
 ---
 
@@ -607,7 +611,8 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 | | Local director fill prompt khi AI fail |
 | | `duration \|\| 5` / `beat \|\| 6` / genre default ngoài Setup |
 | | Auto browser → Google Chrome khi cần Chromium sạch |
-| | Trial badge gộp nhầm thành PRO trả phí (phải `is_trial`) |
+| | Badge FREE/TRIAL khi app đang open (badge phải PRO) |
+
 
 **Show, don't tell:** trước khi báo xong media — file `.mp3`/`.mp4`/`.png` **tồn tại trên đĩa** + log terminal thật.
 
@@ -624,7 +629,8 @@ Legacy duration-start chỉ parse tương thích; code mới **không** sinh for
 7. **Hydration:** `isHydrated` mặc định true — không re-introduce spinner chặn boot; rehydrate durable vẫn an toàn.
 8. **TTS multi:** không nhét `sceneEmotion` vào gate multi.
 9. **Không 1-click gộp** Prompt+Ảnh+Video+TTS.
-10. **Commercial:** trial ≠ paid Pro trên UI; server gate đúng featureMatrix.
+10. **Commercial:** open mode — mọi tính năng mở miễn phí; server gate no-op; giữ Labyrinth chống bypass (xem `docs/COMMERCIAL.md`).
+
 11. **Next.js 16:** đọc `node_modules/next/dist/docs/` khi API framework khác training data.
 12. **NAV host-binding:** không bẻ guard để chạy CLI toolbox standalone trên máy user production.
 13. **Done Gate (chống ảo giác):** tuân `docs/AGENT_DONE_GATE.md` — cấm báo DONE khi chưa có log domain; xem §12b.
@@ -669,8 +675,9 @@ Spec đầy đủ: [`docs/AGENT_DONE_GATE.md`](docs/AGENT_DONE_GATE.md).
 - [ ] TTS multi-gate có dính `sceneEmotion`?
 - [ ] Duration/beat thiếu có hard-fail (không `|| 5`)?
 - [ ] NFC cho chuỗi VN user-facing?
-- [ ] Trial UI có hiện **TRIAL** (không PRO) khi `is_trial`?
+- [ ] Badge có **PRO** (không FREE/TRIAL) khi app đang open?
 - [ ] License: có `f(token)` / private client / quota ngày? → rollback (xem `LICENSE_ONE_PATH.md`)
+
 - [ ] Worker/temp: `finally` cleanup?
 - [ ] Đã chạy smoke/typecheck/verify liên quan domain vừa sửa?
 - [ ] **Done Gate:** `npm run verify:agent-done` (hoặc domain smokes) exit 0 + log trích trong reply?

@@ -20,17 +20,30 @@ export async function GET() {
     }
     const snap = getBridgeSnapshot();
     const queue = getQueue().snapshot();
+    const accounts = Array.isArray(snap.accounts) ? snap.accounts : [];
+    const activeAccount =
+      accounts.find((account) => account.id === snap.activeAccountId) ||
+      accounts[0] ||
+      null;
+    const lastError =
+      snap.metrics?.lastError ||
+      activeAccount?.lastError ||
+      null;
     return NextResponse.json({
       ok: true,
       ts: Date.now(),
       running: snap.running,
       extensionConnected: snap.extensionConnected,
       flowKeyPresent: snap.flowKeyPresent,
+      activeAccountId: snap.activeAccountId ?? activeAccount?.id ?? null,
+      activeAccountStatus: activeAccount?.status ?? null,
+      activeAccountFlowKeyPresent: activeAccount?.flowKeyPresent ?? null,
+      activeAccountSessionVerified: activeAccount?.sessionVerified ?? null,
       tokenAgeMs: snap.tokenAgeMs ?? null,
       credits: snap.identity?.credits ?? null,
       queuePending: queue.pending,
       queueRunning: queue.running,
-      lastError: snap.metrics?.lastError ?? null,
+      lastError,
     });
   } catch (e) {
     return NextResponse.json(

@@ -34,8 +34,8 @@ function section(name: string) {
 
 section('policy constants');
 assert.equal(FREE_LIMITS.maxWordsPerChapter, 600);
-assert.equal(FREE_LIMITS.maxChapters, 2);
-assert.equal(FREE_LIMITS.dailyUsesPerFeature, 3);
+assert.equal(FREE_LIMITS.maxChapters, 5);
+assert.equal(FREE_LIMITS.dailyUsesPerFeature, 20);
 assert.ok(FREE_QUOTA_BUCKETS.includes('write_chapter'));
 assert.ok(FREE_QUOTA_BUCKETS.includes('gen_image'));
 assert.ok(FREE_QUOTA_BUCKETS.includes('tts_edge'));
@@ -43,10 +43,10 @@ assert.ok(FREE_QUOTA_BUCKETS.includes('tts_edge'));
 section('clamps');
 assert.equal(clampFreeWordGoal(9000), 600);
 assert.equal(clampFreeWordGoal(200), 200);
-assert.equal(clampFreeChapterCount(50), 2);
+assert.equal(clampFreeChapterCount(50), 5);
 assert.equal(clampFreeChapterCount(1), 1);
-assert.equal(isFreeChapterOutOfRange(3), true);
-assert.equal(isFreeChapterOutOfRange(2), false);
+assert.equal(isFreeChapterOutOfRange(6), true);
+assert.equal(isFreeChapterOutOfRange(5), false);
 assert.equal(isFreeChapterOutOfRange(0), true);
 
 // +20% headroom: Free hard-stop content = 720; Trial = 3600
@@ -127,7 +127,7 @@ assert.equal(stopDone.stop, true);
 // Regression: outline path used so_tu>=500 else 4250 — broke Free 100–499 / max 600
 section('normalizeSetupScaleForTier (outline/write)');
 assert.deepEqual(normalizeSetupScaleForTier(10, 4250, 'free'), {
-  so_chuong: 2,
+  so_chuong: 5,
   so_tu_chuong: 600,
 });
 assert.deepEqual(normalizeSetupScaleForTier(1, 200, 'free'), {
@@ -135,7 +135,7 @@ assert.deepEqual(normalizeSetupScaleForTier(1, 200, 'free'), {
   so_tu_chuong: 200,
 });
 assert.deepEqual(normalizeSetupScaleForTier(20, 5000, 'trial'), {
-  so_chuong: 10,
+  so_chuong: 20,
   so_tu_chuong: 3000,
 });
 assert.equal(normalizeSetupScaleForTier('', '', 'pro').so_tu_chuong, 4250);
@@ -174,8 +174,10 @@ assert.equal(isTrialChapterOutOfRange(resolveWriteChapterNum({
   chuong_hien_tai: { so_chuong: 1 },
   so_chuong: 20,
 })), false);
-assert.equal(isTrialChapterOutOfRange(11), true);
-assert.equal(TRIAL_LIMITS.maxChapters, 10);
+assert.equal(isTrialChapterOutOfRange(21), true);
+assert.equal(TRIAL_LIMITS.maxChapters, 20);
+assert.equal(TRIAL_LIMITS.dailyUsesPerFeature, 50);
+assert.equal(TRIAL_LIMITS.days, 3);
 
 section('vault consume (isolated temp root + durable path)');
 const tmpRoot = path.join(
@@ -243,9 +245,9 @@ if (appliesOk) {
   } catch {
     threw = true;
   }
-  assert.equal(threw, true, '4th write_chapter must throw QUOTA');
+  assert.equal(threw, true, '21st write_chapter must throw QUOTA');
   const snap = readFreeUsageForHwid();
-  assert.equal(snap.used.write_chapter, 3);
+  assert.equal(snap.used.write_chapter, FREE_LIMITS.dailyUsesPerFeature);
   assert.equal(snap.remaining.write_chapter, 0);
   assert.ok(fs.existsSync(durableFile), 'free-usage.json written to machine store');
   // Simulate portable wipe: only delete fake app root — durable must remain
@@ -255,13 +257,36 @@ if (appliesOk) {
   });
   assert.ok(fs.existsSync(durableFile), 'after portable wipe, free-usage survives');
   const afterWipe = readFreeUsageForHwid();
-  assert.equal(afterWipe.used.write_chapter, 3, 'quota not reset after wipe');
+  assert.equal(
+    afterWipe.used.write_chapter,
+    FREE_LIMITS.dailyUsesPerFeature,
+    'quota not reset after wipe',
+  );
   console.log('vault OK (survives portable wipe)', afterWipe, 'day', localDayKey());
 } else {
   console.log(
     'Vault consume live-skip (not free tier in this env) — policy checks still pass',
   );
 }
+
+section('local Trial real vault = 3 days');
+process.env.AINOVEL_MACHINE_REG = '0';
+process.env.AINOVEL_TRIAL_ENABLED = '1';
+delete process.env.AINOVEL_TRIAL_DAYS;
+const { startTrial } = await import('../src/lib/commercial/trial.ts');
+const trialResult = startTrial('a1b2c3d4e5f60708');
+assert.equal(trialResult.ok, true);
+assert.equal(trialResult.created, true);
+assert.equal(trialResult.status.days, 3);
+assert.ok(trialResult.status.record);
+assert.equal(
+  trialResult.status.record!.endsAt - trialResult.status.record!.startedAt,
+  3 * 86400,
+);
+console.log('trial vault OK', {
+  days: trialResult.status.days,
+  seconds: trialResult.status.record!.endsAt - trialResult.status.record!.startedAt,
+});
 
 // cleanup temp
 try {

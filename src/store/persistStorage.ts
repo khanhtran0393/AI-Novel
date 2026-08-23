@@ -164,6 +164,7 @@ const MEDIA_SETTINGS_KEYS = [
   'videoDuration',
   'wpm',
   'secondsPerBeat',
+  'aiMasterProvider',
   'aiMasterModel',
   'aiMasterApiKey',
   'useGpuAcceleration',

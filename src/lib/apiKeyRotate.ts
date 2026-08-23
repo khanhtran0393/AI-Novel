@@ -11,18 +11,30 @@
  * 2) Even spacing (min gap = 60s / RPM) — no burst 10 calls in 1s
  * 3) Soft headroom (~85% RPM/RPD) before treating key as "hot"
  * 4) Hard ceiling: never exceed RPM/RPD hard limits
- * 5) Reactive cooldown after real 429 / invalid key
+ * 5) Reactive cooldown after real 429; invalid credentials stay disabled until replaced/reset
  *
  * HTTP 400 is usually payload/model — NOT RPM/RPD. Only rotate on auth-like 400.
  */
 
-export type KeyLimitKind = 'rpm' | 'rpd' | 'auth' | 'payload' | 'other';
+export type KeyLimitKind =
+  | 'rpm'
+  | 'rpd'
+  | 'auth'
+  | 'api_disabled'
+  | 'billing'
+  | 'model'
+  | 'payload'
+  | 'network'
+  | 'permission'
+  | 'other';
 
 export type KeyWaitReason =
   | 'rpm'
   | 'rpd'
   | 'cooldown'
   | 'auth'
+  | 'configuration'
+  | 'billing'
   | 'empty'
   | 'pacing';
 
@@ -40,13 +52,21 @@ export type KeyWaitInfo = {
 
 /** Thrown when pool has no callable key — message is user-facing (toast + countdown). */
 export class KeyQuotaWaitError extends Error {
-  readonly code = 'QUOTA' as const;
-  readonly status = 429;
+  readonly code: 'QUOTA' | 'AUTH';
+  readonly status: number;
   readonly details: KeyWaitInfo;
 
   constructor(wait: KeyWaitInfo) {
     super(wait.message);
     this.name = 'KeyQuotaWaitError';
+    this.code = wait.reason === 'auth' || wait.reason === 'empty'
+      ? 'AUTH'
+      : 'QUOTA';
+    this.status = wait.reason === 'auth'
+      ? 401
+      : wait.reason === 'empty'
+        ? 400
+        : 429;
     this.details = wait;
   }
 }
@@ -60,7 +80,7 @@ export type KeyQuotaView = {
   rpmResetMs: number;
   rpdUsed: number;
   rpdLimit: number;
-  /** ms until UTC day rollover */
+  /** ms until the provider daily quota resets (America/Los_Angeles) */
   rpdResetMs: number;
   cooling: boolean;
   coolReason?: KeyLimitKind;
@@ -82,7 +102,7 @@ type Cooldown = {
 };
 
 type DayCount = {
-  day: string; // YYYY-MM-DD UTC
+  day: string; // YYYY-MM-DD America/Los_Angeles
   count: number;
 };
 
@@ -124,14 +144,24 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
-/** Hard RPM per key (free-tier safe default). Override: AI_NOVEL_KEY_RPM_LIMIT */
-export function getRpmLimit(): number {
-  return envInt('AI_NOVEL_KEY_RPM_LIMIT', 10);
+function envNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
 }
 
-/** Hard RPD per key. Override: AI_NOVEL_KEY_RPD_LIMIT */
+/**
+ * Optional local hard RPM. Default 0 means provider-driven: only real 429
+ * responses create a wait. Gemini quotas vary by project, model and tier.
+ */
+export function getRpmLimit(): number {
+  return envNonNegativeInt('AI_NOVEL_KEY_RPM_LIMIT', 0);
+}
+
+/** Optional local hard RPD. Default 0 means provider-driven/unlimited locally. */
 export function getRpdLimit(): number {
-  return envInt('AI_NOVEL_KEY_RPD_LIMIT', 250);
+  return envNonNegativeInt('AI_NOVEL_KEY_RPD_LIMIT', 0);
 }
 
 /**
@@ -142,7 +172,8 @@ export function getRpdLimit(): number {
 export function getMinIntervalMs(): number {
   const forced = envInt('AI_NOVEL_KEY_MIN_INTERVAL_MS', 0);
   if (forced > 0) return forced;
-  return Math.ceil(RPM_WINDOW_MS / Math.max(1, getRpmLimit()));
+  const rpmLimit = getRpmLimit();
+  return rpmLimit > 0 ? Math.ceil(RPM_WINDOW_MS / rpmLimit) : 0;
 }
 
 /**
@@ -159,11 +190,17 @@ export function getHeadroomRatio(): number {
 }
 
 function softRpmCap(): number {
-  return Math.max(1, Math.floor(getRpmLimit() * getHeadroomRatio()));
+  const limit = getRpmLimit();
+  return limit > 0
+    ? Math.max(1, Math.floor(limit * getHeadroomRatio()))
+    : Number.POSITIVE_INFINITY;
 }
 
 function softRpdCap(): number {
-  return Math.max(1, Math.floor(getRpdLimit() * getHeadroomRatio()));
+  const limit = getRpdLimit();
+  return limit > 0
+    ? Math.max(1, Math.floor(limit * getHeadroomRatio()))
+    : Number.POSITIVE_INFINITY;
 }
 
 /** Soft fingerprints — never log full keys */
@@ -173,47 +210,63 @@ export function keyFingerprint(key: string): string {
   return `${k.slice(0, 4)}…${k.slice(-4)}`;
 }
 
-function utcDay(): string {
-  return new Date().toISOString().slice(0, 10);
+function keyStateId(key: string): string {
+  return String(key || '').trim();
 }
 
-function msUntilUtcMidnight(now = Date.now()): number {
-  const d = new Date(now);
-  const next = Date.UTC(
-    d.getUTCFullYear(),
-    d.getUTCMonth(),
-    d.getUTCDate() + 1,
-    0,
-    0,
-    0,
-    0,
+function uniqueKeys(keys: string | string[]): string[] {
+  return Array.from(
+    new Set(
+      (Array.isArray(keys) ? keys : [keys])
+        .map((key) => keyStateId(key))
+        .filter(Boolean),
+    ),
   );
-  return Math.max(0, next - now);
+}
+
+function pacificDay(now = Date.now()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(now));
+  const value = (type: string) =>
+    parts.find((part) => part.type === type)?.value || '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function msUntilPacificMidnight(now = Date.now()): number {
+  const today = pacificDay(now);
+  let low = now;
+  let high = now + 30 * 60 * 60_000;
+  while (high - low > 1000) {
+    const mid = Math.floor((low + high) / 2);
+    if (pacificDay(mid) === today) low = mid;
+    else high = mid;
+  }
+  return Math.max(0, high - now);
 }
 
 /** RPM soft cooldown after 429 rate-limit */
 const RPM_COOLDOWN_MS = 70_000;
-/** RPD / daily quota soft cooldown */
-const RPD_COOLDOWN_MS = 45 * 60_000;
 /**
- * Invalid / revoked / permission-denied key.
- * Was 6h — mis-labeled as “pacing” and locked the whole pool after one bad key.
- * 20 min is enough to stop thrash; user can replace keys anytime.
+ * Invalid / revoked / leaked credentials never recover by waiting. They remain
+ * disabled in this process until Settings replaces the pool or API state resets.
  */
-const AUTH_COOLDOWN_MS = 20 * 60_000;
+const AUTH_DISABLED_UNTIL_RESET = Number.MAX_SAFE_INTEGER;
 const RPM_WINDOW_MS = 60_000;
 
 /** Register keys when user adds them (starts age timer; no-op if already known). */
 export function registerKeys(keys: string | string[]): void {
-  const list = (Array.isArray(keys) ? keys : [keys])
-    .map((k) => String(k || '').trim())
-    .filter(Boolean);
+  const list = uniqueKeys(keys);
   const s = store();
   const now = Date.now();
   for (const k of list) {
     const fp = keyFingerprint(k);
-    if (!s.registeredAt.has(fp)) {
-      s.registeredAt.set(fp, now);
+    const id = keyStateId(k);
+    if (!s.registeredAt.has(id)) {
+      s.registeredAt.set(id, now);
       console.log(`[KeyRotate] registered key ${fp} (timer start)`);
     }
   }
@@ -222,6 +275,29 @@ export function registerKeys(keys: string | string[]): void {
 export function classifyLimitMessage(msg: string, status?: number): KeyLimitKind {
   const m = String(msg || '');
   const st = status ?? 0;
+
+  if (
+    /models?\/|model.*(?:not found|not available|not supported|unsupported|unknown)|not found for API version|not supported.*generateContent/i.test(
+      m,
+    ) ||
+    (st === 404 && /model|models\/|not found|not supported|unknown model/i.test(m))
+  ) {
+    return 'model';
+  }
+  if (
+    /billing|paid tier|payment|required.*billing|insufficient.*credit|quota.*limit[^0-9]*0|limit[^0-9]*0/i.test(
+      m,
+    )
+  ) {
+    return 'billing';
+  }
+  if (
+    /API.*(disabled|not enabled)|service.*disabled|SERVICE_DISABLED|enable.*API/i.test(
+      m,
+    )
+  ) {
+    return 'api_disabled';
+  }
 
   // Quota / rate often returns 403 on Google — classify BEFORE bare auth
   if (
@@ -242,7 +318,7 @@ export function classifyLimitMessage(msg: string, status?: number): KeyLimitKind
 
   if (
     st === 401 ||
-    /API[_ ]?key.*(invalid|not valid|expired|revoked)|PERMISSION_DENIED|UNAUTHENTICATED|invalid.?api.?key|key.*disabled|API_KEY_INVALID|API_KEY_SERVICE_BLOCKED/i.test(
+    /API[_ ]?key.*(invalid|not valid|expired|revoked)|UNAUTHENTICATED|invalid.?api.?key|key.*disabled|API_KEY_INVALID|API_KEY_SERVICE_BLOCKED|reported as leaked|leaked.*api.*key/i.test(
       m,
     )
   ) {
@@ -251,22 +327,33 @@ export function classifyLimitMessage(msg: string, status?: number): KeyLimitKind
   // Bare 403: only auth if message looks like key/permission, else other
   if (st === 403) {
     if (
-      /permission|denied|forbidden|invalid|revoked|unauth|api.?key|blocked/i.test(
+      /API[_ ]?key.*(invalid|not valid|expired|revoked)|UNAUTHENTICATED|API_KEY_INVALID|reported as leaked|leaked.*api.*key/i.test(
         m,
       )
     ) {
       return 'auth';
     }
-    return 'other';
+    return 'permission';
   }
 
   if (st === 400) {
-    if (/API[_ ]?key|PERMISSION|UNAUTHENTICATED|invalid.?api.?key/i.test(m)) {
+    if (
+      /API[_ ]?key.*(invalid|not valid|expired|revoked)|UNAUTHENTICATED|invalid.?api.?key/i.test(
+        m,
+      )
+    ) {
       return 'auth';
     }
     return 'payload';
   }
 
+  if (
+    /ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed|network error|socket hang up/i.test(
+      m,
+    )
+  ) {
+    return 'network';
+  }
   if (/quota|limit/i.test(m) && !/invalid|permission/i.test(m)) {
     return 'rpm';
   }
@@ -279,6 +366,17 @@ export function clearAllKeyCooldowns(): void {
   console.log('[KeyRotate] cleared all key cooldowns');
 }
 
+/** Clear cooldown and local accounting after the user explicitly resets API state. */
+export function clearAllKeyState(): void {
+  const s = store();
+  s.cooldowns.clear();
+  s.dayCounts.clear();
+  s.rpmWindows.clear();
+  s.registeredAt.clear();
+  s.rr = 0;
+  console.log('[KeyRotate] cleared cooldowns and local usage state');
+}
+
 /** Clear cooldown for one key fingerprint or raw key. */
 export function clearKeyCooldown(keyOrFp: string): void {
   const raw = String(keyOrFp || '').trim();
@@ -288,7 +386,11 @@ export function clearKeyCooldown(keyOrFp: string): void {
     s.cooldowns.delete(raw);
     return;
   }
-  s.cooldowns.delete(keyFingerprint(raw));
+  for (const id of s.cooldowns.keys()) {
+    if (keyFingerprint(id) === raw || keyFingerprint(id) === keyFingerprint(raw)) {
+      s.cooldowns.delete(id);
+    }
+  }
 }
 
 export function markKeyLimited(
@@ -299,22 +401,38 @@ export function markKeyLimited(
   if (!key) return 'other';
   registerKeys(key);
   const kind = classifyLimitMessage(message, status);
-  if (kind === 'payload') {
+  if (
+    kind === 'payload' ||
+    kind === 'model' ||
+    kind === 'billing' ||
+    kind === 'api_disabled' ||
+    kind === 'permission' ||
+    kind === 'network' ||
+    kind === 'other'
+  ) {
     console.warn(
-      `[KeyRotate] payload/400 on ${keyFingerprint(key)} — not cooling key (fix request, not key pool)`,
+      `[KeyRotate] ${kind} on ${keyFingerprint(key)} — not cooling key`,
+    );
+    return kind;
+  }
+  if (kind === 'auth') {
+    store().cooldowns.set(keyStateId(key), {
+      until: AUTH_DISABLED_UNTIL_RESET,
+      reason: kind,
+    });
+    console.warn(
+      `[KeyRotate] disabled ${keyFingerprint(key)} auth until key replaced/reset`,
     );
     return kind;
   }
   const ms =
     kind === 'rpd'
-      ? RPD_COOLDOWN_MS
+      ? Math.max(60_000, msUntilPacificMidnight())
       : kind === 'rpm'
         ? RPM_COOLDOWN_MS
-        : kind === 'auth'
-          ? AUTH_COOLDOWN_MS
-          : 30_000;
+        : 0;
   const s = store();
-  s.cooldowns.set(keyFingerprint(key), {
+  s.cooldowns.set(keyStateId(key), {
     until: Date.now() + ms,
     reason: kind,
   });
@@ -325,11 +443,11 @@ export function markKeyLimited(
 }
 
 function rpmWindow(key: string, now = Date.now()): number[] {
-  const fp = keyFingerprint(key);
-  const win = (store().rpmWindows.get(fp) || []).filter(
+  const id = keyStateId(key);
+  const win = (store().rpmWindows.get(id) || []).filter(
     (t) => now - t < RPM_WINDOW_MS,
   );
-  store().rpmWindows.set(fp, win);
+  store().rpmWindows.set(id, win);
   return win;
 }
 
@@ -338,15 +456,10 @@ function rpmRecent(key: string, now = Date.now()): number {
 }
 
 function rpdCount(key: string, now = Date.now()): number {
-  const day = utcDay();
-  const dc = store().dayCounts.get(keyFingerprint(key));
+  const day = pacificDay(now);
+  const dc = store().dayCounts.get(keyStateId(key));
   if (!dc || dc.day !== day) return 0;
   return dc.count;
-}
-
-function isCooling(key: string, now = Date.now()): boolean {
-  const cd = store().cooldowns.get(keyFingerprint(key));
-  return Boolean(cd && cd.until > now);
 }
 
 /** Last attempt timestamp for pacing (most recent in window). */
@@ -367,6 +480,7 @@ function pacingWaitMs(key: string, now = Date.now()): number {
 /** ms until oldest attempt in window ages out (room for 1 more RPM). */
 function rpmResetMs(key: string, now = Date.now()): number {
   const limit = getRpmLimit();
+  if (limit <= 0) return 0;
   const win = rpmWindow(key, now);
   if (win.length < limit) return 0;
   const sorted = [...win].sort((a, b) => a - b);
@@ -378,24 +492,25 @@ function rpmResetMs(key: string, now = Date.now()): number {
 
 export function getKeyQuota(key: string, now = Date.now()): KeyQuotaView {
   const fp = keyFingerprint(key);
+  const id = keyStateId(key);
   const s = store();
   const rpmLimit = getRpmLimit();
   const rpdLimit = getRpdLimit();
   const rpmUsed = rpmRecent(key, now);
   const rpdUsed = rpdCount(key, now);
-  const cd = s.cooldowns.get(fp);
+  const cd = s.cooldowns.get(id);
   const cooling = Boolean(cd && cd.until > now);
   const coolUntilMs = cooling && cd ? cd.until - now : undefined;
   // Soft headroom: stop scheduling on this key before hard ceiling
   const softRpm = softRpmCap();
   const softRpd = softRpdCap();
-  const overSoftRpm = rpmUsed >= softRpm;
-  const overSoftRpd = rpdUsed >= softRpd;
-  const overHardRpm = rpmUsed >= rpmLimit;
-  const overHardRpd = rpdUsed >= rpdLimit;
+  const overSoftRpm = rpmLimit > 0 && rpmUsed >= softRpm;
+  const overSoftRpd = rpdLimit > 0 && rpdUsed >= softRpd;
+  const overHardRpm = rpmLimit > 0 && rpmUsed >= rpmLimit;
+  const overHardRpd = rpdLimit > 0 && rpdUsed >= rpdLimit;
   const paceMs = pacingWaitMs(key, now);
   const rpmMs = overHardRpm ? rpmResetMs(key, now) : 0;
-  const rpdMs = overHardRpd ? msUntilUtcMidnight(now) : 0;
+  const rpdMs = overHardRpd ? msUntilPacificMidnight(now) : 0;
   let nextReadyMs = 0;
   if (cooling && coolUntilMs != null) nextReadyMs = Math.max(nextReadyMs, coolUntilMs);
   if (paceMs > 0) nextReadyMs = Math.max(nextReadyMs, paceMs);
@@ -407,7 +522,7 @@ export function getKeyQuota(key: string, now = Date.now()): KeyQuotaView {
     !cooling && !overHardRpm && !overHardRpd && paceMs === 0;
   const preferred =
     available && !overSoftRpm && !overSoftRpd;
-  const registeredAt = s.registeredAt.get(fp);
+  const registeredAt = s.registeredAt.get(id);
   return {
     fp,
     available,
@@ -418,7 +533,7 @@ export function getKeyQuota(key: string, now = Date.now()): KeyQuotaView {
     rpmResetMs: rpmMs > 0 ? rpmMs : paceMs,
     rpdUsed,
     rpdLimit,
-    rpdResetMs: msUntilUtcMidnight(now),
+    rpdResetMs: msUntilPacificMidnight(now),
     cooling,
     coolReason: cooling ? cd?.reason : undefined,
     coolUntilMs,
@@ -449,9 +564,8 @@ export function formatQuotaWaitMessage(wait: KeyWaitInfo): string {
   }
   if (wait.reason === 'auth') {
     return (
-      `[API key bị từ chối] Pool ${wait.poolSize} key đang cooldown auth (invalid/403). ` +
-      `Thêm/thay key hợp lệ trong Settings — hoặc chờ ${t} rồi thử lại.` +
-      (wait.nextFp ? ` (key sớm nhất: ${wait.nextFp})` : '')
+      `[API key bị từ chối] Pool ${wait.poolSize} key không hợp lệ, đã bị thu hồi hoặc bị báo rò rỉ. ` +
+      'Chờ không thể khôi phục credential; hãy xóa/thay key hợp lệ trong Settings.'
     );
   }
   if (wait.reason === 'pacing') {
@@ -462,17 +576,20 @@ export function formatQuotaWaitMessage(wait: KeyWaitInfo): string {
     );
   }
   if (wait.reason === 'rpd') {
+    const budget =
+      wait.rpdLimit > 0
+        ? `≤${wait.rpdLimit} req/ngày/key`
+        : 'quota ngày do provider/project quyết định';
     return (
       `[Sắp/đã chạm RPD] Toàn bộ ${wait.poolSize} API key đã hết ngân sách ngày ` +
-      `(≤${wait.rpdLimit} req/ngày/key). Vui lòng CHỜ ${t} (reset UTC midnight) ` +
-      `hoặc thêm key mới cùng provider — app chặn để tránh 429.`
+      `(${budget}). Vui lòng CHỜ ${t}; Gemini reset theo Pacific Time. ` +
+      `Quota Gemini tính theo project/model, nên key mới chỉ hữu ích khi thuộc project còn quota.`
     );
   }
   if (wait.reason === 'rpm') {
     return (
-      `[Sắp/đã chạm RPM] Toàn bộ ${wait.poolSize} API key đang full ngân sách phút ` +
-      `(≤${wait.rpmLimit} req/phút/key). Vui lòng CHỜ ${t} — ` +
-      `app đã chặn gọi tiếp để tránh chạm trần provider.`
+      `[Sắp/đã chạm RPM] Toàn bộ ${wait.poolSize} API key đang bị provider giới hạn. ` +
+      `Vui lòng CHỜ ${t}; app chặn retry dồn dập. Với Gemini, quota thuộc project/model, không thuộc từng key.`
     );
   }
   return (
@@ -486,9 +603,7 @@ export function formatQuotaWaitMessage(wait: KeyWaitInfo): string {
  * Compute pool wait if NO key is currently callable.
  */
 export function getPoolWaitInfo(keys: string | string[]): KeyWaitInfo | null {
-  const clean = (Array.isArray(keys) ? keys : [keys])
-    .map((k) => String(k || '').trim())
-    .filter(Boolean);
+  const clean = uniqueKeys(keys);
   if (clean.length === 0) {
     return {
       reason: 'empty',
@@ -529,12 +644,12 @@ export function getPoolWaitInfo(keys: string | string[]): KeyWaitInfo | null {
       if (q.cooling && q.coolReason === 'auth') dominant = 'auth';
       else if (q.cooling && q.coolReason === 'rpd') dominant = 'rpd';
       else if (q.cooling && q.coolReason === 'rpm') dominant = 'rpm';
-      else if (q.rpdUsed >= q.rpdLimit) dominant = 'rpd';
-      else if (q.rpmUsed >= q.rpmLimit) dominant = 'rpm';
+      else if (q.rpdLimit > 0 && q.rpdUsed >= q.rpdLimit) dominant = 'rpd';
+      else if (q.rpmLimit > 0 && q.rpmUsed >= q.rpmLimit) dominant = 'rpm';
       else if (
         !q.cooling &&
         (q.rpmResetMs || 0) > 0 &&
-        q.rpmUsed < q.rpmLimit
+        (q.rpmLimit <= 0 || q.rpmUsed < q.rpmLimit)
       ) {
         // waiting on even spacing, not hard ceiling
         dominant = 'pacing';
@@ -546,11 +661,16 @@ export function getPoolWaitInfo(keys: string | string[]): KeyWaitInfo | null {
   if (anyAvailable) return null;
 
   const waitMs =
-    Number.isFinite(soonest) && soonest > 0 ? Math.ceil(soonest) : 60_000;
+    dominant === 'auth'
+      ? 0
+      : Number.isFinite(soonest) && soonest > 0
+        ? Math.ceil(soonest)
+        : 60_000;
   const info: KeyWaitInfo = {
     reason: dominant,
     waitMs,
-    waitSec: Math.max(1, Math.ceil(waitMs / 1000)),
+    waitSec:
+      dominant === 'auth' ? 0 : Math.max(1, Math.ceil(waitMs / 1000)),
     message: '',
     nextFp: soonestFp || undefined,
     poolSize: clean.length,
@@ -577,9 +697,7 @@ export function assertPoolHasCapacity(keys: string | string[]): void {
 export function acquireKeySlot(keys: string | string[]):
   | { ok: true; key: string }
   | { ok: false; wait: KeyWaitInfo } {
-  const clean = (Array.isArray(keys) ? keys : [keys])
-    .map((k) => String(k || '').trim())
-    .filter(Boolean);
+  const clean = uniqueKeys(keys);
   if (clean.length === 0) {
     const wait = getPoolWaitInfo([])!;
     return { ok: false, wait };
@@ -609,18 +727,18 @@ export function markKeyAttempt(key: string): boolean {
     return false;
   }
   const s = store();
-  const fp = keyFingerprint(key);
+  const id = keyStateId(key);
   const now = Date.now();
   const win = rpmWindow(key, now);
   win.push(now);
-  s.rpmWindows.set(fp, win);
+  s.rpmWindows.set(id, win);
 
-  const day = utcDay();
-  const prev = s.dayCounts.get(fp);
+  const day = pacificDay(now);
+  const prev = s.dayCounts.get(id);
   if (!prev || prev.day !== day) {
-    s.dayCounts.set(fp, { day, count: 1 });
+    s.dayCounts.set(id, { day, count: 1 });
   } else {
-    s.dayCounts.set(fp, { day, count: prev.count + 1 });
+    s.dayCounts.set(id, { day, count: prev.count + 1 });
   }
   return true;
 }
@@ -628,10 +746,10 @@ export function markKeyAttempt(key: string): boolean {
 export function markKeySuccess(key: string): void {
   if (!key) return;
   const s = store();
-  const fp = keyFingerprint(key);
-  const cd = s.cooldowns.get(fp);
+  const id = keyStateId(key);
+  const cd = s.cooldowns.get(id);
   if (cd && cd.reason === 'rpm' && cd.until > Date.now()) {
-    s.cooldowns.delete(fp);
+    s.cooldowns.delete(id);
   }
 }
 
@@ -644,9 +762,7 @@ export function markKeySuccess(key: string): void {
  * If all blocked, still returns list (caller must assertPoolHasCapacity first).
  */
 export function orderKeysRoundRobin(keys: string | string[]): string[] {
-  const clean = (Array.isArray(keys) ? keys : [keys])
-    .map((k) => String(k || '').trim())
-    .filter(Boolean);
+  const clean = uniqueKeys(keys);
   if (clean.length === 0) return [];
   registerKeys(clean);
   if (clean.length === 1) return clean;
@@ -687,7 +803,7 @@ export function getKeyRotateSnapshot(keys: string[]): {
   wait: KeyWaitInfo | null;
   keys: KeyQuotaView[];
 } {
-  const clean = keys.filter(Boolean);
+  const clean = uniqueKeys(keys);
   registerKeys(clean);
   const wait = getPoolWaitInfo(clean);
   return {

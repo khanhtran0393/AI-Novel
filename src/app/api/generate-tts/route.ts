@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { cleanVoiceScript, getWordCount } from '../../workspace/utils/stringUtils';
+import { getWordCount } from '@/lib/storyWriting';
+import { cleanVoiceScript } from '@/lib/voiceScriptClean';
 import {
   injectBreathPauses,
   emotionPitchOffset,

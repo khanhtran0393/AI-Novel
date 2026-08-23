@@ -28,6 +28,10 @@ import {
   redeemActivationCode,
 } from '../src/lib/commercial/activationVault.ts';
 import {
+  extractActivationCode,
+  isActivationCodeFormat,
+} from '../src/lib/commercial/activationCodeSecurity.ts';
+import {
   isUnboundLicenseHwid,
   unboundHwidForCode,
 } from '../src/lib/cloud/licenseBridge.ts';
@@ -174,6 +178,23 @@ assert.equal(isUnboundLicenseHwid('pending'), true);
 assert.equal(isUnboundLicenseHwid('f925b0ff900599a0'), false);
 assert.ok(unboundHwidForCode('AINOVEL-AAAA-BBBB-CCCC').startsWith('unbound:'));
 ok('unboundHwid helpers');
+
+// Exact activation-code grammar: accept seller codes, reject guesses/noisy variants.
+{
+  const valid = 'AINOVEL-A1B2-C3D4-E5F6';
+  assert.equal(isActivationCodeFormat(valid), true);
+  assert.equal(extractActivationCode(`Mã của bạn:\n${valid}\nHết.`), valid);
+  for (const invalid of [
+    'AINOVEL-A1B2-C3D4',
+    'AINOVEL-A1B2-C3D4-E5F6-FFFF',
+    'AINOVEL-AAAA-BBBB-***!',
+    'AINOVEL2.AAAA.BBBB.CCCC',
+    'AINOVEL-1234-5678-90',
+  ]) {
+    assert.equal(isActivationCodeFormat(invalid), false, invalid);
+  }
+  ok('strict activation code grammar');
+}
 
 // Day presets 1/3/7/15/30
 assert.deepEqual([...DAY_KEY_PRESETS], [1, 3, 7, 15, 30]);

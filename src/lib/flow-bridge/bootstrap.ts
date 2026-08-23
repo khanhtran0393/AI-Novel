@@ -31,6 +31,7 @@ import {
   accountRootDir,
 } from './chromeSession';
 import { FLOW_HTTP_PORT, FLOW_WS_PORT } from './config';
+import type { FlowAccount } from './types';
 
 export type BootstrapResult = {
   ok: boolean;
@@ -71,6 +72,30 @@ export function isFlowLoginReady(input: FlowLoginReadinessInput): boolean {
     email.includes('@') &&
       input.sessionVerified &&
       (input.flowKeyPresent || input.freshTokenPresent),
+  );
+}
+
+export function isVerifiedFlowAccountSession(
+  account?: Pick<
+    FlowAccount,
+    'email' | 'sessionVerified' | 'flowKeyPresent'
+  > | null,
+): boolean {
+  return isFlowLoginReady({
+    email: account?.email,
+    sessionVerified: account?.sessionVerified,
+    flowKeyPresent: account?.flowKeyPresent,
+  });
+}
+
+export function isLiveFlowGenerationSession(
+  account?: Pick<
+    FlowAccount,
+    'email' | 'sessionVerified' | 'flowKeyPresent' | 'extensionConnected'
+  > | null,
+): boolean {
+  return Boolean(
+    account?.extensionConnected && isVerifiedFlowAccountSession(account),
   );
 }
 
@@ -304,6 +329,9 @@ export async function bootstrapFlow(opts?: {
     }
   }
   const freshSession = Boolean(opts?.freshSession);
+  const forceVisibleLogin = Boolean(
+    opts?.forceChrome && opts?.mode !== 'background',
+  );
   // Profile mới: luôn sạch session + không inherit email/token cũ
   if (freshSession) {
     updateAccount(accountId, {
@@ -331,7 +359,7 @@ export async function bootstrapFlow(opts?: {
     const { setActiveAccountId, beginFreshProfileLogin } = await import(
       './bridgeServer'
     );
-    if (freshSession || opts?.forceChrome) {
+    if (freshSession || forceVisibleLogin) {
       beginFreshProfileLogin(accountId);
       steps.push(
         freshSession
@@ -372,7 +400,7 @@ export async function bootstrapFlow(opts?: {
   // Chỉ skip login nếu CHÍNH profile này đã verify email (không tin token global)
   // freshSession / forceChrome: LUÔN mở browser
   if (
-    !opts?.forceChrome &&
+    !forceVisibleLogin &&
     !freshSession &&
     accNow &&
     accountExtensionConnected &&
@@ -452,7 +480,7 @@ export async function bootstrapFlow(opts?: {
     profileDir,
     accountId,
     mode: launchMode,
-    forceClean: true,
+    forceClean: launchMode === 'login' || freshSession,
     isStockChrome: browser.isStockChrome,
   });
   if (launch.killed > 0) {
@@ -884,7 +912,7 @@ export async function bootstrapFlow(opts?: {
     bridgeRunning: snap.running || launch.launched,
     extensionConnected: snap.extensionConnected,
     flowKeyPresent: ready,
-    projectId: accReady?.projectId || snap.projectId,
+    projectId: accReady?.projectId || null,
     accountId,
     chromeLaunched: launch.launched,
     chromePath: browser.exe,

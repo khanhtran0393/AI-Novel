@@ -174,9 +174,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ account: acc, accounts: loadAccounts() });
   }
 
-  if (action === 'reset_budget') {
-    const acc = updateAccount(String(body.id || ''), { creditsSpent: 0 });
-    return NextResponse.json({ account: acc, accounts: loadAccounts() });
+  if (action === 'close_login' || action === 'close') {
+    const accountId = String(body.accountId || body.id || '').trim();
+    const { closeLoginSessionAfterCapture } = await import('@/lib/flow-bridge/chromeSession');
+    const result = await closeLoginSessionAfterCapture({
+      delayMs: 300,
+      accountId,
+      keepBackground: true,
+    });
+    return NextResponse.json({ ok: result.closed, message: result.message });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
