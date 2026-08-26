@@ -1,0 +1,54 @@
+# Packaged application and generated artifacts
+AI Video Studio.exe
+Uninstall AI Video Studio.exe
+build-output/
+resources/
+locales/
+resources/app/
+resources/*.pak
+resources/*.bin
+resources/*.dll
+resources/*.exe
+
+# Electron runtime files unpacked beside the packaged app
+*.pak
+*.bin
+*.dll
+*.exe
+LICENSE.electron.txt
+LICENSES.chromium.html
+icudtl.dat
+vk_swiftshader_icd.json
+resources/*.json
+
+# Dependency trees and generated build state
+**/node_modules/
+**/dist/
+**/out/
+**/coverage/
+*.asar
+*.blockmap
+
+# Runtime data, logs and local secrets
+*.log
+*.tmp
+*.cache
+.env
+.env.*
+!.env.example
+**/userData/
+**/chrome-accounts/
+**/*-accounts.json
+**/*-settings.json
+**/*-cookies.json
+**/*-tokens.json
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Keep the Auto-Fix control plane and its documentation tracked.
+!auto-fix/
+!auto-fix/**

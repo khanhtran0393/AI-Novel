@@ -1,0 +1,64 @@
+appId: com.aivideostudio.desktop
+productName: AI Video Studio
+artifactName: ${productName}-${version}-${arch}.${ext}
+compression: normal
+asar: true
+asarUnpack:
+  - "**/inpaint-bin/**"
+  - "**/onnx-bin/**"
+  - "**/sqlite-bin/**"
+  - "**/upscaler-bin/**"
+  - "**/voice-backend/**"
+  - "**/ytdlp-bin/**"
+  - "**/node_modules/ffmpeg-static/**"
+  - "**/node_modules/ffprobe-static/**"
+  - "**/node_modules/onnxruntime-node/**"
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+# The packaged application is the already-tested copy under resources/app.
+directories:
+  app: D:/AI Video Studio/resources/app
+  output: D:/AI Video Studio/build-output
+  buildResources: D:/AI Video Studio/build-project/build-resources
+
+files:
+  - "**/*"
+  - "!**/*.map"
+  - "!**/app.asar*"
+  - "!**/app.asar.unpacked/**"
+  - "!build-project{,/**/*}"
+
+extraMetadata:
+  name: ai-video-studio
+  productName: AI Video Studio
+  description: AI Video Studio — Faceless Video Pipeline (Desktop)
+  author: AI Video Studio
+
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+    - target: nsis
+      arch:
+        - x64
+  icon: D:/AI Video Studio/build-project/build-resources/ai-video-studio.ico
+  legalTrademarks: AI Video Studio
+  verifyUpdateCodeSignature: false
+  requestedExecutionLevel: asInvoker
+
+portable:
+  artifactName: AI-Video-Studio-${version}-portable-${arch}.${ext}
+
+nsis:
+  artifactName: AI-Video-Studio-${version}-setup-${arch}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AI Video Studio
+  uninstallDisplayName: AI Video Studio
+  deleteAppDataOnUninstall: false

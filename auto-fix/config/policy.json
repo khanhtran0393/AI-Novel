@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "mode": "observe-only",
+  "runtimeEnabled": false,
+  "authorities": {
+    "readSource": false,
+    "writeSource": false,
+    "executeCommands": false,
+    "createBranch": false,
+    "commit": false,
+    "build": false,
+    "sign": false,
+    "release": false,
+    "rollout": false,
+    "rollback": false
+  },
+  "limits": {
+    "maxRepairIterations": 5,
+    "maxPatchFiles": 0,
+    "maxPatchLines": 0,
+    "maxJobTokenBudget": 0,
+    "maxJobDurationSeconds": 0
+  },
+  "gates": {
+    "requireReproduction": true,
+    "requireRegression": true,
+    "requireBuildVerification": true,
+    "requireSecurityScan": true,
+    "requireArtifactVerification": true,
+    "highRiskRequiresHumanApproval": true
+  },
+  "highRiskAreas": [
+    "authentication",
+    "authorization",
+    "encryption",
+    "signing",
+    "updater",
+    "licensing",
+    "security",
+    "database",
+    "native-process-boundary",
+    "cookie-token-session"
+  ],
+  "notes": [
+    "Planning policy for Milestone 0; not connected to application runtime.",
+    "Never place secrets, tokens, cookies, private keys or credentials in this file.",
+    "Authority changes require a completed milestone and an audit/review record."
+  ]
+}

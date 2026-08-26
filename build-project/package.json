@@ -1,0 +1,33 @@
+{
+  "name": "ai-video-studio-build",
+  "version": "0.1.34",
+  "private": true,
+  "description": "AI Video Studio — Faceless Video Pipeline (Desktop)",
+  "author": {
+    "name": "AI Video Studio"
+  },
+  "productName": "AI Video Studio",
+  "copyright": "Copyright (c) 2026 AI Video Studio",
+  "build": {
+    "appId": "com.aivideostudio.desktop",
+    "productName": "AI Video Studio",
+    "directories": {
+      "app": "D:/AI Video Studio/resources/app",
+      "output": "D:/AI Video Studio/build-output",
+      "buildResources": "D:/AI Video Studio/build-project/build-resources"
+    },
+    "extraResources": [
+      {
+        "from": "D:/AI Novel/build/icon.ico",
+        "to": "ai-video-studio.ico"
+      }
+    ],
+    "win": {
+      "icon": "D:/AI Video Studio/build-project/build-resources/ai-video-studio.ico"
+    }
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "26.15.3"
+  }
+}
