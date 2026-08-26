@@ -1,5 +1,0 @@
-[splash load] ERR_ABORTED (-3) loading 'http://127.0.0.1:3000/workspace'
-(node:133096) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
-(Use `Ai Novel --trace-deprecation ...` to show where the warning was created)
-[133096:0805/233216.822:INFO:CONSOLE:1] "[NovelStore] getItem hard-timeout 1500ms — use local only", source: http://127.0.0.1:3000/_next/static/chunks/0zuivr_femmtp.js (1)
-[133096:0805/233216.823:INFO:CONSOLE:54] "[LaStudioAutoBootstrap] skip (tts_premium / Free) — Tính năng «tts_premium» cần gói cao hơn (hiện: free, nguồn Supabase/local). Nhấp logo app → Bản quyền.", source: http://127.0.0.1:3000/_next/static/chunks/074kfl9w0631d.js (54)

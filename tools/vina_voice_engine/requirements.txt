@@ -1,5 +1,0 @@
-edge-tts>=6.1.0
-# optional later for true clone:
-# f5-tts
-# torch
-# torchaudio

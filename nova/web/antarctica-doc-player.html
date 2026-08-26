@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antarctica — BBC / National Geographic Style Documentary Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #050608;
+      --bg-card: #0c0f14;
+      --bg-panel: rgba(10, 13, 18, 0.95);
+      --accent-ice: #93c5fd;
+      --accent-gold: #e2b170;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --font-ui: 'Inter', -apple-system, sans-serif;
+      --font-title: 'Cinzel', Georgia, serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background-color: var(--bg-dark); color: var(--text-main); font-family: var(--font-ui); min-height: 100vh; overflow-x: hidden; display: flex; flex-direction: column; }
+
+    /* HEADER */
+    header {
+      padding: 16px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-glass);
+      background: rgba(5, 6, 8, 0.95);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo-badge { display: flex; align-items: center; gap: 14px; }
+    .logo-badge .tag {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #e2e8f0;
+      font-weight: 700;
+      font-size: 10px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .logo-badge h1 { font-family: var(--font-title); font-size: 18px; font-weight: 700; color: #fff; letter-spacing: 2px; }
+
+    .header-actions { display: flex; gap: 12px; align-items: center; }
+    .btn-play-all {
+      background: #fff;
+      color: #000;
+      border: none;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      letter-spacing: 0.5px;
+    }
+    .btn-play-all:hover { background: #e2e8f0; transform: scale(1.02); }
+
+    /* MAIN CONTAINER */
+    main {
+      flex: 1;
+      max-width: 1560px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 40px;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 32px;
+    }
+
+    /* SIDEBAR */
+    .sidebar { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 6px; }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+    .section-title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin: 6px 0 2px 4px; }
+
+    .beat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .beat-card:hover { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.2); }
+    .beat-card.active {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+    .beat-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .beat-card .badge { font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--text-muted); }
+    .beat-card.active .badge { color: var(--accent-gold); }
+    .beat-card h3 { font-size: 13.5px; font-weight: 600; color: #fff; line-height: 1.3; }
+    .beat-card p { font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-top: 4px; font-style: italic; }
+
+    /* PREVIEW STAGE (2.39:1 CINEMATIC FRAME) */
+    .preview-stage-container { display: flex; flex-direction: column; gap: 16px; }
+    .stage-frame {
+      width: 100%;
+      height: 540px;
+      background: #000;
+      border-radius: 12px;
+      border: 1px solid var(--border-glass);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.9);
+    }
+
+    /* CINEMATIC LETTERBOX BARS (2.39:1 ASPECT) */
+    .letterbox-bar-top, .letterbox-bar-bottom {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 36px;
+      background: #000;
+      z-index: 50;
+      pointer-events: none;
+    }
+    .letterbox-bar-top { top: 0; }
+    .letterbox-bar-bottom { bottom: 0; }
+
+    /* SCENE VIEWPORT & KEN BURNS MOTION */
+    .scene-viewport {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.8s ease-in-out;
+    }
+    .scene-viewport.active {
+      opacity: 1;
+    }
+
+    .scene-bg-img {
+      position: absolute;
+      inset: -40px;
+      background-size: cover;
+      background-position: center;
+      transition: transform 6s cubic-bezier(0.25, 1, 0.5, 1);
+      filter: contrast(1.1) brightness(0.85);
+    }
+
+    /* KEN BURNS VARIATIONS */
+    .kb-zoom-in { transform: scale(1.12); }
+    .kb-zoom-out { transform: scale(1.02); }
+    .kb-pan-right { transform: scale(1.08) translateX(25px); }
+
+    /* ELEGANT CORNER OVERLAYS (DOCUMENTARY LABELS) */
+    .doc-overlay-top-left {
+      position: absolute;
+      top: 56px;
+      left: 48px;
+      z-index: 40;
+      color: #fff;
+    }
+    .doc-chapter-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-gold);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .doc-chapter-title {
+      font-family: var(--font-title);
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    }
+
+    .doc-overlay-bottom-right {
+      position: absolute;
+      bottom: 56px;
+      right: 48px;
+      z-index: 40;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-family: var(--font-mono);
+      color: #e2e8f0;
+      text-align: right;
+    }
+    .doc-stat-val {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .doc-stat-lbl {
+      font-size: 10px;
+      color: var(--accent-gold);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* SUBTITLE BAR */
+    .subtitle-bar {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      border-radius: 10px;
+      padding: 16px 24px;
+      text-align: center;
+      font-size: 14.5px;
+      font-weight: 400;
+      color: #f1f5f9;
+      line-height: 1.6;
+    }
+    .subtitle-bar span.kw {
+      color: #fff;
+      font-weight: 600;
+      border-bottom: 1px solid var(--accent-gold);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-badge">
+      <span class="tag">Docu-Film</span>
+      <h1>Antarctica · BBC Earth Style Visualizer</h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn-play-all" onclick="toggleAutoPlay()">
+        <span id="playIcon">▶</span> <span id="playText">Xem Toàn Bộ Kịch Bản</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- SCRIPT TIMELINE -->
+    <aside class="sidebar">
+      <div class="section-title">6 Phân Cảnh Tư Liệu Thực Tế</div>
+
+      <div class="beat-card active" onclick="jumpTo(1)" id="card-1">
+        <div class="card-header"><span class="badge">00:00 - 00:05</span></div>
+        <h3>1. Lãnh Địa Hoang Tàn & Khắc Nghiệt Nhất</h3>
+        <p>"The harshest and most desolate place on Earth today is pretty much Antarctica..."</p>
+      </div>
+
+      <div class="beat-card" onclick="jumpTo(2)" id="card-2">
+        <div class="card-header"><span class="badge">00:05 - 00:10</span></div>
+        <h3>2. Lục Địa Không Người Lớn Hơn Cả Châu Âu</h3>
+        <p>"...larger than both Australia and Europe, and yet it has no native population..."</p>
+      </div>
+
+      <div class="beat-card" onclick="jumpTo(3)" id="card-3">
+        <div class="card-header"><span class="badge">00:10 - 00:15</span></div>
+        <h3>3. Lạnh Nhất, Khô Nhất, Gió Bão Nhất</h3>
+        <p>"...considered the coldest, driest, and windiest continent on the entire planet."</p>
+      </div>
+
+      <div class="beat-card" onclick="jumpTo(4)" id="card-4">
+        <div class="card-header"><span class="badge">00:15 - 00:20</span></div>
+        <h3>4. Vạch Trần Sự Thật: Không Có Gấu Bắc Cực</h3>
+        <p>"...contrary to popular belief, polar bears. On top of this, the largest animal..."</p>
+      </div>
+
+      <div class="beat-card" onclick="jumpTo(5)" id="card-5">
+        <div class="card-header"><span class="badge">00:20 - 00:27</span></div>
+        <h3>5. Kẻ Săn Mồi Lớn Nhất Chỉ Là 1 Con Côn Trùng 2mm</h3>
+        <p>"...the largest fully terrestrial animal is literally only the size of an insect, the Antarctic midge..."</p>
+      </div>
+
+      <div class="beat-card" onclick="jumpTo(6)" id="card-6">
+        <div class="card-header"><span class="badge">00:27 - 00:35</span></div>
+        <h3>6. Tầng Băng Dày 4.8km & 70% Nước Ngọt Toàn Cầu</h3>
+        <p>"...layers that go down for over 4.8 km... 70% of all Earth's fresh water is trapped there..."</p>
+      </div>
+    </aside>
+
+    <!-- CINEMATIC SCREEN -->
+    <section class="preview-stage-container">
+      <div class="stage-frame" id="stageFrame">
+        <div class="letterbox-bar-top"></div>
+        <div class="letterbox-bar-bottom"></div>
+
+        <!-- SCENE 1: DESOLATE VAST ICE -->
+        <div class="scene-viewport active" id="scene-1">
+          <div class="scene-bg-img kb-zoom-in" style="background-image: url('https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80');"></div>
+          <div class="doc-overlay-top-left">
+            <div class="doc-chapter-num">Phần 01 · Bối Cảnh Lịch Sử</div>
+            <div class="doc-chapter-title">Lãnh Địa Hoang Vu</div>
+          </div>
+          <div class="doc-overlay-bottom-right">
+            <div class="doc-stat-val">90°00' S</div>
+            <div class="doc-stat-lbl">Tọa độ Cực Nam Địa Cầu</div>
+          </div>
+        </div>
+
+        <!-- SCENE 2: LANDMASS & SATELLITE MAP -->
+        <div class="scene-viewport" id="scene-2">
+          <div class="scene-bg-img kb-pan-right" style="background-image: url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1920&q=80');"></div>
+          <div class="doc-overlay-top-left">
+            <div class="doc-chapter-num">Phần 02 · Quy Mô Lãnh Thổ</div>
+            <div class="doc-chapter-title">Lớn Hơn Cả Châu Âu</div>
+          </div>
+          <div class="doc-overlay-bottom-right">
+            <div class="doc-stat-val">14,200,000 km²</div>
+            <div class="doc-stat-lbl">Dân số bản địa: 0 người</div>
+          </div>
+        </div>
+
+        <!-- SCENE 3: EXTREME BLIZZARD & TEMPERATURE -->
+        <div class="scene-viewport" id="scene-3">
+          <div class="scene-bg-img kb-zoom-out" style="background-image: url('https://images.unsplash.com/photo-1483921020237-2ff51e8e4b22?auto=format&fit=crop&w=1920&q=80');"></div>
+          <div class="doc-overlay-top-left">
+            <div class="doc-chapter-num">Phần 03 · Khí Hậu Cực Đoan</div>
+            <div class="doc-chapter-title">Lạnh Nhất Hành Tinh</div>
+          </div>
+          <div class="doc-overlay-bottom-right">
+            <div class="doc-stat-val">-89.2 °C</div>
+            <div class="doc-stat-lbl">Gió bão: 327 km/h</div>
+          </div>
+        </div>
+
+        <!-- SCENE 4: POLAR BEAR FACT -->
+        <div class="scene-viewport" id="scene-4">
+          <div class="scene-bg-img kb-zoom-in" style="background-image: url('https://images.unsplash.com/photo-1589656966895-2f33e7653819?auto=format&fit=crop&w=1920&q=80');"></div>
+          <div class="doc-overlay-top-left">
+            <div class="doc-chapter-num">Phần 04 · Đính Chính Hiểu Lầm</div>
+            <div class="doc-chapter-title">Không Có Gấu Bắc Cực</div>
+          </div>
+          <div class="doc-overlay-bottom-right">
+            <div class="doc-stat-val">Bắc Cực ➔ 20,000 km</div>
+            <div class="doc-stat-lbl">Khoảng cách sinh sống thực tế</div>
+          </div>
+        </div>
+
+        <!-- SCENE 5: ANTARCTIC MIDGE / MICRO NATURE -->
+        <div class="scene-viewport" id="scene-5">
+          <div class="scene-bg-img kb-pan-right" style="background-image: url('https://images.unsplash.com/photo-1508873696983-2df5293cb32f?auto=format&fit=crop&w=1920&q=80');"></div>
+          <div class="doc-overlay-top-left">
+            <div class="doc-chapter-num">Phần 05 · Hệ Sinh Thái</div>
+            <div class="doc-chapter-title">Kẻ Săn Mồi 2 Milimet</div>
+          </div>
+          <div class="doc-overlay-bottom-right">
+            <div class="doc-stat-val">Belgica antarctica</div>
+            <div class="doc-stat-lbl">Côn trùng đất liền duy nhất</div>
+          </div>
+        </div>
+
+        <!-- SCENE 6: DEEP ICE SHEET & FRESH WATER -->
+        <div class="scene-viewport" id="scene-6">
+          <div class="scene-bg-img kb-zoom-in" style="background-image: url('https://images.unsplash.com/photo-1517411032315-54ef2cb783bb?auto=format&fit=crop&w=1920&q=80');"></div>
+          <div class="doc-overlay-top-left">
+            <div class="doc-chapter-num">Phần 06 · Tài Nguyên Trái Đất</div>
+            <div class="doc-chapter-title">70% Nguồn Nước Ngọt</div>
+          </div>
+          <div class="doc-overlay-bottom-right">
+            <div class="doc-stat-val">4.8 Kilomet</div>
+            <div class="doc-stat-lbl">Độ dày tầng băng vĩnh cửu</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="subtitle-bar" id="subBar">
+        "The <span class="kw">harshest and most desolate place</span> on Earth today is pretty much Antarctica..."
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentIdx = 1;
+    let isPlaying = false;
+    let playTimer = null;
+
+    const subs = {
+      1: "The <span class='kw'>harshest and most desolate place</span> on Earth today is pretty much Antarctica...",
+      2: "It is a massive landmass <span class='kw'>larger than Australia and Europe</span>, yet it has <span class='kw'>no native population</span>...",
+      3: "Considered the <span class='kw'>coldest, driest, and windiest continent</span> on the entire planet...",
+      4: "Contrary to popular belief, <span class='kw'>polar bears do not live here</span>; they only inhabit the Arctic...",
+      5: "The largest land animal living year-round is <span class='kw'>only 2mm in size</span>: the Antarctic midge...",
+      6: "Ice layers go down for <span class='kw'>over 4.8 km</span>, holding <span class='kw'>70% of all fresh water</span> on Earth..."
+    };
+
+    function jumpTo(idx) {
+      currentIdx = idx;
+      document.querySelectorAll('.beat-card').forEach(c => c.classList.remove('active'));
+      const activeCard = document.getElementById(`card-${idx}`);
+      if (activeCard) activeCard.classList.add('active');
+
+      document.querySelectorAll('.scene-viewport').forEach(v => v.classList.remove('active'));
+      const activeViewport = document.getElementById(`scene-${idx}`);
+      if (activeViewport) activeViewport.classList.add('active');
+
+      document.getElementById('subBar').innerHTML = `"${subs[idx]}"`;
+    }
+
+    function toggleAutoPlay() {
+      isPlaying = !isPlaying;
+      document.getElementById('playIcon').textContent = isPlaying ? '⏸' : '▶';
+      document.getElementById('playText').textContent = isPlaying ? 'Tạm Dừng' : 'Xem Toàn Bộ Kịch Bản';
+
+      if (isPlaying) {
+        if (playTimer) clearInterval(playTimer);
+        playTimer = setInterval(() => {
+          currentIdx++;
+          if (currentIdx > 6) currentIdx = 1;
+          jumpTo(currentIdx);
+        }, 5500);
+      } else {
+        if (playTimer) clearInterval(playTimer);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      jumpTo(1);
+    });
+  </script>
+</body>
+</html>

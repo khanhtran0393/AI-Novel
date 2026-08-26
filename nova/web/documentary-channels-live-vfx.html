@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Top Documentary YouTube Channels — Signature VFX Live Experience</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=JetBrains+Mono:wght@400;600;700;800&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #04060a;
+      --bg-card: #090e18;
+      --bg-panel: rgba(10, 15, 26, 0.9);
+      --accent-gold: #f59e0b;
+      --accent-gold-glow: rgba(245, 158, 11, 0.45);
+      --accent-blue: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #c084fc;
+      --accent-emerald: #10b981;
+      --accent-red: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border-glass: rgba(255, 255, 255, 0.12);
+      --glass-blur: blur(20px);
+      --font-ui: 'Outfit', -apple-system, sans-serif;
+      --font-serif: 'Playfair Display', Georgia, serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-cinzel: 'Cinzel', serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background-color: var(--bg-dark); color: var(--text-main); font-family: var(--font-ui); min-height: 100vh; overflow-x: hidden; display: flex; flex-direction: column; }
+
+    /* HEADER */
+    header {
+      padding: 16px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-glass);
+      background: rgba(4, 6, 10, 0.94);
+      backdrop-filter: var(--glass-blur);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo-badge { display: flex; align-items: center; gap: 14px; }
+    .logo-badge .tag {
+      background: linear-gradient(135deg, #f59e0b, #ef4444, #38bdf8);
+      color: #000;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+    }
+    .logo-badge h1 { font-size: 19px; font-weight: 800; background: linear-gradient(to right, #fff, #9ca3af, #f59e0b, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    .btn-audio-toggle {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-audio-toggle:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent-gold); }
+
+    /* MAIN LAYOUT */
+    main {
+      flex: 1;
+      max-width: 1620px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 40px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 32px;
+    }
+
+    /* SIDEBAR */
+    .sidebar { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 6px; }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+    .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent-gold); margin: 6px 0 2px 4px; }
+
+    .style-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .style-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: transparent; transition: background 0.25s ease; }
+    .style-card:hover { background: rgba(18, 25, 42, 0.9); border-color: rgba(255, 255, 255, 0.25); transform: translateX(4px); }
+    .style-card.active { background: linear-gradient(135deg, rgba(26, 36, 58, 0.95), rgba(10, 15, 28, 0.95)); border-color: var(--accent-gold); box-shadow: 0 0 24px rgba(245, 158, 11, 0.2); }
+    .style-card.active::before { background: var(--accent-gold); }
+
+    .style-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .style-card .badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); color: var(--accent-blue); text-transform: uppercase; }
+    .style-card.active .badge { background: var(--accent-gold-glow); color: #fbbf24; }
+    .style-card h3 { font-size: 14px; font-weight: 700; color: #fff; }
+    .style-card p { font-size: 11px; color: var(--text-muted); line-height: 1.35; margin-top: 3px; }
+
+    /* PREVIEW STAGE */
+    .preview-stage-container { display: flex; flex-direction: column; gap: 16px; }
+    .stage-frame {
+      width: 100%;
+      height: 560px;
+      background: #000;
+      border-radius: 16px;
+      border: 1px solid var(--border-glass);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.85);
+    }
+
+    /* CONTROLS */
+    .controls-bar {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      backdrop-filter: var(--glass-blur);
+    }
+    .control-group { display: flex; align-items: center; gap: 12px; }
+    .btn-action {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s ease, filter 0.15s ease;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+    }
+    .btn-action:hover { transform: scale(1.03); filter: brightness(1.15); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid var(--border-glass); font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+
+    /* INFO PANEL */
+    .info-panel { background: var(--bg-card); border: 1px solid var(--border-glass); border-radius: 14px; padding: 18px 24px; }
+    .info-panel h4 { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .info-panel p { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .tech-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tech-pill { font-family: var(--font-mono); font-size: 11px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); padding: 3px 10px; border-radius: 6px; color: var(--accent-cyan); }
+
+    /* ======================================================== */
+    /* LIVE CHANNELS STYLES */
+    /* ======================================================== */
+    .stage-live-1, .stage-live-2, .stage-live-3, .stage-live-4, .stage-live-5, .stage-live-6 {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* 1. LEMMINO: 3D WIREFRAME CRIME SITE & 911 TAPE */
+    .stage-live-1 {
+      background: radial-gradient(circle at center, #0d1527 0%, #03060c 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      perspective: 1200px;
+    }
+    .lemmino-scene-box {
+      width: 640px;
+      height: 380px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      background: rgba(6, 11, 22, 0.85);
+      border-radius: 12px;
+      box-shadow: 0 0 50px rgba(56, 189, 248, 0.15);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+    }
+    .lemmino-hud-header {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #38bdf8;
+    }
+    .lemmino-3d-wireframe {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotateX(55deg) rotateZ(30deg);
+      width: 220px;
+      height: 220px;
+      border: 2px dashed rgba(56, 189, 248, 0.6);
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+      animation: rotateWireframe 20s linear infinite;
+    }
+    @keyframes rotateWireframe { from { transform: translate(-50%, -50%) rotateX(55deg) rotateZ(0deg); } to { transform: translate(-50%, -50%) rotateX(55deg) rotateZ(360deg); } }
+    .lemmino-wave-bar {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .lemmino-wave-item {
+      width: 4px;
+      height: 12px;
+      background: #38bdf8;
+      border-radius: 2px;
+      animation: lemminoWave 1s infinite alternate ease-in-out;
+    }
+    @keyframes lemminoWave { 0% { height: 4px; } 100% { height: 28px; background: #f59e0b; } }
+
+    /* 2. JOHNNY HARRIS: TORN PAPER & RED STRING CRIME WEB */
+    .stage-live-2 {
+      background: #14110e url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+      position: relative;
+      overflow: hidden;
+    }
+    .jh-pin { width: 14px; height: 14px; background: #dc2626; border-radius: 50%; position: absolute; top: -6px; left: 50%; transform: translateX(-50%); box-shadow: 0 4px 8px rgba(0,0,0,0.6); z-index: 20; }
+    .jh-card {
+      position: absolute;
+      background: #fdfbf7;
+      padding: 10px 10px 22px 10px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
+      color: #111;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      transition: transform 0.3s ease;
+    }
+    .jh-card:hover { transform: scale(1.08) rotate(0deg) !important; z-index: 30; }
+    .jh-news {
+      position: absolute;
+      top: 180px; left: 260px;
+      width: 340px;
+      background: #f4ede2;
+      color: #111;
+      padding: 16px 20px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.7);
+      transform: rotate(-3deg);
+      clip-path: polygon(0% 2%, 5% 0%, 10% 2%, 18% 0%, 25% 3%, 35% 0%, 48% 2%, 60% 0%, 75% 3%, 88% 0%, 100% 2%, 100% 98%, 88% 100%, 72% 97%, 55% 100%, 38% 97%, 20% 100%, 5% 98%, 0% 100%);
+    }
+    .jh-highlighter {
+      background: linear-gradient(104deg, rgba(255, 235, 59, 0) 0.9%, rgba(255, 235, 59, 0.85) 2.4%, rgba(255, 235, 59, 0.75) 98%);
+      padding: 2px 4px;
+      font-weight: 800;
+    }
+
+    /* 3. MAGNATES MEDIA: DARK GODFATHER TITAN CARD & BURNING ASHES */
+    .stage-live-3 {
+      background: radial-gradient(circle at center, #18120c 0%, #060402 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1200px;
+    }
+    .mm-card-wrap {
+      width: 320px;
+      height: 460px;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.15s ease-out;
+    }
+    .mm-card {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1c150c, #0a0704);
+      border: 2px solid #f59e0b;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9), 0 0 40px rgba(245, 158, 11, 0.3);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .mm-gold-foil {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(115deg, transparent 0%, rgba(245, 158, 11, 0.25) 50%, transparent 100%);
+      pointer-events: none;
+      mix-blend-mode: color-dodge;
+    }
+
+    /* 4. COLDFUSION: 3D TIMELINE & ECG FLATLINE */
+    .stage-live-4 {
+      background: radial-gradient(circle at center, #0f172a 0%, #030712 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .cf-ecg-box {
+      width: 660px;
+      height: 280px;
+      background: rgba(10, 15, 28, 0.9);
+      border: 2px solid #ef4444;
+      border-radius: 14px;
+      box-shadow: 0 0 40px rgba(239, 68, 68, 0.25);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+    }
+
+    /* 5. REALLIFELORE: 3D GLOBAL CHOKEPOINTS & SHIPPING FLOW */
+    .stage-live-5 {
+      background: #080d1a;
+      perspective: 900px;
+      overflow: hidden;
+    }
+    .rll-terrain {
+      position: absolute;
+      width: 140%;
+      height: 140%;
+      left: -20%;
+      top: -20%;
+      background: url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1920&q=80') center/cover;
+      transform: rotateX(45deg) rotateZ(-15deg) scale(1.15);
+      filter: contrast(1.4) brightness(0.6);
+    }
+    .rll-chokepoint-tag {
+      position: absolute;
+      top: 40%;
+      left: 45%;
+      background: rgba(15, 23, 42, 0.95);
+      border: 2px solid #38bdf8;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      box-shadow: 0 0 30px #38bdf8;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    /* 6. MELODYSHEEP: COSMIC SUPERNOVA & SCALE */
+    .stage-live-6 {
+      background: radial-gradient(circle at center, #2e1065 0%, #030108 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .melo-nova {
+      width: 160px;
+      height: 160px;
+      background: #fbbf24;
+      border-radius: 50%;
+      box-shadow: 0 0 80px #f59e0b, 0 0 160px #ec4899, 0 0 240px #a855f7;
+      animation: pulseNova 3s infinite alternate ease-in-out;
+    }
+    @keyframes pulseNova { 0% { transform: scale(0.9); } 100% { transform: scale(1.15); } }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-badge">
+      <span class="tag">Documentary Titans</span>
+      <h1>Top Documentary Channels Signature VFX Experience</h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn-audio-toggle" onclick="toggleAudioSFX()">
+        <span>🔊</span> Âm thanh SFX: <strong id="soundFxStatus">Bật</strong>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <div class="section-title">🎬 6 KÊNH PHIM TÀI LIỆU HUYỀN THOẠI</div>
+
+      <div class="style-card active" onclick="switchLiveStyle(1)" id="card-live-1">
+        <div class="card-header"><span class="badge" style="background: rgba(56,189,248,0.2); color: #38bdf8;">LEMMINO</span> <span>🕵️</span></div>
+        <h3>1. LEMMINO (Bí Ẩn 3D Wireframe)</h3>
+        <p>Hiện trường vụ án 3D tối giản, sóng âm ghi âm 911 và giao diện HUD điều tra.</p>
+      </div>
+
+      <div class="style-card" onclick="switchLiveStyle(2)" id="card-live-2">
+        <div class="card-header"><span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171;">Johnny Harris</span> <span>✂️</span></div>
+        <h3>2. Johnny Harris (Báo Xé Rách & Chỉ Đỏ)</h3>
+        <p>Bảng điều tra gỗ, ảnh ghim đinh, dây chỉ đỏ liên kết và bút dạ quang quét báo.</p>
+      </div>
+
+      <div class="style-card" onclick="switchLiveStyle(3)" id="card-live-3">
+        <div class="card-header"><span class="badge" style="background: rgba(245,158,11,0.2); color: #fbbf24;">Magnates Media</span> <span>👑</span></div>
+        <h3>3. Magnates Media (Thẻ Bài 3D Titan)</h3>
+        <p>Thẻ bài ông trùm tư bản phản quang vàng Gold, khói đen ma mị và tàn tro.</p>
+      </div>
+
+      <div class="style-card" onclick="switchLiveStyle(4)" id="card-live-4">
+        <div class="card-header"><span class="badge" style="background: rgba(16,185,129,0.2); color: #34d399;">ColdFusion</span> <span>📉</span></div>
+        <h3>4. ColdFusion (Sập Tài Chính ECG)</h3>
+        <p>Trục thời gian lịch sử và nhịp tim tài chính rơi thẳng xuống Flatline sụp đổ.</p>
+      </div>
+
+      <div class="style-card" onclick="switchLiveStyle(5)" id="card-live-5">
+        <div class="card-header"><span class="badge" style="background: rgba(6,182,212,0.2); color: #22d3ee;">RealLifeLore</span> <span>🚢</span></div>
+        <h3>5. RealLifeLore (Huyết Mạch Hàng Hải)</h3>
+        <p>Điểm nghẽn vận tải toàn cầu 3D (Suez/Malacca) và luồng tàu container.</p>
+      </div>
+
+      <div class="style-card" onclick="switchLiveStyle(6)" id="card-live-6">
+        <div class="card-header"><span class="badge" style="background: rgba(192,132,252,0.2); color: #d8b4fe;">Melodysheep</span> <span>🌌</span></div>
+        <h3>6. Melodysheep (Vũ Trụ Siêu Tân Tinh)</h3>
+        <p>Vụ nổ Supernova vũ trụ điện ảnh Hollywood và du hành thời gian hàng tỷ năm.</p>
+      </div>
+    </aside>
+
+    <section class="preview-stage-container">
+      <div class="stage-frame" id="stageFrame">
+        <!-- DYNAMIC CONTENT -->
+      </div>
+
+      <div class="controls-bar">
+        <div class="control-group">
+          <button class="btn-action" onclick="triggerLiveAction()">
+            <span>⚡</span> Diễn Hoạt Kỹ Xảo
+          </button>
+          <button class="btn-secondary" onclick="resetLiveStage()">
+            <span>🔄</span> Làm Mới
+          </button>
+        </div>
+        <div class="control-group">
+          <span style="font-size: 12px; color: var(--text-muted);">Di chuột lên khung hình để xoay góc nhìn 3D</span>
+        </div>
+      </div>
+
+      <div class="info-panel" id="infoPanel">
+        <!-- DYNAMIC INFO -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentLiveStyle = 1;
+    let sfxEnabled = true;
+    let audioCtx = null;
+
+    function playSfx(type) {
+      if (!sfxEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+
+        if (type === 'whoosh') {
+          const bufferSize = audioCtx.sampleRate * 0.35;
+          const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+          const noise = audioCtx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(300, now);
+          filter.frequency.exponentialRampToValueAtTime(3200, now + 0.15);
+          filter.frequency.exponentialRampToValueAtTime(400, now + 0.35);
+          const gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.35, now + 0.15);
+          gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+          noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+          noise.start(now);
+        } else if (type === 'boom') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(160, now);
+          osc.frequency.exponentialRampToValueAtTime(30, now + 0.6);
+          gain.gain.setValueAtTime(0.6, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.7);
+        } else if (type === 'paper') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(900, now);
+          osc.frequency.exponentialRampToValueAtTime(150, now + 0.09);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.09);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.09);
+        }
+      } catch (e) {}
+    }
+
+    function toggleAudioSFX() {
+      sfxEnabled = !sfxEnabled;
+      document.getElementById('soundFxStatus').textContent = sfxEnabled ? 'Bật' : 'Tắt';
+      if (sfxEnabled) playSfx('whoosh');
+    }
+
+    function switchLiveStyle(id) {
+      currentLiveStyle = id;
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+      const activeCard = document.getElementById(`card-live-${id}`);
+      if (activeCard) activeCard.classList.add('active');
+      playSfx('whoosh');
+      renderLiveStage(id);
+    }
+
+    function renderLiveStage(id) {
+      const stage = document.getElementById('stageFrame');
+      const info = document.getElementById('infoPanel');
+
+      if (id === 1) {
+        // LEMMINO
+        stage.innerHTML = `
+          <div class="stage-live-1" id="stage1">
+            <div class="lemmino-scene-box" id="lemminoBox">
+              <div class="lemmino-hud-header">
+                <span>[CASE FILE] MH-370 FLIGHT PATH RECONSTRUCTION</span>
+                <span>LAT: -39.283° | LON: 88.291°</span>
+              </div>
+              <div class="lemmino-3d-wireframe"></div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                <div>
+                  <div style="font-family: var(--font-mono); font-size: 10px; color: #9ca3af; margin-bottom: 4px;">RADAR CONTACT LOST · 01:21 UTC</div>
+                  <div class="lemmino-wave-bar">
+                    <div class="lemmino-wave-item" style="animation-delay: 0.1s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.3s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.2s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.5s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.4s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.6s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.2s;"></div>
+                    <div class="lemmino-wave-item" style="animation-delay: 0.5s;"></div>
+                  </div>
+                </div>
+                <div style="font-family: var(--font-cinzel); font-size: 24px; color: #fff; letter-spacing: 2px;">LEMMINO</div>
+              </div>
+            </div>
+          </div>
+        `;
+        initLemminoTilt();
+        info.innerHTML = `
+          <h4>🕵️ 1. Phong Cách LEMMINO (Bí Ẩn 3D Wireframe & Tông Dark Navy)</h4>
+          <p>Không gian 3D CGI tối giản siêu thực, mô hình khung dây (Wireframe) xoay chậm trong không gian tối, kết hợp dải sóng âm điều tra và giao diện HUD chuẩn phim trinh thám.</p>
+          <div class="tech-tags"><span class="tech-pill">3D Wireframe Matrix</span><span class="tech-pill">Deep Navy Radiance</span><span class="tech-pill">Investigation HUD</span></div>
+        `;
+      } else if (id === 2) {
+        // JOHNNY HARRIS
+        stage.innerHTML = `
+          <div class="stage-live-2">
+            <svg style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;">
+              <line x1="200" y1="140" x2="430" y2="240" stroke="#dc2626" stroke-width="2.5" stroke-dasharray="4,2" />
+              <line x1="430" y1="240" x2="680" y2="150" stroke="#dc2626" stroke-width="2.5" stroke-dasharray="4,2" />
+            </svg>
+            <div class="jh-card" style="top: 60px; left: 100px; transform: rotate(-6deg);"><div class="jh-pin"></div><div style="width: 170px; height: 120px; background: url('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80') center/cover;"></div><div style="margin-top: 8px; text-align: center;">MẮT XÍCH #01</div></div>
+            <div class="jh-news"><div class="jh-pin" style="top: -8px;"></div><div style="font-family: var(--font-serif); font-size: 17px; font-weight: 900; border-bottom: 2px solid #222; margin-bottom: 6px;">LEAKED DOSSIER 2026</div><div>Dòng tiền ngầm đã được chuyển qua <span class="jh-highlighter">14 công ty bình phong</span> trước khi lệnh trừng phạt được ban hành...</div></div>
+            <div class="jh-card" style="top: 70px; right: 100px; transform: rotate(7deg);"><div class="jh-pin"></div><div style="width: 170px; height: 120px; background: url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=400&q=80') center/cover;"></div><div style="margin-top: 8px; text-align: center;">TÀI KHOẢN THỤ HƯỞNG</div></div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>✂️ 2. Phong Cách Johnny Harris (Thủ Công Báo Chí & Dây Chỉ Đỏ)</h4>
+          <p>Mô phỏng bảng điều tra bằng gỗ thật với ảnh Polaroid, đinh ghim, dây chỉ đỏ căng nối giữa các nhân vật và bút dạ quang quét màu vàng (Highlight) bằng chứng.</p>
+          <div class="tech-tags"><span class="tech-pill">Torn Paper Edge (Polygon)</span><span class="tech-pill">Red String Network</span><span class="tech-pill">Highlighter Animation</span></div>
+        `;
+      } else if (id === 3) {
+        // MAGNATES MEDIA
+        stage.innerHTML = `
+          <div class="stage-live-3" id="stage3">
+            <div class="mm-card-wrap" id="mmCardWrap">
+              <div class="mm-card">
+                <div class="mm-gold-foil"></div>
+                <div style="font-size: 11px; font-weight: 900; color: #fbbf24; letter-spacing: 2px; text-transform: uppercase;">⭐ THE MONOPOLY KING</div>
+                <div style="width: 100%; height: 210px; border-radius: 10px; background: url('https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=600&q=80') center/cover; margin: 10px 0; border: 1px solid rgba(245, 158, 11, 0.4);"></div>
+                <div style="font-family: var(--font-cinzel); font-size: 20px; font-weight: 900; color: #fff;">VICTOR STERLING</div>
+                <div style="font-size: 11px; color: var(--accent-gold); font-weight: 700; margin-bottom: 12px;">ĐẾ CHẾ DẦU MỎ $48B</div>
+                <div style="font-family: var(--font-mono); font-size: 11px; color: #9ca3af; line-height: 1.4;">"Kẻ kiểm soát dòng chảy năng lượng sẽ kiểm soát toàn bộ thế giới."</div>
+              </div>
+            </div>
+          </div>
+        `;
+        initMagnatesTilt();
+        info.innerHTML = `
+          <h4>👑 3. Phong Cách Magnates Media (Thẻ Bài 3D & Hắc Ám Bố Già)</h4>
+          <p>Thẻ bài chân dung ông trùm tư bản xoay nghiêng 3D với ánh kim loại vàng Gold, kết hợp không gian bóng tối ma mị và phong cách dẫn truyện kịch tính như phim điện ảnh.</p>
+          <div class="tech-tags"><span class="tech-pill">3D Card Tilt Matrix</span><span class="tech-pill">Gold Specular Shimmer</span><span class="tech-pill">Godfather Noir Tone</span></div>
+        `;
+      } else if (id === 4) {
+        // COLDFUSION
+        stage.innerHTML = `
+          <div class="stage-live-4">
+            <div class="cf-ecg-box">
+              <svg viewBox="0 0 660 180" style="position: absolute; inset: 0; width: 100%; height: 100%;">
+                <path d="M 10 90 L 140 90 L 160 20 L 180 160 L 200 70 L 220 100 L 320 90 L 340 10 L 360 170 L 380 90 L 660 90" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" style="filter: drop-shadow(0 0 10px #ef4444);" />
+              </svg>
+              <div style="position: absolute; top: 20px; right: 24px; font-family: var(--font-mono); color: #ef4444; font-size: 13px; font-weight: 800;">
+                <div>ENRON FINANCIAL COLLAPSE</div>
+                <div style="font-size: 24px; margin-top: 4px;">STOCK CRASH: -99.8%</div>
+              </div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>📉 4. Phong Cách ColdFusion (Nhịp Tim Tài Chính Sụp Đổ)</h4>
+          <p>Máy đo nhịp tim tài chính đập dồn dập rồi rơi thẳng xuống đường kẻ ngang Flatline báo hiệu khoảnh khắc sụp đổ của một đế chế công nghệ/tài chính.</p>
+          <div class="tech-tags"><span class="tech-pill">ECG Oscilloscope</span><span class="tech-pill">Flatline Panic Animation</span><span class="tech-pill">Historical Chronology</span></div>
+        `;
+      } else if (id === 5) {
+        // REALLIFELORE
+        stage.innerHTML = `
+          <div class="stage-live-5">
+            <div class="rll-terrain"></div>
+            <div class="rll-chokepoint-tag">🚢 EO BIỂN MALACCA · 40% THƯƠNG MẠI TOÀN CẦU</div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>🚢 5. Phong Cách RealLifeLore (Huyết Mạch Hàng Hải 3D)</h4>
+          <p>Bản đồ địa hình vệ tinh 3D góc nghiêng định vị các điểm nghẽn thương mại quan trọng nhất thế giới và mô phỏng luồng vận tải hàng hải quốc tế.</p>
+          <div class="tech-tags"><span class="tech-pill">3D Strategic Geography</span><span class="tech-pill">Shipping Chokepoints</span><span class="tech-pill">Geopolitical Data Overlay</span></div>
+        `;
+      } else if (id === 6) {
+        // MELODYSHEEP
+        stage.innerHTML = `
+          <div class="stage-live-6">
+            <div class="melo-nova"></div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>🌌 6. Phong Cách Melodysheep (Vũ Trụ Siêu Tân Tinh 3D)</h4>
+          <p>Đồ họa vũ trụ điện ảnh với vụ nổ siêu tân tinh (Supernova) bùng sáng ngoạn mục, tạo cảm giác choáng ngợp trước quy mô vũ trụ bao la.</p>
+          <div class="tech-tags"><span class="tech-pill">Supernova Radiant Glow</span><span class="tech-pill">Cinematic Sci-Fi Space</span><span class="tech-pill">Deep Cosmic Perspective</span></div>
+        `;
+      }
+    }
+
+    function initLemminoTilt() {
+      const stage = document.getElementById('stage1');
+      const box = document.getElementById('lemminoBox');
+      if (!stage || !box) return;
+      stage.addEventListener('mousemove', (e) => {
+        const rect = stage.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        box.style.transform = `rotateY(${x * 16}deg) rotateX(${-y * 14}deg) scale(1.03)`;
+      });
+      stage.addEventListener('mouseleave', () => {
+        box.style.transform = 'rotateY(0deg) rotateX(0deg) scale(1)';
+      });
+    }
+
+    function initMagnatesTilt() {
+      const stage = document.getElementById('stage3');
+      const wrap = document.getElementById('mmCardWrap');
+      if (!stage || !wrap) return;
+      stage.addEventListener('mousemove', (e) => {
+        const rect = stage.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        wrap.style.transform = `rotateY(${x * 32}deg) rotateX(${-y * 28}deg) scale(1.06)`;
+      });
+      stage.addEventListener('mouseleave', () => {
+        wrap.style.transform = 'rotateY(0deg) rotateX(0deg) scale(1)';
+      });
+    }
+
+    function triggerLiveAction() {
+      playSfx('boom');
+    }
+
+    function resetLiveStage() {
+      renderLiveStage(currentLiveStyle);
+      playSfx('paper');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderLiveStage(1);
+    });
+  </script>
+</body>
+</html>
