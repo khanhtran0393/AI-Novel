@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nova Studio</title>
 
-<!-- Favicon: AV monogram nền đen–cam (SVG data URI, không cần file riêng) -->
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23141414'/><text x='50' y='70' font-size='46' font-weight='800' fill='%23f97316' text-anchor='middle' font-family='Arial,sans-serif'>AV</text></svg>">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23141414'/><text x='50' y='70' font-size='46' font-weight='800' fill='%23f97316' text-anchor='middle' font-family='Arial,sans-serif'>AV</text></svg>">
+<!-- Nhận diện Nova Studio -->
+<link rel="icon" type="image/x-icon" href="brand-logo.ico">
+<link rel="apple-touch-icon" href="brand-logo.ico">
 
 <!-- Be Vietnam Pro -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,137 +63,9 @@
 })();
 </script>
 
-<!-- Theme bootstrap: expose this small handler before the large application script loads. -->
-<script>
-(function () {
-  function applyEarlyTheme(isDark) {
-    document.documentElement.classList.toggle('dark', !!isDark);
-    var button = document.getElementById('themeToggle');
-    if (button) button.textContent = isDark ? '☀️' : '🌙';
-  }
-  window.toggleTheme = function () {
-    var isDark = !document.documentElement.classList.contains('dark');
-    applyEarlyTheme(isDark);
-    try { localStorage.setItem('darkMode', isDark ? '1' : '0'); } catch (e) {}
-    return false;
-  };
-  try {
-    applyEarlyTheme(localStorage.getItem('darkMode') !== '0');
-  } catch (e) {
-    applyEarlyTheme(true);
-  }
-})();
-</script>
-
 <!-- Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-<!-- Firebase v10 modular CDN -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, browserLocalPersistence, browserSessionPersistence, setPersistence, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendPasswordResetEmail }
-  from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs }
-  from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-// Firebase RIÊNG cho bản APP (tách hẳn khỏi web localhost)
-const firebaseConfig = {
-  apiKey: "AIzaSyAUi5IiThVpKkeiMEVbcH7r9EFqBQ0W9xE",
-  authDomain: "chukienmedia-app.firebaseapp.com",
-  projectId: "chukienmedia-app",
-  storageBucket: "chukienmedia-app.firebasestorage.app",
-  messagingSenderId: "146295892201",
-  appId: "1:146295892201:web:3ad94c4fb7963b0841a878",
-  measurementId: "G-PHR5JLWEX5"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
-provider.setCustomParameters({ prompt: 'select_account' }); // chỉ hỏi khi chưa có session
-
-// Đảm bảo session được lưu LOCAL (không mất khi tắt tab)
-setPersistence(auth, browserLocalPersistence).catch(e => console.warn('setPersistence error:', e));
-
-// Xử lý redirect result (nếu có) — sau đó onAuthStateChanged tự fire
-getRedirectResult(auth).then(result => {
-  if (result?.user && typeof window.onAuthChange === 'function') {
-    window.onAuthChange(result.user);
-  }
-}).catch(e => {
-  console.warn('Redirect result error:', e.code || e.message);
-});
-
-// Expose to window for non-module code
-window.firebaseAuth = auth;
-window.firebaseDb = db;
-// Hybrid sign-in: popup trước, fallback redirect nếu popup fail
-window.firebaseSignIn = async () => {
-  try {
-    const result = await signInWithPopup(auth, provider);
-    // Popup thành công — gọi thẳng onAuthChange vì COOP header có thể block callback
-    if (result?.user && typeof window.onAuthChange === 'function') {
-      window.onAuthChange(result.user);
-    }
-  } catch (e) {
-    console.warn('Popup sign-in failed:', e.code, '— falling back to redirect');
-    if (e.code === 'auth/popup-closed-by-user' ||
-        e.code === 'auth/popup-blocked' ||
-        e.code === 'auth/cancelled-popup-request' ||
-        e.code === 'auth/internal-error') {
-      try {
-        await signInWithRedirect(auth, provider);
-      } catch (e2) {
-        alert('Lỗi đăng nhập: ' + e2.message);
-      }
-    } else {
-      alert('Lỗi đăng nhập: ' + e.message);
-    }
-  }
-};
-// Đăng ký / đăng nhập bằng EMAIL + MẬT KHẨU (không cần Gmail). Chuẩn nhất cho app desktop.
-window.firebaseRegister = async (email, password, displayName, phone, username) => {
-  const cred = await createUserWithEmailAndPassword(auth, email, password);
-  if (displayName) { try { await updateProfile(cred.user, { displayName }); } catch {} }
-  // Lưu hồ sơ (tên đăng nhập + sđt) vào Firestore (không đụng tier — admin cấp).
-  try { await setDoc(doc(db, 'users', cred.user.uid), { username: username || '', email, displayName: displayName || '', phone: phone || '', createdAt: Date.now() }, { merge: true }); } catch {}
-  if (typeof window.onAuthChange === 'function') window.onAuthChange(cred.user);
-  return cred.user;
-};
-window.firebaseLoginEmail = async (email, password) => {
-  const cred = await signInWithEmailAndPassword(auth, email, password);
-  if (typeof window.onAuthChange === 'function') window.onAuthChange(cred.user);
-  return cred.user;
-};
-window.firebaseResetPassword = (email) => sendPasswordResetEmail(auth, email);
-// Ghi nhớ đăng nhập: true = giữ đăng nhập qua khởi động lại (local); false = thoát khi đóng app (session).
-window.firebaseSetPersistence = (remember) => setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
-window.firebaseSignOut = () => signOut(auth);
-window.firebaseSaveDoc = (uid, data) => setDoc(doc(db, 'users', uid), data, { merge: true });
-window.firebaseLoadDoc = async (uid) => { const s = await getDoc(doc(db, 'users', uid)); return s.exists() ? s.data() : null; };
-// Đơn hàng (tự động nhận tiền qua SePay): client tạo đơn 'pending', webhook server set 'paid'
-window.firebaseCreateOrder = (orderId, data) => setDoc(doc(db, 'orders', orderId), data, { merge: true });
-window.firebaseGetOrder = async (orderId) => { const s = await getDoc(doc(db, 'orders', orderId)); return s.exists() ? s.data() : null; };
-// Admin: liệt kê toàn bộ đơn hàng (cần Firestore Rules cho phép admin đọc collection 'orders').
-window.firebaseListOrders = async () => {
-  const snap = await getDocs(collection(db, 'orders'));
-  const out = [];
-  snap.forEach((d) => out.push({ orderId: d.id, ...d.data() }));
-  return out;
-};
-// Admin: liệt kê toàn bộ user (cần Firestore Rules cho phép admin đọc collection 'users').
-window.firebaseListUsers = async () => {
-  const snap = await getDocs(collection(db, 'users'));
-  const out = [];
-  snap.forEach((d) => out.push({ uid: d.id, ...d.data() }));
-  return out;
-};
-onAuthStateChanged(auth, (user) => {
-  window.currentUser = user;
-  if (typeof window.onAuthChange === 'function') window.onAuthChange(user);
-});
-</script>
 
 <style>
 /* ============ DESIGN TOKENS — LIGHT MODE ============ */
@@ -202,14 +74,14 @@ onAuthStateChanged(auth, (user) => {
   --surface: #ffffff;
   --surface-2: #fafaf8;
   --surface-3: #f0efec;
-      --border-2: #d8d5cf;
+  --border-2: #d8d5cf;
   --border: #e5e3de;
   --border-bright: #d4d1c9;
   --text: #1a1a17;
   --text-muted: #5e5c54;
   --text-dim: #94918a;
-  --accent: #c2410c;            /* burnt orange — brand */
-  --on-accent: #ffffff;         /* chữ đặt TRÊN nền --accent (tp 5.18) */
+  --accent: #c2410c;
+  --on-accent: #ffffff;
   --accent-2: #ea580c;
   --accent-soft: #fff7ed;
   --teal: #0f766e;   /* đậm lại: #0d9488 chỉ cho chữ trắng tp 3.74 */
@@ -223,20 +95,20 @@ onAuthStateChanged(auth, (user) => {
 }
 
 html.dark {
-  --bg: #15141a;
-  --surface: #1e1d25;
-  --surface-2: #26252e;
-  --surface-3: #2f2e39;
-      --border-2: #3b3846;      /* viền đậm hơn --border — trước đây dùng mà chưa định nghĩa → viền ăn theo màu chữ */
-  --border: #322f3b;
-  --border-bright: #4a4655;
-  --text: #f6f2ec;
-  --text-muted: #c8bfb3;
-  --text-dim: #a9a296;
-  --accent: #e18152;
-  --on-accent: #15141a;         /* nền tối: cam nhạt nên chữ phải TỐI (tp 6.76) */
-  --accent-2: #eb9d74;
-  --accent-soft: #241a14;
+  --bg: #09090b;
+  --surface: #111114;
+  --surface-2: #18181b;
+  --surface-3: #24242a;
+  --border-2: #35353d;
+  --border: #29292f;
+  --border-bright: #484852;
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-dim: #71717a;
+  --accent: #f59e0b;
+  --on-accent: #1c0f05;
+  --accent-2: #ff7b00;
+  --accent-soft: #2a1a08;
   --teal: #2dcbb1;
   --violet: #8f72de;
   --rose: #f06f8a;
@@ -245,6 +117,11 @@ html.dark {
   --blue: #609ce4;
   --amber: #f2b749;
 }
+
+/* AI Novel brand: dark mode uses deep black surfaces and amber/orange glow. */
+html.dark .brand-logo { text-shadow: 0 0 18px rgba(245,158,11,.42); }
+html.dark .brand { background: linear-gradient(180deg, rgba(245,158,11,.04), transparent 70%); }
+html.dark .sidebar { box-shadow: 12px 0 34px -28px rgba(245,158,11,.28); }
 
 /* Dark mode tweaks for elements that use hardcoded colors */
 /* Dark mode: các khung info-box (Auto, Bối cảnh, Nhân vật…) dùng nền TỐI cho khớp — không còn khung sáng lạc lõng. */
@@ -1385,63 +1262,6 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
   </div>
 </div>
 
-<!-- ===== AUTH GATE ===== -->
-<div class="auth-gate" id="authGate" style="display:none">
-  <div class="auth-card">
-    <img src="logo.png" alt="" style="width:64px;height:64px;border-radius:14px;margin:0 auto 10px;display:block" onerror="this.style.display='none'">
-    <div class="auth-logo">Nova Studio</div>
-    <div class="auth-sub">Đăng nhập để dùng tool</div>
-
-    <div style="display:flex;gap:6px;margin:16px 0">
-      <button id="authTabLogin" class="btn primary" style="flex:1" onclick="authSwitchTab('login')">➜ Đăng nhập</button>
-      <button id="authTabReg" class="btn ghost" style="flex:1" onclick="authSwitchTab('register')">+ Đăng ký</button>
-    </div>
-
-    <div id="authNameRow" style="display:none;text-align:left;margin-bottom:10px">
-      <label style="font-size:12px;color:var(--text-muted)">Tên hiển thị</label>
-      <input id="authName" type="text" placeholder="Nguyễn Văn A" style="width:100%;padding:10px;margin-top:4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
-    </div>
-    <div style="text-align:left;margin-bottom:10px">
-      <label style="font-size:12px;color:var(--text-muted)">Tên đăng nhập</label>
-      <input id="authEmail" type="text" placeholder="Tên đăng nhập" autocomplete="username" onkeydown="if(event.key==='Enter')authSubmit()" style="width:100%;padding:10px;margin-top:4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
-    </div>
-    <div style="text-align:left;margin-bottom:10px">
-      <label style="font-size:12px;color:var(--text-muted)">Mật khẩu</label>
-      <input id="authPass" type="password" placeholder="Tối thiểu 6 ký tự" autocomplete="current-password" onkeydown="if(event.key==='Enter')authSubmit()" style="width:100%;padding:10px;margin-top:4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
-    </div>
-    <div id="authReg2" style="display:none">
-      <div style="text-align:left;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text-muted)">Xác nhận mật khẩu</label>
-        <input id="authPass2" type="password" placeholder="Nhập lại mật khẩu" style="width:100%;padding:10px;margin-top:4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
-      </div>
-      <div style="text-align:left;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text-muted)">Số điện thoại <span style="opacity:.6">(tùy chọn)</span></label>
-        <input id="authPhone" type="tel" placeholder="0912345678" style="width:100%;padding:10px;margin-top:4px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
-      </div>
-    </div>
-
-    <label id="authRememberRow" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-muted);text-align:left;cursor:pointer;margin:2px 0 4px">
-      <input type="checkbox" id="authRemember" checked style="width:15px;height:15px"> Ghi nhớ đăng nhập (không phải nhập lại)
-    </label>
-    <button id="authSubmit" class="btn primary" style="width:100%;padding:12px;margin-top:6px" onclick="authSubmit()">➜ Đăng nhập</button>
-    <div id="authMsg" style="font-size:12px;margin-top:8px;min-height:16px"></div>
-    <div id="authForgot" style="font-size:11px;color:var(--accent);margin-top:6px;cursor:pointer" onclick="authForgot()">Quên mật khẩu?</div>
-
-    <!-- Google + Vào thử: chỉ hiện ở WEB. App desktop ẩn (chỉ dùng tên đăng nhập/mật khẩu). -->
-    <div id="authAltMethods">
-      <div style="display:flex;align-items:center;gap:8px;margin:14px 0;color:var(--text-dim);font-size:11px">
-        <div style="flex:1;height:1px;background:var(--border)"></div>hoặc<div style="flex:1;height:1px;background:var(--border)"></div>
-      </div>
-      <button class="btn-google" onclick="window.firebaseSignIn()" style="width:100%">
-        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-        Đăng nhập bằng Google
-      </button>
-      <button onclick="enterAsGuest()" style="margin-top:10px;width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:inherit">
-        Vào thử không đăng nhập
-      </button>
-    </div>
-  </div>
-</div>
 
 <!-- ===== APP (after login) ===== -->
 <div class="app" id="appRoot" style="display:flex">
@@ -1452,7 +1272,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
     <!-- Brand -->
     <div class="brand" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
-        <img src="logo.png" alt="Nova Studio" style="width:44px;height:44px;border-radius:11px;flex-shrink:0;object-fit:cover" onerror="this.style.display='none'">
+        <img src="brand-logo.ico" alt="Nova Studio" style="width:44px;height:44px;border-radius:11px;flex-shrink:0;object-fit:contain">
         <div style="min-width:0">
           <div class="brand-logo" style="font-size:16px;line-height:1.15">Nova Studio</div>
           <div class="brand-sub" style="color:var(--accent);font-weight:600;font-size:11px;text-transform:none;letter-spacing:0;margin-top:2px;line-height:1.2">Sản Xuất Video Tự Động</div>
@@ -1531,7 +1351,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       </div>
       <div style="display:flex;gap:6px;margin-top:10px">
         <button class="btn sm primary" onclick="saveApiSettings()" style="flex:1">💾 Lưu</button>
-        <button class="btn sm" onclick="testApi()" style="flex:1">âš¡ Test</button>
+        <button class="btn sm" onclick="testApi()" style="flex:1">⚡ Test</button>
       </div>
       <div id="apiStatus" style="font-size:11px;color:var(--text-dim);margin-top:8px">
         <span class="api-status"></span> Chưa cấu hình
@@ -1600,50 +1420,9 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         <div class="nav-item" data-tool="toollog" onclick="switchTool('toollog')">
           <span class="num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 10h16M4 15h10M4 20h7"/></svg></span><span>Nhật ký</span>
         </div>
-        <div class="nav-item" data-tool="toolabout" onclick="switchTool('toolabout')">
-          <span class="num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg></span><span>Giới thiệu &amp; Hỗ trợ</span>
-        </div>
       </div>
     </div>
 
-    <!-- User section (bottom) -->
-    <div class="sidebar-section user-section">
-      <!-- LOGGED IN -->
-      <div id="userBoxAuth" style="display:none">
-        <div class="user-card">
-          <div class="user-avatar" id="userAvatar">?</div>
-          <div class="user-info">
-            <div class="user-name" id="userName">—</div>
-            <div class="user-email" id="userEmail">—</div>
-          </div>
-        </div>
-        <div style="margin-top:10px;display:flex;justify-content:center">
-          <span id="tierBadge" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px;background:#94918a;color:#fff;letter-spacing:.5px">FREE</span>
-        </div>
-        <button id="upgradeBtn" class="btn sm block" style="margin-top:8px;background:linear-gradient(180deg,var(--accent-2),var(--accent));color:var(--on-accent);border:none;font-weight:600" onclick="showUpgradeModal()">
-          🌟 Nâng cấp Pro
-        </button>
-        <div id="syncStatus" style="margin-top:8px;font-size:11px;color:var(--text-dim);text-align:center;min-height:14px">—</div>
-        <button class="btn sm block ghost" style="margin-top:8px" onclick="window.firebaseSignOut()">
-          Đăng xuất
-        </button>
-      </div>
-
-      <!-- GUEST (chưa đăng nhập) -->
-      <div id="userBoxGuest" style="display:none">
-        <div style="text-align:center;padding:14px 10px;background:var(--surface-2);border-radius:10px;border:1px solid var(--border)">
-          <div style="font-size:22px;margin-bottom:4px">👋</div>
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Đang dùng ở chế độ khách</div>
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;line-height:1.5">
-            Dữ liệu chỉ lưu trong trình duyệt này. Đăng nhập để đồng bộ + nâng cấp Pro.
-          </div>
-          <button onclick="window.firebaseSignIn()" style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;background:#fff;border:1px solid #dadce0;border-radius:6px;color:#3c4043;font-weight:500;cursor:pointer;width:100%;justify-content:center;font-size:13px;font-family:inherit">
-            <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-            Đăng nhập bằng Google
-          </button>
-        </div>
-      </div>
-    </div>
 
   </aside>
 
@@ -1701,7 +1480,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
     <button id="upgradeBtnTop" class="tb-upgrade" onclick="showUpgradeModal()" title="Xem bảng giá & nâng cấp" style="display:none">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:15px;height:15px"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg>Nâng cấp
     </button>
-    <button class="theme-toggle" onclick="window.toggleTheme()" title="Đổi giao diện sáng/tối" id="themeToggle">🌙</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Đổi giao diện sáng/tối" id="themeToggle">🌙</button>
     <div class="tb-user-wrap">
       <div class="tb-user" id="tbUserChip" style="display:none" onclick="toggleUserMenu(event)" title="Tài khoản">
         <span class="tb-av" id="tbAvatar">?</span>
@@ -1727,61 +1506,13 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
         <button class="btn ghost sm" onclick="novaLogClear()">🗑 Xoá</button>
         <button class="btn ghost sm" onclick="novaLogCopy()">📋 Sao chép</button>
-        <label style="font-size:12px;display:flex;align-items:center;gap:5px;color:var(--text-muted)"><input type="checkbox" id="novaLogAuto" checked> Tá»± cuá»™n</label>
+        <label style="font-size:12px;display:flex;align-items:center;gap:5px;color:var(--text-muted)"><input type="checkbox" id="novaLogAuto" checked> Tự cuộn</label>
       </div>
       <div id="novaLogBox" style="background:#0d0f1a;color:#cdd6e4;font-size:11.5px;line-height:1.65;padding:14px;border-radius:10px;height:62vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,Menlo,monospace"></div>
     </div>
 
     <!-- TOOL 1: PROFILE KÊNH -->
     <!-- DASHBOARD -->
-    <div class="tool" id="tool-toolabout">
-      <style>
-        #tool-toolabout .abt-wrap{max-width:760px;margin:0 auto;padding:8px 0 40px}
-        #tool-toolabout .abt-hero{text-align:center;margin-bottom:6px}
-        #tool-toolabout .abt-logo{width:84px;height:84px;border-radius:22px;margin:0 auto 16px;display:grid;place-items:center;
-          background:linear-gradient(135deg,var(--accent-2),var(--accent));color:var(--on-accent);font-weight:900;font-size:44px;box-shadow:0 14px 32px -10px var(--accent)}
-        #tool-toolabout h1{font-size:26px;font-weight:800;margin:0 0 6px;color:var(--text)}
-        #tool-toolabout .abt-by{color:var(--text-muted);font-size:14px}
-        #tool-toolabout .abt-by b{color:var(--accent)}
-        #tool-toolabout .abt-notice{border:1px solid var(--border);border-left:4px solid var(--amber);background:var(--surface-2);
-          border-radius:12px;padding:16px 18px;margin:24px 0;font-size:14px;line-height:1.7;color:var(--text)}
-        #tool-toolabout .abt-notice b{color:var(--accent)}
-        #tool-toolabout .abt-notice .warn{color:var(--red);font-weight:600;display:block;margin-top:6px}
-        #tool-toolabout .abt-sec{font-size:15px;font-weight:800;color:var(--text);margin:26px 0 12px}
-        #tool-toolabout .abt-list{display:flex;flex-direction:column;gap:12px}
-        #tool-toolabout .abt-item{display:flex;align-items:center;gap:14px;padding:15px 18px;border:1px solid var(--border);
-          border-radius:12px;background:var(--surface);cursor:pointer;transition:border-color .15s,transform .12s;text-decoration:none;color:var(--text)}
-        #tool-toolabout .abt-item:hover{border-color:var(--accent);transform:translateY(-2px)}
-        #tool-toolabout .abt-item .ai{width:38px;height:38px;border-radius:10px;flex:none;display:grid;place-items:center;background:var(--surface-3);font-size:18px}
-        #tool-toolabout .abt-item .at{font-weight:700;font-size:15px}
-        #tool-toolabout .abt-item .ar{margin-left:auto;color:var(--text-dim);font-size:15px}
-        #tool-toolabout .abt-item.zalo{border-color:var(--accent);background:var(--accent-soft)}
-        #tool-toolabout .abt-item.zalo .ai{background:#0068FF;color:#fff}
-      </style>
-      <div class="abt-wrap">
-        <div class="abt-hero">
-          <div class="abt-logo">N</div>
-          <h1>Chào mừng đến với Nova Studio</h1>
-          <div class="abt-by">Xưởng video không lộ mặt tự động — <b>cảm ơn bạn đã tin dùng!</b></div>
-        </div>
-        <div class="abt-notice">
-          Hãy trải nghiệm <b>miễn phí</b> với gói <b>Khởi đầu</b> trước. Khi hài lòng, nâng cấp gói cao hơn ngay ở <b>nút Nâng cấp</b> góc phải — chọn gói và thanh toán tự động.
-          <span class="warn">⚠️ Mọi giao dịch mua bán bên ngoài ứng dụng đều là LỪA ĐẢO.</span>
-        </div>
-        <div class="abt-sec">Cộng đồng &amp; Hỗ trợ</div>
-        <div class="abt-list">
-          <a class="abt-item zalo" onclick="openSupportZalo();return false;" title="Nhắn Zalo hỗ trợ">
-            <span class="ai">💬</span><span class="at">Liên hệ hỗ trợ qua Zalo</span><span class="ar">↗</span>
-          </a>
-          <a class="abt-item" onclick="window.open(SUPPORT_YOUTUBE);return false;">
-            <span class="ai">▶️</span><span class="at">Xem video hướng dẫn trên YouTube</span><span class="ar">↗</span>
-          </a>
-          <a class="abt-item" onclick="window.open('https://novastudio-vn.netlify.app');return false;">
-            <span class="ai">🏠</span><span class="at">Truy cập trang chủ</span><span class="ar">↗</span>
-          </a>
-        </div>
-      </div>
-    </div>
     <div class="tool active" id="tool-tooldash">
       <div id="dashBody"></div>
     </div>
@@ -1858,7 +1589,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
             <button class="btn primary" id="tsGenBtn" style="flex:1" onclick="tsGenerate()">✍️ Viết kịch bản</button>
             <button class="btn ghost" onclick="tsGenerate(true)" title="Viết lại bản khác">↻ Viết lại</button>
           </div>
-          <div style="font-size:11px;color:var(--text-dim);margin-top:8px">💡 Kịch bản "sạch" cho TTS: không tiêu đề, không chú thích, không emoji — chỉ lời đọc liền mạch.</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:8px">💡 Kịch bản “sạch” cho TTS: không tiêu đề, không chú thích, không emoji — chỉ lời đọc liền mạch.</div>
           <div class="status-bar" id="statusScript" style="margin-top:10px">Sẵn sàng. Nhập chủ đề rồi bấm Viết kịch bản.</div>
         </div>
 
@@ -1903,8 +1634,8 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         #tool-tool2 .sbc-adv{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2px 16px;margin-bottom:14px}
         #tool-tool2 .sbc-adv>summary{cursor:pointer;list-style:none;font-weight:700;font-size:13px;color:var(--text-muted);padding:12px 0}
         #tool-tool2 .sbc-adv>summary::-webkit-details-marker{display:none}
-        #tool-tool2 .sbc-adv>summary::after{content:"?";float:right;color:var(--text-dim)}
-        #tool-tool2 .sbc-adv[open]>summary::after{content:"â–´"}
+        #tool-tool2 .sbc-adv>summary::after{content:"▾";float:right;color:var(--text-dim)}
+        #tool-tool2 .sbc-adv[open]>summary::after{content:"▴"}
         #tool-tool2 .scene-table td{vertical-align:top}
         #tool-tool2 .sb-rowacts{position:absolute;top:6px;right:8px;display:flex;gap:3px;opacity:0;transition:opacity .12s;background:var(--surface);border:1px solid var(--border-2);border-radius:8px;padding:3px;box-shadow:0 6px 16px -8px rgba(0,0,0,.4);z-index:2}
         #tool-tool2 .scene-table tr:hover .sb-rowacts{opacity:1}
@@ -1921,7 +1652,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         <div id="previewBox"></div><span id="previewCount"></span>
       </div>
 
-      <!-- CARD 1: NGUá»'N -->
+      <!-- CARD 1: NGUỒN -->
       <div class="sbc">
         <div class="sbc-step"><span class="n">1</span> Nguồn</div>
         <div class="sbc-src">
@@ -2170,7 +1901,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
 
       <div class="actions">
         <button class="btn" id="autoT3Btn" style="background:linear-gradient(180deg,var(--accent-2),var(--accent));border:none;color:var(--on-accent);font-weight:700" onclick="runAutoTool3()" title="1 bấm: Load Assets từ Tool 02 → tự điền thời đại → tạo tất cả prompt">🚀 Auto</button>
-        <button class="btn primary" onclick="genAllAssetPrompts()">âš¡ Generate All Prompts</button>
+        <button class="btn primary" onclick="genAllAssetPrompts()">⚡ Generate All Prompts</button>
         <button class="btn violet" onclick="genStyleReference()">🎨 Style Reference</button>
         <button class="btn" onclick="copyAllAssetPrompts()">📋 Sao chép tất cả</button>
         <button class="btn ghost" onclick="exportAssetPrompts()">↓ Xuất JSON</button>
@@ -2435,7 +2166,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       </div>
     </div>
 
-    <!-- TOOL 5: TÃŒM MEDIA (PEXELS) -->
+    <!-- TOOL 5: TÌM MEDIA (PEXELS) -->
     <div class="tool" id="tool-tool5">
       <div class="tool-head">
         <div class="tool-title">Tìm Ảnh & Video Stock</div>
@@ -2504,7 +2235,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       </div>
 
       <div id="tvAcctBar" style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 13px;margin-bottom:10px;font-size:12px;flex-wrap:wrap"><span style="color:var(--text-dim)">⏳ Kiểm tra kết nối…</span></div>
-      <!-- CARD 1: NGUá»'N -->
+      <!-- CARD 1: NGUỒN -->
       <div class="fc">
         <div class="fc-step"><span class="n">1</span> Nguồn
           <span class="r">
@@ -2872,7 +2603,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       /* Màu theo LOẠI lớp — nhìn dải màu là biết gì, khỏi đọc chữ. */
       #tool-tool7 .k-tx{background:#8b5cf6}   /* chữ      */
       #tool-tool7 .k-sh{background:#0ea5e9}   /* hình khối */
-      #tool-tool7 .k-ov{background:#94a3b8}   /* lá»›p phủ  */
+      #tool-tool7 .k-ov{background:#94a3b8}   /* lớp phủ  */
       #tool-tool7 .k-md{background:#e879a8}   /* mẫu motion */
       #tool-tool7 .k-bit{background:#f59e0b}  /* bit      */
       #tool-tool7 .k-man{background:#14b8a6}  /* tự thêm  */
@@ -2931,8 +2662,8 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       .t7-more{border:1px solid var(--border);border-radius:9px;padding:0;margin:10px 0 6px;background:var(--surface-2)}
       .t7-more>summary{cursor:pointer;list-style:none;padding:8px 11px;font-size:11.5px;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:6px}
       .t7-more>summary::-webkit-details-marker{display:none}
-      .t7-more>summary::before{content:'?';color:var(--text-dim)}
-      .t7-more[open]>summary::before{content:'?'}
+      .t7-more>summary::before{content:'▸';color:var(--text-dim)}
+      .t7-more[open]>summary::before{content:'▾'}
       .t7-more>.bd{padding:2px 11px 10px}
       .t7-g2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
       .t7-g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px}
@@ -3163,7 +2894,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       @keyframes t7shim{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
       .t7-cd:hover .im{box-shadow:0 4px 14px -4px rgba(0,0,0,.5)}
       .t7-cd .im.noimg{background:var(--surface-2);display:grid;place-items:center}
-      .t7-cd .im.noimg::before{content:'?';font-size:15px;color:var(--text-dim)}
+      .t7-cd .im.noimg::before{content:'▶';font-size:15px;color:var(--text-dim)}
       .t7-cd:hover .im{border-color:var(--border-bright,var(--border))}
       /* 24 thẻ mà chỉ đổi màu viền 1.5px thì tìm mỏi mắt — cho hẳn viền dày, quầng
          sáng và nhãn "đang dùng" đè lên ảnh. */
@@ -3395,7 +3126,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
             <div id="t7FxList" style="padding:0 10px 10px;max-height:calc(100vh - 300px);overflow:auto"></div>
           </div>
           <div id="t7MediaPanel" style="display:none">
-            <div style="padding:2px 10px 9px"><button class="btn ghost sm" style="width:100%;justify-content:center" onclick="document.getElementById('t7MediaInput').click()">+ Nhập ảnh / video / âm thanh</button></div>
+            <div style="padding:2px 10px 9px"><button class="btn ghost sm" style="width:100%;justify-content:center" onclick="document.getElementById('t7MediaInput').click()">＋ Nhập ảnh / video / âm thanh</button></div>
             <div id="t7MediaGrid" class="t7-mediagrid"></div>
           </div>
           <div id="t7RailPanel" style="display:none;padding:0 10px 12px;max-height:calc(100vh - 270px);overflow:auto"></div>
@@ -3424,7 +3155,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
             <div class="t7-pbar">
               <div class="t7-ptrack" id="t7Seek" onpointerdown="t7SeekPointerDown(event)" title="Bấm hoặc kéo để tua"><i id="t7SeekFill"></i></div>
               <div class="t7-pctl">
-                <span class="b" id="t7PlayBtn" onclick="t7TogglePlay()">?</span>
+                <span class="b" id="t7PlayBtn" onclick="t7TogglePlay()">▶</span>
                 <span class="tc" id="t7Rate" onclick="t7CycleRate()" title="Tốc độ xem trước" style="cursor:pointer;min-width:26px;text-align:center">1x</span>
                 <span class="tc" id="t7TimeCode">00:00 / 00:00</span>
                 <span class="sp"></span>
@@ -3547,7 +3278,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
               <div class="t7-trkbody" data-ghost="— chưa có phụ đề —" id="t7TrkSubs" style="gap:0;padding-left:5px"></div>
             </div>
             <div class="t7-trk t7-ovtrk" id="t7RowOverlay">
-              <div class="t7-trkh" title="Toàn cục"><span class="ci" style="background:var(--t7-over)"></span>Toàn cục<span class="sp"></span><span class="t7-addov" title="Thêm ảnh đè (full-frame)" onclick="document.getElementById('t7OverlayInput').click()">+ ảnh</span></div>
+              <div class="t7-trkh" title="Toàn cục"><span class="ci" style="background:var(--t7-over)"></span>Toàn cục<span class="sp"></span><span class="t7-addov" title="Thêm ảnh đè (full-frame)" onclick="document.getElementById('t7OverlayInput').click()">＋ ảnh</span></div>
               <div class="t7-trkbody" data-ghost="Ảnh đè / lớp toàn cục — kéo hiệu ứng vào đây" id="t7TrkOverlay" style="gap:3px;padding-left:5px;position:relative"
                    ondragover="t7GlobDragOver(event)" ondragleave="t7GfxDragLeave(event)" ondrop="t7GlobDrop(event)"></div>
             </div>
@@ -3575,7 +3306,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
               <div class="t7-trkbody" data-ghost="— chưa có nhạc nền —" id="t7TrkMusic" style="padding:0 5px"></div>
             </div>
             <div class="t7-trk" id="t7RowSfx">
-              <div class="t7-trkh" title="Hiệu ứng"><span class="ci" style="background:#d98fb0"></span>Hiệu ứng<span class="sp"></span><span class="t7-addov" title="Mở thư viện hiệu ứng âm thanh" onclick="t7SfxLibOpen()">+ SFX</span></div>
+              <div class="t7-trkh" title="Hiệu ứng"><span class="ci" style="background:#d98fb0"></span>Hiệu ứng<span class="sp"></span><span class="t7-addov" title="Mở thư viện hiệu ứng âm thanh" onclick="t7SfxLibOpen()">＋ SFX</span></div>
               <div class="t7-trkbody" data-ghost="— chưa có SFX —" id="t7TrkSfx" style="gap:3px;padding-left:5px"></div>
             </div>
           </div>
@@ -3703,7 +3434,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         #tool-toolniche .t11-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
         #tool-toolniche .t11-sum{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent);list-style:none;display:flex;align-items:center;gap:8px}
         #tool-toolniche .t11-sum::-webkit-details-marker{display:none}
-        #tool-toolniche .t11-sum::before{content:'?';transition:transform .15s;color:var(--text-muted)}
+        #tool-toolniche .t11-sum::before{content:'▸';transition:transform .15s;color:var(--text-muted)}
         #tool-toolniche details[open] .t11-sum::before{transform:rotate(90deg)}
         #tool-toolniche .t11-dim{font-weight:400;color:var(--text-muted);font-size:11px}
         #tool-toolniche .t11-state{margin-left:auto;font-size:11.5px;font-weight:400}
@@ -3820,13 +3551,13 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
               <div style="padding:11px;border:1px solid var(--border);border-radius:8px">
                 <div style="font-weight:600;font-size:12.5px">🌐 Đăng nhập trình duyệt</div>
                 <div style="font-size:11.5px;color:var(--text-muted);margin:5px 0 9px">Mở Chrome for Testing đăng nhập Google. App tự nhận biết & lưu cookie+token, tự làm mới hằng ngày.</div>
-                <button class="btn primary sm" style="width:100%" onclick="fcAddAccount()">+ Thêm tài khoản</button>
+                <button class="btn primary sm" style="width:100%" onclick="fcAddAccount()">＋ Thêm tài khoản</button>
               </div>
               <div style="padding:11px;border:1px solid var(--border);border-radius:8px">
                 <div style="font-weight:600;font-size:12.5px">🍪 Nhập Cookie thủ công</div>
                 <div style="font-size:11.5px;color:var(--text-muted);margin:5px 0 6px">Dán cookie xuất từ extension Cookie Exporter (labs.google/fx).</div>
                 <textarea id="tfCookieInput2" placeholder="Dán chuỗi cookie…" style="width:100%;height:42px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px;box-sizing:border-box;resize:vertical"></textarea>
-                <button class="btn sm" style="width:100%;margin-top:6px;background:var(--amber);color:#111" onclick="tfAddCookie2()">+ Thêm bằng Cookie</button>
+                <button class="btn sm" style="width:100%;margin-top:6px;background:var(--amber);color:#111" onclick="tfAddCookie2()">＋ Thêm bằng Cookie</button>
               </div>
             </div>
             <div id="fcStatus" style="margin-top:8px;color:var(--text-muted);font-size:12px"></div>
@@ -3882,7 +3613,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         <div style="display:flex;gap:8px;align-items:center;margin-top:16px;flex-wrap:wrap">
           <span class="label" style="margin:0">🖼 Ảnh tham chiếu (tuỳ chọn — giữ phong cách/nhân vật):</span>
           <span id="bulkRefThumbs" style="display:flex;gap:6px;flex-wrap:wrap"></span>
-          <label class="btn ghost sm" style="cursor:pointer">+ Thêm ref<input type="file" accept="image/*" multiple style="display:none" onchange="bulkAddRefs(this.files);this.value=''"></label>
+          <label class="btn ghost sm" style="cursor:pointer">＋ Thêm ref<input type="file" accept="image/*" multiple style="display:none" onchange="bulkAddRefs(this.files);this.value=''"></label>
         </div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:6px">💡 Không gõ gì → mọi ảnh dùng tất cả ref. Gõ <code>[tên-ref]</code> trong dòng prompt → dòng đó chỉ đính đúng ref đó (đặt tên ref ở ô dưới mỗi ảnh).</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
@@ -4036,7 +3767,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
 
       <!-- thanh hành động -->
       <div class="up-actions">
-        <button class="btn ghost" onclick="upAddImages()">+ Thêm ảnh</button>
+        <button class="btn ghost" onclick="upAddImages()">＋ Thêm ảnh</button>
         <button class="btn ghost" onclick="upAddFolder()">📁 Thêm thư mục</button>
         <button class="btn ghost" onclick="upFromTool2()" title="Lấy toàn bộ ảnh cảnh đang có ở tab Phân Cảnh (Tool 2)">🎬 Lấy ảnh từ Phân Cảnh</button>
         <span class="up-spacer"></span>
@@ -4052,9 +3783,9 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
           <button class="btn ghost" id="upRetryBtn" onclick="upRetryErrors()" style="display:none">↻ Thử lại ảnh lỗi</button>
           <button class="btn ghost" id="upClearDoneBtn" onclick="upClearDone()" style="display:none">🧹 Xoá ảnh đã xong</button>
         </div>
-        <div id="upEmpty" class="up-empty">Chưa có ảnh nào. Bấm <b>+ Thêm ảnh</b> hoặc <b>📁 Thêm thư mục</b> để bắt đầu.</div>
+        <div id="upEmpty" class="up-empty">Chưa có ảnh nào. Bấm <b>＋ Thêm ảnh</b> hoặc <b>📁 Thêm thư mục</b> để bắt đầu.</div>
         <div class="up-rows" id="upRows"></div>
-        <div class="up-note" id="upNote" style="display:none">Nút "🔍 So sánh" mở thanh trượt trước/sau · "Mở" mở ảnh đã nâng trong máy</div>
+        <div class="up-note" id="upNote" style="display:none">Nút “🔍 So sánh” mở thanh trượt trước/sau · “Mở” mở ảnh đã nâng trong máy</div>
       </div>
     </div>
 
@@ -4624,7 +4355,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         </div>
       </div>
       <div class="dr">
-        <span class="damt">30.000Ä'</span>
+        <span class="damt">30.000đ</span>
         <button class="dbtn" onclick="upgSelect('demo')">Mua demo 30k</button>
       </div>
     </div>
@@ -4690,7 +4421,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         </div>
         <div class="upg-note">
           Chuyển <b>đúng số tiền</b> và <b>giữ nguyên nội dung CK</b> để được nâng cấp tự động trong ~1 phút.<br>
-          Cần hỗ trợ: Zalo <b id="payZalo">0901234567</b> · Email <b id="payEmail">chukienmedia@gmail.com</b>.
+          Cần hỗ trợ: Zalo <b id="payZalo">0901234567</b> · Email <b id="payEmail">support@novastudio.app</b>.
         </div>
       </div>
       <!-- Thành công -->
@@ -4806,7 +4537,7 @@ const state = {
   editingPrompt: null,  // {type, key} — only one prompt edit at a time
   assetLibrary: { chars: {}, bgs: {} },  // Library nhân vật + bối cảnh dùng chung qua các video
   sceneImages: {},  // {sceneId: {base64, mediaType, fileName}} — storyboard ảnh từng cảnh (IDB)
-  userTier: 'free'  // 'free' | 'pro' — load từ Firestore, admin edit thủ công
+  userTier: 'max'  // ✅ ĐÃ MỞ TOÀN BỘ — mặc định Max cho mọi user (không còn kiểm tra gói)
 };
 
 /* ============================================================
@@ -4873,7 +4604,7 @@ const PAYMENT_INFO = {
   },
   contact: {
     zalo: '0373382451',
-    email: 'jonnykien98@gmail.com'
+    email: 'admin@novastudio.app'
   }
 };
 
@@ -5132,20 +4863,16 @@ function toggleKeyVisibility(){
 /* ============================================================
    TIER HELPERS
 ============================================================ */
-function isPro(){ return isAdmin() || state.userTier === 'pro' || state.userTier === 'max'; }
-function tierConfig(){ return (isAdmin() ? TIER_CONFIG.pro : (TIER_CONFIG[state.userTier] || TIER_CONFIG.free)); }
-function getMaxScenes(){ return isAdmin() ? Infinity : tierConfig().maxScenes; }
-function getMaxProfiles(){ return isAdmin() ? Infinity : tierConfig().maxProfiles; }
-function getMaxQueue(){ return isAdmin() ? Infinity : (tierConfig().maxQueue ? Infinity); }
-function canAutoRun(){ return isAdmin() || !!tierConfig().autoRun; }
-function isToolAllowed(toolId){ return isAdmin() || tierConfig().allowedTools.includes(toolId); }
-// Chặn dùng tool nâng cao → thông báo nâng cấp. Trả true nếu BỊ chặn.
+function isPro(){ return true; }   // ✅ ĐÃ MỞ TOÀN BỘ — mọi user đều Pro/Max, không giới hạn
+function tierConfig(){ return TIER_CONFIG.max || TIER_CONFIG.pro || TIER_CONFIG.free; }
+function getMaxScenes(){ return Infinity; }
+function getMaxProfiles(){ return Infinity; }
+function getMaxQueue(){ return Infinity; }
+function canAutoRun(){ return true; }
+function isToolAllowed(){ return true; }
+// Đã mở khoá toàn bộ tool — không chặn nữa. Trả true nếu BỊ chặn.
 function gateTool(toolId){
-  if (isToolAllowed(toolId)) return false;
-  const label = TOOL_LABELS[toolId] || 'Tính năng này';
-  const need = tierPlanName(TOOL_MIN_TIER[toolId] || 'pro');
-  showGate(`${label} chỉ dành cho gói ${need} trở lên. Nâng cấp để mở khoá.`, { upgrade: true });
-  return true;
+  return false;
 }
 
 function showUpgradeModal(reason){
@@ -5187,7 +4914,7 @@ async function upgSelect(plan){
   if (g('upgPayOk')) g('upgPayOk').style.display = 'none';
   const status = g('upgPayStatus');
   if (status) status.innerHTML = '<span class="upg-spin"></span><span>Hệ thống đang tự động kiểm tra…</span><b id="upgCountdown">10:00</b>';
-  const amt = p.priceVND.toLocaleString('vi-VN') + 'Ä'';
+  const amt = p.priceVND.toLocaleString('vi-VN') + 'đ';
   if (g('upgPayPlan')) g('upgPayPlan').textContent = p.label;
   if (g('upgPayAmount')) g('upgPayAmount').textContent = amt;
   if (g('upgPayAmount2')) g('upgPayAmount2').textContent = amt;
@@ -5261,7 +4988,7 @@ function upgToggleCompare(){
   if (!box) return;
   const open = box.style.display === 'none' || !box.style.display;
   box.style.display = open ? 'block' : 'none';
-  if (caret) caret.textContent = open ? 'â–´' : '?';
+  if (caret) caret.textContent = open ? '▴' : '▾';
   if (open) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -5334,10 +5061,10 @@ function renderTierBadge(){
 
 /* ============================================================
    ADMIN — Quản lý gói Pro (chỉ admin)
-   Bản APP đăng nhập bằng tên đăng nhập → email nội bộ = tên@novastudio.local.
+   Bản APP đăng nhập bằng tên đăng nhập → email nội bộ = tên@novastudio.app.
    Tài khoản tên "admin" là admin của app. (Giữ email Google phòng khi bật Google.)
 ============================================================ */
-const ADMIN_EMAILS = ['admin@novastudio.local', 'jonnykien98@gmail.com', 'jonnykien99@gmail.com'];
+const ADMIN_EMAILS = ['admin@novastudio.app', 'admin@novastudio.app', 'admin@novastudio.app'];
 const ADMIN_UIDS = ['UxxIxoq6v1Zk1sa0oc40C7AMuVB3'];
 function isAdmin(){ return !!window.currentUser && (ADMIN_EMAILS.includes(window.currentUser.email) || ADMIN_UIDS.includes(window.currentUser.uid)); }
 
@@ -5383,7 +5110,7 @@ async function admRevoke(uidArg){
 }
 
 /* ===== ADMIN DASHBOARD (số liệu thật: users + orders) ===== */
-function _admFmtVND(n){ return (Math.round(n) || 0).toLocaleString('vi-VN') + 'Ä''; }
+function _admFmtVND(n){ return (Math.round(n) || 0).toLocaleString('vi-VN') + 'đ'; }
 function _admDonut(data, cv, ck){
   const total = data.reduce((s, d) => s + d.v, 0) || 1;
   let off = 25, segs = '';
@@ -5491,8 +5218,8 @@ async function admListUsers(){
     const P = '#a855f7', O = 'var(--accent)', G = '#16a34a', A = '#d97706', R = '#dc2626';
     const pill = (txt, c) => `<span style="display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${c}22;color:${c}">${txt}</span>`;
     const rows = users.map(u => {
-      const name = u.displayName || u.username || (u.email || '').replace(/@chukienmedia\.app$/i, '') || 'User';
-      const sub = [u.username, (u.email || '').replace(/@chukienmedia\.app$/i, '')].filter(Boolean).join(' · ') || (u.uid || '').slice(0, 18);
+      const name = u.displayName || u.username || (u.email || '').replace(/@novastudio\.app$/i, '') || 'User';
+      const sub = [u.username, (u.email || '').replace(/@novastudio\.app$/i, '')].filter(Boolean).join(' · ') || (u.uid || '').slice(0, 18);
       const ini = ((name.trim().split(/\s+/).pop() || '?')[0] || '?').toUpperCase();
       const paid = u.tier === 'pro' || u.tier === 'max';
       const tpill = u.tier === 'max' ? pill('👑 Studio', P) : u.tier === 'pro' ? pill('🚀 Sáng tạo', O) : pill('Free', '#94918a');
@@ -5657,9 +5384,9 @@ function _relocateUserBox(){
   const box = document.getElementById('userBoxAuth');
   const slot = document.getElementById('tbUserSlot');
   if (box && slot && box.parentElement !== slot) slot.appendChild(box);
-  // Ẩn khối tài khoản cũ dưới sidebar khi đã đăng nhập (chỉ giữ hộp khách để đăng nhập).
+  // ✅ ĐÃ XOÁ CHẾ ĐỘ ĐĂNG NHẬP — luôn ẩn khối tài khoản dưới sidebar.
   const sec = document.querySelector('.user-section');
-  if (sec) sec.style.display = window.currentUser ? 'none' : '';
+  if (sec) sec.style.display = 'none';
 }
 function toggleUserMenu(e){
   if (e) e.stopPropagation();
@@ -5819,7 +5546,7 @@ function renderDashboard(){
     <div class="dsec dauto">
       <div class="dsec-h" style="display:flex;align-items:center;justify-content:space-between">
         <span>🚀 Sản xuất video tự động — 1 nút chạy cả quy trình</span>
-        <button class="btn ghost sm" onclick="queueAdd()" style="text-transform:none;font-weight:600;letter-spacing:0">+ Thêm vào hàng đợi</button>
+        <button class="btn ghost sm" onclick="queueAdd()" style="text-transform:none;font-weight:600;letter-spacing:0">＋ Thêm vào hàng đợi</button>
       </div>
       <style>@keyframes autopulse{0%,100%{opacity:1}50%{opacity:.3}}
         .dsh-lbl{font-size:12px;color:var(--text-muted);margin:0 0 6px;display:block}
@@ -6197,7 +5924,7 @@ function applyChannelCfg(p){
 try { _prodQueue = JSON.parse(localStorage.getItem('av_queue') || '[]') || []; } catch (e) { _prodQueue = []; }
 function queueSave(){ try { localStorage.setItem('av_queue', JSON.stringify(_prodQueue.map(j => { const c = { ...j }; delete c.script; return c; }))); } catch (e) {} }   // kịch bản để ở IndexedDB (qs_<id>), không nhét localStorage
 function _qid(){ return 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1e6); }
-function _slug(s){ return String(s || '').slice(0, 60).replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-') || 'video'; }
+function _slug(s){ return String(s || '').slice(0, 60).replace(/[^\w\sÀ-ỹ-]/g, '').trim().replace(/\s+/g, '-') || 'video'; }
 
 function queueAdd(){
   const p = (typeof getProfile === 'function') ? getProfile() : null;
@@ -6271,7 +5998,7 @@ function queueRender(){
   const box = document.getElementById('queueList'); const cnt = document.getElementById('queueCount');
   if (cnt) cnt.textContent = _prodQueue.length + ' mục';
   if (!box) return;
-  if (!_prodQueue.length) { box.innerHTML = '<div class="empty-state" style="padding:16px 4px">Hàng đợi trống. Soạn video ở trên rồi bấm "+ Thêm vào hàng đợi".</div>'; return; }
+  if (!_prodQueue.length) { box.innerHTML = '<div class="empty-state" style="padding:16px 4px">Hàng đợi trống. Soạn video ở trên rồi bấm “＋ Thêm vào hàng đợi”.</div>'; return; }
   const badge = (j) => {
     const map = {
       queued: ['Trong hàng', 'var(--text-muted)', 'var(--surface-3)'],
@@ -6423,7 +6150,7 @@ async function _runPipeline(job){
       if (wantStock.length){
         if (typeof getPexelsKey === 'function' && (getPexelsKey() || getPixabayKey())){
           try { await t2FetchStockVideos(); const got = wantStock.filter(s => state.mediaPicks?.[s.id]).length; parts.push(`${got}/${wantStock.length} stock`); }
-          catch (e){ parts.push('stock lá»—i'); }
+          catch (e){ parts.push('stock lỗi'); }
         } else parts.push('stock: thiếu API key (Cài đặt)');
       }
       // 2) VEO 🎬 — best-effort, tốn quota Flow; bỏ qua nếu hết quota / gói không mở tool6 / lỗi (KHÔNG làm dừng pipeline)
@@ -6510,7 +6237,7 @@ async function _runPipeline(job){
     } catch (e) {
       if (e.timeout) { try { if (typeof stopAutoTool2 === 'function') stopAutoTool2(); if (typeof tfStop === 'function') tfStop(); if (typeof requestCancel === 'function') requestCancel(); } catch (_) {} }
       if (s.res === 'flow' && _isQuotaErr(e.message)) { _autoSet(s.key, 'run', 'chờ Flow (hết quota)'); await _persistJob(true); const q = new Error(e.message); q.flowQuota = true; throw q; }
-      _autoSet(s.key, 'error', (e.message || 'lá»—i').slice(0, 32)); await _persistJob(s.res === 'flow'); throw e;
+      _autoSet(s.key, 'error', (e.message || 'lỗi').slice(0, 32)); await _persistJob(s.res === 'flow'); throw e;
     }
     if (res && res.quota) { _autoSet(s.key, 'run', 'chờ Flow (hết quota)'); await _persistJob(true); const q = new Error(res.reason || 'Hết giới hạn Flow'); q.flowQuota = true; throw q; }
     if (res && res.skip) { _autoSet(s.key, 'skip', res.sub || 'bỏ qua'); }
@@ -6565,7 +6292,7 @@ async function runQueue(){
         job.status = 'paused'; job.detail = '⏸ chờ Flow (hết quota) · đã lưu, sẽ làm tiếp khi có quota';
         _flowExhausted = true; paused++; _histAdd(job, 'paused', 'chờ Flow (hết quota)');
       } else if (_queueAbort) { job.status = 'paused'; job.detail = 'tạm dừng — bấm Chạy để làm tiếp'; }
-      else { job.status = 'error'; job.detail = (e.message || 'lá»—i').slice(0, 60); fail++; _histAdd(job, 'error', e.message || 'lá»—i'); }
+      else { job.status = 'error'; job.detail = (e.message || 'lỗi').slice(0, 60); fail++; _histAdd(job, 'error', e.message || 'lỗi'); }
     }
     _queueCurId = null; queueSave(); queueRender();
   }
@@ -6751,7 +6478,7 @@ async function runConcurrent(items, worker, limit, shouldStop){
       const i = idx++;
       if (i >= items.length) return;
       try { results[i] = await worker(items[i], i); }
-      catch (e) { results[i] = { __error: e }; console.warn('runConcurrent item lá»—i:', e); }
+      catch (e) { results[i] = { __error: e }; console.warn('runConcurrent item lỗi:', e); }
     }
   }
   const lanes = [];
@@ -6821,7 +6548,7 @@ async function callLLM(prompt, opts = {}){
     throw new Error(`${provider} không đọc được ảnh. Đổi sang Anthropic/OpenAI cho tác vụ phân tích ảnh.`);
   }
 
-  const thinking = opts._override?.thinking ? (localStorage.getItem('api_thinking') === '1');
+  const thinking = opts._override?.thinking ?? (localStorage.getItem('api_thinking') === '1');
   const json = !!opts.json;   // ép JSON mode (OpenAI/DeepSeek)
   const _baseUrl = (localStorage.getItem('api_base_url') || '').trim().replace(/\/+$/, '');   // gateway ngoài (hhtech/gwai…)
   const doCall = () => {
@@ -7416,7 +7143,7 @@ function upRender(){
       + '</div>';
   }).join('');
   const done = upState.items.filter(x => x.status === 'xong').length;
-  const err = upState.items.filter(x => x.status === 'lá»—i').length;
+  const err = upState.items.filter(x => x.status === 'lỗi').length;
   const running = upState.items.filter(x => x.status === 'đang chạy').length;
   let sum = 'Xong ' + done + '/' + n;
   if (running) sum += ' · ' + running + ' đang chạy';
@@ -7521,7 +7248,7 @@ function upOnProgress(s){
   if (s.type === 'start'){ it.status = 'đang chạy'; it.pct = 0; }
   else if (s.type === 'tick'){ it.status = 'đang chạy'; it.pct = s.percent || 0; }
   else if (s.type === 'done'){ it.status = 'xong'; it.pct = 100; it.outPath = s.outPath; it.outW = s.w; it.outH = s.h; }
-  else if (s.type === 'error'){ it.status = 'lá»—i'; it.err = s.message || ''; }
+  else if (s.type === 'error'){ it.status = 'lỗi'; it.err = s.message || ''; }
   upRender();
 }
 
@@ -7663,7 +7390,7 @@ function _tsClean(t){
     s = s.replace(/^\s*(?:[^\n]*\b(?:the script is|here(?:'s| is)\b[^\n]*\bscript|here it is|below is\b[^\n]*\bscript|word count|final script)\b[^\n]*|đây là[^\n]*kịch bản[^\n]*|kịch bản[^\n]*(?:hoàn chỉnh|của bạn|đây)[^\n]*|dưới đây là[^\n]*)\r?\n+/i, '').trim();
     if (s === before) break;
   }
-  s = s.replace(/^\s*(kịch bản|voiceover|lời đọc|tiêu đề|title|script)\s*[::].*$/gim, '').trim();  // bỏ dòng nhãn
+  s = s.replace(/^\s*(kịch bản|voiceover|lời đọc|tiêu đề|title|script)\s*[:：].*$/gim, '').trim();  // bỏ dòng nhãn
   s = s.replace(/^\s*#{1,6}\s+/gm, '');                                    // bỏ heading markdown
   s = s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');       // bỏ đậm/nghiêng
   s = s.replace(/^\s*\[[^\]]+\]\s*/gm, '');                                // bỏ [Intro]/[Hook]
@@ -7750,7 +7477,7 @@ function tsToScenes(){
 // ── Tạo giọng nói (OmniVoice) — UI native, gọi thẳng backend Voice Studio ──
 const VOICE_URL = 'http://127.0.0.1:8770';
 // ⚠️ ĐỔI link này thành trang tải + hướng dẫn cài backend giọng nói (voice-studio) của bạn
-const VOICE_SETUP_URL = 'https://github.com/jonnykien98-gif/Nova-Studio#giong-noi';
+const VOICE_SETUP_URL = 'https://github.com/khanhtran0393/AI-Novel#giong-noi';
 let _voiceReady = false;
 let _voiceStarting = null;
 let _voicePreset = '';   // id giọng đã lưu đang chọn (rỗng = theo chế độ)
@@ -7783,8 +7510,8 @@ function voiceShowSetup(kind){
   if (!st) return;
   const needPy = kind === 'need-python';
   const msg = needPy
-    ? 'Đã tìm thấy thư mục voice-studio nhưng <b>chưa cài môi trường Python</b>. Mở voice-studio và chạy file cài đặt (setup) một lần, rồi bấm "Kiểm tra lại".'
-    : 'Giọng nói AI chạy <b>ngay trên máy bạn</b> (đọc bao nhiêu cũng miễn phí). Cần tải backend về + cài một lần. Cài xong bấm "Đã cài — chọn thư mục" hoặc mở lại app.';
+    ? 'Đã tìm thấy thư mục voice-studio nhưng <b>chưa cài môi trường Python</b>. Mở voice-studio và chạy file cài đặt (setup) một lần, rồi bấm “Kiểm tra lại”.'
+    : 'Giọng nói AI chạy <b>ngay trên máy bạn</b> (đọc bao nhiêu cũng miễn phí). Cần tải backend về + cài một lần. Cài xong bấm “Đã cài — chọn thư mục” hoặc mở lại app.';
   st.innerHTML = `
     <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;text-align:left;max-width:720px">
       <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:6px">🎙 Cần cài backend giọng nói (OmniVoice) trên máy</div>
@@ -7938,7 +7665,7 @@ function giongVe(){
       </div>
       <div class="gtags">${(v.tags || []).map(t => `<span class="gtg">${escapeHtml(t)}</span>`).join('')}<span class="gtg eng">${escapeHtml(_TTS_TEN[v.engine])}</span></div>
     </div>`;
-  }).join('') + `<div class="gadd" onclick="giongThemBat()">+ Thêm giọng</div>`;
+  }).join('') + `<div class="gadd" onclick="giongThemBat()">＋ Thêm giọng</div>`;
 
   const n = document.getElementById('giongDem'); if (n) n.textContent = _giongDS.length + ' giọng';
   const cur = _giongDS.find(v => v.key === _giongChon);
@@ -7980,7 +7707,7 @@ async function giongBam(key){
     await _giongAudio.play();
   } catch (err){
     _giongPhat = ''; giongVe();
-    giongBao('Nghe thá»­ lá»—i: ' + (err.message || err), 'red');
+    giongBao('Nghe thử lỗi: ' + (err.message || err), 'red');
   }
 }
 
@@ -8168,7 +7895,7 @@ function giongSuVe(){
   box.innerHTML = _giongSu.map((h, i) => {
     const ph = Math.floor(h.giay / 60), gi = Math.round(h.giay % 60);
     return `<div class="grow-row" onclick="giongSuPhat(${i})">
-      <span class="gpico">?</span>
+      <span class="gpico">▶</span>
       <div style="flex:1;min-width:0">
         <div class="gh-txt">${escapeHtml(h.text.slice(0, 70))}${h.text.length > 70 ? '…' : ''}</div>
         <div class="gh-meta">${escapeHtml(h.ten)} · ${ph}:${String(gi).padStart(2,'0')} · ${_giongKhiNao(h.khi)}</div>
@@ -8700,7 +8427,7 @@ function _b64ToBlob(b64, mime){ const bin = atob(b64); const u = new Uint8Array(
 function _autoSaveCfg(){ if (!state.autoSave) state.autoSave = { enabled: false, mode: 'perTask', folder: '' }; return state.autoSave; }
 function _autoSaveChannel(){
   const p = (typeof getProfile === 'function') ? getProfile() : null;
-  return String((p && p.name) || document.getElementById('pTenKenh')?.value || 'chukienmedia');
+  return String((p && p.name) || document.getElementById('pTenKenh')?.value || 'novastudio');
 }
 function _autoSaveTask(){
   const custom = (_autoSaveCfg().taskName || '').trim();
@@ -8817,7 +8544,7 @@ async function mvVideoGenerate(){
       r = await _videoAppResolve(r);   // extension farm mode → app resolve file video
       if (r && r.ok && (r.video?.b64 || r.videoUrl)){
         if (r.video?.b64){ mvVideoBlobs[s.id] = { b64: r.video.b64, mime: r.video.mime || 'video/mp4' }; autoSaveMedia(_mvVidName(s.id), r.video.b64, 'video'); }
-        state.sceneVideos[s.id] = { url: r.videoUrl || null, account: r.account || null, credits: (r.credits ? null), hasBlob: !!(r.video?.b64) };
+        state.sceneVideos[s.id] = { url: r.videoUrl || null, account: r.account || null, credits: (r.credits ?? null), hasBlob: !!(r.video?.b64) };
         if (r.credits != null) lastCredit = r.credits;
         okc++;
       } else {
@@ -8959,7 +8686,7 @@ async function _videoAppResolve(r, opts){
     const rv = await window.native.flowChrome('RESOLVE_VIDEO', { email: r.account, projectId: r.projectId, mediaId: r.mediaId, resolution: o.resolution || '720p', aspect: o.aspect || null, withData: true });
     if (rv && !rv.error && (rv.video?.b64 || rv.videoUrl)) return { ...r, video: rv.video || r.video, videoUrl: rv.videoUrl || r.videoUrl, resolution: rv.resolution || r.resolution };
     return { ...r, ok: false, error: (rv && rv.error) || 'Không lấy được file video (app resolve)' };
-  } catch(e){ return { ...r, ok: false, error: 'App resolve lá»—i: ' + (e.message || e) }; }
+  } catch(e){ return { ...r, ok: false, error: 'App resolve lỗi: ' + (e.message || e) }; }
 }
 async function tvLoadModelKeys(){ try { const r = await flowBridge.call('VIDEO_MODEL_STATUS'); tvModelKeys = (r && r.modelKeys) || {}; } catch (e){} }
 // Veo 3.1 cố định độ dài (Flow không nhận đổi) → ẩn ô Độ dài khi chọn Veo; Omni Flash thì hiện.
@@ -9217,7 +8944,7 @@ async function notifyDone(title, body){
   }
   if (perm !== 'granted') return;
   try {
-    new Notification(title, { body, icon: '/favicon.ico', tag: 'chukien-media' });
+    new Notification(title, { body, icon: '/favicon.ico', tag: 'novastudio' });
   } catch(e) {}
 }
 
@@ -9460,141 +9187,7 @@ function downloadJSON(obj, name){
   URL.revokeObjectURL(u);
 }
 
-/* ============================================================
-   AUTH FLOW
-============================================================ */
-function _authGate(show){ const g = document.getElementById('authGate'); if (g) g.style.display = show ? 'flex' : 'none'; try { if (window.native && window.native.loginWindow) window.native.loginWindow(!!show); } catch (e) {} }
-function enterAsGuest(){ sessionStorage.setItem('guestMode', '1'); _authGate(false); }
 
-let _authTab = 'login';
-function authSwitchTab(tab){
-  _authTab = tab;
-  const login = tab === 'login';
-  document.getElementById('authTabLogin').className = 'btn ' + (login ? 'primary' : 'ghost');
-  document.getElementById('authTabReg').className = 'btn ' + (login ? 'ghost' : 'primary');
-  document.getElementById('authNameRow').style.display = login ? 'none' : 'block';
-  document.getElementById('authReg2').style.display = login ? 'none' : 'block';
-  document.getElementById('authForgot').style.display = login ? 'block' : 'none';
-  document.getElementById('authSubmit').textContent = login ? '➜ Đăng nhập' : '+ Đăng ký tài khoản';
-  document.getElementById('authMsg').textContent = '';
-  document.getElementById('authPass').setAttribute('autocomplete', login ? 'current-password' : 'new-password');
-}
-function _authMsg(m, ok){ const e = document.getElementById('authMsg'); if (e) e.innerHTML = `<span style="color:${ok ? 'var(--green)' : 'var(--red)'}">${escapeHtml(m)}</span>`; }
-function _authErr(code){
-  const map = {
-    'auth/invalid-email': 'Email không hợp lệ.',
-    'auth/user-not-found': 'Không có tài khoản với email này.',
-    'auth/wrong-password': 'Sai mật khẩu.',
-    'auth/invalid-credential': 'Sai email hoặc mật khẩu.',
-    'auth/email-already-in-use': 'Email này đã đăng ký rồi.',
-    'auth/weak-password': 'Mật khẩu quá yếu (tối thiểu 6 ký tự).',
-    'auth/too-many-requests': 'Thử quá nhiều lần, đợi lát rồi thử lại.',
-    'auth/operation-not-allowed': 'Chưa bật Email/Password trong Firebase (Console → Authentication → Sign-in method).',
-  };
-  return map[code] || code || 'Lỗi không rõ.';
-}
-// Tên đăng nhập → email tổng hợp cho Firebase (user KHÔNG cần email thật).
-function _userToEmail(u){
-  const clean = String(u || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-  return clean + '@novastudio.local';
-}
-async function authSubmit(){
-  const username = document.getElementById('authEmail').value.trim();
-  const pass = document.getElementById('authPass').value;
-  if (!username || !pass) return _authMsg('Nhập tên đăng nhập và mật khẩu.');
-  if (!/^[a-zA-Z0-9._-]{3,}$/.test(username)) return _authMsg('Tên đăng nhập ≥3 ký tự, chỉ chữ/số và . _ -');
-  const email = _userToEmail(username);
-  const remember = document.getElementById('authRemember')?.checked !== false;
-  // Ghi nhớ tên đăng nhập + chế độ giữ đăng nhập.
-  try {
-    localStorage.setItem('avs_remember', remember ? '1' : '0');
-    if (remember) localStorage.setItem('avs_user', username); else localStorage.removeItem('avs_user');
-  } catch { /* */ }
-  try { if (window.firebaseSetPersistence) await window.firebaseSetPersistence(remember); } catch { /* */ }
-  const btn = document.getElementById('authSubmit');
-  btn.disabled = true;
-  try {
-    if (_authTab === 'login') {
-      _authMsg('Đang đăng nhập…', true);
-      await window.firebaseLoginEmail(email, pass);
-    } else {
-      const name = document.getElementById('authName').value.trim();
-      const pass2 = document.getElementById('authPass2').value;
-      const phone = document.getElementById('authPhone').value.trim();
-      if (pass.length < 6) { btn.disabled = false; return _authMsg('Mật khẩu tối thiểu 6 ký tự.'); }
-      if (pass !== pass2) { btn.disabled = false; return _authMsg('Xác nhận mật khẩu không khớp.'); }
-      _authMsg('Đang tạo tài khoản…', true);
-      await window.firebaseRegister(email, pass, name, phone, username);
-    }
-    sessionStorage.removeItem('guestMode');
-    _authGate(false);
-  } catch (e) {
-    _authMsg(_authErr(e.code || e.message));
-  } finally { btn.disabled = false; }
-}
-// Điền sẵn tên đăng nhập đã ghi nhớ + trạng thái checkbox khi mở app.
-function _authInitRemember(){
-  try {
-    const remember = localStorage.getItem('avs_remember') !== '0';
-    const cb = document.getElementById('authRemember'); if (cb) cb.checked = remember;
-    const u = localStorage.getItem('avs_user') || '';
-    const el = document.getElementById('authEmail');
-    if (el && remember && u){ el.value = u; const p = document.getElementById('authPass'); if (p) setTimeout(() => p.focus(), 50); }
-  } catch { /* */ }
-}
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _authInitRemember);
-else _authInitRemember();
-function authForgot(){
-  // Tài khoản dùng tên đăng nhập (không email thật) → không tự gửi reset được.
-  _authMsg('Quên mật khẩu? Liên hệ admin (Zalo/Email ở nút Nâng cấp) để đặt lại.', true);
-}
-
-window.onAuthChange = async function(user){
-  const authBox = document.getElementById('userBoxAuth');
-  const guestBox = document.getElementById('userBoxGuest');
-
-  if (user) {
-    // Logged in — ẩn cổng đăng nhập, hiện user card
-    _authGate(false);
-    authBox.style.display = '';
-    guestBox.style.display = 'none';
-    if (typeof _relocateUserBox === 'function') _relocateUserBox();
-    document.getElementById('userName').textContent = user.displayName || (user.email || '').replace(/@chukienmedia\.app$/i, '') || 'User';
-    document.getElementById('userEmail').textContent = (user.email || '').replace(/@chukienmedia\.app$/i, '');
-    const avatar = document.getElementById('userAvatar');
-    if (user.photoURL) {
-      avatar.innerHTML = `<img src="${user.photoURL}" alt="">`;
-    } else {
-      avatar.textContent = (user.displayName || user.email || '?')[0].toUpperCase();
-    }
-    // Load API settings (instant, from localStorage)
-    loadApiSettings();
-    // Load cloud state — AWAIT! Quan trọng để restoreUI có data đầy đủ
-    setSyncStatus('☁️ Đang tải dữ liệu...', 'working');
-    try {
-      await loadCloudState();
-      setSyncStatus('✓ Đã đồng bộ', 'ok');
-    } catch (e) {
-      console.error('Cloud load error:', e);
-      setSyncStatus('⚠️ Lỗi: ' + e.message.slice(0, 40), 'err');
-    }
-    // Restore UI sau khi state đã load xong
-    if (typeof restoreUI === 'function') restoreUI();
-  } else {
-    // Chưa đăng nhập.
-    // - APP desktop (window.native.isDesktop): BẮT đăng nhập bằng tên đăng nhập/mật khẩu (hiện cổng).
-    // - WEB (trình duyệt): GIỮ NGUYÊN như cũ — không ép, đăng nhập Google tuỳ chọn ở góc.
-    // BỎ QUA ĐĂNG NHẬP — app desktop vào thẳng (chế độ khách), không ép cổng đăng nhập.
-    if (window.native?.isDesktop && !sessionStorage.getItem('guestMode')) { sessionStorage.setItem('guestMode', '1'); }
-    authBox.style.display = 'none';
-    guestBox.style.display = '';
-    const _sec = document.querySelector('.user-section'); if (_sec) _sec.style.display = '';
-    // Vẫn load API settings cục bộ để guest có thể dùng tool ngay
-    loadApiSettings();
-    // Restore UI từ localStorage nếu có
-    if (typeof restoreUI === 'function') restoreUI();
-  }
-};
 
 function setSyncStatus(msg, type){
   const el = document.getElementById('syncStatus');
@@ -9612,7 +9205,7 @@ const IDB = {
   async open(){
     if (this.db) return this.db;
     return new Promise((res, rej) => {
-      const r = indexedDB.open('NovaStudioIndependent', 1);
+      const r = indexedDB.open('Nova Studio', 1);
       r.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
@@ -9807,8 +9400,21 @@ window.addEventListener('beforeunload', () => {
 /* ============================================================
    INIT
 ============================================================ */
-// Khi DOM ready, nếu Firebase đã có user, onAuthChange sẽ chạy.
-// Nếu chưa, AuthGate hiển thị mặc định.
+/* ✅ ĐÃ XOÁ TOÀN BỘ HỆ THỐNG ĐĂNG NHẬP — app khởi động thẳng, không cần tài khoản.
+   Mọi dữ liệu lưu cục bộ trên máy (localStorage + IndexedDB). App = free cho mọi user. */
+window.currentUser = null;   // không còn đăng nhập
+function initAppDirect(){
+  // Ẩn mọi mảng tài khoản/đăng nhập còn sót (phòng khi HTML cũ bị cache)
+  ['userBoxAuth','userBoxGuest','authGate'].forEach(function(id){ var el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  var sec = document.querySelector('.user-section'); if (sec) sec.style.display = 'none';
+  // Load API settings cục bộ để dùng tool ngay + dựng UI
+  if (typeof loadApiSettings === 'function') { try { loadApiSettings(); } catch (e) {} }
+  if (typeof _relocateUserBox === 'function') _relocateUserBox();
+  if (typeof restoreUI === 'function') restoreUI();
+  if (typeof renderTierBadge === 'function') renderTierBadge();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAppDirect);
+else initAppDirect();
 /* ============================================================
    PROFILE — Quản lý
 ============================================================ */
@@ -10278,7 +9884,7 @@ function renderProfileSelect(){
   if (!sel) return;
   sel.innerHTML = state.profiles.map((p, i) =>
       `<option value="${i}" ${i === state.currentProfileIdx ? 'selected' : ''}>${escapeHtml(p.tenKenh || 'Profile ' + (i + 1))}</option>`
-    ).join('') + '<option value="__new">+ Tạo Profile mới</option>';
+    ).join('') + '<option value="__new">＋ Tạo Profile mới</option>';
 }
 
 // ===== NGÔN NGỮ KÊNH (đa quốc gia) — 1 kênh 1 ngôn ngữ, áp cho mọi tool =====
@@ -10309,7 +9915,7 @@ function setChannelLang(v){
 (function _initChLang(){ const run = () => { try { if (typeof _syncChLang === 'function') _syncChLang(); } catch(e){} };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(run, 600)); else setTimeout(run, 600); })();
 async function switchProfile(val){
-  if (val === '__new'){ if (typeof newProfile === 'function') newProfile(); else renderProfileSelect(); return; }   // option "+ Tạo Profile mới"
+  if (val === '__new'){ if (typeof newProfile === 'function') newProfile(); else renderProfileSelect(); return; }   // option "＋ Tạo Profile mới"
   const newIdx = val === '' ? -1 : parseInt(val);
   // Save current profile's workData trước khi switch
   if (state.currentProfileIdx >= 0 && state.currentProfileIdx !== newIdx) {
@@ -10400,7 +10006,7 @@ function openProfile(){
   document.getElementById('pStyleGuide').value = p.styleGuide || '';
   document.getElementById('pDnaKenh').value = p.dnaKenh || '';
   document.getElementById('pChuDe').value = p.chuDe || '';
-  document.getElementById('modalProfileTitle').textContent = p.tenKenh ? 'Sửa: ' + p.tenKenh : 'Profile má»›i';
+  document.getElementById('modalProfileTitle').textContent = p.tenKenh ? 'Sửa: ' + p.tenKenh : 'Profile mới';
   renderStyleImageGallery();
   document.getElementById('profileModal').classList.add('show');
 }
@@ -10581,7 +10187,7 @@ function _profileScriptCard(){
 function _tsCleanPrompt(t){
   let s = String(t || '').trim();
   s = s.replace(/^```[a-z]*\n?/i, '').replace(/```$/,'').trim();          // bỏ code fence
-  s = s.replace(/^\s*(prompt kịch bản|đây là prompt|kết quả)\s*[::].*$/i, '').trim();  // bỏ dòng dẫn đầu
+  s = s.replace(/^\s*(prompt kịch bản|đây là prompt|kết quả)\s*[:：].*$/i, '').trim();  // bỏ dòng dẫn đầu
   return s;
 }
 async function tsAnalyzeCompetitor(files){
@@ -11410,7 +11016,7 @@ function tfRenderConn(s){
   if (!accs.length){
     html += ext
       ? '<div style="color:var(--text-muted);font-size:13px">Chưa thấy tài khoản. Bấm <b>🌐 Mở Flow trong Chrome</b>, đăng nhập Google, rồi bấm <b>Quét lại</b>.</div>'
-      : '<div style="color:var(--text-muted);font-size:13px">Chưa có tài khoản. Bấm <b>+ Thêm tài khoản Flow</b> (đăng nhập Google) hoặc dán Cookie bên dưới.</div>';
+      : '<div style="color:var(--text-muted);font-size:13px">Chưa có tài khoản. Bấm <b>＋ Thêm tài khoản Flow</b> (đăng nhập Google) hoặc dán Cookie bên dưới.</div>';
   } else {
     html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="text-align:left;color:var(--text-muted)">
@@ -11425,9 +11031,9 @@ function tfRenderConn(s){
       const tokExp = a.capturedAt ? (a.capturedAt + 55 * 60 * 1000) : null;
       html += `<tr style="border-top:1px solid var(--border)">
         ${ext ? '' : `<td style="padding:5px 4px"><input type="checkbox" ${a.enabled !== false ? 'checked' : ''} onchange="tfSetEnabled(${a.id}, this.checked)"></td>`}
-        <td style="padding:5px 4px">${a.engine === 'chrome' ? '🖥️ ' : ''}${escapeHtml(a.email || ('TK ' + (a.id ? '')))}</td>
+        <td style="padding:5px 4px">${a.engine === 'chrome' ? '🖥️ ' : ''}${escapeHtml(a.email || ('TK ' + (a.id ?? '')))}</td>
         <td style="padding:5px 4px"><b>${tfTierName(a.tier)}</b></td>
-        <td style="padding:5px 4px">${a.credits ? '—'}</td>
+        <td style="padding:5px 4px">${a.credits ?? '—'}</td>
         ${ext ? '' : `<td style="padding:5px 4px">${_tfExpCell(a.cookieExpiry)}</td><td style="padding:5px 4px">${_tfExpCell(tokExp)}</td>`}
         <td style="padding:5px 4px">${st}</td>
         ${ext ? '' : `<td style="padding:5px 4px"><input value="${escapeHtml(a.proxy || '')}" placeholder="host:port" onchange="tfSetProxy(${a.id}, this.value)" style="width:118px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:11px"></td>
@@ -11444,7 +11050,7 @@ function tfRenderConn(s){
     html += `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🍪 <b>Thêm bằng Cookie</b> (xuất từ extension <em>Cookie Exporter</em> trên labs.google/fx — dán JSON hoặc chuỗi cookie, khỏi đăng nhập):</div>
         <textarea id="tfCookieInput" placeholder="Dán cookie vào đây…" style="width:100%;height:52px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px;box-sizing:border-box;resize:vertical"></textarea>
-        <button class="btn ghost sm" style="margin-top:6px" onclick="tfAddCookie()">+ Thêm bằng Cookie</button>
+        <button class="btn ghost sm" style="margin-top:6px" onclick="tfAddCookie()">＋ Thêm bằng Cookie</button>
       </div>`;
   } else {
     html += '<div id="tfSaveNote" style="margin-top:10px;font-size:11.5px;color:var(--text-muted)">💾 Tự động lưu tài khoản vào app để dùng lại khi đổi trình duyệt…</div>';
@@ -11463,7 +11069,7 @@ async function tfRefreshAcc(id){
   setStatusF('Đang làm mới tài khoản…', 'info');
   const r = await flowBridge.call('REFRESH_ACCOUNT', { id });
   tfRefreshConn();
-  setStatusF(r?.hasToken ? 'Đã làm mới.' : 'Chưa lấy được token — bấm + Thêm tài khoản Flow để đăng nhập lại account này.', r?.hasToken ? 'ok' : 'info');
+  setStatusF(r?.hasToken ? 'Đã làm mới.' : 'Chưa lấy được token — bấm ＋ Thêm tài khoản Flow để đăng nhập lại account này.', r?.hasToken ? 'ok' : 'info');
 }
 async function tfDelAcc(id){
   if (!confirm('Xoá tài khoản Flow này khỏi app?')) return;
@@ -11544,7 +11150,7 @@ async function fcRenderList(){
       </select>
       <button class="btn ghost sm" onclick="fcRefreshAll()">↻ Làm mới tất cả</button>
     </div>`;
-  if (!accs.length){ el.innerHTML = h + '<div style="color:var(--text-dim);font-size:12.5px;padding:8px 0">Chưa có tài khoản. Bấm <b>+ Thêm tài khoản</b> ở trên để đăng nhập Google.</div>'; return; }
+  if (!accs.length){ el.innerHTML = h + '<div style="color:var(--text-dim);font-size:12.5px;padding:8px 0">Chưa có tài khoản. Bấm <b>＋ Thêm tài khoản</b> ở trên để đăng nhập Google.</div>'; return; }
   h += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr style="text-align:left;color:var(--text-muted);border-bottom:1px solid var(--border)">
       <th style="padding:6px 5px">#</th><th style="padding:6px 5px">Bật</th><th style="padding:6px 5px">Ảnh</th><th style="padding:6px 5px">Video</th>
@@ -11563,7 +11169,7 @@ async function fcRenderList(){
       <td style="padding:6px 5px"><input type="checkbox" ${a.useVideo!==false?'checked':''} onchange="fcSetUse(${a.id},'video',this.checked)"></td>
       <td style="padding:6px 5px;white-space:nowrap">${escapeHtml(a.email||('Chrome '+a.id))}</td>
       <td style="padding:6px 5px"><b>${tfTierName(a.tier)}</b></td>
-      <td style="padding:6px 5px;color:var(--amber)">${a.credits ? '—'}</td>
+      <td style="padding:6px 5px;color:var(--amber)">${a.credits ?? '—'}</td>
       <td style="padding:6px 5px"><input value="${escapeHtml(a.proxy||'')}" placeholder="host:port" onchange="fcSetProxy(${a.id},this.value)" style="width:96px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:11px"></td>
       <td style="padding:6px 5px">${_fcDate(a.cookieExpiry)}</td>
       <td style="padding:6px 5px">${_fcDate(a.tokenExpiry)}</td>
@@ -11674,7 +11280,7 @@ function tfSyncModeUI(){
     if (card){ card.style.borderColor = (k === m) ? 'var(--accent)' : 'var(--border)'; card.style.background = (k === m) ? 'rgba(124,58,237,.05)' : 'transparent'; }
   });
   const addBtn = document.getElementById('tfAddBtn');
-  if (addBtn) addBtn.textContent = (m === 'extension') ? '🌐 Mở Flow trong Chrome' : '+ Thêm tài khoản Flow';
+  if (addBtn) addBtn.textContent = (m === 'extension') ? '🌐 Mở Flow trong Chrome' : '＋ Thêm tài khoản Flow';
 }
 let _tfExtPoll = null;
 function tfRenderExtStatus(){
@@ -11789,7 +11395,7 @@ async function tfPool(items, worker, limit, delayMs = 0){
 
 async function tfEnsureProject(){
   if (tfState.projectId) return tfState.projectId;
-  const r = await flowBridge.call('CREATE_PROJECT', { title: 'NovaStudioIndependent ' + new Date().toLocaleString('vi-VN') });
+  const r = await flowBridge.call('CREATE_PROJECT', { title: 'Nova Studio ' + new Date().toLocaleString('vi-VN') });
   if (r?.error || !r?.project_id) throw new Error('Không tạo được project: ' + (r?.error || '?'));
   tfState.projectId = r.project_id;
   return tfState.projectId;
@@ -12309,7 +11915,7 @@ function splitIntoSentences(text){
   const paras = text.split(/\n+/).map(p => p.trim()).filter(Boolean);
   const sents = [];
   for (const para of paras) {
-    const re = /[^.!?…。.!?]+[.!?…。.!?]+(?:["')\]]*)/g;   // + dấu câu CJK (Hàn/Trung/Nhật)
+    const re = /[^.!?…。．！？]+[.!?…。．！？]+(?:["')\]]*)/g;   // + dấu câu CJK (Hàn/Trung/Nhật)
     let last = 0, m;
     const local = [];
     while ((m = re.exec(para)) !== null) { local.push(m[0].trim()); last = re.lastIndex; }
@@ -12327,7 +11933,7 @@ function splitLong(s, max){
   for (let i = 0; i < s.length; i++) {
     buf += s[i];
     const asciiBreak = /[,;:—–]/.test(s[i]) && s[i + 1] === ' ';
-    const cjkBreak = /[,、;:]/.test(s[i]);                       // dấu phẩy CJK (không cần khoảng trắng sau)
+    const cjkBreak = /[，、；：]/.test(s[i]);                       // dấu phẩy CJK (không cần khoảng trắng sau)
     if (asciiBreak || cjkBreak) { parts.push(buf.trim()); buf = ''; if (asciiBreak) i++; }
   }
   if (buf.trim()) parts.push(buf.trim());
@@ -12767,7 +12373,7 @@ function balanceScenes(){
 // So sánh từ-cấp giữa các cảnh và kịch bản gốc → trả về số liệu (dùng cho Auto tự kiểm tra)
 function _diffScenesScript(){
   const normalize = t => (t || '')
-    .replace(/[''']/g, "'").replace(/["""]/g, '"')
+    .replace(/[‘’‚]/g, "'").replace(/[“”„]/g, '"')
     .replace(/[–—]/g, '-').replace(/…/g, '...')
     .replace(/\s+/g, ' ').trim().toLowerCase();
   const tokenize = s => s.match(/[\w'-]+/g) || [];
@@ -13654,7 +13260,7 @@ Trả về CHỈ 1 JSON array THEO THỨ TỰ, không markdown:
   //   → chỉ bật ở lần cắt SAU Whisper (thời lượng đã thật; không còn căn giọng nên text trùng không gây loạn).
   const _enforceMaxDur = (cap, allowSubSplit) => {
     if (!(cap > 0)) return 0;
-    const _splitTxt = (t, n) => { const s = (String(t).match(/[^.!?…。!?]+[.!?…。!?]*/g) || [t]).map(x => x.trim()).filter(Boolean); if (s.length <= 1) return [t]; const per = Math.ceil(s.length / n); const r = []; for (let k = 0; k < n; k++){ const c = s.slice(k * per, (k + 1) * per).join(' ').trim(); if (c) r.push(c); } return r.length ? r : [t]; };
+    const _splitTxt = (t, n) => { const s = (String(t).match(/[^.!?…。！？]+[.!?…。！？]*/g) || [t]).map(x => x.trim()).filter(Boolean); if (s.length <= 1) return [t]; const per = Math.ceil(s.length / n); const r = []; for (let k = 0; k < n; k++){ const c = s.slice(k * per, (k + 1) * per).join(' ').trim(); if (c) r.push(c); } return r.length ? r : [t]; };
     const outScenes = [], outPrompts = {}; let nSplit = 0;
     // CẢNH DÀI KHÔNG tách thành cảnh riêng cùng-câu nữa (tránh 2 ảnh trùng lời). Giữ tới 2× max trong MỘT cảnh
     // → autoAddPromptBForLongScenes() sẽ thêm ẢNH B (prompt AI khác) → 2 ảnh/1 cảnh, Dựng Video chia đôi thời lượng.
@@ -14681,7 +14287,7 @@ async function autoAddPromptBForLongScenes(autoMode = false){
     for (let i = 0; i < miss.length; i += BATCH) mbatches.push(miss.slice(i, i + BATCH));
     await runConcurrent(mbatches, async (batch) => {
       if (state.cancelRequested) return;
-      try { await genBatchPromptB(batch, p); renderPromptsV(); saveState(true); } catch (e) { console.warn('Prompt B sweep lá»—i:', e.message); }
+      try { await genBatchPromptB(batch, p); renderPromptsV(); saveState(true); } catch (e) { console.warn('Prompt B sweep lỗi:', e.message); }
     }, lanes, () => state.cancelRequested);
   }
   const _stillMiss = targets.filter(s => !(state.scenePrompts2[s.id] && String(state.scenePrompts2[s.id]).trim())).length;
@@ -15359,8 +14965,8 @@ async function runAutoTool2(){
       const done = state.scenes.filter(s => state.scenePrompts[s.id] && state.scenePrompts[s.id].trim()).length;
       setStatus2(`⏸ Đã dừng Auto. Tiến độ được giữ (đã có ${done}/${state.scenes.length} prompt). Bấm "🚀 Auto" lần nữa để chạy tiếp từ chỗ còn thiếu.`, 'info');
     } else {
-      console.error('[Auto] lá»—i:', err);
-      setStatus2('Auto lá»—i: ' + (err && err.message ? err.message : err), 'error');
+      console.error('[Auto] lỗi:', err);
+      setStatus2('Auto lỗi: ' + (err && err.message ? err.message : err), 'error');
     }
     saveState(true);
   } finally {
@@ -16449,7 +16055,7 @@ async function runAutoTool3(){
     await genAllAssetPrompts();  // tạo tất cả prompt (tự set status khi xong)
   } catch (e) {
     console.error('[AutoT3]', e);
-    setStatus3('Auto lá»—i: ' + (e && e.message ? e.message : e), 'error');
+    setStatus3('Auto lỗi: ' + (e && e.message ? e.message : e), 'error');
   } finally {
     _autoT3Running = false;
     if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || '🚀 Auto'; }
@@ -18696,7 +18302,7 @@ function renderSceneResults(sceneId, keywords, results){
     const sel = pickedUrl && v._downloadUrl === pickedUrl;
     html += `<div style="width:150px;border-radius:6px;overflow:hidden;border:2px solid ${sel ? 'var(--accent)' : 'var(--border)'}">
       <a href="${v.url}" target="_blank" style="display:block;text-decoration:none;position:relative"><img src="${thumb}" style="width:100%;height:90px;object-fit:cover" loading="lazy">
-      <div style="position:absolute;top:45px;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.65);color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:13px">?</div></a>
+      <div style="position:absolute;top:45px;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.65);color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:13px">▶</div></a>
       <div style="padding:5px 8px;font-size:10px;color:var(--text-muted);background:var(--surface-2);display:flex;justify-content:space-between;align-items:center;gap:4px">
         <span>🎬 ${v.duration}s ${_srcBadge(v._source)}</span>
         <span style="display:flex;gap:4px">
@@ -18859,7 +18465,7 @@ function exportMediaCSV(){
   const csv = rows.map(r => r.map(_csvCell).join(',')).join('\r\n');
   const p = getProfile();
   const base = 'media-timing-' + ((p?.tenKenh || 'video').replace(/\W+/g, '-'));
-  _downloadTextFile(base + '.csv', '' + csv, 'text/csv;charset=utf-8');
+  _downloadTextFile(base + '.csv', '﻿' + csv, 'text/csv;charset=utf-8');
   setStatus5(`✓ Đã xuất CSV timing (${state.scenes.length} cảnh, ${picked} đã chọn media).`, 'ok');
 }
 
@@ -19595,7 +19201,7 @@ function t7RenderMedia(){
   const grid = document.getElementById('t7MediaGrid'); const cnt = document.getElementById('t7MediaCount');
   const list = t7State.media || []; if (cnt) cnt.textContent = list.length;
   if (!grid) return;
-  if (!list.length){ grid.innerHTML = '<div class="t7-mediaempty">Chưa có phương tiện. Bấm <b>+ Nhập</b> để tải ảnh / video / âm thanh của bạn vào, rồi đưa vào timeline.</div>'; return; }
+  if (!list.length){ grid.innerHTML = '<div class="t7-mediaempty">Chưa có phương tiện. Bấm <b>＋ Nhập</b> để tải ảnh / video / âm thanh của bạn vào, rồi đưa vào timeline.</div>'; return; }
   grid.innerHTML = list.map(m => {
     const kb = m.kind === 'image' ? '🖼 ẢNH' : m.kind === 'video' ? '🎬 VIDEO' : '🎵 ÂM THANH';
     const th = m.kind === 'image' ? `style="background-image:url('${m.dataUrl}')"` : '';
@@ -19603,8 +19209,8 @@ function t7RenderMedia(){
     const act = (m.kind === 'audio')
       ? `<div class="act"><button onclick="event.stopPropagation();t7MediaSetAudio('${m.id}','voice')">Giọng đọc</button><button onclick="event.stopPropagation();t7MediaSetAudio('${m.id}','music')">Nhạc nền</button></div>`
       : (m.kind === 'image')
-        ? `<div class="act"><button onclick="event.stopPropagation();t7MediaAddScene('${m.id}')" title="Thêm thành cảnh mới">+ Cảnh</button><button onclick="event.stopPropagation();t7MediaAddOverlay('${m.id}')" title="Thêm làm ảnh đè full-frame lên trên">+ Lớp đè</button></div>`
-        : `<div class="act"><button onclick="event.stopPropagation();t7MediaAddScene('${m.id}')">+ Cảnh</button></div>`;
+        ? `<div class="act"><button onclick="event.stopPropagation();t7MediaAddScene('${m.id}')" title="Thêm thành cảnh mới">＋ Cảnh</button><button onclick="event.stopPropagation();t7MediaAddOverlay('${m.id}')" title="Thêm làm ảnh đè full-frame lên trên">＋ Lớp đè</button></div>`
+        : `<div class="act"><button onclick="event.stopPropagation();t7MediaAddScene('${m.id}')">＋ Cảnh</button></div>`;
     return `<div class="t7-mediaitem"><div class="th" ${th}>${m.kind !== 'image' ? ic : ''}</div><span class="kb">${kb}</span><button class="rm" title="Xoá khỏi thư viện" onclick="event.stopPropagation();t7MediaDelete('${m.id}')">×</button><div class="nm" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</div>${act}</div>`;
   }).join('');
 }
@@ -19833,7 +19439,7 @@ function _t7GfxName(L){
   }
   if (L.type === 'text') return 'Chữ: ' + String(L.text || '').slice(0, 18);
   if (L.type === 'bit') return 'Bit: ' + String(L.bit || '');
-  return L.type || 'lá»›p';
+  return L.type || 'lớp';
 }
 
 
@@ -19880,7 +19486,7 @@ function _t7LayerPanel(L, ctx){
     <summary><span><b>📐 Vị trí &amp; cỡ</b><em>Đè lên bố cục mẫu — tính theo % khung hình nên đổi 16:9 ↔ 9:16 vẫn đúng chỗ.</em></span><span class="cv">⌄</span></summary>
     <div class="bd2">
       <div class="t7-g2"><div>${lb('X (%)')}${B('x','8')}</div><div>${lb('Y (%)')}${B('y','8')}</div></div>
-      <div class="t7-g2"><div>${lb('Rá»™ng (%)')}${B('w','tự')}</div><div>${lb('Cao (%)')}${B('h','tự')}</div></div>
+      <div class="t7-g2"><div>${lb('Rộng (%)')}${B('w','tự')}</div><div>${lb('Cao (%)')}${B('h','tự')}</div></div>
       ${lb('Canh chữ trong hộp')}<div style="display:flex;gap:4px;flex-wrap:wrap">${aBtn('align','left','trái')}${aBtn('align','center','giữa')}${aBtn('align','right','phải')}</div>
       ${lb('Canh dọc')}<div style="display:flex;gap:4px;flex-wrap:wrap">${aBtn('vAlign','top','trên')}${aBtn('vAlign','center','giữa')}${aBtn('vAlign','bottom','dưới')}</div>
       <div class="t7-g3" style="margin-top:4px">
@@ -20106,14 +19712,14 @@ function t7FxAddTpl(name){
   t.sp.layers.push({ template: name });
   _t7GfxSel = t.c.sceneId + ':' + (t.sp.layers.length - 1);
   _t7GfxTouch(t.sp);
-  setStatus7('+ Đã thêm mẫu vào cảnh ' + t.c.sceneId + '.', 'ok');
+  setStatus7('＋ Đã thêm mẫu vào cảnh ' + t.c.sceneId + '.', 'ok');
 }
 function t7FxAddBit(bit){
   const t = _t7FxTargetSpec(); if (!t) return;
   t.sp.layers.push({ type: 'bit', bit, box: { x: 8, y: 12, w: 84, h: 72 }, in: { preset: 'fade', dur: 0.4 } });
   _t7GfxSel = t.c.sceneId + ':' + (t.sp.layers.length - 1);
   _t7GfxTouch(t.sp);
-  setStatus7('+ Đã thêm bit "' + bit + '".', 'ok');
+  setStatus7('＋ Đã thêm bit "' + bit + '".', 'ok');
 }
 function t7FxSetTrans(id){
   const c = t7State.clips.find(x => x.id === t7State.selClip);
@@ -20167,7 +19773,7 @@ function t7GfxDrop(ev){
   _t7GfxSel = target.sceneId + ':' + (t.sp.layers.length - 1);
   _t7GfxTouch(t.sp);
   if (!t7State.playing && typeof t7RenderPreview === 'function') t7RenderPreview();
-  setStatus7(`+ Thả vào cảnh ${target.sceneId} tại ${at}s.`, 'ok');
+  setStatus7(`＋ Thả vào cảnh ${target.sceneId} tại ${at}s.`, 'ok');
 }
 
 // ══ THẢ LÊN KHUNG XEM TRƯỚC → đặt lớp ĐÚNG CHỖ thả ══
@@ -20207,7 +19813,7 @@ function t7StageDrop(ev){
   _t7GfxSel = t.c.sceneId + ':' + (t.sp.layers.length - 1);
   _t7GfxTouch(t.sp);
   if (!t7State.playing && typeof t7RenderPreview === 'function') t7RenderPreview();
-  setStatus7(`+ Thả vào cảnh ${t.c.sceneId} tại ${x}% × ${y}%.`, 'ok');
+  setStatus7(`＋ Thả vào cảnh ${t.c.sceneId} tại ${x}% × ${y}%.`, 'ok');
 }
 
 // Bấm lớp trên rãnh Đồ hoạ → chọn luôn cảnh chứa nó rồi mở bảng chỉnh.
@@ -20367,7 +19973,7 @@ function t7GlobDrop(ev){
   _t7Globs().push({ id: 'g' + Date.now() + Math.floor(Math.random() * 100), start, dur: 5, layer });
   _t7GlobSel = _t7Globs().length - 1; _t7GfxSel = null;
   _t7GlobTouch();
-  setStatus7(`+ Lớp toàn cục tại ${start}s (kéo mép để đổi độ dài).`, 'ok');
+  setStatus7(`＋ Lớp toàn cục tại ${start}s (kéo mép để đổi độ dài).`, 'ok');
 }
 // Gắn lớp đang chọn thành TOÀN CỤC, phủ cả video — thay cho việc dán vào 192 cảnh.
 function t7GfxToGlobal(){
@@ -20902,7 +20508,7 @@ function _t7AiTally(){
   const n = document.getElementById('t7GfxCount');
   if (n){ let t = 0; try { Object.values(state.sceneSpecs || {}).forEach(sp =>
     (sp && sp.layers || []).forEach(L => { if (L && L.type !== 'backdrop') t++; })); } catch (e) {}
-    n.textContent = t ? t + ' lá»›p' : ''; }
+    n.textContent = t ? t + ' lớp' : ''; }
 }
 // Gắn 1 đề xuất vào cảnh — cùng cách dựng spec như t7AiDesign để engine đọc y hệt.
 function _t7AiApply(q){
@@ -21176,7 +20782,7 @@ function _t7AiEditCustom(q, i){
     const os = [
       L.type === 'text' ? o('text', 'Chữ', 'text', L.text) : '',
       o('x', 'Trái %', 'so', b.x), o('y', 'Trên %', 'so', b.y),
-      o('w', 'Rá»™ng %', 'so', b.w), o('h', 'Cao %', 'so', b.h),
+      o('w', 'Rộng %', 'so', b.w), o('h', 'Cao %', 'so', b.h),
       L.type === 'text' ? o('align', 'Canh', 'chon', b.align, ['left', 'center', 'right']) : '',
       L.type === 'text' ? o('size', 'Cỡ', 'so', st.size) : '',
       L.type === 'text' ? o('color', 'Màu chữ', 'mau', st.color) : o('fill', 'Màu khối', 'mau', st.fill),
@@ -21512,8 +21118,8 @@ function _t7AiRender(){
     if (q.kind === 'tr') return `<div class="pr trrow" data-i="${i}">
       <div class="prb">
         <div class="prh"><span class="sc">${escapeHtml(q.name)} → cảnh sau</span>
-          <span class="tpl">âš¡ ${escapeHtml(q.trLabel)}</span></div>
-        <p class="prq">"${escapeHtml(q.line)}"</p>
+          <span class="tpl">⚡ ${escapeHtml(q.trLabel)}</span></div>
+        <p class="prq">“${escapeHtml(q.line)}”</p>
         <p class="why">${escapeHtml(q.why)}</p>
         <div class="pra"><button class="yes" onclick="t7AiDecide(${i},true)">Gắn chuyển cảnh</button>
           <button onclick="t7AiDecide(${i},false)">Cắt thẳng</button></div>
@@ -21529,7 +21135,7 @@ function _t7AiRender(){
     </div>
     <div class="prb">
       <div class="prh"><span class="sc">${escapeHtml(q.name)}${q.role ? ' · ' + escapeHtml(q.role) : ''}</span><span class="tpl">${escapeHtml(q.tplLabel)}</span></div>
-      <p class="prq">"${escapeHtml(q.line)}"</p>
+      <p class="prq">“${escapeHtml(q.line)}”</p>
       <p class="why">${escapeHtml(q.why)}</p>
       <div class="pra"><button class="yes" onclick="t7AiDecide(${i},true)">Gắn vào cảnh</button>
         <button onclick="t7AiDecide(${i},false)">Bỏ qua</button>
@@ -22494,7 +22100,7 @@ async function t7NovaExport(){
   const totalSec = scenes.reduce((s, x) => s + (Number(x.durationSec) || 3), 0);
   setStatus7('◈ Đang render ' + scenes.length + ' cảnh (~' + Math.round(totalSec) + 's)…', 'working');
   try {
-    if (typeof window.native.onRemotionProgress2 === 'function') window.native.onRemotionProgress2(s => { if (s && s.percent != null) setStatus7('â—ˆ Nova Scene ' + s.percent + '% ' + (s.message || ''), 'working'); });
+    if (typeof window.native.onRemotionProgress2 === 'function') window.native.onRemotionProgress2(s => { if (s && s.percent != null) setStatus7('◈ Nova Scene ' + s.percent + '% ' + (s.message || ''), 'working'); });
     // Nova Scene chỉ dựng HÌNH — gửi kèm tiếng để main ghép vào sau khi render, không thì video câm.
     let voiceB64 = null, musicB64 = null;
     if (t7State.audioFile){ try { voiceB64 = await _t7FileToDataUrl(t7State.audioFile); } catch (e) {} }
@@ -22709,7 +22315,7 @@ function t7RenderPreview(){
   const cap = document.getElementById('t7PreviewCap');
   if (cap){
     const showVoBelow = vo && !subOn;   // đang burn → VO đã hiện TRÊN video; dưới chỉ để bản dịch tham khảo
-    if (showVoBelow || vi){ cap.style.display = ''; cap.innerHTML = (showVoBelow ? `<div class="vo">"${escapeHtml(vo)}"</div>` : '') + (vi ? `<div class="vi">${escapeHtml(vi)}</div>` : ''); }
+    if (showVoBelow || vi){ cap.style.display = ''; cap.innerHTML = (showVoBelow ? `<div class="vo">“${escapeHtml(vo)}”</div>` : '') + (vi ? `<div class="vi">${escapeHtml(vi)}</div>` : ''); }
     else cap.style.display = 'none';
   }
   const vid = document.getElementById('t7PreviewVid');
@@ -22943,7 +22549,7 @@ function t7RenderTimeline(){
         title="${escapeHtml(nm)} · toàn cục ${(Number(g.start)||0).toFixed(1)}s → ${((Number(g.start)||0)+(Number(g.dur)||3)).toFixed(1)}s">${
           w >= 66 ? `<b>${escapeHtml(nm)}</b><s>toàn cục · ${(Number(g.dur)||3).toFixed(1)}s</s>` : (w > 40 ? escapeHtml(nm) : '')}</div>`;
     }).join('');
-    if (!list.length && !globs.length){ ov.innerHTML = '<div class="t7-ovempty">Kéo hiệu ứng vào đây để phủ CẢ VIDEO, hoặc bấm "+ ảnh" để thêm ảnh đè.</div>'; }
+    if (!list.length && !globs.length){ ov.innerHTML = '<div class="t7-ovempty">Kéo hiệu ứng vào đây để phủ CẢ VIDEO, hoặc bấm “＋ ảnh” để thêm ảnh đè.</div>'; }
     else ov.innerHTML = gHtml + list.map(o => {
       const left = 5 + Math.max(0, (o.start || 0)) * pps, w = Math.max(20, (o.dur || 3) * pps); const sel = o.id === t7State.selOverlay;
       return `<div class="t7-ov${sel ? ' sel' : ''}" data-oid="${o.id}" onpointerdown="t7OverlayPointerDown(event,'${o.id}')" style="left:${left}px;width:${w}px;background-image:url('${o.dataUrl}')" title="${escapeHtml(o.name || 'Ảnh đè')} · ${(o.dur||3).toFixed(1)}s (kéo để dời, kéo mép phải để chỉnh dài)"><span class="lab">${escapeHtml(o.name || 'Ảnh đè')}</span><span class="trim" onpointerdown="t7OverlayTrim(event,'${o.id}')"></span></div>`;
@@ -22956,9 +22562,9 @@ function t7RenderTimeline(){
     sx.innerHTML = list.map(s => {
       const left = 5 + Math.max(0, (s.start || 0)) * pps;
       return `<div class="t7-ov" data-sid="${s.id}" style="left:${left}px;width:auto;padding:0 9px;min-width:44px;background:#8a3d5e;display:flex;align-items:center;gap:6px" title="${escapeHtml(s.name||'SFX')} · tại ${(s.start||0).toFixed(1)}s"><span class="lab" style="position:static">🔊 ${escapeHtml((s.name||'sfx').slice(0,14))}</span><span style="cursor:pointer;color:#ffd0e0" onclick="event.stopPropagation();t7DelSfx('${s.id}')">✕</span></div>`;
-    }).join('') || '<div class="t7-ovempty">Bấm "+ SFX" để thêm hiệu ứng âm thanh tại vạch phát.</div>';
+    }).join('') || '<div class="t7-ovempty">Bấm “＋ SFX” để thêm hiệu ứng âm thanh tại vạch phát.</div>';
   }
-  // Ẩn track TRỐNG cho gọn (thêm lại qua nút 🖼/🔊 ở thanh công cụ / "Chọn" ở Âm thanh & Xuất).
+  // Ẩn track TRỐNG cho gọn (thêm lại qua nút 🖼/🔊 ở thanh công cụ / “Chọn” ở Âm thanh & Xuất).
   const _showRow = (rid, show) => { const el = document.getElementById(rid); if (el) el.style.display = show ? '' : 'none'; };
   // Luôn hiện ĐỦ track (như mockup) — kể cả trống, để thấy rõ cấu trúc nhiều lằn.
   _showRow('t7RowOverlay', true);
@@ -22980,7 +22586,7 @@ async function t7AddOverlays(files){
   }
   const inp = document.getElementById('t7OverlayInput'); if (inp) inp.value = '';
   _t7PersistClips(); t7RenderTimeline(); if (!t7State.playing) t7RenderPreview();
-  setStatus7('✓ Đã thêm ' + arr.length + ' ảnh đè. Kéo trên track "Lớp trên" để dời/chỉnh dài.', 'ok');
+  setStatus7('✓ Đã thêm ' + arr.length + ' ảnh đè. Kéo trên track “Lớp trên” để dời/chỉnh dài.', 'ok');
 }
 function t7SelectOverlay(id){ t7State.selOverlay = id; t7State.selClip = null; _t7GlobSel = null; _t7GfxSel = null; t7RenderTimeline(); t7RenderDetail(); if (!t7State.playing) t7RenderPreview(); }
 function t7DeleteOverlay(id){ t7State.overlays = (t7State.overlays || []).filter(o => o.id !== id); if (t7State.selOverlay === id) t7State.selOverlay = null; _t7PersistClips(); t7RenderTimeline(); if (!t7State.playing) t7RenderPreview(); setStatus7('Đã xoá ảnh đè.', 'info'); }
@@ -23027,9 +22633,9 @@ function t7SfxLibRender(){
   items = items.slice(0, 300);
   listEl.innerHTML = items.length ? items.map(x =>
     `<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--border)">
-      <button class="btn ghost sm" style="width:30px;padding:4px 0" title="Nghe thá»­" onclick="t7SfxLibPreview('${x.id}')">▶</button>
+      <button class="btn ghost sm" style="width:30px;padding:4px 0" title="Nghe thử" onclick="t7SfxLibPreview('${x.id}')">▶</button>
       <div style="flex:1;min-width:0"><div style="font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(x.name)}</div><div style="font-size:10.5px;color:var(--text-dim)">${escapeHtml(x.catVi)} · ${x.dur.toFixed(1)}s</div></div>
-      <button class="btn ghost sm" style="border-color:var(--accent);color:var(--accent)" onclick="t7SfxLibAdd('${x.id}')">+ Thêm</button>
+      <button class="btn ghost sm" style="border-color:var(--accent);color:var(--accent)" onclick="t7SfxLibAdd('${x.id}')">＋ Thêm</button>
     </div>`).join('') : '<div style="padding:20px;color:var(--text-muted);text-align:center">Không thấy hiệu ứng nào khớp.</div>';
 }
 async function t7SfxLibPreview(id){
@@ -23251,7 +22857,7 @@ function t7Play(){
 }
 function t7Pause(){
   t7State.playing = false;
-  const b = document.getElementById('t7PlayBtn'); if (b) b.textContent = '▾';
+  const b = document.getElementById('t7PlayBtn'); if (b) b.textContent = '▶';
   const au = document.getElementById('t7PreviewAudio'); if (au) { try { au.pause(); } catch (e) {} }
   // Clip của cảnh chạy bằng thẻ <video> RIÊNG, không dính vào vòng lặp phát.
   // Trước đây chỉ dừng giọng đọc + huỷ rAF → bấm ⏸ mà hình vẫn chạy tiếp.
@@ -23649,7 +23255,7 @@ async function newVideo(){
   p.videos.push(v);
   _renumberVideos(p);
   p.currentVideoId = v.id;
-  loadStateFromProfile(p);                 // workData rá»—ng cá»§a video má»›i
+  loadStateFromProfile(p);                 // workData rỗng của video mới
   // Nhân vật/bối cảnh + ảnh của chúng dùng CHUNG profile → giữ; cảnh/ảnh cảnh/video rỗng.
   try { await loadProfileImages(p.profileId, v.id); } catch (e) {}
   // Reset dữ liệu tạm Tool 7/8.
@@ -23860,7 +23466,7 @@ const T8_PROVIDERS = {
 
 function t8GetProvider(){ return localStorage.getItem('t8_provider') || 'groq'; }
 function t8GetKey(provider){ return localStorage.getItem('t8_key_' + (provider || t8GetProvider())) || ''; }
-function t8GetLang(){ return localStorage.getItem('t8_language') ? 'en'; }
+function t8GetLang(){ return localStorage.getItem('t8_language') ?? 'en'; }
 
 // Chọn model tối ưu theo provider + ngôn ngữ
 function t8PickModel(provider, lang){
@@ -23886,7 +23492,7 @@ function t8PickModel(provider, lang){
 
 function t8UpdateModelInfo(){
   const prov = document.getElementById('t8Provider')?.value || 'groq';
-  const lang = document.getElementById('t8Language')?.value ? 'en';
+  const lang = document.getElementById('t8Language')?.value ?? 'en';
   const model = t8PickModel(prov, lang);
   const langLabel = document.getElementById('t8Language')?.selectedOptions[0]?.text || 'Auto';
   const el = document.getElementById('t8ModelInfo');
@@ -24011,7 +23617,7 @@ function t8AlignScenesToWords(scenes, words){
      hợp đó khớp bình thường, mà vẫn phân biệt được hai từ THẬT SỰ khác nhau.    */
   const norm = w => String(w || '').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/Ä'/g, 'd')
+    .replace(/đ/g, 'd')
     .replace(/[^\p{L}\p{N}]+/gu, '');
   const N = words.length;
   const timelineEnd = N ? words[N - 1].end : 0;
@@ -24195,7 +23801,7 @@ async function _t8TranscribeBlob(prov, blob, filename){
   const cfg = T8_PROVIDERS[prov];
   const key = t8GetKey(prov) || document.getElementById('t8ApiKey').value.trim();
   if (!key) throw new Error(`Chưa có ${cfg.name} key. Nhập + Lưu key trước.`);
-  const lang = document.getElementById('t8Language')?.value ? 'en';
+  const lang = document.getElementById('t8Language')?.value ?? 'en';
   const model = t8PickModel(prov, lang);
   const form = new FormData();
   form.append('file', blob, filename || 'audio.wav');
@@ -24290,7 +23896,7 @@ async function t8TranscribeLocal(file){
     throw new Error('Không tải được transformers.js. Cần mạng + browser hỗ trợ ES module. Thử Groq thay thế.');
   }
   const { pipeline } = transformers;
-  const lang = document.getElementById('t8Language')?.value ? 'en';
+  const lang = document.getElementById('t8Language')?.value ?? 'en';
   const localModel = t8PickModel('local', lang);
   setStatus8(`Đang tải model ${localModel}...`, 'working');
   const transcriber = await pipeline('automatic-speech-recognition', localModel);
@@ -24318,7 +23924,7 @@ async function t8TranscribeLocal(file){
     if (lang && !isEn) opts.language = lang;
     let out;
     try { out = await transcriber(seg, opts); }
-    catch (e) { console.warn('chunk ' + ci + ' lá»—i:', e.message); out = null; khucHong++; }
+    catch (e) { console.warn('chunk ' + ci + ' lỗi:', e.message); out = null; khucHong++; }
     const baseT = off / SR;
     if (out && (!out.chunks || !out.chunks.length)) khucRong++;
     if (out && out.chunks) {
@@ -24386,7 +23992,7 @@ async function t8TranscribeSegments(prov, file){
   const cfg = T8_PROVIDERS[prov];
   const key = t8GetKey(prov) || document.getElementById('t8ApiKey').value.trim();
   if (!key) throw new Error(`Chưa có ${cfg.name} key. Nhập + Lưu key trước.`);
-  const lang = document.getElementById('t8Language')?.value ? 'en';
+  const lang = document.getElementById('t8Language')?.value ?? 'en';
   const model = t8PickModel(prov, lang);
   setStatus8(`Đang gửi audio lên ${cfg.name} (${model})...`, 'working');
   const form = new FormData();
@@ -24655,7 +24261,7 @@ The DESCRIPTION must read like a real creator wrote it — plain spoken, concret
 
 [6] HASHTAGS — 5-8 hashtags on one or two lines.
 
-â›" NEVER include: a "Playlist:" line, music/image/visual credits, data-source lines, disclaimers, or any sentence describing your own SEO work (never write things like "semantic variations of the keyword appear across the video"). Write the description, not a report about it.
+⛔ NEVER include: a "Playlist:" line, music/image/visual credits, data-source lines, disclaimers, or any sentence describing your own SEO work (never write things like "semantic variations of the keyword appear across the video"). Write the description, not a report about it.
 
 VIDEO CONTENT:
 ${script.slice(0, 6000)}
@@ -25304,7 +24910,7 @@ const _hasViet = (x) => /[ăâđêôơưàáảãạằắẳẵặầấẩẫ�
 async function _t9RefTopicQuery(){
   const src = _t9RefTopicSource();
   if (!src.txt) return { q: '', from: '' };
-  let q = src.txt.replace(/["""''|—–\-:!?.,]+/g, ' ').replace(/\s+/g, ' ').trim();
+  let q = src.txt.replace(/["“”'’|—–\-:!?.,]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (_hasViet(q) && typeof callLLM === 'function'){
     try {
       const r = await callLLM(`Đổi mô tả video sau thành 3-6 TỪ KHOÁ TIẾNG ANH để tìm video cùng chủ đề trên YouTube. Chỉ in từ khoá, cách nhau bằng dấu phẩy, không giải thích.\n\n"${q.slice(0, 200)}"`, { maxTokens: 60 });
@@ -25387,7 +24993,7 @@ async function _t9RefDescribe(){
 // Dựng N prompt từ SPEC — chỉ ghép những phần mẫu THỰC SỰ có, không thêm gì mẫu không có.
 function _t9RefConcepts(spec, title, count, captions){
   const capOf = (i) => (Array.isArray(captions) ? (captions[i] || captions[0] || '') : (captions || ''));
-  const topic = String(title || '').replace(/["""']/g, '').trim();
+  const topic = String(title || '').replace(/["“”']/g, '').trim();
   const L = [];
   L.push('Recreate this thumbnail TEMPLATE exactly as described, then fill it with new content.');
   if (spec.style)      L.push('RENDERING: ' + spec.style + ' — match this exactly.');
@@ -25664,14 +25270,10 @@ const veoUI = { mode:"script", shots:[], busy:false, stop:false };
 })();
 </script>
 <script>
-/* APP DESKTOP: chỉ dùng tên đăng nhập/mật khẩu — ẩn mọi lối Google + "vào thử". */
+/* APP DESKTOP: tinh chỉnh mặc định cho app (Whisper local, xuất MP4) — không còn login. */
 (function(){
   if (!(window.native && window.native.isDesktop)) return;
   function apply(){
-    var alt = document.getElementById('authAltMethods');
-    if (alt) alt.style.display = 'none';
-    var gb = document.getElementById('userBoxGuest');
-    if (gb){ var b = gb.querySelector('button'); if (b){ b.onclick = function(){ try{ _authGate(true); }catch(e){} }; b.innerHTML = 'Đăng nhập'; } }
     var mp4 = document.getElementById('t7Mp4Btn'); if (mp4) mp4.style.display = '';   // bật xuất MP4 FFmpeg
     // Whisper: ÉP dùng LOCAL (chạy trong máy, không cần key) + thu gọn khung transcribe cho app.
     try {
@@ -25827,4 +25429,3 @@ const veoUI = { mode:"script", shots:[], busy:false, stop:false };
       </div>
 </body>
 </html>
-

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2b3a3a"/><stop offset="100%" stop-color="#16211f"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#ffcf8a" stop-opacity=".85"/>
+      <stop offset="100%" stop-color="#ffcf8a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="moon" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0%" stop-color="#bcd8ee" stop-opacity=".55"/>
+      <stop offset="100%" stop-color="#bcd8ee" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vign" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000" stop-opacity=".55"/>
+      <stop offset="45%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity=".6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#wall)"/>
+  <rect y="760" width="1920" height="320" fill="#2a1d16"/>
+  <rect y="748" width="1920" height="16" fill="#3a291f"/>
+  <g>
+    <rect x="120" y="150" width="470" height="520" rx="6" fill="#0e1a26"/>
+    <rect x="120" y="150" width="470" height="520" rx="6" fill="none" stroke="#8fa8b8" stroke-width="10"/>
+    <line x1="355" y1="150" x2="355" y2="670" stroke="#8fa8b8" stroke-width="10"/>
+    <line x1="120" y1="410" x2="590" y2="410" stroke="#8fa8b8" stroke-width="10"/>
+    <circle cx="470" cy="270" r="52" fill="#e8f2fb" opacity=".85"/>
+  </g>
+  <ellipse cx="470" cy="500" rx="620" ry="520" fill="url(#moon)"/>
+  <g>
+    <rect x="900" y="520" width="820" height="250" rx="14" fill="#95a3a0"/>
+    <rect x="880" y="470" width="300" height="120" rx="18" fill="#d6dedb"/>
+    <rect x="1640" y="330" width="40" height="440" fill="#5a4030"/>
+    <rect x="1610" y="330" width="110" height="70" rx="10" fill="#6b4c36"/>
+  </g>
+  <g>
+    <rect x="1740" y="600" width="150" height="170" rx="8" fill="#5a3f2c"/>
+    <ellipse cx="1815" cy="560" rx="70" ry="55" fill="#f0dcb4"/>
+    <ellipse cx="1815" cy="560" rx="300" ry="280" fill="url(#lamp)"/>
+    <rect x="1752" y="640" width="120" height="52" rx="8" fill="#0f1412"/>
+    <text x="1812" y="678" font-family="Menlo, monospace" font-size="38" fill="#5ec8f0" text-anchor="middle">3:17</text>
+  </g>
+  <rect width="1920" height="1080" fill="url(#vign)"/>
+</svg>

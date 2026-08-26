@@ -1,5 +1,5 @@
 /**
- * Voice Native — khởi động backend Voice Studio (OmniVoice) rồi cho chukienmedia nhúng UI.
+ * Voice Native — khởi động backend Voice Studio (OmniVoice) rồi cho novastudio nhúng UI.
  * Backend = FastAPI/uvicorn của dự án /tool/voice-studio (engine OmniVoice qua .venv-omni).
  * App gọi start() khi mở tab "Tạo giọng nói" → spawn uvicorn (nếu chưa chạy) → chờ health → trả URL.
  */
@@ -35,7 +35,7 @@ function voiceRoot() {
   if (custom) return custom;
   const candidates = [
     path.join(__dirname, '..', 'voice-studio'),
-    '/Users/chukien/Documents/tool/voice-studio',
+    '/Users/user/Documents/tool/voice-studio',
   ];
   for (const c of candidates) { try { if (_isValidRoot(c)) return c; } catch {} }
   return null;

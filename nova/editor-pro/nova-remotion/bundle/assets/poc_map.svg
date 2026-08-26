@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360" width="560" height="360">
+  <defs>
+    <clipPath id="c">
+      <path d="M40 120c60-30 130-40 200-34 50 4 96-6 140-24 40-16 78-8 96 22 16 26 8 60-16 84-30 30-46 62-52 100-4 26-24 44-52 46-46 4-92-6-136-22-40-14-82-18-124-10-30 6-52-10-56-40-4-32 8-58 0-82-6-18 0-32 0-40z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="560" height="360" fill="#c8354a"/>
+    <g fill="#f2f2f2">
+      <rect y="30" width="560" height="30"/><rect y="90" width="560" height="30"/>
+      <rect y="150" width="560" height="30"/><rect y="210" width="560" height="30"/>
+      <rect y="270" width="560" height="30"/><rect y="330" width="560" height="30"/>
+    </g>
+    <rect width="230" height="190" fill="#2c3d75"/>
+    <g fill="#fff">
+      <circle cx="45" cy="35" r="9"/><circle cx="105" cy="35" r="9"/><circle cx="165" cy="35" r="9"/>
+      <circle cx="75" cy="80" r="9"/><circle cx="135" cy="80" r="9"/><circle cx="195" cy="80" r="9"/>
+      <circle cx="45" cy="125" r="9"/><circle cx="105" cy="125" r="9"/><circle cx="165" cy="125" r="9"/>
+      <circle cx="75" cy="165" r="9"/><circle cx="135" cy="165" r="9"/><circle cx="195" cy="165" r="9"/>
+    </g>
+  </g>
+</svg>

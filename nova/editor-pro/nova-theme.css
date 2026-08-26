@@ -1,0 +1,25 @@
+/* Nova theme override — nhuộm Editor Pro về tông dark+cam của Nova Studio.
+   Nạp SAU cùng để thắng style.css. Gỡ: xoá <link> nova-theme.css trong editor.html. */
+:root, :root[data-theme="dark"] {
+  --bg-deep: #0f0f12 !important;
+  --bg-surface: #18181b !important;
+  --bg-primary: #0f0f12 !important;
+  --bg-secondary: #18181b !important;
+  --bg-elevated: #1f1f23 !important;
+  --bg-card: rgba(255,255,255,0.04) !important;
+  --bg-card-hover: rgba(224,122,70,0.10) !important;
+  --text-primary: #ede9e4 !important;
+  --text-secondary: #b8b2a8 !important;
+  --text-muted: #74706a !important;
+  --border: #2f2f36 !important;
+  --border-default: #2f2f36 !important;
+  --border-strong: #44444c !important;
+  --accent: #e07a46 !important;
+  --accent-primary: #e07a46 !important;
+  --accent-indigo: #e07a46 !important;
+  --accent-violet: #ef8c5a !important;
+  --accent-blue: #eb9166 !important;
+  --accent-cyan: #f0a878 !important;
+}
+/* nút gradient tím→cam */
+.btn-primary, .primary, [class*="gradient"] { --accent-indigo:#e07a46; --accent-violet:#c2410c; }

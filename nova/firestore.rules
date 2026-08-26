@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Admin của APP (khớp ADMIN_EMAILS trong index.html)
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email in ['admin@novastudio.app', 'admin@novastudio.app'];
+    }
+
+    // true nếu field KHÔNG bị user thay đổi (chặn tự cấp Pro)
+    function unchanged(f) {
+      return (!(f in request.resource.data) && !(f in resource.data))
+        || ((f in request.resource.data) && (f in resource.data)
+            && request.resource.data[f] == resource.data[f]);
+    }
+
+    match /users/{uid} {
+      // Đọc: chính chủ hoặc admin
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+
+      // Tạo hồ sơ ban đầu: chính chủ, KHÔNG được tự set tier/proUntil
+      allow create: if isAdmin() ||
+        (request.auth != null && request.auth.uid == uid
+         && !('tier' in request.resource.data)
+         && !('proUntil' in request.resource.data));
+
+      // Sửa hồ sơ: chính chủ nhưng KHÔNG đổi được tier/proUntil (chỉ admin đổi)
+      allow update: if isAdmin() ||
+        (request.auth != null && request.auth.uid == uid
+         && unchanged('tier') && unchanged('proUntil'));
+
+      // Xoá: chỉ admin
+      allow delete: if isAdmin();
+    }
+  }
+}

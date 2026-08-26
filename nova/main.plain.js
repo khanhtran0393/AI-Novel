@@ -1,11 +1,16 @@
 /**
- * ChuKienMedia Desktop (Electron) — Cách B: đóng gói UI vào app + auto-update.
+ * Nova Studio Desktop (Electron) — Cách B: đóng gói UI vào app + auto-update.
  * - Production: phục vụ web/index.html qua local server (http://127.0.0.1) → Firebase auth chạy ổn.
  * - Dev: đặt APP_URL=http://localhost:5500 để load bản đang sửa (khỏi copy lại).
  * - Auto-update: electron-updater kiểm GitHub Releases → hộp "có bản mới" + release notes + nút Cập nhật.
  */
 
 const { app, BrowserWindow, shell, Menu, dialog, ipcMain } = require('electron');
+// Identity riêng cho bản build Nova Studio.
+try {
+  app.setName('Nova Studio');
+  if (process.platform === 'win32' && app.setAppUserModelId) app.setAppUserModelId('com.aivideostudio.desktop');
+} catch (_) { /* */ }
 // Tắt bớt log rác nội bộ của Chromium (vd "ffmpeg_common Unsupported pixel format") cho terminal sạch.
 // KHÔNG ảnh hưởng log console.log của app (Node) — vẫn thấy các dòng [flow].
 try { app.commandLine.appendSwitch('log-level', '3'); } catch (e) { /* */ }
@@ -24,12 +29,14 @@ const parallaxNative = require('./parallax-native');
 const cliBridge = require('./cli-bridge-native');
 const voiceNative = require('./voice-native');
 const watermarkNative = require('./watermark-native');
+const { userDataPath } = require('./core/paths');
+const { registerSettingsIpc } = require('./storage/settings-store');
 
 const WEB_DIR = path.join(__dirname, 'web');
 // Bundle "Nova Scene" — bộ THÔNG DỊCH cảnh do ta tự build (editor-pro/nova-remotion).
 // AI sinh SPEC JSON cho từng cảnh, engine cố định diễn giải → thời lượng luôn bằng đúng giây của cảnh.
 const NOVA_REMOTION_DIR = path.join(__dirname, 'editor-pro', 'nova-remotion', 'bundle');
-const AUTH_HOSTS = /(^|\.)(accounts\.google\.com|google\.com|firebaseapp\.com|chukien-media\.web\.app|chukienmedia\.com)$/i;
+const AUTH_HOSTS = /(^|\.)(accounts\.google\.com|google\.com|firebaseapp\.com|novastudio\.com)$/i;
 
 // Bắt lỗi toàn cục để KHÔNG hiện hộp "A JavaScript error occurred" khó hiểu cho khách.
 // Lỗi hay gặp: ENOSPC (ổ đĩa đầy khi tải video/ghi file) → hiện thông báo tiếng Việt rõ ràng, không văng app.
@@ -42,18 +49,134 @@ function _friendlyMainError(err) {
 }
 process.on('uncaughtException', (err) => {
   const friendly = _friendlyMainError(err);
-  if (friendly) { try { dialog.showErrorBox('Không thể lưu file', friendly); } catch (e) { /* */ } return; }
+  if (friendly) {
+    try { closeSplashWindow(true); } catch (_) {}
+    try { dialog.showErrorBox('Không thể lưu file', friendly); } catch (e) { /* */ }
+    return;
+  }
+  try { closeSplashWindow(true); } catch (_) {}
   try { dialog.showErrorBox('Lỗi', String((err && (err.message || err)) || err)); } catch (e) { /* */ }
   console.error('[uncaught]', err);
 });
 process.on('unhandledRejection', (reason) => {
   const friendly = _friendlyMainError(reason);
-  if (friendly) { try { dialog.showErrorBox('Không thể lưu file', friendly); } catch (e) { /* */ } return; }
+  if (friendly) {
+    try { closeSplashWindow(true); } catch (_) {}
+    try { dialog.showErrorBox('Không thể lưu file', friendly); } catch (e) { /* */ }
+    return;
+  }
+  try { closeSplashWindow(true); } catch (_) {}
   console.error('[unhandledRejection]', reason);
 });
 
 let mainWindow = null;
+let splashWindow = null;
 let serverPort = 0;
+let localServer = null;
+let isQuitting = false;
+let splashCloseTimer = null;
+
+const SPLASH_MIN_MS = 1400;
+const SPLASH_MAX_MS = 12000;
+
+function ensureBrandAsset() {
+  const target = path.join(WEB_DIR, 'brand-logo.ico');
+  if (fs.existsSync(target)) return target;
+  const candidates = [
+    path.join(__dirname, 'build', 'novastudio.ico'),
+    path.join(__dirname, 'build', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'novastudio.ico'),
+    'D:\\AI Novel\\build\\icon.ico',
+  ];
+  for (const source of candidates) {
+    try {
+      if (source && fs.existsSync(source)) {
+        fs.copyFileSync(source, target);
+        return target;
+      }
+    } catch (_) { /* try the next packaged/source fallback */ }
+  }
+  return null;
+}
+
+function brandIconPath() {
+  const candidates = [
+    path.join(WEB_DIR, 'brand-logo.ico'),
+    path.join(__dirname, 'build', 'novastudio.ico'),
+    path.join(__dirname, 'build', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'novastudio.ico'),
+  ];
+  return candidates.find((candidate) => {
+    try { return fs.existsSync(candidate); } catch (_) { return false; }
+  });
+}
+
+function createSplashWindow() {
+  if (isQuitting) return null;
+  ensureBrandAsset();
+  splashWindow = new BrowserWindow({
+    width: 520,
+    height: 420,
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: false,
+    // Không ghim splash lên trên mọi cửa sổ. Đây là cửa sổ tạm thời; nếu tiến trình
+    // bị kill đột ngột, alwaysOnTop có thể để lại một mảng đen nổi trên desktop.
+    alwaysOnTop: false,
+    skipTaskbar: true,
+    show: false,
+    backgroundColor: '#050505',
+    icon: brandIconPath(),
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  splashWindow.loadFile(path.join(__dirname, 'electron', 'splash.html'));
+  splashWindow.webContents.once('did-finish-load', () => {
+    const iconPath = brandIconPath();
+    if (!iconPath) return;
+    try {
+      const dataUri = `data:image/x-icon;base64,${fs.readFileSync(iconPath).toString('base64')}`;
+      splashWindow.webContents.executeJavaScript(
+        `document.querySelector('.logo').src = ${JSON.stringify(dataUri)};`,
+      ).catch(() => {});
+    } catch (_) { /* fallback mark in splash.html remains visible */ }
+  });
+  splashWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
+  });
+  splashWindow.webContents.once('did-fail-load', () => closeSplashWindow(true));
+  splashWindow.on('closed', () => { splashWindow = null; });
+  return splashWindow;
+}
+
+function closeSplashWindow(immediate = false) {
+  if (splashCloseTimer) {
+    clearTimeout(splashCloseTimer);
+    splashCloseTimer = null;
+  }
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  const current = splashWindow;
+  splashWindow = null;
+  if (immediate) {
+    try { current.setAlwaysOnTop(false); } catch (_) {}
+    try { current.destroy(); } catch (_) { /* already closed */ }
+    return;
+  }
+  try {
+    current.webContents.executeJavaScript(`document.body.style.transition = 'opacity .28s ease'; document.body.style.opacity = '0';`)
+      .catch(() => {})
+      .finally(() => {
+        splashCloseTimer = setTimeout(() => {
+          splashCloseTimer = null;
+          if (!current.isDestroyed()) current.close();
+        }, 300);
+      });
+  } catch (_) {
+    try { current.close(); } catch (_) { /* ignore */ }
+  }
+}
 
 // ── Local static server (để có origin http://127.0.0.1, Firebase auth chạy được) ──
 function startLocalServer() {
@@ -95,6 +218,17 @@ function startLocalServer() {
         return;
       }
       const root = r ? r.root : WEB_DIR;
+      if (p === '/brand-logo.ico') {
+        const iconPath = brandIconPath();
+        if (iconPath) {
+          fs.readFile(iconPath, (err, data) => {
+            if (err) { res.writeHead(404); return res.end('not found'); }
+            res.writeHead(200, { 'Content-Type': 'image/x-icon', 'Cache-Control': 'no-cache' });
+            res.end(data);
+          });
+          return;
+        }
+      }
       const filePath = path.join(root, r ? r.rel : p);
       if (!filePath.startsWith(root)) { res.writeHead(403); return res.end(); }
       fs.readFile(filePath, (err, data) => {
@@ -103,6 +237,7 @@ function startLocalServer() {
         res.end(data);
       });
     });
+    localServer = server;
     // Port CỐ ĐỊNH → origin không đổi giữa các lần mở → Firebase auth + "ghi nhớ đăng nhập" + localStorage được giữ.
     // (server.listen(0) trước đây dùng port ngẫu nhiên → mỗi lần origin khác → luôn phải đăng nhập lại.)
     const PREFERRED = [47280, 47281, 47282, 47283, 0];   // 0 = ngẫu nhiên (fallback cuối cùng)
@@ -130,27 +265,68 @@ function createWindow(startUrl) {
   mainWindow = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1024, minHeight: 640,
     autoHideMenuBar: true,   // ẩn thanh menu Tệp/Sửa/Xem (Windows/Linux) — nhấn Alt để hiện tạm; phím tắt copy/paste vẫn chạy
-    title: 'Nova Studio', backgroundColor: '#111111',
-    icon: (() => { try { const p = path.join(__dirname, 'build', 'icon.png'); return fs.existsSync(p) ? p : undefined; } catch { return undefined; } })(),
+    title: 'Nova Studio', backgroundColor: '#050505', show: false,
+    icon: brandIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false,
-      partition: 'persist:chukienmedia',
+      partition: 'persist:novastudio',
       webviewTag: true,   // cho phép nhúng Editor Pro qua <webview>
     },
   });
-  mainWindow.loadURL(startUrl);
+  let shown = false;
+  let appPageStarted = false;
+  const startedAt = Date.now();
+  const splashPath = path.join(__dirname, 'electron', 'splash.html');
+  const startAppPage = () => {
+    if (appPageStarted || !mainWindow || mainWindow.isDestroyed()) return;
+    appPageStarted = true;
+    mainWindow.loadURL(startUrl).catch(() => reveal());
+  };
+  const reveal = () => {
+    if (shown || !mainWindow || mainWindow.isDestroyed()) return;
+    shown = true;
+    const wait = Math.max(0, SPLASH_MIN_MS - (Date.now() - startedAt));
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.show();
+      closeSplashWindow();
+    }, wait);
+  };
+  // Hiển thị splash branded trong chính mainWindow, không tạo BrowserWindow thứ hai.
+  // Nhờ vậy Windows không thể giữ lại một cửa sổ frameless 520x420 sau khi app crash.
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (!appPageStarted) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      setTimeout(startAppPage, Math.max(0, SPLASH_MIN_MS - (Date.now() - startedAt)));
+    } else {
+      reveal();
+    }
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, _code, _description, _validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    if (!appPageStarted) startAppPage();
+    else reveal();
+  });
+  setTimeout(() => {
+    if (!appPageStarted) startAppPage();
+    else reveal();
+  }, SPLASH_MAX_MS);
+  mainWindow.loadFile(splashPath).catch(() => startAppPage());
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       if (AUTH_HOSTS.test(new URL(url).hostname)) {
-        return { action: 'allow', overrideBrowserWindowOptions: { width: 500, height: 660, autoHideMenuBar: true, webPreferences: { partition: 'persist:chukienmedia', contextIsolation: true, nodeIntegration: false } } };
+        return { action: 'allow', overrideBrowserWindowOptions: { width: 500, height: 660, autoHideMenuBar: true, webPreferences: { partition: 'persist:novastudio', contextIsolation: true, nodeIntegration: false } } };
       }
     } catch {}
     shell.openExternal(url);
     return { action: 'deny' };
   });
   attachContextMenu(mainWindow.webContents);
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    closeSplashWindow(true);
+  });
 }
 
 // Menu chuột phải: Cắt / Sao chép / Dán / Chọn tất cả (cho ô nhập).
@@ -209,29 +385,10 @@ function buildMenu() {
 // (47280 bận → 47281/47282/… → ngẫu nhiên), và Chromium cũng có quyền dọn kho
 // localStorage của origin http → "nhập key, thoát ra vào lại là mất trắng".
 // File này không dính origin nên key sống qua mọi lần mở app / đổi port.
-const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'nova-settings.json');
-function readSettingsStore() {
-  try { const o = JSON.parse(fs.readFileSync(SETTINGS_FILE(), 'utf8')); return (o && typeof o === 'object') ? o : {}; }
-  catch (e) { return {}; }
-}
-function writeSettingsStore(obj) {
-  // Ghi tạm rồi rename → không bao giờ để lại file JSON đứt đoạn nếu app tắt giữa chừng.
-  try {
-    const f = SETTINGS_FILE(), tmp = f + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), 'utf8');
-    fs.renameSync(tmp, f);
-    return true;
-  } catch (e) { console.warn('[settings] write:', e && e.message); return false; }
-}
-// sendSync: preload nạp kho TRƯỚC khi script trang chạy → UI không bao giờ đọc phải ô rỗng.
-ipcMain.on('settings-store-all', (e) => { e.returnValue = readSettingsStore(); });
-// Cũng sendSync: lưu xong là đã nằm trên đĩa, thoát app ngay lập tức vẫn còn.
-ipcMain.on('settings-store-set', (e, patch) => {
-  const cur = readSettingsStore();
-  if (patch && typeof patch === 'object') {
-    for (const [k, v] of Object.entries(patch)) { if (v === null || v === undefined) delete cur[k]; else cur[k] = String(v); }
-  }
-  e.returnValue = writeSettingsStore(cur);
+// sendSync: preload nạp kho TRƯỚC khi script trang chạy; ghi atomic xong mới trả về.
+registerSettingsIpc(ipcMain, {
+  file: path.join(userDataPath(app), 'nova-settings.json'),
+  logger: console,
 });
 
 // ── Flow native (tích hợp sẵn): UI gọi qua window.native.flow → ipc 'flow' ──
@@ -536,9 +693,30 @@ ipcMain.handle('wm-test-file', async (e, { opts } = {}) => {
 });
 watermarkNative.onLog((line) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wm-log', line); } catch {} });
 
-app.on('before-quit', () => { try { voiceNative.stop(); } catch {} try { watermarkNative.cancel(); } catch {} try { flowChrome.closeGuestCaptcha && flowChrome.closeGuestCaptcha(); } catch {} });
+app.on('before-quit', () => {
+  isQuitting = true;
+  try { closeSplashWindow(true); } catch (_) {}
+  try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } catch (_) {}
+  try { if (localServer) { localServer.close(); localServer = null; } } catch (_) {}
+  try { voiceNative.stop(); } catch (_) {}
+  try { watermarkNative.cancel(); } catch (_) {}
+  try { flowChrome.closeGuestCaptcha && flowChrome.closeGuestCaptcha(); } catch (_) {}
+});
+app.on('will-quit', () => {
+  isQuitting = true;
+  try { closeSplashWindow(true); } catch (_) {}
+  try { if (localServer) { localServer.close(); localServer = null; } } catch (_) {}
+  try {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.destroy();
+    }
+  } catch (_) {}
+});
 
 app.whenReady().then(async () => {
+  // Không tạo BrowserWindow splash riêng. Cửa sổ frameless tạm thời có thể bị
+  // Windows giữ lại thành một mảng đen nếu tiến trình cũ bị kill/crash. Giao diện
+  // chính vẫn được giữ show:false và chỉ hiện sau khi load xong ở createWindow().
   // Icon trên Dock (macOS) ngay cả bản dev — dùng logo AutoVideo Studio.
   if (process.platform === 'darwin' && app.dock) {
     try { const ic = path.join(__dirname, 'build', 'icon.png'); if (fs.existsSync(ic)) app.dock.setIcon(ic); } catch (e) { /* */ }
@@ -548,9 +726,17 @@ app.whenReady().then(async () => {
   try {
     require('./editor-pro/register').registerEditorPro(ipcMain, { userDataDir: app.getPath('userData') });
   } catch (e) { console.warn('[EditorPro] register:', e && e.message); }
-  const startUrl = await resolveStartUrl();
-  createWindow(startUrl);
-  if (app.isPackaged) setupAutoUpdate();   // chỉ auto-update ở bản đã đóng gói
+  try {
+    const startUrl = await resolveStartUrl();
+    if (!isQuitting) createWindow(startUrl);
+  } catch (err) {
+    console.error('[startup]', err);
+    closeSplashWindow(true);
+    app.quit();
+  }
+  // Bản private không đọc app-update.yml/repository của Nova Studio.
+  // Khi có release server riêng, bật lại bằng AI_VIDEO_STUDIO_ENABLE_UPDATES=1.
+  if (app.isPackaged && process.env.AI_VIDEO_STUDIO_ENABLE_UPDATES === '1') setupAutoUpdate();
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(await resolveStartUrl()); });
 });
 

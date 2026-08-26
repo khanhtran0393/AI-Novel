@@ -9,7 +9,7 @@ let _cache = { file: null, at: 0 };
 async function youtubeCookiesFile() {
   // cache 10 phút
   if (_cache.file && fs.existsSync(_cache.file) && Date.now() - _cache.at < 600000) return _cache.file;
-  const parts = ['persist:flow-1', 'persist:flow-3', 'persist:flow-6', 'persist:flow-5', 'persist:chukienmedia'];
+  const parts = ['persist:flow-1', 'persist:flow-3', 'persist:flow-6', 'persist:flow-5', 'persist:novastudio'];
   let best = null;
   for (const p of parts) {
     try {

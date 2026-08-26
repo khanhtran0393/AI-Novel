@@ -150,10 +150,20 @@ dev.log
 test_video*
 .vercel
 
-# Nova Studio runtime � binaries lon khong track vao git (JS logic + web GUI van track)
+# Nova Studio runtime — binaries lớn không track vào git (JS logic + web GUI vẫn track)
 /nova/node_modules/
 /nova/upscaler-bin/
 /nova/inpaint-bin/
 /nova/voice-backend/
 /nova/sqlite-bin/
+/nova/onnx-bin/
+/nova/ytdlp-bin/
+/nova/storage/
+/nova/editor-pro/remotion-browser/
 /voice-studio/
+
+# Backups and source maps
+*.bak
+*.bak-*
+*.map
+

@@ -1023,7 +1023,7 @@ function _resolveVideoQueued(projectId, mediaId, wantData) {
 // Tạo 1 video từ ảnh trên 1 token (đã có projectId). Trả {ok,...} | {error} | {quota}.
 async function runVideoOnToken(token, params) {
   let projectId = params.projectId;
-  if (!projectId) { const pr = await createProject('ChuKienMedia video', token); if (pr.error || !pr.project_id) return { error: pr.error || 'NO_PROJECT' }; projectId = pr.project_id; }
+  if (!projectId) { const pr = await createProject('Nova Studio video', token); if (pr.error || !pr.project_id) return { error: pr.error || 'NO_PROJECT' }; projectId = pr.project_id; }
   let imageMediaId = null;
   if (params.image && params.image.base64) {
     const up = await uploadImage({ projectId, base64: params.image.base64, mime: params.image.mime || 'image/png', fileName: (params.sceneId || 'frame') + '.png', token });
@@ -1147,7 +1147,7 @@ function poolEnsureProject(email) {
   if (accounts[email] && accounts[email].projectId) { pool.projects[email] = accounts[email].projectId; return Promise.resolve(accounts[email].projectId); }
   if (!pool._proj[email]) {
     pool._proj[email] = (async () => {
-      const r = await createProject('ChuKienMedia pool', accounts[email].token);
+      const r = await createProject('Nova Studio pool', accounts[email].token);
       if (r.error || !r.project_id) throw new Error(r.error || 'NO_PROJECT');
       pool.projects[email] = r.project_id;
       return r.project_id;
@@ -1266,7 +1266,7 @@ async function exportCookies() {
   return { cookies: out, email, count: out.length };
 }
 
-// Web (chukienmedia.com) gọi qua content-script bridge.js → chrome.runtime.
+// Web (novastudio.app) gọi qua content-script bridge.js → chrome.runtime.
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   const payload = (msg?.type === 'CREATE_PROJECT') ? { title: msg.title } : (msg?.params || {});
   handleAction(msg?.type, payload).then(reply).catch((e) => reply({ error: e?.message || 'ERR' }));

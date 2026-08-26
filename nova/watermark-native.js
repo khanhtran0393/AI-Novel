@@ -33,7 +33,7 @@ function wmRoot() {
   if (custom) return custom;
   const candidates = [
     path.join(__dirname, '..', 'watermark-remover'),
-    '/Users/chukien/Documents/tool/watermark-remover',
+    '/Users/user/Documents/tool/watermark-remover',
   ];
   for (const c of candidates) { try { if (_isValidRoot(c)) return c; } catch {} }
   return null;

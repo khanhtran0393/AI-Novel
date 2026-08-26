@@ -1,7 +1,7 @@
 /**
- * Cầu nối Flow Image Gen ↔ trang chukienmedia.
+ * Cầu nối Flow Image Gen ↔ trang novastudio.
  *
- * Chạy như content script trên chukien-media.web.app. Trang web KHÔNG gọi trực
+ * Chạy như content script trên novastudio.web.app. Trang web KHÔNG gọi trực
  * tiếp được extension (khác context), nên trao đổi qua window.postMessage:
  *
  *   Trang  →  { source:'FLOWGEN_PAGE', id, action, payload }
