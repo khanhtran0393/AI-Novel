@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Famous Creators Signature VFX — Nova Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=JetBrains+Mono:wght@400;600;700;800&family=Bebas+Neue&family=Caveat:wght@700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #05070c;
+      --bg-card: #0b0f19;
+      --bg-panel: rgba(12, 17, 28, 0.9);
+      --accent-gold: #f59e0b;
+      --accent-gold-glow: rgba(245, 158, 11, 0.45);
+      --accent-blue: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #c084fc;
+      --accent-emerald: #10b981;
+      --accent-red: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border-glass: rgba(255, 255, 255, 0.12);
+      --glass-blur: blur(20px);
+      --font-ui: 'Outfit', -apple-system, sans-serif;
+      --font-bebas: 'Bebas Neue', Impact, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-hand: 'Caveat', cursive;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background-color: var(--bg-dark); color: var(--text-main); font-family: var(--font-ui); min-height: 100vh; overflow-x: hidden; display: flex; flex-direction: column; }
+
+    header {
+      padding: 16px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-glass);
+      background: rgba(5, 7, 12, 0.92);
+      backdrop-filter: var(--glass-blur);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo-badge { display: flex; align-items: center; gap: 14px; }
+    .logo-badge .tag {
+      background: linear-gradient(135deg, #ef4444, #f59e0b, #3b82f6);
+      color: #fff;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+    }
+    .logo-badge h1 { font-size: 19px; font-weight: 800; background: linear-gradient(to right, #fff, #ef4444, #f59e0b, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    .btn-audio-toggle {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-audio-toggle:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent-gold); }
+
+    main {
+      flex: 1;
+      max-width: 1620px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 40px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 32px;
+    }
+
+    .sidebar { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 6px; }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+    .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent-gold); margin: 6px 0 2px 4px; }
+
+    .style-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 13px 15px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .style-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: transparent; transition: background 0.25s ease; }
+    .style-card:hover { background: rgba(18, 25, 42, 0.9); border-color: rgba(255, 255, 255, 0.25); transform: translateX(4px); }
+    .style-card.active { background: linear-gradient(135deg, rgba(26, 36, 58, 0.95), rgba(10, 15, 28, 0.95)); border-color: var(--accent-gold); box-shadow: 0 0 24px rgba(245, 158, 11, 0.2); }
+    .style-card.active::before { background: var(--accent-gold); }
+
+    .style-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+    .style-card .badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); color: var(--accent-blue); text-transform: uppercase; }
+    .style-card.active .badge { background: var(--accent-gold-glow); color: #fbbf24; }
+    .style-card h3 { font-size: 14px; font-weight: 700; color: #fff; }
+    .style-card p { font-size: 11px; color: var(--text-muted); line-height: 1.35; margin-top: 2px; }
+
+    .preview-stage-container { display: flex; flex-direction: column; gap: 16px; }
+    .stage-frame {
+      width: 100%;
+      height: 560px;
+      background: #000;
+      border-radius: 16px;
+      border: 1px solid var(--border-glass);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.85);
+    }
+
+    .controls-bar {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      backdrop-filter: var(--glass-blur);
+    }
+    .control-group { display: flex; align-items: center; gap: 12px; }
+    .btn-action {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #fff;
+      border: none;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s ease, filter 0.15s ease;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+    }
+    .btn-action:hover { transform: scale(1.03); filter: brightness(1.15); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid var(--border-glass); font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+
+    .info-panel { background: var(--bg-card); border: 1px solid var(--border-glass); border-radius: 14px; padding: 18px 24px; }
+    .info-panel h4 { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .info-panel p { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .tech-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tech-pill { font-family: var(--font-mono); font-size: 11px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); padding: 3px 10px; border-radius: 6px; color: var(--accent-cyan); }
+
+    /* ======================================================== */
+    /* YOUTUBE CHANNEL STYLES DEFINITION */
+    /* ======================================================== */
+    .stage-yt-1, .stage-yt-2, .stage-yt-3, .stage-yt-4, .stage-yt-5, .stage-yt-6 {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* 1. MRBEAST: COUNTDOWN TIMER & MONEY EXPLOSION */
+    .stage-yt-1 {
+      background: radial-gradient(circle at center, #1e1b4b 0%, #090817 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .mrbeast-timer-box {
+      background: #000;
+      border: 4px solid #ef4444;
+      border-radius: 20px;
+      padding: 20px 40px;
+      box-shadow: 0 0 50px rgba(239, 68, 68, 0.7), inset 0 0 30px rgba(239, 68, 68, 0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+    .mrbeast-timer-text {
+      font-family: var(--font-bebas);
+      font-size: 76px;
+      color: #fff;
+      letter-spacing: 4px;
+      text-shadow: 0 0 20px #ef4444;
+    }
+    .mrbeast-prize-tag {
+      position: absolute;
+      top: -24px;
+      background: #facc15;
+      color: #000;
+      font-family: var(--font-bebas);
+      font-size: 24px;
+      padding: 4px 18px;
+      border-radius: 30px;
+      box-shadow: 0 5px 20px rgba(250, 204, 21, 0.6);
+      transform: rotate(-3deg);
+    }
+    .mrbeast-arrow {
+      position: absolute;
+      bottom: -60px;
+      right: -50px;
+      width: 100px;
+      transform: rotate(-25deg);
+      filter: drop-shadow(0 0 10px #f59e0b);
+    }
+
+    /* 2. ALEX HORMOZI: KINETIC HIGH-CONTRAST CAPTION */
+    .stage-yt-2 {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .hormozi-word-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-bebas);
+      font-size: 68px;
+      letter-spacing: 2px;
+    }
+    .hormozi-word {
+      color: #fff;
+      text-transform: uppercase;
+      transition: all 0.15s ease;
+    }
+    .hormozi-word.highlight-yellow {
+      color: #facc15;
+      transform: scale(1.18);
+      text-shadow: 0 0 30px rgba(250, 204, 21, 0.8);
+    }
+    .hormozi-word.highlight-green {
+      color: #22c55e;
+      transform: scale(1.18);
+      text-shadow: 0 0 30px rgba(34, 197, 94, 0.8);
+    }
+    .hormozi-emoji {
+      font-size: 56px;
+      animation: emojiBounce 0.6s infinite alternate;
+    }
+    @keyframes emojiBounce { 0% { transform: translateY(0); } 100% { transform: translateY(-12px) rotate(10deg); } }
+
+    /* 3. ALI ABDAAL: NOTION & APPLE IPAD PAPER SCRIBBLE */
+    .stage-yt-3 {
+      background: #fdfbf7;
+      color: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ipad-paper-wrap {
+      width: 620px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+      border: 1px solid #e5e7eb;
+      padding: 32px 36px;
+      position: relative;
+    }
+    .notion-tag {
+      background: #e0f2fe;
+      color: #0369a1;
+      font-weight: 800;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+    .handwriting-note {
+      font-family: var(--font-hand);
+      font-size: 32px;
+      color: #2563eb;
+      transform: rotate(-2deg);
+      line-height: 1.3;
+    }
+    .handwriting-arrow {
+      position: absolute;
+      right: 40px;
+      top: 40px;
+      font-family: var(--font-hand);
+      font-size: 26px;
+      color: #dc2626;
+      transform: rotate(12deg);
+    }
+
+    /* 4. SUNNYV2: SOCIAL BLADE CRASH & SUBSCRIBER LOSS */
+    .stage-yt-4 {
+      background: #090c14;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .social-blade-card {
+      width: 640px;
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+      position: relative;
+    }
+    .social-blade-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #374151;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .sub-counter-box {
+      background: #030712;
+      border: 1px solid #ef4444;
+      padding: 12px 18px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+    }
+
+    /* 5. KURZGESAGT: VIBRANT COSMIC FLAT-ANIMATION */
+    .stage-yt-5 {
+      background: radial-gradient(circle at center, #312e81 0%, #0f172a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .kurz-sun {
+      width: 140px;
+      height: 140px;
+      background: #fbbf24;
+      border-radius: 50%;
+      box-shadow: 0 0 60px #f59e0b, 0 0 120px rgba(245, 158, 11, 0.4);
+      position: relative;
+    }
+    .kurz-planet {
+      width: 40px;
+      height: 40px;
+      background: #38bdf8;
+      border-radius: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform-origin: -110px 0;
+      animation: orbitPlanet 6s linear infinite;
+      box-shadow: 0 0 20px #38bdf8;
+    }
+    @keyframes orbitPlanet { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* 6. MOON & JAMES JANI: DARK WEB CONSPIRACY TWEET */
+    .stage-yt-6 {
+      background: radial-gradient(circle at center, #181111 0%, #070505 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1000px;
+    }
+    .tweet-3d-card {
+      width: 480px;
+      background: rgba(24, 24, 27, 0.95);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 16px;
+      padding: 20px;
+      color: #fff;
+      transform: rotateY(-18deg) rotateX(12deg);
+      box-shadow: 20px 30px 60px rgba(0, 0, 0, 0.9), 0 0 30px rgba(239, 68, 68, 0.25);
+      transition: transform 0.2s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-badge">
+      <span class="tag">Top Creators VFX</span>
+      <h1>YouTube Famous Creators Signature Styles Hub</h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn-audio-toggle" onclick="toggleAudioSFX()">
+        <span>🔊</span> Âm thanh SFX: <strong id="soundFxStatus">Bật</strong>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <div class="section-title">🌟 PHONG CÁCH KÊNH YOUTUBE NỔI TIẾNG</div>
+
+      <div class="style-card active" onclick="switchYtStyle(1)" id="card-yt-1">
+        <div class="card-header"><span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171;">MrBeast</span> <span>⏱️</span></div>
+        <h3>1. MrBeast High-Stakes Countdown</h3>
+        <p>Đồng hồ đếm ngược 3D khổng lồ, biển giải thưởng vàng và mũi tên đỏ.</p>
+      </div>
+
+      <div class="style-card" onclick="switchYtStyle(2)" id="card-yt-2">
+        <div class="card-header"><span class="badge" style="background: rgba(250,204,21,0.2); color: #facc15;">Alex Hormozi</span> <span>🔥</span></div>
+        <h3>2. Alex Hormozi Kinetic Captions</h3>
+        <p>Phụ đề nảy chữ hoa to đùng, đổi màu vàng/xanh neon kèm emoji đập vào mắt.</p>
+      </div>
+
+      <div class="style-card" onclick="switchYtStyle(3)" id="card-yt-3">
+        <div class="card-header"><span class="badge" style="background: rgba(59,130,246,0.2); color: #60a5fa;">Ali Abdaal</span> <span>✍️</span></div>
+        <h3>3. Ali Abdaal iPad Notion Aesthetic</h3>
+        <p>Giao diện giấy Notion sạch sẽ, nét vẽ tay Apple Pencil và thẻ tối giản.</p>
+      </div>
+
+      <div class="style-card" onclick="switchYtStyle(4)" id="card-yt-4">
+        <div class="card-header"><span class="badge" style="background: rgba(239,68,68,0.2); color: #ef4444;">SunnyV2</span> <span>📉</span></div>
+        <h3>5. SunnyV2 Social Blade Downfall</h3>
+        <p>Đồ thị view/sub lao dốc không phanh và đồng hồ tụt subscriber đỏ rực.</p>
+      </div>
+
+      <div class="style-card" onclick="switchYtStyle(5)" id="card-yt-5">
+        <div class="card-header"><span class="badge" style="background: rgba(168,85,247,0.2); color: #c084fc;">Kurzgesagt</span> <span>🌌</span></div>
+        <h3>6. Kurzgesagt Cosmic Flat Motion</h3>
+        <p>Vũ trụ màu phẳng rực rỡ, hành tinh quay quỹ đạo và phóng đại tế bào.</p>
+      </div>
+
+      <div class="style-card" onclick="switchYtStyle(6)" id="card-yt-6">
+        <div class="card-header"><span class="badge" style="background: rgba(244,63,94,0.2); color: #fb7185;">Moon / James Jani</span> <span>🕵️</span></div>
+        <h3>7. Moon Dark Documentary Exposure</h3>
+        <p>Bài tweet bóc phốt 3D nổi khối, hiệu ứng chớp flash và bóng đen bao phủ.</p>
+      </div>
+    </aside>
+
+    <section class="preview-stage-container">
+      <div class="stage-frame" id="stageFrame">
+        <!-- DYNAMIC STAGE -->
+      </div>
+
+      <div class="controls-bar">
+        <div class="control-group">
+          <button class="btn-action" onclick="triggerYtAction()">
+            <span>⚡</span> Diễn Hoạt Kỹ Xảo
+          </button>
+          <button class="btn-secondary" onclick="resetYtStage()">
+            <span>🔄</span> Làm Mới
+          </button>
+        </div>
+        <div class="control-group">
+          <span style="font-size: 12px; color: var(--text-muted);">Di chuột lên sân khấu để tương tác trực quan</span>
+        </div>
+      </div>
+
+      <div class="info-panel" id="infoPanel">
+        <!-- DYNAMIC INFO -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentYtStyle = 1;
+    let sfxEnabled = true;
+    let audioCtx = null;
+
+    function playSfx(type) {
+      if (!sfxEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+
+        if (type === 'pop') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(600, now);
+          osc.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.08);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.08);
+        } else if (type === 'boom') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(160, now);
+          osc.frequency.exponentialRampToValueAtTime(30, now + 0.6);
+          gain.gain.setValueAtTime(0.6, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.7);
+        } else if (type === 'ding') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(1400, now);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.6);
+        }
+      } catch (e) {}
+    }
+
+    function toggleAudioSFX() {
+      sfxEnabled = !sfxEnabled;
+      document.getElementById('soundFxStatus').textContent = sfxEnabled ? 'Bật' : 'Tắt';
+      if (sfxEnabled) playSfx('ding');
+    }
+
+    function switchYtStyle(id) {
+      currentYtStyle = id;
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+      const activeCard = document.getElementById(`card-yt-${id}`);
+      if (activeCard) activeCard.classList.add('active');
+      playSfx('pop');
+      renderYtStage(id);
+    }
+
+    function renderYtStage(id) {
+      const stage = document.getElementById('stageFrame');
+      const info = document.getElementById('infoPanel');
+
+      if (id === 1) {
+        // MRBEAST
+        stage.innerHTML = `
+          <div class="stage-style-1 stage-yt-1">
+            <div class="mrbeast-timer-box" id="timerBox">
+              <div class="mrbeast-prize-tag">GIẢI THƯỞNG: $500,000</div>
+              <div class="mrbeast-timer-text" id="timerDigits">00:45:00</div>
+              <svg class="mrbeast-arrow" viewBox="0 0 100 100">
+                <path d="M 10 20 Q 50 10 80 70" fill="none" stroke="#ef4444" stroke-width="8" stroke-linecap="round"/>
+                <polygon points="65,75 90,85 85,60" fill="#ef4444"/>
+              </svg>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>⏱️ 1. Phong Cách MrBeast (Kích Thích Dopamine & Giục Giã)</h4>
+          <p>Đồng hồ đếm ngược khổng lồ viền đỏ rực, biển giải thưởng vàng nảy số và mũi tên vẽ tay chỉ thẳng vào hành động kịch tính tạo áp lực thời gian cực lớn.</p>
+          <div class="tech-tags"><span class="tech-pill">Bebas Neue Heavy Typography</span><span class="tech-pill">Glow Drop Shadow Pulse</span><span class="tech-pill">High-Contrast Gamification</span></div>
+        `;
+      } else if (id === 2) {
+        // ALEX HORMOZI
+        stage.innerHTML = `
+          <div class="stage-style-2 stage-yt-2">
+            <div class="hormozi-word-wrap">
+              <span class="hormozi-word">STOP</span>
+              <span class="hormozi-word highlight-yellow">WASTING</span>
+              <span class="hormozi-word highlight-green">TIME</span>
+              <span class="hormozi-emoji">⚡</span>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>🔥 2. Phong Cách Alex Hormozi (Dynamic Kinetic Captions)</h4>
+          <p>Chữ in hoa cực lớn chiếm trọn màn hình, nhảy từng từ theo nhịp thở. Các từ khóa được tô vàng neon / xanh lá nổi bật kết hợp emoji chuyển động nảy nhẹ.</p>
+          <div class="tech-tags"><span class="tech-pill">Word-By-Word Spring Pop</span><span class="tech-pill">Neon Color Palette</span><span class="tech-pill">High-Retention Captions</span></div>
+        `;
+      } else if (id === 3) {
+        // ALI ABDAAL
+        stage.innerHTML = `
+          <div class="stage-style-3 stage-yt-3">
+            <div class="ipad-paper-wrap">
+              <div class="notion-tag">📚 NOTION PRODUCTIVITY SYSTEM</div>
+              <div style="font-weight: 900; font-size: 20px; margin-bottom: 8px;">QUY TẮC 2 PHÚT THAY ĐỔI CUỘC ĐỜI</div>
+              <div class="handwriting-note">"Nếu việc đó tốn dưới 2 phút,<br>hãy làm NGAY LẬP TỨC!"</div>
+              <div class="handwriting-arrow">QUAN TRỌNG! ➔</div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>✍️ 3. Phong Cách Ali Abdaal (Thẩm Mỹ Giấy Notion & Vẽ Tay)</h4>
+          <p>Giao diện giấy Notion sạch sẽ, hiện đại. Dòng chữ viết tay Apple Pencil và mũi tên ghi chú nghiêng tự nhiên tạo cảm giác thông thái, tin cậy.</p>
+          <div class="tech-tags"><span class="tech-pill">Clean Minimalist UI</span><span class="tech-pill">Apple Pencil Handwriting</span><span class="tech-pill">Soft Paper Texture</span></div>
+        `;
+      } else if (id === 4) {
+        // SUNNYV2
+        stage.innerHTML = `
+          <div class="stage-style-4 stage-yt-4">
+            <div class="social-blade-card">
+              <div class="social-blade-header">
+                <span style="font-weight: 800; font-size: 15px; color: #fff;">SOCIAL BLADE ANALYTICS</span>
+                <span style="color: #ef4444; font-weight: 900;">CẢNH BÁO SỤP ĐỔ</span>
+              </div>
+              <svg viewBox="0 0 600 160" style="width: 100%; height: 140px; margin-bottom: 12px;">
+                <path d="M 10 30 Q 200 20 350 40 L 590 150" fill="none" stroke="#ef4444" stroke-width="5" stroke-linecap="round" id="crashLine" />
+              </svg>
+              <div class="sub-counter-box">
+                <span style="font-size: 13px; color: #9ca3af;">TỔNG SUBSCRIBERS:</span>
+                <span style="font-family: var(--font-mono); font-size: 22px; font-weight: 900; color: #ef4444;">-3,450,000 SUB</span>
+              </div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>📉 4. Phong Cách SunnyV2 (Bóc Trần Vụ Sụp Đổ Kênh)</h4>
+          <p>Mô phỏng đồ thị Social Blade cắm đầu rơi xuống vực thẳm và đồng hồ đếm số sub bị mất hàng triệu người dùng trong các video phóng sự bóc phốt.</p>
+          <div class="tech-tags"><span class="tech-pill">Downfall Line Path</span><span class="tech-pill">Live Sub Loss Counter</span><span class="tech-pill">Dark Dramatic UI</span></div>
+        `;
+      } else if (id === 5) {
+        // KURZGESAGT
+        stage.innerHTML = `
+          <div class="stage-style-5 stage-yt-5">
+            <div class="kurz-sun">
+              <div class="kurz-planet"></div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>🌌 5. Phong Cách Kurzgesagt (Vũ Trụ Hoạt Họa Phẳng)</h4>
+          <p>Màu sắc gradient phẳng rực rỡ, các hành tinh quay quỹ đạo mượt mà giúp giải thích các chủ đề khoa học vũ trụ và sinh học một cách lôi cuốn.</p>
+          <div class="tech-tags"><span class="tech-pill">Vector Cosmic Flat</span><span class="tech-pill">Orbital Motion Geometry</span><span class="tech-pill">Vibrant Sci-Fi Glow</span></div>
+        `;
+      } else if (id === 6) {
+        // MOON / JAMES JANI
+        stage.innerHTML = `
+          <div class="stage-style-6 stage-yt-6" id="stage6">
+            <div class="tweet-3d-card" id="tweetCard">
+              <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px;">
+                <div style="width: 38px; height: 38px; border-radius: 50%; background: #ef4444;"></div>
+                <div>
+                  <div style="font-weight: 800; font-size: 13px;">WHISTLEBLOWER @Insider</div>
+                  <div style="font-size: 11px; color: #71717a;">14:32 · 18/08/2026</div>
+                </div>
+              </div>
+              <div style="font-size: 14px; line-height: 1.5; color: #f4f4f5;">
+                "Toàn bộ thuật toán đằng sau hệ thống này đã bị thao túng từ năm 2021. Bằng chứng đầy đủ sẽ được công bố hôm nay."
+              </div>
+            </div>
+          </div>
+        `;
+        initTweetTilt();
+        info.innerHTML = `
+          <h4>🕵️ 6. Phong Cách Moon & James Jani (Phim Tài Liệu Hắc Ám)</h4>
+          <p>Bài đăng bóc phốt 3D nổi khối trong không gian tối tăm, nghiêng theo góc nhìn điều tra kết hợp hiệu ứng chớp sáng và bóng ma mị.</p>
+          <div class="tech-tags"><span class="tech-pill">3D Perspective Tweet Card</span><span class="tech-pill">Dark Web Aesthetics</span><span class="tech-pill">Chiaroscuro Shadows</span></div>
+        `;
+      }
+    }
+
+    function initTweetTilt() {
+      const stage = document.getElementById('stage6');
+      const card = document.getElementById('tweetCard');
+      if (!stage || !card) return;
+      stage.addEventListener('mousemove', (e) => {
+        const rect = stage.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        card.style.transform = `rotateY(${-18 + x * 30}deg) rotateX(${12 - y * 25}deg) scale(1.05)`;
+      });
+      stage.addEventListener('mouseleave', () => {
+        card.style.transform = 'rotateY(-18deg) rotateX(12deg) scale(1)';
+      });
+    }
+
+    function triggerYtAction() {
+      if (currentYtStyle === 1) {
+        playSfx('boom');
+        const box = document.getElementById('timerBox');
+        if (box) {
+          box.style.transform = 'scale(1.15)';
+          setTimeout(() => box.style.transform = 'scale(1)', 200);
+        }
+      } else if (currentYtStyle === 2) {
+        playSfx('pop');
+        const words = document.querySelectorAll('.hormozi-word');
+        words.forEach((w, i) => {
+          setTimeout(() => {
+            w.style.transform = 'scale(1.25)';
+            setTimeout(() => w.style.transform = '', 200);
+          }, i * 120);
+        });
+      } else if (currentYtStyle === 4) {
+        playSfx('boom');
+        const path = document.getElementById('crashLine');
+        if (path) {
+          path.style.stroke = '#fff';
+          setTimeout(() => path.style.stroke = '#ef4444', 300);
+        }
+      } else {
+        playSfx('ding');
+      }
+    }
+
+    function resetYtStage() {
+      renderYtStage(currentYtStyle);
+      playSfx('pop');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderYtStage(1);
+    });
+  </script>
+</body>
+</html>

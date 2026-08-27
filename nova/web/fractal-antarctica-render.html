@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antarctica: The Desolate Continent — Fractal Engine Render</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:"Avenir Next","Segoe UI",system-ui,sans-serif}
+#stage-container{position:relative;width:1920px;height:1080px;max-width:100vw;max-height:calc(100vh - 60px);aspect-ratio:16/9;overflow:hidden;background:#0b0f18}
+#stage{position:absolute;inset:0;width:1920px;height:1080px;transform-origin:top left}
+#stage *{box-sizing:border-box}
+
+/* CONTROLS BAR AT BOTTOM */
+#controls{position:fixed;bottom:0;left:0;right:0;height:60px;background:rgba(8,12,20,0.95);border-top:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:space-between;padding:0 30px;z-index:9999;box-sizing:border-box}
+.btn-ctrl{background:#2563eb;color:#fff;border:none;font-weight:700;font-size:13px;padding:8px 18px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.btn-ctrl:hover{background:#1d4ed8}
+.timeline-slider{flex:1;margin:0 24px;accent-color:#38bdf8;cursor:pointer}
+.time-display{font-family:monospace;font-size:14px;color:#cbd5e1;min-width:110px}
+</style>
+</head>
+<body>
+
+<div id="stage-container">
+  <div id="stage"></div>
+</div>
+
+<div id="controls">
+  <button class="btn-ctrl" id="btnPlay" onclick="togglePlay()">▶ Play</button>
+  <span class="time-display" id="timeDisp">00:00 / 00:32</span>
+  <input type="range" class="timeline-slider" id="scrubber" min="0" max="32.4" step="0.033" value="0" oninput="seekTo(this.value)">
+  <button class="btn-ctrl" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2)" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+</div>
+
+<script src="fractal-engine.js"></script>
+<script>
+const stage = document.getElementById('stage');
+const stageContainer = document.getElementById('stage-container');
+
+function resizeStage() {
+  const cw = stageContainer.clientWidth;
+  const scale = cw / 1920;
+  stage.style.transform = `scale(${scale})`;
+}
+window.addEventListener('resize', resizeStage);
+resizeStage();
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ── ô ảnh: bọc media() để mẫu lấy ẢNH THẬT ── */
+const _grad = media; let SLOTS = null;
+media = function(w, h, tone, seed) {
+  if (SLOTS && SLOTS.length) {
+    const s = SLOTS[Math.abs(seed | 0) % SLOTS.length];
+    if (s) return `background:#0b0f18 center/cover no-repeat url("${s}");width:${w}px;height:${h}px`;
+  }
+  return _grad(w, h, tone, seed);
+};
+const withSlots = (l, fn) => { SLOTS = l; try { return fn(); } finally { SLOTS = null; } };
+
+const IMG = n => 'img/' + n + '.jpg';
+const ALL = ['s1', 's2', 's3', 's4', 's5', 's6'].map(IMG);
+
+/* ── STORYBOARD KHỚP KỊCH BẢN THẬT ── */
+const SC = [
+  {
+    d: 5.2,
+    img: 's1',
+    line: 'The harshest and most desolate place on Earth today is pretty much Antarctica.',
+    cred: 'Antarctic vast desolate landscape — NASA / Unsplash · Public domain',
+    kb: 1,
+    scrim: 1,
+    lay: { a: 'title', v: 'plate', head: 'ANTARCTICA', dek: 'the most desolate place on earth', ac: '#38bdf8', aD: 0.8, st: 0.09 }
+  },
+  {
+    d: 5.4,
+    img: 's2',
+    line: 'It is a massive landmass which is larger than both Australia and Europe, and yet it has no native population,',
+    trans: 'remotion-transition-whip-left',
+    cred: 'Satellite landmass topography — NASA Earth Observatory',
+    kb: -1,
+    lay: { a: 'lowerThird', head: '14,200,000 KM²', dek: 'larger than europe & australia combined · native population: 0', ac: '#38bdf8', aD: 0.55, dist: 120 }
+  },
+  {
+    d: 5.4,
+    img: 's3',
+    line: 'being the only continent considered uninhabitable, in fact the coldest, driest, and windiest on the entire planet.',
+    trans: 'remotion-transition-cross-zoom',
+    cred: 'Vostok Station frozen ice storm — Wikimedia Commons · CC BY-SA',
+    kb: 1,
+    scrim: 1,
+    lay: { a: 'title', v: 'highlight', head: '-89.2°C · 327 KM/H', dek: 'the coldest, driest, and windiest place on earth', ac: '#e0a24b', aD: 0.5, st: 0.1 }
+  },
+  {
+    d: 5.0,
+    img: 's4',
+    line: "And contrary to popular belief, polar bears do not live in Antarctica — they only inhabit the Arctic.",
+    trans: 'remotion-transition-fade',
+    cred: 'Polar bear habitat — Unsplash · Public domain',
+    kb: -1,
+    scrim: 1,
+    lay: { a: 'title', v: 'pop', head: 'ZERO POLAR BEARS', dek: 'contrary to popular belief · 20,000 km away from the arctic', ac: '#ef4444', aD: 0.5, st: 0.11 }
+  },
+  {
+    d: 5.6,
+    img: 's5',
+    line: 'The largest fully terrestrial animal that lives here year-round is literally an insect: the Antarctic midge.',
+    trans: 'remotion-transition-whip-left',
+    cred: 'Belgica antarctica insect habitat — Wikimedia Commons',
+    kb: 1,
+    slots: ['s1', 's2', 's3', 's4'],
+    lay: { a: 'cards', head: 'BELGICA ANTARCTICA (2MM)', dek: 'the continent’s largest land predator', ac: '#38bdf8', aD: 0.55, st: 0.08 }
+  },
+  {
+    d: 5.8,
+    img: 's6',
+    line: 'Ice layers go down for over 4.8 km, and 70% of all of Earth’s fresh water is trapped there in the form of ice.',
+    trans: 'remotion-transition-blur-zoom',
+    cred: 'Antarctic ice sheet glacier wall — NASA Earth Observatory',
+    kb: 1,
+    scrim: 1,
+    lay: { a: 'counter', v: 'pct', head: '70% OF EARTH’S FRESH WATER (4.8 KM THICK)', ac: '#38bdf8', aD: 0.6 }
+  }
+];
+
+const TOTAL = SC.reduce((a, s) => a + s.d, 0);
+document.getElementById('scrubber').max = TOTAL;
+
+const startOf = i => SC.slice(0, i).reduce((a, s) => a + s.d, 0);
+function at(t) {
+  let a = 0;
+  for (let i = 0; i < SC.length; i++) {
+    if (t < a + SC[i].d) return { i, s: SC[i], st: a };
+    a += SC[i].d;
+  }
+  const i = SC.length - 1;
+  return { i, s: SC[i], st: a - SC[i].d };
+}
+
+/* ── nền cảnh + Ken Burns ── */
+function bgNode(s, p) {
+  const w = document.createElement('div');
+  w.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#05070d';
+  const k = 1.015 + 0.055 * p, dir = s.kb || 1;
+  const im = document.createElement('div');
+  im.style.cssText = `position:absolute;inset:-3.5%;background:#05070d center/cover no-repeat url("${IMG(s.img)}");
+    transform:scale(${dir > 0 ? k : 1.075 - (k - 1.015)}) translate(${dir * p * 0.7}%, ${-dir * p * 0.4}%);will-change:transform`;
+  const vg = document.createElement('div');
+  vg.style.cssText = 'position:absolute;inset:0;background:'
+    + 'radial-gradient(76% 76% at 50% 42%,transparent 30%,rgba(3,6,12,.80)),'
+    + 'linear-gradient(0deg,rgba(3,6,12,.78) 0%,transparent 40%),'
+    + 'linear-gradient(180deg,rgba(3,6,12,.45) 0%,transparent 26%)';
+  w.append(im, vg);
+  if (s.scrim) {
+    const sc = document.createElement('div');
+    sc.style.cssText = 'position:absolute;left:0;right:0;top:24%;height:36%;'
+      + 'background:radial-gradient(58% 100% at 50% 50%,rgba(3,6,12,.66),transparent 74%)';
+    w.appendChild(sc);
+  }
+  return w;
+}
+
+function credNode(s) {
+  const d = document.createElement('div');
+  d.style.cssText = `position:absolute;left:44px;bottom:36px;padding:8px 16px;border-radius:6px;
+    background:rgba(4,8,16,.65);font-size:19px;letter-spacing:.4px;color:#c9d3e4;font-family:sans-serif`;
+  d.textContent = s.cred || '';
+  return d;
+}
+
+function capNode(s, tl) {
+  const ws = String(s.line || '').split(/\s+/).filter(Boolean);
+  if (!ws.length) return null;
+  const idx = Math.min(ws.length - 1, Math.floor((tl / s.d) * ws.length));
+  const w = document.createElement('div');
+  w.style.cssText = 'position:absolute;left:8%;right:8%;bottom:104px;display:flex;justify-content:center;z-index:50';
+  const i2 = document.createElement('div');
+  i2.style.cssText = `background:rgba(6,9,18,.85);padding:16px 30px;border-radius:10px;max-width:100%;
+    text-align:center;font-size:42px;font-weight:700;color:#fff;line-height:1.35;text-shadow:0 3px 16px rgba(0,0,0,.9)`;
+  i2.innerHTML = ws.map((t, i) => i === idx
+    ? `<span style="background:#2563eb;border-radius:7px;padding:2px 10px;color:#fff">${esc(t)}</span>` : esc(t)).join(' ');
+  w.appendChild(i2);
+  return w;
+}
+
+function P(s, over) {
+  const L = s.lay || {};
+  return Object.assign({
+    dur: s.d,
+    aDur: L.aD || 0.6,
+    delay: L.dl || 0.15,
+    dist: L.dist || 70,
+    stagger: L.st || 0.08,
+    ease: easeFn('cubic-bezier(0.22, 1, 0.36, 1)'),
+    accent: L.ac || '#38bdf8',
+    bg: 'transparent',
+    fg: '#F4F8FF',
+    headline: L.head || '',
+    dek: L.dek || '',
+    variant: L.v || 'slide',
+    tid: s.trans || ''
+  }, over || {});
+}
+
+function sceneLayer(host, s, tl) {
+  if (!s.lay) return;
+  const p = P(s), R = AR[s.lay.a] || AR.title;
+  const N = withSlots((s.slots || []).map(IMG), () => R.build(host, p));
+  R.update(N, Math.max(0, Math.min(1, tl / s.d)), p);
+}
+
+/* ── MỘT KHUNG HÌNH (TIMELINE FRAME RENDER) ── */
+window.renderAt = function(t) {
+  stage.innerHTML = '';
+  const { i, s, st } = at(t), tl = t - st, p = tl / s.d, nx = SC[i + 1];
+  const TW = 0.6;
+  if (nx && nx.trans && (st + s.d - t) < TW) {
+    const pp = P(s, { dur: TW * 2, tid: nx.trans, bg: '#05070d' });
+    const N = AR.transitionAB.build(stage, pp);
+    N.a.innerHTML = ''; N.b.innerHTML = '';
+    const ea = bgNode(s, p); N.a.appendChild(ea);
+    const hb = document.createElement('div'); hb.style.cssText = 'position:absolute;inset:0';
+    N.b.appendChild(bgNode(nx, 0)); N.b.appendChild(hb);
+    sceneLayer(hb, nx, 0);
+    const ha = document.createElement('div'); ha.style.cssText = 'position:absolute;inset:0';
+    N.a.appendChild(ha); sceneLayer(ha, s, tl);
+    N.name.textContent = '';
+    AR.transitionAB.update(N, 0.24 + (1 - (st + s.d - t) / TW) * 0.52, pp);
+    const c = capNode(s, tl); if (c) stage.appendChild(c);
+    stage.appendChild(credNode(s));
+    return;
+  }
+  stage.appendChild(bgNode(s, p));
+  const host = document.createElement('div'); host.style.cssText = 'position:absolute;inset:0';
+  stage.appendChild(host); sceneLayer(host, s, tl);
+  const c = capNode(s, tl); if (c) stage.appendChild(c);
+  stage.appendChild(credNode(s));
+};
+
+/* ── CONTROLS PLAYBACK LOOP ── */
+let currentTime = 0;
+let isPlaying = false;
+let lastTimestamp = 0;
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m < 10 ? '0' : ''}${m}:${sec < 10 ? '0' : ''}${sec}`;
+}
+
+function updateUI() {
+  document.getElementById('scrubber').value = currentTime;
+  document.getElementById('timeDisp').textContent = `${formatTime(currentTime)} / ${formatTime(TOTAL)}`;
+}
+
+function tick(ts) {
+  if (!isPlaying) return;
+  if (!lastTimestamp) lastTimestamp = ts;
+  const delta = (ts - lastTimestamp) / 1000;
+  lastTimestamp = ts;
+
+  currentTime += delta;
+  if (currentTime >= TOTAL) {
+    currentTime = 0;
+  }
+
+  window.renderAt(currentTime);
+  updateUI();
+  requestAnimationFrame(tick);
+}
+
+function togglePlay() {
+  isPlaying = !isPlaying;
+  document.getElementById('btnPlay').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+  if (isPlaying) {
+    lastTimestamp = performance.now();
+    requestAnimationFrame(tick);
+  }
+}
+
+function seekTo(val) {
+  currentTime = parseFloat(val);
+  window.renderAt(currentTime);
+  updateUI();
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+// Initial render
+window.renderAt(0);
+updateUI();
+</script>
+</body>
+</html>

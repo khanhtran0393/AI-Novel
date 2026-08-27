@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "Nova Studio",
+  "version": "0.4.2",
+  "description": "Nova Studio — tạo ảnh & video AI hàng loạt qua tài khoản Google Labs Flow.",
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
+  "permissions": ["storage", "tabs", "scripting", "webRequest", "declarativeNetRequest", "alarms", "cookies", "downloads"],
+  "host_permissions": [
+    "https://aisandbox-pa.googleapis.com/*",
+    "https://labs.google/*",
+    "https://*.google.com/*",
+    "https://accounts.google.com/*",
+    "https://*.googleusercontent.com/*",
+    "https://flow-content.google/*",
+    "https://*.flow-content.google/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Nova Studio",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://labs.google/fx/tools/flow*",
+        "https://labs.google/fx/*/tools/flow*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://novastudio.app/*",
+        "https://www.novastudio.app/*",
+        "https://novastudio.web.app/*",
+        "https://novastudio.firebaseapp.com/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["https://labs.google/*"]
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "flow_rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}

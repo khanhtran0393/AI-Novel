@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' app: file: blob: data: https: http: https://www.googletagmanager.com https://cdn.jsdelivr.net https://us.i.posthog.com; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' app: file: blob: data: https: http: https://www.googletagmanager.com https://cdn.jsdelivr.net https://us.i.posthog.com; connect-src 'self' app: file: blob: data: http: https: ws: wss: https://www.videoshufflr.com https://videoshufflr.com https://www.google-analytics.com https://www.googletagmanager.com https://api.github.com https://api.iconify.design https://api.simplesvg.com https://api.unisvg.com https://api.giphy.com https://us.i.posthog.com https://staticimgly.com; img-src 'self' data: https: file: blob:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net data:; media-src 'self' app: file: data: blob:; frame-src 'self' app: file: blob: https://www.youtube.com https://*.youtube.com https://www.youtube-nocookie.com https://*.youtube-nocookie.com https://*.google.com https://youtu.be;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova — Trình chỉnh sửa</title>
+  <script src="editor/console-shim.js"></script>
+  <script src="renderer/activity-log.js"></script>
+  <script src="renderer/gamification.js"></script>
+  <script src="analytics-init.js" defer></script>
+  <script src="renderer/pro-create-ai-weekly.js"></script>
+  <script src="renderer/feature-gate.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <script src="renderer/ui/slider.js" defer></script>
+  <!-- CSS Migration: Utility and Component Styles -->
+  <link rel="stylesheet" href="editor/editor-utilities.css">
+  <link rel="stylesheet" href="editor/editor-states.css">
+  <link rel="stylesheet" href="editor/components/icon-utils.css">
+  <link rel="stylesheet" href="editor/components/modal.css">
+  <link rel="stylesheet" href="editor/components/timecode-input.css">
+  <link rel="stylesheet" href="editor/components/zoom-controls.css">
+  <link rel="stylesheet" href="editor/components/timeline.css">
+  <link rel="stylesheet" href="editor/components/export-preview.css">
+  <link rel="stylesheet" href="editor/components/canvas.css">
+  <link rel="stylesheet" href="editor/components/video-creator.css">
+  <link rel="stylesheet" href="renderer/utils/dropdown-styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "./vendor/browser-esm/react.mjs",
+        "react/jsx-runtime": "./vendor/browser-esm/react-jsx-runtime.mjs",
+        "react/jsx-dev-runtime": "./vendor/browser-esm/react-jsx-dev-runtime.mjs",
+        "react-dom": "./vendor/browser-esm/react-dom.mjs",
+        "react-dom/client": "./vendor/browser-esm/react-dom-client.mjs",
+        "remotion": "./vendor/browser-esm/remotion.mjs",
+        "remotion/no-react": "./vendor/browser-esm/remotion-no-react.mjs",
+        "@remotion/player": "./vendor/browser-esm/remotion-player.mjs",
+        "@remotion/transitions": "./node_modules/@remotion/transitions/dist/esm/index.mjs",
+        "@remotion/transitions/fade": "./node_modules/@remotion/transitions/dist/esm/fade.mjs",
+        "@remotion/transitions/slide": "./node_modules/@remotion/transitions/dist/esm/slide.mjs",
+        "@remotion/transitions/wipe": "./node_modules/@remotion/transitions/dist/esm/wipe.mjs",
+        "@remotion/transitions/flip": "./node_modules/@remotion/transitions/dist/esm/flip.mjs",
+        "@remotion/transitions/clock-wipe": "./node_modules/@remotion/transitions/dist/esm/clock-wipe.mjs",
+        "@remotion/transitions/iris": "./node_modules/@remotion/transitions/dist/esm/iris.mjs",
+        "@remotion/transitions/none": "./node_modules/@remotion/transitions/dist/esm/none.mjs",
+        "@remotion/paths": "./node_modules/@remotion/paths/dist/esm/index.mjs",
+        "@remotion/shapes": "./node_modules/@remotion/shapes/dist/esm/index.mjs",
+        "remotion-bits": "./node_modules/remotion-bits/dist/index.js",
+        "three": "./node_modules/three/build/three.module.js",
+        "culori": "./node_modules/culori/bundled/culori.min.mjs",
+        "prism-react-renderer": "./node_modules/prism-react-renderer/dist/index.mjs",
+        "clsx": "./node_modules/clsx/dist/clsx.mjs",
+        "@imgly/background-removal": "./node_modules/@imgly/background-removal/dist/index.mjs",
+        "onnxruntime-web": "./node_modules/onnxruntime-web/dist/ort.bundle.min.mjs",
+        "onnxruntime-web/webgpu": "./node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs",
+        "mediabunny": "./node_modules/mediabunny/dist/modules/src/index.js"
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="editor.css">
+  <link rel="stylesheet" href="renderer/ui/product-sliders.css">
+  <script src="icons/vendor/ph-preload.js" defer></script>
+  <script src="renderer/utils/iconify-loader.js" defer></script>
+  <script src="editor/ed-icon-utils.js"></script>
+  <link rel="stylesheet" href="nova-theme.css">
+</head>
+<body>
+  <div class="ed-shell">
+    <div class="ed-toolbar">
+      <div class="ed-menu" role="group" aria-label="Menu">
+        <button id="ed-file-menu-toggle" class="menu-btn" aria-haspopup="true" aria-expanded="false">File ▾</button>
+        <div id="ed-file-menu" class="menu" role="menu" aria-hidden="true">
+          <div class="menu-note" role="note" aria-label="Subscription tier"><span class="pill" id="ed-tier-pill">Pro</span></div>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-add-section" class="menu-item" role="menuitem" title="Add a new page"><span class="menu-icon"><iconify-icon icon="ph:plus" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Add Page</span></button>
+          <button id="ed-add-files" class="menu-item" role="menuitem" title="Add files to your project"><span class="menu-icon"><iconify-icon icon="ph:folder" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Add Files</span></button>
+          <button id="ed-import-library" class="menu-item" role="menuitem" title="Import from Library"><span class="menu-icon"><iconify-icon icon="ph:download-simple" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Import Library</span></button>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-preview" class="menu-item" role="menuitem" title="Plan and build a quick preview"><span class="menu-icon"><iconify-icon icon="ph:arrows-clockwise" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Preview Plan</span></button>
+          <button id="ed-play-plan" class="menu-item" role="menuitem" title="Play planned clips sequentially"><span class="menu-icon"><iconify-icon icon="ph:play" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Play in Viewer</span></button>
+          <button id="ed-export" class="menu-item" role="menuitem" title="Export the final video"><span class="menu-icon"><iconify-icon icon="ph:export" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Export</span></button>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-open-project" class="menu-item" role="menuitem" title="Open a saved project"><span class="menu-icon"><iconify-icon icon="ph:folder-open" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Open Project</span></button>
+          <button id="ed-save-project" class="menu-item" role="menuitem" title="Save current project"><span class="menu-icon"><iconify-icon icon="ph:floppy-disk" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Save Project</span></button>
+          <button id="ed-close-project" class="menu-item" role="menuitem" title="Close current project"><span class="menu-icon"><iconify-icon icon="ph:x" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Close Project</span></button>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-open-clips" class="menu-item" role="menuitem" title="Open temporary clips folder (planned/preview clips)"><span class="menu-icon"><iconify-icon icon="ph:folders" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Open Clips Location</span></button>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-save-to" class="menu-item" role="menuitem" title="Choose where to save output"><span class="menu-icon"><iconify-icon icon="ph:package" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Save To…</span></button>
+          <div class="menu-note" role="note" aria-label="Current save location"><span id="ed-save-disp" class="pill" title="Current save location">Not set</span></div>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-exit-advanced" class="menu-item" role="menuitem" title="Close Advanced Editor"><span class="menu-icon"><iconify-icon icon="ph:door" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Exit Advanced Editor</span></button>
+        </div>
+      </div>
+      <div class="ed-menu ed-inline-001" role="group" aria-label="Help Menu">
+        <button id="ed-help-menu-toggle" class="menu-btn" aria-haspopup="true" aria-expanded="false">Help ▾</button>
+        <div id="ed-help-menu" class="menu" role="menu" aria-hidden="true">
+          <button id="ed-howto-open" class="menu-item" role="menuitem" title="How to use the Advanced Editor"><span class="menu-icon"><iconify-icon icon="ph:question" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">How to Use</span></button>
+          <button id="ed-features-open" class="menu-item" role="menuitem" title="Advanced Editor Features"><span class="menu-icon"><iconify-icon icon="ph:sparkle" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Features</span></button>
+          <button id="ed-quick-editing-open" class="menu-item" role="menuitem" title="Quick editing tips"><span class="menu-icon"><iconify-icon icon="ph:lightning" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Quick Editing</span></button>
+          <button id="ed-workflows-open" class="menu-item" role="menuitem" title="Example workflows"><span class="menu-icon"><iconify-icon icon="ph:compass" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Workflows</span></button>
+          <div class="menu-sep" role="separator" aria-hidden="true"></div>
+          <button id="ed-tour-restart" class="menu-item" role="menuitem" title="Restart the guided tour"><span class="menu-icon"><iconify-icon icon="ph:target" aria-hidden="true"></iconify-icon></span><span class="menu-vdiv" aria-hidden="true"></span><span class="menu-label">Restart Guided Tour</span></button>
+        </div>
+      </div>
+      <div class="-title ed-inline-002" role="group" aria-label="Project title">
+        <label class="stack ed-inline-003">
+          <span class="muted ed-inline-004">Video Title:</span>
+          <input id="ed-title" type="text" placeholder="Untitled video" aria-label="Project Title"/>
+        </label>
+      </div>
+      <div class="ed-spacer editor-inline-001" style="display: none"></div>
+      <div class="icon-group header ed-inline-005" role="group" aria-label="Aspect Ratio">
+        <button id="ed-aspect-16-9" class="icon-btn aspect-btn" data-aspect="16:9" title="16:9 Landscape" aria-pressed="true" aria-label="16:9 Landscape">16:9</button>
+        <button id="ed-aspect-9-16" class="icon-btn aspect-btn" data-aspect="9:16" title="9:16 Portrait" aria-pressed="false" aria-label="9:16 Portrait">9:16</button>
+      </div>
+      <div class="icon-group header ed-inline-006" role="group" aria-label="Layout">
+        <button id="ed-toggle-left" class="icon-btn" title="Toggle left sidebar" aria-pressed="false" aria-label="Toggle left sidebar"><iconify-icon icon="ph:sidebar-simple" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+        <button id="ed-toggle-preview" class="icon-btn" title="Toggle timeline" aria-pressed="false" aria-label="Toggle timeline"><iconify-icon icon="ph:film-strip" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+        <button id="ed-toggle-right" class="icon-btn" title="Toggle right sidebar" aria-pressed="false" aria-label="Toggle right sidebar"><iconify-icon icon="ph:sidebar-simple" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+      </div>
+    </div>
+    <div class="ed-shell-row">
+      <div class="ed-left ed-panel">
+      <div class="ed-inline-007 editor-inline-002" style="display: flex">
+        <h3 class="ed-inline-008">Pages <span id="ed-pages-count" class="muted">(1)</span></h3>
+        <div class="icon-group" role="group" aria-label="Pages actions">
+          <button id="ed-sections-add" class="icon-btn" title="Add Page" aria-label="Add Page" style="display: flex"><iconify-icon icon="ph:plus" class="icon icon--s-16" aria-hidden="true"></iconify-icon></button>
+          <button id="ed-sections-preview" class="icon-btn" title="Preview Plan" aria-label="Preview Plan" style="display: flex"><iconify-icon icon="ph:arrows-clockwise" class="icon icon--s-16" aria-hidden="true"></iconify-icon></button>
+        </div>
+      </div>
+      
+      <div id="ed-sections" class="ed-layers"></div>
+    </div>
+    <div id="ed-splitter-left" class="ed-panel-splitter"></div>
+    <div class="ed-main">
+      <div class="ed-panel ed-preview ed-inline-009">
+        <div class="ed-inline-010 editor-inline-003" style="display: flex">
+          <div id="ed-player-stack" style="display: flex">
+            <video id="ed-player" style="display: block"></video>
+          </div>
+          <div id="ed-controls" style="display: flex">
+            <p class="muted ed-inline-011">
+              <time id="ed-master-time" dir="ltr">0:00</time>
+            </p>
+            <div class="FJA3UA">
+              <span class="PvuXpA">
+                <button id="ed-toggle-btn" class="icon-btn" type="button" aria-label="Play" title="Play" style="display: flex">
+                  <span class="vxQy1w ed-inline-012 editor-inline-004" style="display: flex">
+                    <iconify-icon id="ed-toggle-icon-play" icon="ph:play-fill" class="icon icon--s-36" style="display: block"></iconify-icon>
+                    <iconify-icon id="ed-toggle-icon-pause" icon="ph:pause-fill" class="icon icon--s-36" aria-hidden="true" style="display: none"></iconify-icon>
+                  </span>
+                </button>
+              </span>
+            </div>
+            <p class="muted ed-inline-013">
+              <time id="ed-master-total" dir="ltr">0:00</time>
+            </p>
+          </div>
+          
+        </div>
+      </div>
+      <div id="ed-splitter" class="ed-panel-splitter ed-panel-splitter-vertical"></div>
+      <div class="ed-timeline">
+        <div class="ed-inline-014 editor-inline-005" style="display: flex">
+          <div class="ed-inline-015 editor-inline-006" style="display: flex">
+            <div class="icon-group" role="group" aria-label="Undo/redo">
+              <button id="ed-undo" class="icon-btn" title="Undo (⌘Z)" style="display: flex"><iconify-icon icon="ph:arrow-u-up-left" class="icon icon--s-16" aria-hidden="true"></iconify-icon></button>
+              <button id="ed-redo" class="icon-btn" title="Redo (⇧⌘Z or ⌘Y)" style="display: flex"><iconify-icon icon="ph:arrow-u-up-right" class="icon icon--s-16" aria-hidden="true"></iconify-icon></button>
+            </div>
+            <div id="ed-plan-view-label" class="muted">Timeline</div>
+          </div>
+          <div class="icon-group" role="group" aria-label="Timeline tools">
+            <button id="ed-plan-view-timeline" class="icon-btn" title="Timeline view" aria-pressed="true" aria-label="Timeline view" style="display: none"><iconify-icon icon="ph:timer" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+            <button id="ed-timeline-marker" class="icon-btn" title="Add marker" aria-pressed="false" aria-label="Add marker"><iconify-icon icon="ph:flag" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+            <button id="ed-timeline-cut" class="icon-btn" title="Cut tool" aria-pressed="false" aria-label="Cut tool"><iconify-icon icon="ph:scissors" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+          </div>
+        </div>
+        <div id="ed-grid-toolbar" style="display: none">
+          <select id="ed-grid-page-filter" class="native-select" title="Filter by page" style="display: none"></select>
+          <div class="dropdown" id="ed-grid-page-dd" aria-label="Filter by page">
+            <a id="ed-grid-page-button" class="dropdown-toggle" href="#" aria-haspopup="true" aria-expanded="false"><span id="ed-grid-page-label">All pages</span> ▾</a>
+            <div class="dropdown-menu" id="ed-grid-page-menu" role="menu" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div id="ed-list-toolbar" style="display: none">
+          <button id="ed-analyze" class="icon-btn" title="Analyze planned clips (faces/text)" aria-label="Analyze"><iconify-icon icon="ph:magnifying-glass" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+          <button id="ed-filter-high" class="icon-btn" title="Show only high (face>5 OR text>5)" aria-pressed="false" aria-label="Filter high"><iconify-icon icon="ph:star" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+          <button id="ed-refresh-high" class="icon-btn" title="Refresh all high-ranked clips" aria-label="Refresh high"><iconify-icon icon="ph:arrows-clockwise" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+        </div>
+        <div id="ed-plan-empty" style="display: none"></div>
+        <div id="ed-plan-grid" class="preview-grid" style="display: none"></div>
+        <div id="ed-plan-list-wrap" class="plan-list-wrap" style="display: none">
+          <div id="ed-plan-list" class="plan-list"></div>
+          <div>
+            <div class="plan-list-viewer"><video id="ed-plan-side-player" ></video></div>
+            <div class="plan-list-controls">
+              <div id="ed-plan-speed" class="ai-muted" style="display: flex">
+                <span>Speed:</span>
+                <label class="seg-label active" data-speed="1"><input type="radio" name="ed-plan-speed" value="1" checked/> 1×</label>
+                <label class="seg-label" data-speed="1.25"><input type="radio" name="ed-plan-speed" value="1.25"/> 1.25×</label>
+                <label class="seg-label" data-speed="2"><input type="radio" name="ed-plan-speed" value="2"/> 2×</label>
+                <label class="seg-label" data-speed="5"><input type="radio" name="ed-plan-speed" value="5"/> 5×</label>
+                <label class="seg-label" data-speed="10"><input type="radio" name="ed-plan-speed" value="10"/> 10×</label>
+              </div>
+              <div class="ed-inline-016 editor-inline-007" style="display: flex">
+                <label id="ed-plan-autoplay-switch" class="pill"><input id="ed-plan-autoplay" type="checkbox"/> Autoplay</label>
+                <span id="ed-plan-vo-label" class="ai-muted">VO: 0:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="ed-plan-timeline-wrap" class="plan-timeline-wrap">
+          <div id="ed-plan-timeline" class="plan-timeline"></div>
+        </div>
+      </div>
+    </div>
+    <div id="ed-splitter-right" class="ed-panel-splitter"></div>
+    <div class="ed-right ed-panel">
+      <div class="ed-inline-017 editor-inline-008" style="display: flex">
+        <h3 class="ed-inline-018">Inspector</h3>
+        <div class="icon-group" role="group" aria-label="Right panel actions">
+          <button id="ed-view-script" class="secondary">View Script</button>
+        </div>
+      </div>
+      <div class="dashed-panel" aria-label="Video Settings">
+        <div class="panel-title">Video Settings</div>
+        <div class="controls-stack">
+          <label class="stack"><span>Total Duration <span class="info-wrap"><span class="info-icon">i</span><span class="info-tooltip">Target duration of the final merged video (in hour:minute:second:millisecond, minutes:seconds, or just seconds).</span></span></span><input id="ed-total" type="text" placeholder="mm:ss or seconds"/></label>
+          <label class="stack"><span>Min Clip Length (s) <span class="info-wrap"><span class="info-icon">i</span><span class="info-tooltip">Minimum length for random clip duration (in seconds).</span></span></span><input id="ed-min" type="number" min="1" value="3"/></label>
+          <label class="stack"><span>Max Clip Length (s) <span class="info-wrap"><span class="info-icon">i</span><span class="info-tooltip">Maximum length for random clip duration (in seconds).</span></span></span><input id="ed-max" type="number" min="1" value="5"/></label>
+          <label class="stack"><span><input id="ed-auto" type="checkbox"/> Auto‑detect cuts</span></label>
+          <label class="stack"><span><input id="ed-reuse" type="checkbox" checked/> Re‑use clips to reach target <span class="info-wrap info-wrap-left"><span class="info-icon">i</span><span class="info-tooltip">Allow repeating clips to reach your target duration when sources are short.</span></span></span></label>
+          <div class="muted ed-inline-019">Images</div>
+          <label class="stack"><span><input id="ed-images-still" type="checkbox" checked/> Do not add motion to images <span class="info-wrap info-wrap-left"><span class="info-icon">i</span><span class="info-tooltip">Applies subtle pan/zoom to still images (Ken Burns effect) so results feel less static.</span></span></span></label>
+          <label class="stack"><span>Image Clip Length (s)</span><input id="ed-image-length" type="number" min="1" value="3"/></label>
+          <label class="stack"><span>Space Images Every (s)</span><input id="ed-image-spacing" type="number" min="0" value="0"/></label>
+        </div>
+      </div>
+      <div class="dashed-panel" aria-label="Audio Mix">
+        <div class="panel-title">Audio Mix</div>
+        <div class="controls-stack">
+          <label class="stack"><span>Voice Volume: <strong id="ed-voice-vol-value">100%</strong></span><input id="ed-voice-vol" type="range" class="range" min="0" max="150" step="1" value="100"/></label>
+          <label class="stack"><span><input id="ed-duck" type="checkbox"/> Duck under voiceover</span></label>
+          <div class="controls-inline"><button id="ed-preview-mix" class="secondary">Preview Mix</button></div>
+          <audio id="ed-audio-preview" controls style="display: none"></audio>
+          <div class="muted ed-inline-020">Music Tracks</div>
+          <div class="controls-inline"><button id="ed-add-bgm" class="secondary">Add BGM</button><button id="ed-download-bgm" class="secondary">Download BGM</button></div>
+          <ul id="bgm-list"></ul>
+          <div class="muted ed-inline-021">Voiceover(s)</div>
+          <div class="controls-inline"><button id="ed-add-voice" class="secondary">Add Voice</button><button id="ed-clear-voice" class="secondary">Clear Voice</button></div>
+          <ul id="voice-list"></ul>
+          <div class="muted ed-inline-022">Sound Effects</div>
+          <div class="controls-inline"><button id="ed-add-sfx" class="secondary">Add SFX</button><button id="ed-download-sfx" class="secondary">Download SFX</button></div>
+          <ul id="sfx-list"></ul>
+        </div>
+      </div>
+      <div id="ed-script-panel" class="dashed-panel">
+        <div class="panel-title">Script</div>
+        <div id="ed-script-empty" style="display: flex">
+          <span class="ai-muted">No script</span>
+          <button id="ed-add-script" class="secondary">Add Script</button>
+        </div>
+        <div id="ed-script-view" style="display: none">
+          <div id="ed-script-preview-wrap">
+            <div class="ai-input" id="ed-script-preview"></div>
+            <div id="ed-script-scroll-hint" style="display: none">
+              <span>Scroll for more ↓</span>
+            </div>
+          </div>
+          <div class="controls-inline">
+            <button id="ed-replace-script" class="secondary">Replace Script</button>
+            <button id="ed-remove-script" class="secondary">Remove Script</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  
+  
+  <!-- CRITICAL: Error Handler must load FIRST - used by all modules -->
+  <script src="editor/core/error-handler.js"></script>
+  
+  <!-- CRITICAL: Thumbnail Cache must load early to prevent FFmpeg during scroll -->
+  <!-- MEMORY OPTIMIZATION: Memory Monitor - must load early for memory pressure detection -->
+  <script src="editor/webcodecs/MemoryMonitor.js"></script>
+  <!-- MEMORY OPTIMIZATION #48: Quality Scaler - must load after MemoryMonitor -->
+  <script src="editor/webcodecs/QualityScaler.js"></script>
+  <script src="editor/thumbnail-cache.js"></script>
+  
+  <!-- Modal utility - must load early before any modules that use modals -->
+  <script src="editor/modal-utils.js"></script>
+  <!-- CSS Migration Helper - utility for CSS class management -->
+  <script src="editor/css-migration-helper.js"></script>
+  <!-- CRITICAL: css-vars-helper.js must load early for CSS custom properties -->
+  <script src="editor/css-vars-helper.js"></script>
+  <!-- CRITICAL: style-migration-helper.js must load early for style migration utilities -->
+  <script src="editor/style-migration-helper.js"></script>
+  
+  
+  <script src="editor/ed-history.js"></script>
+  <script src="editor/ed-commands.js"></script>
+  <!-- CRITICAL: time-utils.js must load before ed-utils.js to provide unified time functions -->
+  <script src="editor/core/time-utils.js"></script>
+  <script src="editor/ed-utils.js"></script>
+  <script src="editor/timecode-input.js"></script>
+  <script src="editor/request-deduplication.js"></script>
+  <script src="editor/ed-events.js"></script>
+  <script src="editor/ed-modals.js"></script>
+  <script src="editor/ed-project.js"></script>
+  <script src="editor/ed-recent-projects-modal.js"></script>
+  <!-- Audio modules (load before main ed-audio.js) -->
+  <script src="editor/features/audio/utils/audio-utils.js"></script>
+  <script src="editor/features/audio/core/audio-state.js"></script>
+  <script src="editor/features/audio/core/bgm-logic.js"></script>
+  <script src="editor/features/audio/core/sfx-logic.js"></script>
+  <script src="editor/features/audio/core/voice-logic.js"></script>
+  <script src="editor/features/audio/core/audio-handlers.js"></script>
+  <script src="editor/features/audio/ui/bgm-ui.js"></script>
+  <script src="editor/features/audio/ui/sfx-ui.js"></script>
+  <script src="editor/features/audio/ui/voice-ui.js"></script>
+  <script src="editor/features/audio/handlers/button-handlers.js"></script>
+  <script src="editor/ed-audio-original.js"></script>
+  <script src="editor/ed-audio.js"></script>
+  <script src="renderer/user-tour.js" defer></script>
+  <script src="editor/ed-layout.js"></script>
+  <script src="editor/ed-aspect-ratio.js"></script>
+  <script src="editor/ed-panel-resize.js"></script>
+  <script src="editor/ed-preview-resize.js"></script>
+  <script src="editor/ed-canvas-resize.js"></script>
+  <!-- CRITICAL: unified-state.js must load before ed-store.js to provide unified state backend -->
+  <script src="editor/core/unified-state.js"></script>
+  <script src="editor/ed-store.js"></script>
+  <script src="editor/ed-plan-view.js"></script>
+  <script src="editor/ed-plan-speed.js"></script>
+  <!-- CRITICAL: Timeline modules load EARLY for instant timeline display -->
+  <!-- Timeline modules - load IMMEDIATELY after plan-view for fastest timeline render -->
+  <!-- CRITICAL: unified-state.js must load before timeline-state.js -->
+  <script src="editor/timeline-helpers.js"></script>
+  <script src="editor/timeline-error-handler.js"></script>
+  <script src="editor/timeline-state.js"></script>
+  <script src="editor/timeline-state-helpers.js"></script>
+  <script src="editor/timeline-cache.js"></script>
+  <script src="editor/timeline-builder.js"></script>
+  <script src="editor/timeline-plan-ops.js"></script>
+  <script src="editor/timeline-scrub.js"></script>
+  <script src="editor/timeline-playhead.js"></script>
+  <script src="editor/timeline-ruler.js"></script>
+  <script src="editor/timeline-render-helpers.js"></script>
+  <script src="editor/timeline-render-schedule.js"></script>
+  <!-- Timeline Render Phase Modules - Load before timeline-render-phases.js -->
+  <script src="editor/timeline-render-phase-helpers.js"></script>
+  <script src="editor/timeline-render-clip-handlers.js"></script>
+  <script src="editor/timeline-render-selection-handlers.js"></script>
+  <script src="editor/timeline-render-scrub-handlers.js"></script>
+  <script src="editor/timeline-render-phase-1-setup.js"></script>
+  <script src="editor/timeline-render-phase-2-duration.js"></script>
+  <script src="editor/timeline-render-phase-3-clear.js"></script>
+  <script src="editor/timeline-render-phase-4-structure.js"></script>
+  <script src="editor/timeline-render-phase-5-metadata.js"></script>
+  <script src="editor/timeline-render-phase-6-clips.js"></script>
+  <script src="editor/timeline-render-phase-7-tracks.js"></script>
+  <script src="editor/timeline-render-phase-8-bgm.js"></script>
+  <script src="editor/timeline-render-phase-9-voice-sfx.js"></script>
+  <script src="editor/timeline-render-phase-9-5-overlays.js"></script>
+  <script src="editor/timeline-render-phase-10-finish.js"></script>
+  <script src="editor/timeline-render-phases.js"></script>
+  <script src="editor/timeline-render-update.js"></script>
+  <script src="editor/timeline-render-helpers-internal.js"></script>
+  <script src="editor/timeline-render.js"></script>
+  <script src="editor/timeline-ui.js"></script>
+  <script src="editor/timeline-events.js"></script>
+  <script src="editor/timeline-marker-cut.js"></script>
+  <script src="editor/ed-cut-preview.js"></script>
+  <script src="editor/timeline-editing-tools.js"></script>
+  <script src="editor/inspector-collapse.js"></script>
+  <script src="editor/sections-collapse.js"></script>
+  <script src="editor/ed-timeline.js"></script>
+  <!-- Centralized plan operations and UI creation -->
+  <script src="editor/ed-plan-ops-centralized.js"></script>
+  <script src="editor/plan-ui-creators.js"></script>
+  <!-- Grid Renderer - Queue-based (ONE segment at a time, fully complete before moving on) - must load before ed-plan-render.js -->
+  <script src="editor/grid-renderer-queue.js"></script>
+  <script src="editor/list-renderer-idle.js"></script>
+  <script src="editor/ed-list-playback.js"></script>
+  <script src="editor/ed-transport.js"></script>
+  <!-- Web Workers for plan calculations - load before ed-plan-render.js and ed-time.js -->
+  <script src="editor/workers/plan-calculator-worker.js"></script>
+  <script src="editor/plan-calculator.js"></script>
+  <script src="editor/plan-expander.js"></script>
+  <!-- Plan Render modules -->
+  <script src="editor/features/plan-render/core/plan-render-constants.js"></script>
+  <script src="editor/features/plan-render/core/plan-render-state.js"></script>
+  <script src="editor/features/plan-render/utils/plan-diff.js"></script>
+  <script src="editor/features/plan-render/utils/plan-normalize.js"></script>
+  <script src="editor/features/plan-render/utils/plan-signature.js"></script>
+  <!-- Original implementation (for delegation) -->
+  <script src="editor/ed-plan-render-original.js"></script>
+  <!-- New modular entry point -->
+  <script src="editor/ed-plan-render.js"></script>
+  <script src="editor/ed-script.js"></script>
+  <script src="editor/ed-settings.js"></script>
+  <script src="editor/ed-menu.js"></script>
+  <script src="editor/file-menu-handlers.js"></script>
+  <script src="editor/ed-time.js"></script>
+  
+  <script src="editor/ed-preview-ui.js"></script>
+  
+  <script src="editor/ed-audio-sync.js"></script>
+  <script src="editor/ed-player-ui.js"></script>
+  <script src="editor/ed-canvas-select.js"></script>
+  <!-- CRITICAL: default-state.js must load BEFORE ed-sections.js to initialize sections array -->
+  <script src="editor/default-state.js"></script>
+  <!-- EdSections modules - load render module before main module -->
+  <script src="editor/ed-sections-render.js"></script>
+  <!-- File addition system - must load before ed-sections.js -->
+  <script src="editor/file-addition.js"></script>
+  <script src="editor/ed-sections.js"></script>
+  <script src="editor/ed-analyze.js"></script>
+  <!-- AI Create Project (ai:createProject) removed -->
+  <script src="editor/ed-youtube.js"></script>
+  <!-- Library Standalone - must load before ed-custom.js -->
+  <script src="renderer/library/standalone.js"></script>
+  <script src="renderer/features/narrators/library-ui.js"></script>
+  <script src="renderer/features/agents/library-ui.js"></script>
+  <!-- Custom Modal Modules - load before main file -->
+  <script src="editor/features/custom/core/custom-state.js"></script>
+  <script src="editor/features/custom/core/custom-constants.js"></script>
+  <script src="editor/features/custom/core/custom-validator.js"></script>
+  <script src="editor/features/custom/utils/custom-helpers.js"></script>
+  <script src="editor/features/custom/utils/custom-formatters.js"></script>
+  <script src="editor/features/custom/utils/custom-schedule.js"></script>
+  <script src="editor/features/custom/ui/custom-elements.js"></script>
+  <script src="editor/features/custom/ui/custom-preview.js"></script>
+  <script src="editor/features/custom/ui/custom-preview-renderer.js"></script>
+  <script src="editor/features/custom/ui/custom-tabs.js"></script>
+  <script src="editor/features/custom/ui/custom-library.js"></script>
+  <script src="editor/features/custom/ui/custom-preview-resize.js"></script>
+  <script src="editor/features/custom/handlers/custom-input-handlers.js"></script>
+  <script src="editor/features/custom/utils/custom-vignette.js"></script>
+  <script src="editor/features/custom/services/custom-renderer.js"></script>
+  <script src="editor/features/custom/handlers/custom-image-gen.js"></script>
+  <script src="editor/features/custom/handlers/custom-ai-gen.js"></script>
+  <script src="editor/features/custom/handlers/custom-midjourney.js"></script>
+  <script src="editor/features/custom/handlers/custom-midjourney-frames.js"></script>
+  <script src="editor/features/custom/handlers/custom-modal.js"></script>
+  <script src="editor/features/custom/handlers/custom-edit-tab.js"></script>
+  <script src="editor/features/custom/wizard/custom-wizard.js"></script>
+  <script src="editor/ed-custom.js"></script>
+  <script src="editor/video-transition-panel.js"></script>
+  <script src="editor/text-templates-panel.js"></script>
+  <script src="editor/transition-templates-panel.js"></script>
+  <script src="editor/animation-templates-panel.js"></script>
+  <script src="editor/video-effects-panel.js"></script>
+  <script type="module" src="editor/video-creator.js"></script>
+  <script src="editor/ed-trim.js"></script>
+  <script src="editor/ed-clip.js"></script>
+  <script src="editor/ed-plan-config.js"></script>
+  
+  <script src="editor/frame-scheduler.js"></script>
+  <!-- CRITICAL: Fast Non-Blocking system - provides reliable, robust fast operations without UI blocking -->
+  <script src="editor/fast-non-blocking.js"></script>
+  <!-- CRITICAL: Calculation Cache - prevents redundant calculations in renders -->
+  <script src="editor/calculation-cache.js"></script>
+  <script src="editor/hover-event-queue.js"></script>
+  <script src="editor/blocking-ops-helpers.js"></script>
+  <!-- CRITICAL: Reliable solutions must load after blocking-ops-helpers but before modules that use them -->
+  <script src="editor/reliable-plan-processor.js"></script>
+  <script src="editor/reliable-debouncer.js"></script>
+  <script src="editor/reliable-operation-queue.js"></script>
+  <script src="editor/reliable-render-manager.js"></script>
+  <!-- CRITICAL: frame-scheduler.js and blocking-ops-helpers.js must load FIRST before any modules that use RAF loops or process arrays -->
+  <!-- WebCodecs Video Player Helper (for replacing video elements) -->
+  <script src="editor/webcodecs/WebCodecsVideoPlayer.js"></script>
+  <!-- MP4Box.js loader - loads MP4Box and exposes to window -->
+  <!-- DISABLED: MP4Box not needed for VideoElementFramePlayback (HTML5 video elements handle everything) -->
+  <!-- Set window.__DISABLE_MP4BOX = true before this script to disable MP4Box loading -->
+  <script src="editor.inline-2.js"></script>
+  <script type="module" src="editor/webcodecs/MP4BoxLoader.js"></script>
+  <!-- Canvas Video Fix - Diagnostic and Quick Fix -->
+  <script src="editor/webcodecs/CanvasVideoFix.js"></script>
+  <!-- CRITICAL: frame-scheduler.js must load FIRST before any modules that use RAF loops -->
+  <!-- CRITICAL: time-cache.js must load early to cache time calculations per frame -->
+  <script src="editor/time-cache.js"></script>
+  <!-- CRITICAL: layout-cache.js must load early for efficient layout reads -->
+  <script src="editor/layout-cache.js"></script>
+  <!-- CRITICAL: style-batcher.js must load early for efficient style updates -->
+  <script src="editor/style-batcher.js"></script>
+  <!-- CRITICAL: resize-manager.js must load early to centralize all resize handling -->
+  <script src="editor/resize-manager.js"></script>
+  <!-- CRITICAL: global-initializers.js must load early to prevent UI blocking issues -->
+  <script src="editor/global-initializers.js"></script>
+  <!-- CRITICAL: ui-blocking-prevention.js must load early to prevent common UI blocking patterns -->
+  <script src="editor/ui-blocking-prevention.js"></script>
+  <script src="editor/video-seek-throttler.js"></script>
+  <script src="editor/preview-controller.js"></script>
+  <script src="editor/editor-engine.js"></script>
+  <script src="editor/ed-preview-state.js"></script>
+  <script src="editor/ed-scroll-marker.js"></script>
+  
+  <script src="editor/ed-plan-ops.js"></script>
+  <script src="editor/ed-editor-api.js"></script>
+  <script src="editor/ed-find-images.js"></script>
+  <!-- Export core modules - must load before ed-export-settings.js and ed-export.js -->
+  <script src="editor/core/export-modal-elements.js"></script>
+  <script src="editor/core/modal-visibility-helper.js"></script>
+  <script src="editor/core/export-duration-calculator.js"></script>
+  <script src="editor/core/export-plan-builder.js"></script>
+  <script src="editor/core/export-options-manager.js"></script>
+  <script src="editor/core/export-error-handler.js"></script>
+  <script src="editor/ed-export-settings.js"></script>
+  <script src="editor/ed-export.js"></script>
+  <!-- Bootstrap: infra before legacy editor boot -->
+  <!-- CRITICAL: editor-dom-cache.js must load early - unified DOM access (replaces dom-map.js) -->
+  <script src="editor/editor-dom-cache.js"></script>
+  <script src="editor/ipc-bridge.js"></script>
+  <!-- frame-scheduler.js and layout-cache.js already loaded above - do not duplicate -->
+  <script src="editor/event-manager.js"></script>
+  <script src="editor/media-debug.js"></script>
+  <script src="editor/misc-utils.js"></script>
+  <script src="editor/engine-overlay-helpers.js"></script>
+  <script src="editor/preview-flags.js"></script>
+  <script src="editor/proxy-helpers.js"></script>
+  <script src="editor/render-bridges.js"></script>
+  <script src="editor/preview-schedule.js"></script>
+  <!-- default-state.js moved earlier - now loads before ed-sections.js (see line ~991) -->
+  <script src="editor/vo-offsets.js"></script>
+  <script src="editor/preview-audio-boot.js"></script>
+  <script src="editor/voice-align-boot.js"></script>
+  <script src="editor/playback-boot.js"></script>
+  <script src="editor/engine-boot.js"></script>
+  <script src="editor/export-boot.js"></script>
+  <script src="editor/analyze-boot.js"></script>
+  <script src="editor/editor-api-boot.js"></script>
+  <script src="editor/preview-rebuild.js"></script>
+  <script src="editor/plan-render-boot.js"></script>
+  <script src="editor/project-boot.js"></script>
+  <script src="editor/total-sync.js"></script>
+  <script src="editor/preview-overlay-bridge.js"></script>
+  <script src="editor/preview-central.js"></script>
+  <script src="editor/utils-bridges.js"></script>
+  <script src="editor/transport-bridge.js"></script>
+  <script src="editor/player-ui-bridge.js"></script>
+  <script src="editor/image-bg-fallback.js"></script>
+  <script src="editor/plan-view-boot.js"></script>
+  <script src="editor/find-images-boot.js"></script>
+  <script src="editor/plan-config-boot.js"></script>
+  <script src="editor/plan-ops-boot.js"></script>
+  <script src="editor/preview-quality.js"></script>
+  <script src="editor/time-display.js"></script>
+  <script src="editor/preview-buffer.js"></script>
+  <script src="editor/ai-youtube-boot.js"></script>
+  <script src="editor/module-registry.js"></script>
+  <script src="editor/editor-app.js"></script>
+  <script src="editor.js"></script>
+  <script src="editor-post-load-check.js"></script>
+  <script src="editor-electron-init.js"></script>
+  <!-- Global busy overlay -->
+  <div id="busy-overlay" aria-live="polite" aria-busy="true">
+    <div class="busy-content">
+      <div class="busy-spinner" aria-hidden="true"></div>
+      <div id="busy-text">Loading your files…</div>
+    </div>
+  </div>
+  <!-- Clip Editor modal -->
+  <div id="clip-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Edit Clip">
+    <div class="modal-content ed-inline-023">
+      <button id="clip-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title ed-inline-024">Edit Clip</h2>
+      <div class="ai-row ed-inline-025">
+        <div class="ed-inline-026">
+          <video id="clip-preview"></video>
+        </div>
+        <div class="ai-col ed-inline-027">
+          <div class="ai-col">
+            <label class="ai-muted">Source file</label>
+            <input id="clip-source-path" type="text" class="ai-input" readonly />
+            <div class="ai-row ed-inline-028">
+          <button id="clip-replace-file" class="icon-btn" title="Replace file" aria-label="Replace file"><iconify-icon icon="ph:folder" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+              <span class="ai-muted">Replace with a new file</span>
+            </div>
+          </div>
+          <div class="ai-row ed-inline-029">
+            <label class="ai-col ed-inline-030">
+              <span class="ai-muted">Start (s)</span>
+              <input id="clip-start" type="number" class="ai-input" min="0" step="0.01" />
+            </label>
+            <label class="ai-col ed-inline-031">
+              <span class="ai-muted">End (s)</span>
+              <input id="clip-end" type="number" class="ai-input" min="0" step="0.01" />
+            </label>
+          </div>
+          <div class="ai-row ed-inline-032">
+            <label class="ai-muted"><input id="clip-remove-audio" type="checkbox" /> Mute</label>
+            <label class="ai-muted"><input id="clip-shuffle" type="checkbox" /> Shuffle in section</label>
+          </div>
+          <div class="ed-inline-033 editor-inline-009" style="display: flex">
+            <button id="clip-cancel" class="secondary">Cancel</button>
+            <button id="clip-save" class="primary">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Trim modal -->
+  <div id="trim-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Trim Clip">
+    <div class="modal-content ed-inline-034">
+      <button id="trim-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title ed-inline-035">Trim Clip</h2>
+      <div class="ai-col ed-inline-036 editor-inline-010" style="display: flex">
+        <div class="dashed-panel ed-inline-037" aria-label="Preview">
+          <div id="trim-preview-wrap" style="display: flex">
+            <video id="trim-preview" style="display: block"></video>
+          </div>
+          <div id="trim-splitter"></div>
+          <div class="ai-row ed-inline-038">
+            <button id="trim-play" class="icon-btn" title="Play/Pause" aria-label="Play" style="display: inline-flex">
+              <iconify-icon id="trim-icon-play" icon="ph:play-fill" class="icon icon--s-20" aria-hidden="true"></iconify-icon>
+              <iconify-icon id="trim-icon-pause" icon="ph:pause-fill" class="icon icon--s-20" aria-hidden="true" style="display: none"></iconify-icon>
+            </button>
+            <span id="trim-time" class="ai-muted">0:00</span>
+            <input id="trim-scrub" type="range" class="range" min="0" max="100" step="0.01" value="0"/>
+            <span id="trim-total" class="ai-muted">0:00</span>
+          </div>
+        </div>
+
+        <div class="dashed-panel" aria-label="Output Settings">
+          <div class="panel-title">Output Settings</div>
+          <div class="ai-row ed-inline-039 editor-inline-011" style="display: flex">
+            <label class="ai-col ed-inline-040">
+              <span class="ai-muted">Output Resolution</span>
+              <select id="trim-res" class="ai-select">
+                <option value="1920x1080" selected>1080p (1920×1080)</option>
+                <option value="1280x720">720p (1280×720)</option>
+                <option value="1080x1920">Vertical (1080×1920)</option>
+                <option value="1080x1080">Square (1080×1080)</option>
+              </select>
+            </label>
+            <label class="ai-col ed-inline-041">
+              <span class="ai-muted">Resize Mode</span>
+              <select id="trim-mode" class="ai-select">
+                <option value="fit" selected>Fit (letterbox)</option>
+                <option value="fill">Fill (crop)</option>
+              </select>
+            </label>
+            <label class="ai-col ed-inline-042">
+              <span class="ai-muted">Zoom <span id="trim-zoom-val" class="ai-muted">100%</span></span>
+              <input id="trim-zoom" type="range" min="100" max="180" step="1" value="100" class="range"/>
+            </label>
+            
+          </div>
+        </div>
+
+        <div class="dashed-panel" aria-label="Trim Range">
+          <div class="panel-title">Trim Range</div>
+          <div class="ai-col ed-inline-043 editor-inline-012" style="display: flex">
+            <label class="ai-muted" for="trim-start-scrub">Start <strong id="trim-start-val" class="ai-sub">0:00</strong></label>
+            <input id="trim-start-scrub" type="range" min="0" max="100" step="0.01" value="0" class="range"/>
+            <label class="ai-muted ed-inline-044" for="trim-end-scrub">End <strong id="trim-end-val" class="ai-sub">0:00</strong></label>
+            <input id="trim-end-scrub" type="range" min="0" max="100" step="0.01" value="100" class="range"/>
+          </div>
+          <div class="ed-inline-045 editor-inline-013" style="display: flex">
+            <button id="trim-ignore-add" class="secondary" title="Add current range to ignore list">Ignore section</button>
+          </div>
+        </div>
+
+        <div class="dashed-panel" aria-label="Ignore parts of video">
+          <div class="panel-title">Ignore parts of video</div>
+          <p class="ai-sub ed-inline-046">If the current Start and End are in your ignore list, planned clips will never use that part of this original video. Use this to mark pages as unusable.</p>
+          
+          <div class="trim-ignore-presets">
+            <div class="trim-ignore-presets-label">Quick presets:</div>
+            <div class="trim-ignore-presets-grid" id="trim-ignore-presets"></div>
+          </div>
+
+          <div class="trim-ignore-custom">
+            <div class="trim-ignore-custom-label">Custom ranges:</div>
+            <div class="trim-ignore-list-container">
+              <ul id="trim-ignore-list" class="trim-ignore-list"></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="ed-inline-047 editor-inline-014" style="display: flex">
+          <button id="trim-cancel" class="secondary">Cancel</button>
+          <button id="trim-save" class="primary">Save</button>
+        </div>
+      </div>
+      <div id="trim-busy" style="display: none">
+        <div class="ed-inline-048">
+          <div class="ai-title ed-inline-049">Saving trim…</div>
+          <progress class="ed-inline-050" ></progress>
+          <div id="trim-busy-text" class="ai-sub">Please wait</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Scenes modal -->
+  <div id="vc-scenes-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Scenes">
+    <div class="modal-content vc-scenes-modal">
+      <button id="vc-scenes-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Scenes</h2>
+      <p class="ai-sub">Describe a scene, generate a clip, and insert it into your timeline.</p>
+      <div class="vc-scenes-body">
+        <div class="dashed-panel">
+          <div class="panel-title">Scene prompt</div>
+          <label class="stack ed-inline-051">
+            <span class="vc-scenes-question">What scene do you want to generate?</span>
+            <textarea id="vc-scenes-prompt" class="ai-input vc-scenes-textarea" placeholder="Describe the scene, camera motion, lighting, mood, and key details…"></textarea>
+          </label>
+        </div>
+        <div class="dashed-panel">
+          <div class="panel-title">Style / preset</div>
+          <div class="ed-inline-052 editor-inline-015" style="display: flex">
+            <span class="muted ed-inline-053">Pick a style preset</span>
+            <div id="vc-scenes-preset-grid" class="vc-scenes-preset-grid" role="listbox" aria-label="Style presets"></div>
+            <div id="vc-scenes-style-description" class="muted"></div>
+          </div>
+        </div>
+        <div class="vc-scenes-collapse">
+          <button id="vc-scenes-setup-toggle" class="vc-scenes-collapse-head" type="button" aria-expanded="false">
+            <div>
+              <div class="panel-title">Story setup (optional)</div>
+              <div class="muted ed-inline-054">Style references, characters, and notes</div>
+            </div>
+            <span class="vc-scenes-collapse-icon" aria-hidden="true">▾</span>
+          </button>
+          <div id="vc-scenes-setup-panel" class="vc-scenes-collapse-body" style="display: none">
+            <div class="vc-scenes-subsection">
+              <div class="vc-scenes-subtitle">Generation mode</div>
+              <label class="ai-row ed-inline-055">
+                <input id="vc-scenes-image-generation-toggle" type="checkbox" checked />
+                <span class="muted ed-inline-056">Enable image generation (turn off for video-only generation)</span>
+              </label>
+            </div>
+            <div class="vc-scenes-subsection">
+              <div class="vc-scenes-subtitle">Style references</div>
+              <div id="vc-scenes-style-refs" class="vc-scenes-style-grid"></div>
+              <div class="ai-row ed-inline-057">
+                <button id="vc-scenes-upload-style" class="secondary">Upload style reference(s)</button>
+                <input id="vc-scenes-upload-style-input" type="file" accept="image/*" multiple style="display: none">
+                <span class="muted ed-inline-058">Max 6 images. Select multiple to guide style.</span>
+              </div>
+            </div>
+            <div class="vc-scenes-subsection">
+              <div class="vc-scenes-subtitle">Characters</div>
+              <div id="vc-scenes-character-refs" class="vc-scenes-style-grid"></div>
+              <div class="ai-row ed-inline-059">
+                <button id="vc-scenes-upload-characters" class="secondary">Upload character image(s)</button>
+                <input id="vc-scenes-upload-characters-input" type="file" accept="image/*" multiple style="display: none">
+                <span class="muted ed-inline-060">Max 3. Every generated scene should include them.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="vc-scenes-status" class="ai-sub"></div>
+        <div id="vc-scenes-progress-wrap" style="display: none">
+          <div class="ai-progress"><div class="bar" id="vc-scenes-progress-bar"></div></div>
+        </div>
+        <div id="vc-scenes-preview-wrap" class="vc-scenes-preview-wrap" style="display: none">
+          <video id="vc-scenes-preview" class="vc-scenes-preview" playsinline></video>
+          <div class="ai-row ed-inline-061">
+            <button id="vc-scenes-play" class="secondary">Play</button>
+            <button id="vc-scenes-pause" class="secondary">Pause</button>
+          </div>
+        </div>
+      </div>
+      <div class="ai-row ed-inline-062">
+        <div id="vc-scenes-selected-template" class="vc-scenes-selected-template"></div>
+        <div class="ai-row ed-inline-063">
+        <button id="vc-scenes-retry" class="secondary" style="display: none">Retry</button>
+        <button id="vc-scenes-insert" class="ellipse-btn" style="display: none">Insert</button>
+        <button id="vc-scenes-generate" class="ellipse-btn">Generate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Find Videos (Platinum) modal -->
+  <div id="yt-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Find Videos">
+    <div class="modal-content ed-inline-064 editor-inline-016" style="display: flex">
+      <button id="yt-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Find Videos</h2>
+      <div id="yt-source-panel" class="dashed-panel" aria-label="Find Videos source" style="display: none">
+        <div class="panel-title">Source</div>
+        <div class="ai-row ed-inline-065">
+          <select id="yt-provider" class="ai-select">
+            <option value="youtube" selected>YouTube</option>
+            <option value="facebook">Facebook</option>
+            <option value="dailymotion">Dailymotion</option>
+            <option value="pexels">Pexels</option>
+            <option value="yarn">Yarn.co</option>
+          </select>
+          <div class="ed-inline-066"></div>
+        </div>
+      </div>
+      <!-- Provider: YouTube -->
+      <div id="yt-provider-youtube" class="ai-col">
+        <div class="dashed-panel editor-inline-017" aria-label="YouTube input" style="display: none">
+          <div class="panel-title">Mode</div>
+          <div class="ai-row ed-inline-067">
+            <select id="yt-mode" class="ai-select">
+              <option value="download">Download by URL</option>
+              <option value="search" selected>Search</option>
+            </select>
+            <div class="ed-inline-068"></div>
+          </div>
+          <p class="ai-sub ed-inline-069">Choose to paste a URL to download directly, or search YouTube and pick a video to download. Any video link works (TikTok, YouTube, Facebook, etc.).</p>
+        </div>
+        <div id="yt-mode-download" class="dashed-panel" aria-label="YouTube URL" style="display: none">
+          <div class="panel-title">YouTube URL</div>
+          <div class="ai-col ed-inline-070">
+            <label class="ai-muted ed-inline-071">YouTube URL</label>
+            <div class="ai-row ed-inline-072">
+              <input id="yt-url" type="text" class="ai-input" placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"/>
+              <button id="yt-get-cookies" class="icon-btn" title="Get Cookies" aria-label="Get Cookies">🍪</button>
+            </div>
+            <div id="yt-cookie-status" class="ai-sub"></div>
+            <div class="ed-inline-073">
+              <a href="#" id="yt-multiple-urls-link" class="ai-sub">or paste multiple URLs</a>
+            </div>
+            <label class="ai-muted ed-inline-074 editor-inline-018" style="display: inline-flex"><input id="yt-audio-only" type="checkbox"/> Audio only</label>
+          </div>
+        </div>
+        <div id="yt-mode-search" class="dashed-panel" aria-label="YouTube search">
+          <div class="ai-row ed-inline-075">
+            <div id="yt-search-title" class="panel-title">Search YouTube</div>
+            <button id="yt-change-source" class="secondary">Change Source</button>
+          </div>
+          <div class="ai-row ed-inline-076">
+            <input id="yt-search-term" type="text" class="ai-input" placeholder="e.g., NASA moon landing" />
+            <button id="yt-search-btn" class="ellipse-btn">Search</button>
+          </div>
+          <div id="yt-search-loading" style="display: none">
+            <div class="ai-progress"><div class="bar" id="yt-search-progress-bar"></div></div>
+            <div id="yt-search-stage-text" class="ai-sub">Searching YouTube…</div>
+          </div>
+          <div id="yt-duration-filter" style="display: none">
+            <div class="ai-row ed-inline-077">
+              <span class="ai-sub ed-inline-078">Filter by duration:</span>
+              <button id="yt-filter-all" class="secondary" data-filter="all">All</button>
+              <button id="yt-filter-short" class="secondary" data-filter="short">Short (&lt;3 min)</button>
+              <button id="yt-filter-normal" class="secondary" data-filter="normal">Normal (3-10 min)</button>
+              <button id="yt-filter-long" class="secondary" data-filter="long">Long (10+ min)</button>
+            </div>
+          </div>
+          <div id="yt-search-results-wrap">
+            <div id="yt-search-results" style="display: flex"></div>
+          </div>
+          <div class="ed-inline-079">
+            <div class="ai-row ed-inline-080">
+              <button id="yt-search-add" class="ellipse-btn" disabled>Add</button>
+            </div>
+            <div class="ai-sub ed-inline-081">
+              <a href="https://www.pexels.com" target="_blank" rel="noopener" id="pexels-attrib-yt" style="display: none">Photos and videos provided by Pexels</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-row ed-inline-082">
+          <label class="ai-muted ed-inline-083">Save Location</label>
+          <input id="yt-save-loc" type="text" class="ai-input" placeholder="Defaults to your master save location (Settings)"/>
+          <button id="yt-browse" class="icon-btn" title="Browse" aria-label="Browse"><iconify-icon icon="ph:folder-open" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+        </div>
+        <div class="ai-divider"></div>
+        <div id="yt-step-ready" style="display: block">
+          <div class="ed-inline-084 editor-inline-019" style="display: flex">
+            <button id="yt-start" class="ellipse-btn">Add</button>
+          </div>
+        </div>
+        <div id="yt-step-loading" style="display: none">
+          <h3 class="ai-sub ed-inline-085">Downloading…</h3>
+          <div class="ai-progress"><div class="bar" id="yt-progress-bar"></div></div>
+          <div id="yt-progress-text" class="ai-sub"></div>
+        </div>
+      </div>
+      <!-- Provider: Yarn -->
+      <div id="yt-provider-yarn" class="ai-col" style="display: none">
+        <div class="dashed-panel" aria-label="Yarn search">
+          <div class="panel-title">Yarn.co</div>
+          <p class="ai-sub ed-inline-086">Search Yarn.co for movies by phrase or movie title. We'll show matching clips to download directly.</p>
+        </div>
+        <div class="ai-row ed-inline-087">
+          <input id="fv-term" type="text" class="ai-input" placeholder="e.g., Shrek" />
+          <button id="fv-search" class="ellipse-btn">Search</button>
+        </div>
+        <div id="fv-loading" style="display: none">
+          <div class="ai-progress"><div class="bar" id="fv-progress-bar"></div></div>
+          <div id="fv-stage-text" class="ai-sub">Opening Yarn…</div>
+        </div>
+        <div id="fv-results-wrap">
+          <div id="fv-results" style="display: grid"></div>
+        </div>
+        <div class="ed-inline-088">
+          <div class="ed-inline-089 editor-inline-020" style="display: flex">
+            <button id="fv-cancel" class="secondary">Cancel</button>
+            <button id="fv-add" class="primary" disabled>Add</button>
+          </div>
+          <div class="ai-sub ed-inline-090">
+            <a href="https://www.pexels.com" target="_blank" rel="noopener" id="pexels-attrib" style="display: none">Photos and videos provided by Pexels</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Multiple URLs modal -->
+  <div id="yt-multiple-urls-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Paste Multiple URLs">
+    <div class="modal-content ed-inline-091 editor-inline-021" style="display: flex">
+      <button id="yt-multiple-urls-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Paste Multiple URLs</h2>
+      <div class="dashed-panel ed-inline-092 editor-inline-022" style="display: flex">
+        <div class="panel-title">YouTube URLs</div>
+        <p class="ai-sub ed-inline-093">Paste multiple YouTube URLs (one per line). Downloads will happen one at a time to avoid YouTube blocking.</p>
+        <textarea id="yt-multiple-urls-textarea" class="ai-input" placeholder="https://www.youtube.com/watch?v=...&#10;https://youtu.be/...&#10;https://www.youtube.com/watch?v=..."></textarea>
+        <div class="ed-inline-094 editor-inline-023" style="display: flex">
+          <label class="ai-muted ed-inline-095 editor-inline-024" style="display: inline-flex">
+            <input id="yt-multiple-audio-only" type="checkbox"/> Audio only
+          </label>
+          <div class="ed-inline-096 editor-inline-025" style="display: flex">
+            <button id="yt-multiple-urls-cancel" class="secondary">Cancel</button>
+            <button id="yt-multiple-urls-start" class="ellipse-btn">Download</button>
+          </div>
+        </div>
+      </div>
+      <div id="yt-multiple-progress-wrap" style="display: none">
+        <div class="dashed-panel">
+          <div class="panel-title">Download Progress</div>
+          <div id="yt-multiple-progress-text" class="ai-sub">Preparing...</div>
+          <div class="ai-progress ed-inline-097">
+            <div class="bar" id="yt-multiple-progress-bar"></div>
+          </div>
+          <div id="yt-multiple-status-text" class="ai-sub"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Add Custom (Text Video) modal -->
+  <div id="custom-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Add Custom" data-no-backdrop-close>
+    <div class="modal-content ed-inline-098">
+      <button id="custom-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Generate</h2>
+      <div class="custom-tabs custom-tabs-bar ed-inline-099" role="tablist" aria-label="Add Custom tabs">
+        <button class="custom-tab active" data-ctab="imagegen" role="tab" aria-selected="true">Image</button>
+        <button class="custom-tab" data-ctab="edit" role="tab" aria-selected="false">Edit</button>
+        <button class="custom-tab" data-ctab="image" role="tab" aria-selected="false" title="Import Library">Library</button>
+      </div>
+      <!-- Tab Panels Container - all panels are direct siblings -->
+      <div class="custom-panels-container">
+        <div class="custom-panel active" data-ctab-panel="imagegen" role="tabpanel">
+          <div class="dashed-panel ed-inline-100" aria-label="Generate Image (Runware)">
+            <div class="panel-title">Generate Image</div>
+            <div class="ai-row ed-inline-101">
+              <div class="ai-col ed-inline-102">
+                <label class="stack"><span class="ai-muted">Saved styles</span>
+                  <select id="imggen-saved" class="ai-select"><option value="">Saved styles…</option></select>
+                </label>
+                <div class="ai-row ed-inline-103">
+                  <button id="imggen-open-library" class="secondary">Model Library</button>
+                  <span class="ai-sub ed-inline-104">Explore at <a href="https://my.runware.ai/models/all" target="_blank" rel="noopener">runware</a></span>
+                </div>
+                <div class="ai-row ed-inline-105">
+                  <div class="panel-title">Reference Images</div>
+                  <div class="ai-row ed-inline-106">
+                    <button id="imggen-add-ref" class="secondary">Add</button>
+                    <button id="imggen-clear-ref" class="secondary">Clear</button>
+                  </div>
+                </div>
+                <div id="imggen-ref-grid" style="display: grid"></div>
+              </div>
+              <div class="ai-col ed-inline-107">
+                <div class="ai-row ed-inline-108">
+                  <label class="stack ed-inline-109"><span class="ai-muted">Provider</span>
+                    <select id="imggen-provider" class="ai-select">
+                      <option value="runware" selected>Runware (Cloud)</option>
+                      <option value="openai">OpenAI (DALL·E 3)</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="stack"><span class="ai-muted">Prompt</span><textarea id="imggen-prompt" class="ai-input" placeholder="Describe the image…"></textarea></label>
+                <button id="imggen-generate" class="ellipse-btn">Generate</button>
+                <span id="imggen-status" class="ai-sub"></span>
+                <div id="imggen-grid" style="display: grid"></div>
+                <div class="ai-row ed-inline-110">
+                  <button id="imggen-restart" class="secondary">Restart</button>
+                  <button id="imggen-show-folder" class="secondary" style="display: none">Show in Folder</button>
+                  <button id="imggen-add" class="primary" disabled>Add to Project</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="custom-panel" data-ctab-panel="edit" role="tabpanel">
+      <div class="ed-inline-111">
+        <!-- Video Creator preview (video-creator.js) -->
+        <div id="vc-preview-wrap-edit" style="display: flex">
+          <canvas id="vc-canvas-edit" style="display: block"></canvas>
+          <button id="vc-bg-color-btn-edit" title="Change background color" style="display: flex">
+            <iconify-icon icon="ph:palette" class="ed-inline-112"></iconify-icon>
+          </button>
+          <div id="vc-bg-color-picker-popup-edit" style="display: none">
+            <div class="ed-inline-113 editor-inline-026" style="display: flex">
+              <input type="color" id="vc-bg-color-picker-edit" value="#000000" title="Background color"/>
+              <input type="text" id="vc-bg-color-hex-picker-edit" value="#000000" placeholder="#000000" title="Hex color code"/>
+            </div>
+          </div>
+        </div>
+        <!-- Playback Controls -->
+        <div id="vc-controls-edit" style="display: flex">
+          <button id="vc-play-edit" class="icon-btn" title="Play/Pause" style="display: flex">
+            <iconify-icon id="vc-play-icon-play-edit" icon="ph:play-fill" style="display: block"></iconify-icon>
+            <iconify-icon id="vc-play-icon-pause-edit" icon="ph:pause-fill" style="display: none"></iconify-icon>
+          </button>
+          <div class="ed-inline-114 editor-inline-027" style="display: flex">
+            <span id="vc-time-edit">0:00</span>
+            <input type="range" id="vc-scrub-edit" min="0" max="10" step="0.1" value="0" />
+            <span id="vc-total-edit">0:00</span>
+          </div>
+        </div>
+      </div>
+      <div id="vc-editor-edit" class="dashed-panel" aria-label="Video Creator">
+        <div class="ai-row ed-inline-115">
+        
+          <div class="ai-row ed-inline-116">
+            <div class="ai-row ed-inline-117">
+              <label class="ai-muted ed-inline-118">Duration</label>
+              <input id="vc-duration-edit" type="text" class="ai-input" placeholder="mm:ss or seconds" value="10"/>
+            </div>
+            <div class="ai-row ed-inline-119">
+              <div class="ai-row ed-inline-120">
+                <label class="ai-muted ed-inline-121">Resolution</label>
+                <select id="vc-resolution-edit" class="ai-select vs-hide-native" style="display: none">
+                  <option value="1280x720">1280 x 720 HD</option>
+                  <option value="1920x1080" selected>1920 x 1080 HD</option>
+                  <option value="3840x2160">3840 x 2160 Ultra HD</option>
+                  <option value="720x1280">720 x 1280 Vertical HD</option>
+                  <option value="1080x1920">1080 x 1920 Vertical HD</option>
+                  <option value="720x720">720 x 720 Square</option>
+                  <option value="1080x1080">1080 x 1080 Square HD</option>
+                  <option value="2160x2160">2160 x 2160 Square Ultra HD</option>
+                </select>
+                <div class="vs-dd" id="vc-resolution-dd-edit" data-dropdown-manual="1" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                  <button type="button" class="vs-dd-btn" id="vc-resolution-btn-edit">
+                    <span id="vc-resolution-label-edit">1920 x 1080 HD</span>
+                    <span class="vs-dd-caret">▾</span>
+                  </button>
+                  <div class="vs-dd-menu" role="listbox" id="vc-resolution-menu-edit"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+                </div>
+        <div class="ai-col ed-inline-122">
+          <div class="ai-row ed-inline-123">
+            <button id="vc-add-video-edit" class="secondary"><iconify-icon icon="ph:video" class="icon icon--s-18"></iconify-icon> Add Video</button>
+            <button id="vc-add-image-edit" class="secondary"><iconify-icon icon="ph:image" class="icon icon--s-18"></iconify-icon> Add Image</button>
+            <button id="vc-add-webpage-edit" class="secondary"><iconify-icon icon="ph:globe" class="icon icon--s-18"></iconify-icon> Webpage</button>
+            <button id="vc-find-images-edit" class="secondary"><iconify-icon icon="ph:magnifying-glass" class="icon icon--s-18"></iconify-icon> Find Images</button>
+            <button id="vc-scenes-edit" class="secondary"><iconify-icon icon="ph:film-slate" class="icon icon--s-18"></iconify-icon> Scenes</button>
+            <button id="vc-find-video-edit" class="secondary"><iconify-icon icon="ph:youtube-logo" class="icon icon--s-18"></iconify-icon> Find Video</button>
+            <button id="vc-add-text-edit" class="secondary"><iconify-icon icon="ph:text-aa" class="icon icon--s-18"></iconify-icon> Add Text</button>
+            <button id="vc-add-shape-edit" class="secondary" title="Add Shape (Shift+S)" aria-label="Add Shape"><iconify-icon icon="ph:star" class="icon icon--s-18"></iconify-icon> Add Shape</button>
+            <button id="vc-add-audio-edit" class="secondary"><iconify-icon icon="ph:speaker-high" class="icon icon--s-18"></iconify-icon> Add Audio</button>
+            <button id="vc-add-bgm-edit" class="secondary"><iconify-icon icon="ph:music-note" class="icon icon--s-18"></iconify-icon> Add BGM</button>
+            <button id="vc-add-sfx-edit" class="secondary"><iconify-icon icon="ph:waveform" class="icon icon--s-18"></iconify-icon> Add SFX</button>
+                </div>
+          <!-- Asset List -->
+          <div id="vc-asset-list-edit" class="vc-asset-list">
+            <div class="vc-asset-list-header ed-inline-124">
+              <span class="ai-muted ed-inline-125">Assets</span>
+              <span id="vc-asset-count-edit" class="ai-sub">0 items</span>
+            </div>
+            <div id="vc-asset-items-edit" class="vc-asset-items" style="display: flex">
+              <!-- Assets will be rendered here -->
+            </div>
+          </div>
+        </div>
+        <div class="ai-row ed-inline-126">
+          <button id="vc-save-edit" class="secondary" style="display: none">Save</button>
+          <button id="vc-add-edit" class="ellipse-btn">Save & Replace</button>
+        </div>
+      </div>
+      <!-- Edit Panel (slides from right) -->
+      <div id="vc-edit-panel-edit" class="vc-edit-panel">
+        <div class="ed-inline-127">
+          <div class="ed-inline-128 editor-inline-028" style="display: flex">
+            <h3 class="ed-inline-129">Edit Layer</h3>
+            <button id="vc-edit-panel-close-edit" class="icon-btn">×</button>
+          </div>
+        </div>
+        <div id="vc-edit-form-edit">
+          <!-- Form fields will be rendered here -->
+        </div>
+      </div>
+        </div>
+        <div class="custom-panel" data-ctab-panel="image" role="tabpanel">
+          <div id="custom-library-container" style="display: flex">
+            <div class="home-library-tabs ed-inline-130 editor-inline-029" role="tablist" aria-label="Library tabs" style="display: flex">
+              <button class="custom-tab active" data-custom-library-tab="assets" role="tab" aria-selected="true">Assets</button>
+              <button class="custom-tab" data-custom-library-tab="narrators" role="tab" aria-selected="false">Narrators</button>
+              <button class="custom-tab" data-custom-library-tab="agents" role="tab" aria-selected="false">Agents</button>
+              <button class="icon-btn" id="narrators-info-open" title="About Narrators" aria-label="About Narrators" type="button" style="display: none">
+                <iconify-icon icon="ph:info" class="icon icon--s-18"></iconify-icon>
+              </button>
+            </div>
+            <div id="custom-library-assets-content" style="display: block">
+              <!-- Filter Bar -->
+              <div class="library-filter-bar ed-inline-131 editor-inline-030" style="display: flex">
+                <div>
+                  <label for="custom-library-filter">Filter:</label>
+                  <select id="custom-library-filter" class="ai-select vs-hide-native">
+                    <option value="all" selected>All</option>
+                    <option value="has">Downloaded</option>
+                    <option value="missing">Not downloaded</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="custom-library-cat">Category:</label>
+                  <select id="custom-library-cat" class="ai-select vs-hide-native">
+                    <option value="">All</option>
+                  </select>
+                </div>
+                <div class="ed-inline-132">
+                  <input id="custom-library-search" type="text" class="ai-input" placeholder="Search assets…">
+                </div>
+              </div>
+              <!-- Library Tabs -->
+              <div class="ai-row ed-inline-133" role="tablist" aria-label="Library categories">
+              <button class="custom-tab active" data-libtab="images" role="tab" aria-selected="true">Images</button>
+              <button class="custom-tab" data-libtab="videos" role="tab" aria-selected="false">Videos</button>
+              <button class="custom-tab" data-libtab="audio" role="tab" aria-selected="false">Audio</button>
+              <button class="custom-tab" data-libtab="bg" role="tab" aria-selected="false">BGV</button>
+              <button class="custom-tab" data-libtab="bgm" role="tab" aria-selected="false">BGM</button>
+              <button class="custom-tab" data-libtab="sfx" role="tab" aria-selected="false">Sound Effects</button>
+              <button class="custom-tab" data-libtab="stock" role="tab" aria-selected="false">Stock/Source</button>
+              <button class="custom-tab" data-libtab="vignettes" role="tab" aria-selected="false">Vignettes & Textures</button>
+              </div>
+              <!-- Library Grid -->
+              <div id="custom-library-grid" style="display: grid"></div>
+              <div id="custom-library-status" class="ai-sub"></div>
+            </div>
+            <div id="custom-library-narrators-content" data-narrators-surface="editor" style="display: none">
+              <div class="ai-row ed-inline-134">
+                <button class="primary" data-narrators-create type="button">Create Narrator</button>
+              </div>
+              <div data-narrators-list class="ed-inline-135 editor-inline-031" style="display: flex"></div>
+              <div class="muted ed-inline-136" data-narrators-empty>
+                No narrators yet. Create one to start.
+              </div>
+            </div>
+            <div id="custom-library-agents-content" data-agents-surface="editor" style="display: none">
+              <div class="ai-row ed-inline-134">
+                <button class="primary" data-agents-create type="button">Create Agent</button>
+              </div>
+              <div data-agents-list class="ed-inline-135 editor-inline-031" style="display: flex"></div>
+              <div class="muted ed-inline-136" data-agents-empty>
+                No agents yet. Create one to start.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- End Tab Panels Container -->
+      <!-- Runware Model Library modal (Advanced Editor) -->
+      <div id="runware-models-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Runware Model Library">
+        <div class="modal-content ed-inline-137 editor-inline-032" style="display: flex">
+          <button id="runware-models-close" class="modal-close" title="Close" aria-label="Close">×</button>
+          <h2 class="ed-inline-138 editor-inline-033" style="display: flex">Runware Model Library <a href="https://my.runware.ai/models/all" target="_blank" rel="noopener" class="link-button">Explore models</a></h2>
+          <p class="ai-sub ed-inline-139">Search and add Runware models by name, tags, architecture, or AIR id. Paste an AIR like <code>runware:101@1</code> to jump directly.</p>
+          <div class="ai-row">
+            <input id="runware-search-text" type="text" placeholder="Search or paste AIR id (e.g., runware:101@1)" class="ai-input" />
+            <select id="runware-arch" class="ai-select">
+              <option value="">Any architecture</option>
+              <option value="sdxl">SDXL 1.0</option>
+              <option value="sd3">SD 3</option>
+              <option value="flux1s">FLUX.1 [schnell]</option>
+              <option value="flux1d">FLUX.1 [dev]</option>
+              <option value="fluxpro">FLUX.1 [pro]</option>
+              <option value="imagen3">Imagen 3</option>
+              <option value="imagen4fast">Imagen 4 Fast</option>
+            </select>
+            <select id="runware-category" class="ai-select">
+              <option value="">Any category</option>
+              <option value="checkpoint">checkpoint</option>
+              <option value="lora">lora</option>
+              <option value="controlnet">controlnet</option>
+            </select>
+            <button id="runware-search-btn" class="secondary">Search</button>
+          </div>
+          <div id="runware-models-status" class="muted"></div>
+          <div id="runware-models-results" class="rw-grid"></div>
+          <div class="ed-inline-140 editor-inline-034" style="display: flex">
+            <button id="runware-prev" class="secondary">Prev</button>
+            <button id="runware-next" class="secondary">Next</button>
+          </div>
+        </div>
+      </div>
+      <div class="ed-inline-141 editor-inline-035" style="display: flex">
+        <button id="custom-cancel" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <!-- Import Library modal -->
+  <div id="library-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Import Library">
+    <div class="modal-content ed-inline-142 editor-inline-036" style="display: flex">
+      <button id="library-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <button id="library-cookie-inline" class="secondary" title="Connect Cookies">Cookies: Checking…</button>
+      <h2 class="ai-title">Import Library</h2>
+      <p class="ai-sub ed-inline-143">Browse templates for backgrounds, music, SFX, and stock/source footage. Download to save locally, then Import to add to your project.</p>
+      <div class="ai-row ed-inline-144">
+        <label class="ai-muted">Page</label>
+        <select id="library-page-select" class="ai-select"></select>
+        <div class="ai-row ed-inline-145">
+          <label class="ai-muted" for="library-filter">Filter</label>
+          <select id="library-filter" class="ai-select">
+            <option value="all" selected>All</option>
+            <option value="has">Downloaded</option>
+            <option value="missing">Not downloaded</option>
+          </select>
+          <label class="ai-muted" for="library-cat">Category</label>
+          <select id="library-cat" class="ai-select"><option value="">All</option></select>
+          <input id="library-search" type="text" class="ai-input" placeholder="Search…"/>
+        </div>
+        <hr>
+        <div class="ai-row ed-inline-146" role="tablist" aria-label="Library categories">
+          <button class="custom-tab active" data-libtab="images" role="tab" aria-selected="true">Images</button>
+          <button class="custom-tab" data-libtab="videos" role="tab" aria-selected="false">Videos</button>
+          <button class="custom-tab" data-libtab="audio" role="tab" aria-selected="false">Audio</button>
+          <button class="custom-tab" data-libtab="bg" role="tab" aria-selected="false">BGV</button>
+          <button class="custom-tab" data-libtab="bgm" role="tab" aria-selected="false">BGM</button>
+          <button class="custom-tab" data-libtab="sfx" role="tab" aria-selected="false">Sound Effects</button>
+          <button class="custom-tab" data-libtab="stock" role="tab" aria-selected="false">Stock/Source</button>
+          <button class="custom-tab" data-libtab="vignettes" role="tab" aria-selected="false">Vignettes & Textures</button>
+          <button id="library-add-custom" class="secondary" style="display: none">Add Files…</button>
+        </div>
+      </div>
+    
+      <div class="ai-divider"></div>
+      <div id="library-grid" style="display: grid"></div>
+      <div id="library-status" class="ai-sub"></div>
+      <div class="ed-inline-147">
+        <div class="ed-inline-148 editor-inline-037" style="display: flex">
+          <button id="library-cancel" class="secondary">Cancel</button>
+          <button id="library-import" class="primary" disabled>Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Narrator Create/Edit modal -->
+  <div id="narrator-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Narrator">
+    <div class="modal-content ed-inline-149 editor-inline-038" style="display: flex">
+      <button class="modal-close" title="Close" aria-label="Close" id="narrator-modal-close">×</button>
+      <h2 id="narrator-modal-title" class="mb-8">Create Narrator</h2>
+      <div class="ed-inline-150 editor-inline-039" style="display: flex">
+        <label class="stack">
+          <span class="muted ed-inline-151">Narrator name</span>
+          <input id="narrator-name-input" type="text" class="ai-input" placeholder="e.g. Calm storyteller" />
+        </label>
+        <label class="stack">
+          <span class="muted ed-inline-152">Voice</span>
+          <select id="narrator-voice-select" class="ai-select">
+            <option value="">Loading voices…</option>
+          </select>
+        </label>
+        <label class="stack">
+          <span class="muted ed-inline-153">Transcript style guide</span>
+          <textarea id="narrator-transcript-text" class="ai-input" placeholder="Paste transcript text here…"></textarea>
+        </label>
+        <div class="ai-row ed-inline-154">
+          <button id="narrator-add-file" class="secondary" type="button">Add File Transcript</button>
+          <input id="narrator-youtube-url" class="ai-input" placeholder="YouTube link" />
+          <button id="narrator-add-youtube" class="secondary" type="button">Add YouTube Transcript</button>
+        </div>
+        <div id="narrator-modal-status" class="muted"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" id="narrator-cancel" type="button">Cancel</button>
+        <button class="primary" id="narrator-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Narrator Chat modal -->
+  <div id="narrator-chat-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Narrator Chat">
+    <div class="modal-content ed-inline-155 editor-inline-040" style="display: flex">
+      <button id="narrator-chat-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 id="narrator-chat-title" class="mb-8">Narrator Chat</h2>
+      <div id="narrator-chat-thread"></div>
+      <div class="ed-inline-156 editor-inline-041" style="display: flex">
+        <textarea id="narrator-chat-input" class="ai-input" rows="3" placeholder="Ask the narrator to write a script or respond in character…"></textarea>
+        <div class="ai-row ed-inline-157">
+          <button id="narrator-chat-cancel" class="secondary" type="button">Close</button>
+          <button id="narrator-chat-send" class="primary" type="button">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Narrators Info modal -->
+  <div id="narrators-info-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="About Narrators">
+    <div class="modal-content ed-inline-158 editor-inline-042" style="display: flex">
+      <button id="narrators-info-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="mb-8">About Narrators</h2>
+      <div class="ed-inline-159 editor-inline-043" style="display: flex">
+        <details open>
+          <summary class="ed-inline-160">What are Narrators?</summary>
+          <div class="muted ed-inline-161">
+            Narrators combine a specific voice with script‑writing guidance. You give a name, pick a voice, and provide transcript examples so the AI learns how to write in that style.
+          </div>
+        </details>
+        <details>
+          <summary class="ed-inline-162">Why create them?</summary>
+          <div class="muted ed-inline-163">
+            They let you reuse consistent voice + writing style across videos. Great for branding, different personas, or multiple channels.
+          </div>
+        </details>
+        <details>
+          <summary class="ed-inline-164">How do I create one?</summary>
+          <div class="muted ed-inline-165">
+            Click Create Narrator, enter a name, pick a voice, and add transcript text. You can paste text or import from a file or YouTube link.
+          </div>
+        </details>
+        <details>
+          <summary class="ed-inline-166">How do I use them?</summary>
+          <div class="muted ed-inline-167">
+            In Video Creator Step 2, switch to the Narrator tab to pick one. This controls both the voice and the script style.
+          </div>
+        </details>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" id="narrators-info-close-2" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Projects modal (Advanced Editor) -->
+  <div id="recent-projects-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Open a Project">
+    <div class="modal-content ed-inline-168 editor-inline-044" style="display: flex">
+      <button id="recent-projects-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Open a Project</h2>
+      <p class="ai-sub">Pick a recent project, browse for one, or start a new project.</p>
+      <div class="rp-topbar">
+        <input id="recent-projects-search" type="text" class="ai-input" placeholder="Search projects…">
+        <button id="recent-projects-browse" class="secondary">Browse…</button>
+      </div>
+      <div class="rp-table-wrap" aria-label="Recent projects list">
+        <table class="rp-table" role="table" aria-label="Recent projects">
+          <thead>
+            <tr>
+              <th class="ed-inline-169">Project</th>
+              <th class="ed-inline-170">Last accessed</th>
+            </tr>
+          </thead>
+          <tbody id="recent-projects-tbody"></tbody>
+        </table>
+      </div>
+      <div class="rp-actions">
+        <button id="recent-projects-new" class="secondary">Start New</button>
+        <button id="recent-projects-open" class="primary" disabled>Open</button>
+      </div>
+    </div>
+  </div>
+  <!-- Find Images modal -->
+  <div id="fi-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Find Images">
+    <div class="modal-content ed-inline-171 editor-inline-045" style="display: flex">
+      <button id="fi-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Find Images</h2>
+      <p class="ai-sub">Enter a subject or description. We'll fetch tons of images related to your term.</p>
+      <!-- Tabs -->
+      <div id="fi-tabs" style="display: flex">
+        <button id="fi-tab-images" class="fi-tab active">Images</button>
+        <button id="fi-tab-giphy" class="fi-tab">GIFs</button>
+      </div>
+      <div class="ai-row ed-inline-172">
+        <input id="fi-term" type="text" class="ai-input" placeholder="e.g., Golden Gate Bridge at sunset" />
+        <button id="fi-search" class="ellipse-btn">Search</button>
+      </div>
+      <div id="fi-loading" style="display: none">
+        <div class="ai-progress"><div class="bar" id="fi-progress-bar"></div></div>
+        <div id="fi-stage-text" class="ai-sub">Our robots are finding images that match your term…</div>
+      </div>
+      <div id="fi-results-wrap">
+        <div id="fi-results" style="display: grid"></div>
+      </div>
+      <div class="ed-inline-173">
+        <div class="ai-sub ed-inline-174">
+          <a href="https://www.pexels.com" target="_blank" rel="noopener" id="fi-pexels-attrib" style="display: none">Photos provided by Pexels</a>
+          <a href="https://giphy.com" target="_blank" rel="noopener" id="fi-giphy-attrib" style="display: none">GIFs provided by Giphy</a>
+        </div>
+        <div class="ed-inline-175 editor-inline-046" style="display: flex">
+          <button id="fi-cancel" class="secondary">Cancel</button>
+          <button id="fi-add" class="primary" disabled>Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Progress modal (Advanced Editor) -->
+  <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Exporting video" data-no-backdrop-close="true">
+    <div class="modal-content ed-inline-176 editor-inline-047" style="display: flex">
+      <h2 class="ai-title ed-inline-177">Exporting…</h2>
+      <div id="export-saving-text" class="ai-sub">Preparing export…</div>
+      <div class="ai-progress ed-inline-178" aria-label="Export progress">
+        <div id="export-progress-bar" class="bar" style="display: block"></div>
+      </div>
+      <div id="export-eta" class="ai-sub">Estimating time remaining…</div>
+      <div id="export-tip" class="ai-sub">Tip: Use Preview to quickly hear your mix before exporting.</div>
+      <div class="modal-actions ed-inline-179 editor-inline-048" style="display: flex">
+        <button id="export-cancel" class="secondary">Cancel</button>
+        <button id="export-play" class="primary" style="display: none">Play</button>
+        <button id="export-reveal" class="secondary" style="display: none">Show in Folder</button>
+        <button id="export-close" class="secondary" disabled style="display: none">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- Export Settings modal (Advanced Editor) -->
+  <div id="export-settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Export settings">
+    <div class="modal-content ed-inline-180">
+      <button id="export-settings-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Export</h2>
+      <div class="settings-grid ed-inline-181 editor-inline-049" style="display: flex">
+        <div id="ex-preview-wrap" class="field">
+          <div class="ed-inline-182">
+            <div class="ed-inline-183 editor-inline-050" style="display: flex">
+              <div class="ai-sub ed-inline-184">Preview</div>
+           
+            </div>
+            <div id="ex-caption-preview" style="display: flex">
+              <div id="ex-preview-spinner" class="ai-spinner" aria-hidden="true" style="display: none"></div>
+              <div id="ex-caption-sample">This is a caption preview</div>
+            </div>
+          </div>
+          <div id="ex-export-stats" class="ai-sub"><iconify-icon icon="ph:film-strip" class="icon icon--s-20" aria-hidden="true"></iconify-icon> Duration: — | Size: —</div>
+          <div class="modal-actions ed-inline-185 editor-inline-051" style="display: flex">
+            <button id="export-settings-cancel" class="secondary">Cancel</button>
+           
+            <button id="export-settings-export" class="primary">Export</button>
+          </div>
+        </div>
+        
+        <div class="field ed-inline-186">
+          <div id="ex-form-col" style="display: flex">
+            <label class="stack">
+              <span>Video title</span>
+              <input id="ex-name" type="text" class="ai-input" placeholder="My video" />
+            </label>
+            <label class="stack">
+              <span>Save to</span>
+              <div class="ed-inline-187 editor-inline-052" style="display: flex">
+                <input id="ex-save-path" type="text" class="ai-input" readonly>
+                <button id="ex-save-browse" class="secondary" title="Browse" aria-label="Browse"><iconify-icon icon="ph:folders" class="icon icon--s-20" aria-hidden="true"></iconify-icon></button>
+              </div>
+            </label>
+            <div class="divider ed-inline-188"></div>
+            <label class="stack">
+              <span>Output quality</span>
+              <select id="ex-res" class="custom-select ai-select">
+                <option value="1080p" selected>1080p (Full HD)</option>
+                <option value="720p">720p (HD)</option>
+                <option value="4k">4K (UHD)</option>
+              </select>
+            </label>
+            <label class="stack">
+              <span>Aspect ratio</span>
+              <select id="ex-aspect" class="custom-select ai-select">
+                <option value="16:9" selected>16:9 (Landscape)</option>
+                <option value="9:16">9:16 (Portrait)</option>
+                <option value="1:1">1:1 (Square)</option>
+              </select>
+            </label>
+            <label class="stack">
+              <span>Codec</span>
+              <select id="ex-codec" class="custom-select ai-select">
+                <option value="h264" selected>H.264 (AVC)</option>
+                <option value="hevc">HEVC (H.265)</option>
+              </select>
+            </label>
+            <label class="stack">
+              <span>Frame rate</span>
+              <select id="ex-fps" class="custom-select ai-select">
+                <option value="24">24 fps (Film)</option>
+                <option value="25">25 fps (PAL)</option>
+                <option value="30" selected>30 fps (Default)</option>
+                <option value="50">50 fps</option>
+                <option value="60">60 fps</option>
+              </select>
+            </label>
+            <label class="stack">
+              <span>Captioning</span>
+              <div class="ed-inline-189 editor-inline-053" style="display: inline-flex">
+                <button id="ex-sub-off" class="secondary">Subtitles off</button>
+                <button id="ex-sub-on" class="secondary">Subtitles on</button>
+              </div>
+              <input type="checkbox" id="ex-subtitles"  style="display: none"/>
+            </label>
+            <div id="ex-caption-style-wrap" class="stack" style="display: none">
+              <label class="stack">
+                <span>Caption size</span>
+                <div class="ed-inline-190 editor-inline-054" style="display: flex">
+                  <input id="ex-caption-size" type="range" class="range" min="50" max="200" step="5" value="100"/>
+                  <span id="ex-caption-size-val" class="ai-sub">100%</span>
+                </div>
+              </label>
+              <label class="stack">
+                <span>Subtitle style</span>
+                <select id="ex-substyle" class="custom-select ai-select">
+                  <option value="plain" selected>Plain</option>
+                  <option value="shadow">Shadow</option>
+                  <option value="outline">Outline</option>
+                </select>
+              </label>
+              <label class="stack">
+                <span>Text appearance</span>
+                <select id="ex-capmode" class="custom-select ai-select">
+                  <option value="typewriter" selected>Typewriter</option>
+                  <option value="word-ink">Highlight each word (text)</option>
+                  <option value="word-bg">Highlight each word (background)</option>
+                </select>
+              </label>
+              <label class="stack"><span>Text color</span><input type="color" id="ex-text-color" value="#ffffff"></label>
+              <label class="stack"><span>Shadow color</span><input type="color" id="ex-shadow-color" value="#000000"></label>
+              <label class="stack"><span>Outline color</span><input type="color" id="ex-outline-color" value="#000000"></label>
+              <label class="stack"><span>Highlight color</span><input type="color" id="ex-highlight-color" value="#ffd60a"></label>
+              <label class="stack"><span>Background color</span><input type="color" id="ex-bg-highlight-color" value="#111827"></label>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+  <!-- Script modal -->
+  <div id="script-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Script">
+    <div class="modal-content ed-inline-191">
+      <button id="script-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title">Script</h2>
+      <p class="ai-sub">Paste your script. Markdown supported.</p>
+      <textarea id="script-text" class="ai-input"></textarea>
+      <div class="ed-inline-192 editor-inline-055" style="display: flex">
+        <button id="script-cancel" class="secondary">Cancel</button>
+        <button id="script-save" class="ellipse-btn">Save</button>
+      </div>
+    </div>
+  </div>
+  <!-- Script viewer modal -->
+  <div id="script-viewer-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="View Script">
+    <div class="modal-content ed-inline-193">
+      <button id="script-viewer-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title ed-inline-194">Script</h2>
+      <div id="script-viewer-body" class="ai-input"></div>
+      <div class="ed-inline-195 editor-inline-056" style="display: flex">
+        <button id="script-viewer-close-bottom" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- How-To modal -->
+  <div id="howto-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="How to use the Advanced Editor">
+    <div class="modal-content ed-inline-196">
+      <div class="howto-header ed-inline-197 editor-inline-057" style="display: flex">
+        <h2 class="ed-inline-198">How to Use the Advanced Editor</h2>
+        <button id="howto-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      </div>
+      <p class="ai-sub ed-inline-199">Start with the basics, then explore planning, audio, and exporting for best results.</p>
+      <div class="howto-tabs howto-tabs-bar" role="tablist" aria-label="How-To tabs">
+        <button class="howto-tab active" data-tab="basics" role="tab" aria-selected="true">Basics</button>
+        <button class="howto-tab" data-tab="sections" role="tab" aria-selected="false">Pages</button>
+        <button class="howto-tab" data-tab="planning" role="tab" aria-selected="false">Planning Clips</button>
+        <button class="howto-tab" data-tab="preview" role="tab" aria-selected="false">Preview</button>
+        <button class="howto-tab" data-tab="audio" role="tab" aria-selected="false">Audio & Voice</button>
+        <button class="howto-tab" data-tab="export" role="tab" aria-selected="false">Export</button>
+        <button class="howto-tab" data-tab="projects" role="tab" aria-selected="false">Projects</button>
+        <button class="howto-tab" data-tab="tips" role="tab" aria-selected="false">Tips</button>
+      </div>
+      <div class="howto-panels ed-inline-200 editor-inline-058" style="display: grid">
+        <section class="howto-panel" data-tab-panel="basics" role="tabpanel">
+          <h3>Basics</h3>
+          <ul>
+            <li>Set your <strong>Video Title</strong> at the top.</li>
+            <li>Open the <strong>File</strong> menu to <strong>Add Page</strong> and <strong>Add Files</strong>.</li>
+            <li>Use <strong>Total Duration</strong> and <strong>Min/Max Clip Length</strong> in the Inspector to control pacing.</li>
+            <li>Toggle <strong>Mute</strong> globally, or per section, to get clean BGM/voice mixes.</li>
+            <li>Use the toolbar layout toggles (☰ / ▤ / ☷) to collapse or expand the left sidebar, preview area, and right sidebar to focus on Planned clips.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="sections" role="tabpanel">
+          <h3>Pages</h3>
+          <ul>
+            <li>Use <strong>Add Page</strong> to create structure: e.g., Hook, Body, Ending.</li>
+            <li>Each page can hold videos and images; <strong>Shuffle</strong> determines randomization within the page.</li>
+            <li>Set the <strong>End</strong> time on each page to precisely allocate the total duration.</li>
+            <li>Enable <strong>Mute</strong> per page if you plan to add voiceover or BGM.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="planning" role="tabpanel">
+          <h3>Planning Clips</h3>
+          <ul>
+            <li>Click <strong>Preview Plan</strong> to generate a clip plan from your selected files.</li>
+            <li>Toggle between <strong>Grid</strong> and <strong>List</strong> views in the Planned clips header. List view adds a mini‑viewer on the right and shows actions inline.</li>
+            <li>In either view, use the checkbox to include/exclude clips. In list view, press <strong>Play</strong> on a row to preview that segment in the mini‑viewer.</li>
+            <li>When a <strong>Voiceover</strong> is added, list view playback syncs the VO to the clip's start time for quick alignment checks.</li>
+            <li>Enable <strong>Autoplay</strong> under the mini‑viewer to automatically advance through included clips; the current row is highlighted.</li>
+            <li>Use <strong>Refresh</strong> on a clip to fetch a different segment from the same sources.</li>
+            <li>Adjust Inspector settings and re‑preview to iterate until pacing feels right.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="preview" role="tabpanel">
+          <h3>Preview</h3>
+          <ul>
+            <li><strong>Preview Plan</strong> builds a merged preview you can immediately watch in the player.</li>
+            <li>Use the big <strong>Play/Pause</strong> button below the player and scrub with the <strong>timeline slider</strong> to navigate.</li>
+            <li><strong>Play in Viewer</strong> plays your planned clips sequentially in the main player (best for video‑only plans).</li>
+            <li>Switch between merged and sequential preview depending on whether images are included. If images are present, merged preview is recommended.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="audio" role="tabpanel">
+          <h3>Audio & Voice</h3>
+          <ul>
+            <li>Add <strong>BGM</strong> and <strong>Voiceover</strong> in the Inspector panel.</li>
+            <li>Adjust <strong>BGM Volume</strong>, <strong>Voice Volume</strong>, and <strong>Duck</strong> for clarity.</li>
+            <li>Use <strong>Preview Mix</strong> to hear audio before exporting.</li>
+            <li>Voiceover aligns where pages have <strong>Mute</strong> enabled.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="export" role="tabpanel">
+          <h3>Export</h3>
+          <ul>
+            <li>Choose <strong>Save To…</strong> from the File menu to set an output folder.</li>
+            <li>Click <strong>Export</strong> to render the final video with your plan and settings.</li>
+            <li>After export, use <strong>Play Video</strong> or <strong>Show in Folder</strong> (main screen) to view the result.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="projects" role="tabpanel">
+          <h3>Projects</h3>
+          <ul>
+            <li>Use <strong>Open Project</strong> and <strong>Save Project</strong> to manage work‑in‑progress.</li>
+            <li>Autosave periodically writes to an autosave file if a save location is set.</li>
+            <li><strong>Close Project</strong> resets the editor to defaults.</li>
+          </ul>
+        </section>
+        <section class="howto-panel hidden" data-tab-panel="tips" role="tabpanel">
+          <h3>Tips</h3>
+          <ul>
+            <li>Use multiple pages to enforce narrative order while keeping variety within each section.</li>
+            <li>Shorten <strong>Max Clip Length</strong> for faster pacing; lengthen for calmer edits.</li>
+            
+            <li>Use <strong>Include/Exclude</strong> and <strong>Refresh</strong> to curate your plan precisely.</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div>
+  <!-- Features modal -->
+  <div id="features-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Advanced Editor Features">
+    <div class="modal-content ed-inline-201">
+      <div class="features-header ed-inline-202 editor-inline-059" style="display: flex">
+        <h2 class="ed-inline-203">Advanced Editor Features</h2>
+        <button id="features-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      </div>
+      <p class="ai-sub ed-inline-204">Explore every capability with clear explanations and practical examples.</p>
+      <div class="features-tabs features-tabs-bar" role="tablist" aria-label="Features tabs">
+        <button class="features-tab active" data-ftab="sections" role="tab" aria-selected="true">Pages</button>
+        <button class="features-tab" data-ftab="planning" role="tab" aria-selected="false">Planning</button>
+        <button class="features-tab" data-ftab="endtimes" role="tab" aria-selected="false">End Times</button>
+        <button class="features-tab" data-ftab="audio" role="tab" aria-selected="false">Audio</button>
+        <button class="features-tab" data-ftab="preview" role="tab" aria-selected="false">Preview</button>
+        <button class="features-tab" data-ftab="export" role="tab" aria-selected="false">Export</button>
+        <button class="features-tab" data-ftab="projects" role="tab" aria-selected="false">Projects</button>
+        <button class="features-tab" data-ftab="files" role="tab" aria-selected="false">Files</button>
+      </div>
+      <div class="features-panels ed-inline-205 editor-inline-060" style="display: grid">
+        <section class="features-panel" data-ftab-panel="sections" role="tabpanel">
+          <h3>Pages</h3>
+          <ul>
+            <li><strong>What it is</strong>: Logical groups of files (videos/images) that shuffle internally, merged in order.</li>
+            <li><strong>Why it matters</strong>: Lets you keep narrative structure (Hook → Body → Ending) while maintaining variety.</li>
+            <li><strong>How</strong>: File → Add Page, then Add Files. Use Shuffle toggle per page.</li>
+            <li><strong>Example</strong>: Page 1 (hook b-roll), Page 2 (topic visuals), Page 3 (call‑to‑action assets).</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="planning" role="tabpanel">
+          <h3>Planning Clips</h3>
+          <ul>
+            <li><strong>What it is</strong>: The app proposes clip segments from your sources using your min/max length and options.</li>
+            <li><strong>Views</strong>: Switch between Grid and List in the Planned clips header. List view adds a mini‑viewer and inline actions.</li>
+            <li><strong>Mini‑viewer</strong>: Press Play on a row to preview that segment; if a Voiceover is added, the VO starts at the same timecode as the clip.</li>
+            <li><strong>Autoplay</strong>: Enable under the mini‑viewer to advance through included clips automatically; the current row is highlighted.</li>
+            <li><strong>Include/Exclude</strong>: Uncheck to drop a segment from the final plan.</li>
+            <li><strong>Refresh</strong>: Replace a segment in place to find a better moment.</li>
+            <li><strong>Example</strong>: Set 3–5s clips, run Preview Plan, exclude pauses, refresh to swap shaky picks.</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="endtimes" role="tabpanel">
+          <h3>Per‑Page End Times</h3>
+          <ul>
+            <li><strong>What it is</strong>: A precise time budget for where each page ends within the total duration.</li>
+            <li><strong>Why</strong>: Guarantees pacing—no single page overruns the plan.</li>
+            <li><strong>How</strong>: Edit the End field per page; the last page auto‑fills total.</li>
+            <li><strong>Example</strong>: 10:00 total → Hook ends 0:30, Body ends 9:30, Ending ends 10:00.</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="audio" role="tabpanel">
+          <h3>Audio & Voice</h3>
+          <ul>
+            <li><strong>BGM</strong>: Add multiple tracks; order matters. Adjust BGM Volume.</li>
+            <li><strong>Voiceover</strong>: Add a single voice track; adjust Voice Volume.</li>
+            <li><strong>Ducking</strong>: Lower BGM under voice for clarity.</li>
+            <li><strong>Alignment</strong>: Voiceover aligns where a section has Mute enabled.</li>
+            <li><strong>Example</strong>: Mute pages with narration, keep ambient in b‑roll pages.</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="preview" role="tabpanel">
+          <h3>Preview Modes</h3>
+          <ul>
+            <li><strong>Merged Preview</strong>: Builds a quick composite video; recommended when images are used.</li>
+            <li><strong>Sequential Playback</strong>: Plays segments in order using the player; best for video‑only plans.</li>
+            <li><strong>Controls</strong>: Use the main Play/Pause button and scrubber to navigate; use the toolbar layout toggles (☰ / ▤ / ☷) to maximize viewing area.</li>
+            <li><strong>Example</strong>: Include images → use Merged. All video → try Sequential for quick scrubbing.</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="export" role="tabpanel">
+          <h3>Export</h3>
+          <ul>
+            <li><strong>Save To…</strong>: Set your output folder first (File menu).</li>
+            <li><strong>Export</strong>: Renders the final video with current plan, section end times, and audio mix.</li>
+            <li><strong>Example</strong>: Finalize includes/excludes, preview, then Export to MP4 and review.</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="projects" role="tabpanel">
+          <h3>Projects</h3>
+          <ul>
+            <li><strong>Open/Save</strong>: Manage work‑in‑progress with JSON project files.</li>
+            <li><strong>Autosave</strong>: Writes periodically if a save location is set.</li>
+            <li><strong>Example</strong>: Save before Export to preserve your curated plan and section times.</li>
+          </ul>
+        </section>
+        <section class="features-panel hidden" data-ftab-panel="files" role="tabpanel">
+          <h3>Files & Locations</h3>
+          <ul>
+            <li><strong>Open Clips Location</strong>: Quickly opens the temporary clips folder used for planned/preview clips.</li>
+            <li><strong>Where they live</strong>: By default, clips are saved in your system temporary folder during planning/preview.</li>
+            <li><strong>Tip</strong>: Set <strong>Save To…</strong> before export to control where final outputs land; temp clips remain in the system temp folder.</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div>
+  <!-- Workflows modal -->
+  <div id="workflows-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Example workflows">
+    <div class="modal-content ed-inline-206">
+      <div class="workflows-header ed-inline-207 editor-inline-061" style="display: flex">
+        <h2 class="ed-inline-208">Workflows</h2>
+        <button id="workflows-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      </div>
+      <p class="ai-sub ed-inline-209">Short, practical flows for different creators and toolchains.</p>
+      <div class="workflows-tabs workflows-tabs-bar" role="tablist" aria-label="Workflows tabs">
+        <button class="workflows-tab active" data-wtab="A" role="tab" aria-selected="true">A</button>
+        <button class="workflows-tab" data-wtab="B" role="tab" aria-selected="false">B</button>
+        <button class="workflows-tab" data-wtab="C" role="tab" aria-selected="false">C</button>
+        <button class="workflows-tab" data-wtab="D" role="tab" aria-selected="false">D</button>
+        <button class="workflows-tab" data-wtab="E" role="tab" aria-selected="false">E</button>
+        <button class="workflows-tab" data-wtab="F" role="tab" aria-selected="false">F</button>
+      </div>
+      <div class="workflows-panels ed-inline-210 editor-inline-062" style="display: grid">
+        <section class="workflows-panel" data-wtab-panel="A" role="tabpanel">
+          <h3>Workflow A — Advanced Editor (from docs)</h3>
+          <ol class="simple-steps">
+            <li>Find your video idea.</li>
+            <li>Create a script.</li>
+            <li>Create a voiceover using whatever tool you want.</li>
+            <li>Open the <strong>Advanced Editor</strong> and create a project.</li>
+            <li>Add the voiceover to see how long it is and have it ready for export.</li>
+            <li>Add your video clips and images to the timeline.</li>
+            <li>Preview the video.</li>
+            <li>Export and upload to YouTube.</li>
+          </ol>
+        </section>
+        <section class="workflows-panel hidden" data-wtab-panel="B" role="tabpanel">
+          <h3>Workflow B — Nova + Premiere Pro</h3>
+          <ol class="simple-steps">
+            <li>Import source footage into Nova; create Pages (Hook/Body/Outro).</li>
+            <li>Enable <strong>Mute</strong> only on VO pages; keep on‑camera audio elsewhere.</li>
+            <li>Use <strong>Preview Plan</strong>, exclude weak clips, refresh where needed.</li>
+            <li><strong>Export</strong> an MP4 and bring it into Premiere.</li>
+            <li>In Premiere, add titles, color, transitions, and sound design as desired.</li>
+            <li>Render final deliverable; keep your Nova project JSON for future versions.</li>
+          </ol>
+        </section>
+        <section class="workflows-panel hidden" data-wtab-panel="C" role="tabpanel">
+          <h3>Workflow C — Shorts from long videos</h3>
+          <ol class="simple-steps">
+            <li>Select 1–3 long recordings; set <strong>Min/Max</strong> to 1.5–3s and <strong>Total</strong> to 45–60s.</li>
+            <li>Enable <strong>Auto‑detect cuts</strong> and <strong>Review before merge</strong>.</li>
+            <li>Use Pages to allocate time: Hook (10–15s), Body (25–40s), Outro (5–10s).</li>
+            <li>Preview, exclude filler, refresh shaky picks, then <strong>Export</strong>.</li>
+            <li>Upload to Shorts/Reels/TikTok; iterate with new seeds for variants.</li>
+          </ol>
+        </section>
+        <section class="workflows-panel hidden" data-wtab-panel="D" role="tabpanel">
+          <h3>Workflow D — Research → Production</h3>
+          <ol class="simple-steps">
+            <li>Use <strong>Niche Finder</strong> to find formats that outperform baseline.</li>
+            <li>Collect reference links with the Chrome extension; copy URLs.</li>
+            <li>Draft a script with <strong>Script Shufflr</strong> (or your own doc).</li>
+            <li>Create Pages to match your format; add BGM/VO if needed.</li>
+            <li>Preview plan, curate, then <strong>Export</strong> to MP4.</li>
+          </ol>
+        </section>
+        <section class="workflows-panel hidden" data-wtab-panel="E" role="tabpanel">
+          <h3>Workflow E — Podcast/Audio highlights (images + VO)</h3>
+          <ol class="simple-steps">
+            <li>Add still images/screenshots; Nova auto‑converts them into motion clips.</li>
+            <li>Add your voiceover; set <strong>Total</strong> to match VO length.</li>
+            <li>Enable <strong>Mute</strong> on all pages so VO plays cleanly.</li>
+            <li>Add BGM at ~20–30% and enable <strong>Duck</strong>.</li>
+            <li>Preview mix and video; export for YouTube/Spotify video.</li>
+          </ol>
+        </section>
+        <section class="workflows-panel hidden" data-wtab-panel="F" role="tabpanel">
+          <h3>Workflow F — Multi‑cut client delivery</h3>
+          <ol class="simple-steps">
+            <li>Create a base project; save as JSON.</li>
+            <li>Duplicate the project file; adjust <strong>Total</strong> and Min/Max for Alt A/B/C.</li>
+            <li>Refresh subsets of clips to create distinct but on‑brand variants.</li>
+            <li>Export multiple MP4s; name with version tags (vA/vB/vC) for review.</li>
+            <li>Share with client; keep the best performing version as a template.</li>
+          </ol>
+        </section>
+      </div>
+    </div>
+  </div>
+  <!-- Quick Editing modal -->
+  <div id="quick-editing-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Quick Editing Tips">
+    <div class="modal-content ed-inline-211">
+      <button id="quick-editing-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title ed-inline-212">Quick Editing Tips</h2>
+      <p class="ai-sub ed-inline-213">Fast, practical ways to get a solid cut quickly.</p>
+      <div class="howto-panel ed-inline-214">
+        <h3>Core Tips</h3>
+        <ul>
+          <li>Sometimes downloaded clips aren't usable. Delete unusable videos and duplicate the usable ones to keep momentum.</li>
+          <li>Drag and add files to different pages. Duplicate and repeat to get the best outcome and avoid "ending/subscribe" clips showing up mid‑video.</li>
+          <li>Use the <strong>Planned clips</strong> area (bottom middle) to fine‑tune before export. Toggle between <strong>Grid</strong> and <strong>List</strong> view to dial in exact segments.</li>
+          <li>Exclude weak segments with the checkbox, then use <strong>Refresh</strong> to swap for a better moment from the same source.</li>
+          <li>Keep clips short for energy: try <strong>Min 2s</strong>, <strong>Max 4s</strong> on fast formats; lengthen for calmer edits.</li>
+          <li>Put "subscribe/outro" assets in the last section so they only appear at the end.</li>
+          <li>If you want a fast‑paced video with more planned clips to review, set <strong>Min</strong> to <strong>1s</strong> and <strong>Max</strong> to <strong>3s</strong>. This creates unique videos fast and may require a bit more curation. For slower‑paced videos, set <strong>Min 3s</strong> and <strong>Max 6s</strong>. Going over <strong>7s</strong> isn't advised unless you have originally produced content.</li>
+        </ul>
+      </div>
+      <div class="howto-panel ed-inline-215">
+        <h3>Speed Moves</h3>
+        <ul>
+          <li>Set <strong>Total Duration</strong> first, then add pages—your <strong>End</strong> times will align faster.</li>
+          <li>Enable <strong>Auto‑detect cuts</strong> on jump‑cut heavy footage to get better proposed segments.</li>
+          <li>Use <strong>Play in Viewer</strong> for rapid sequential checks; switch to merged <strong>Preview</strong> if images are included.</li>
+          <li>Turn on <strong>Autoplay</strong> in List view to fly through included clips while you curate.</li>
+        </ul>
+      </div>
+      <div class="howto-panel ed-inline-216">
+        <h3>Audio & Export</h3>
+        <ul>
+          <li>For voiceover, enable <strong>Mute</strong> on VO pages for clean narration.</li>
+          <li>Duck BGM under voice for clarity; aim for ~20–30% BGM volume as a starting point.</li>
+          <li>Do a quick <strong>Preview Mix</strong> before exporting.</li>
+        </ul>
+      </div>
+      <div class="ed-inline-217 editor-inline-063" style="display: flex">
+        <button id="quick-editing-done" class="secondary">Done</button>
+      </div>
+    </div>
+  </div>
+  <!-- Settings modal specific to editor window -->
+  <div id="ed-settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Editor Settings">
+    <div class="modal-content ed-inline-218">
+      <h2 class="ed-inline-219">Settings</h2>
+      <div class="settings-grid">
+        <section class="settings-group">
+          <h3>General</h3>
+          <div class="field">
+            <label class="stack">
+              <span>Save Location</span>
+              <div class="row">
+                <input type='text' id='ed-save-location' readonly />
+                <button id='ed-browse-save-location' class="secondary" title="Browse" aria-label="Browse">
+                  <svg class="icon icon--s-20 ed-inline-220" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor">
+                    <path d="M216,72H130.67L102.93,51.2a15.88,15.88,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V88A16,16,0,0,0,216,72Zm0,128H40V88H93.33l21.34,16H216Z"/>
+                  </svg>
+                </button>
+              </div>
+            </label>
+          </div>
+          <div class="field"><label><input type="checkbox" id="ed-dark-mode"/> Dark mode</label></div>
+          <div class="field"><label><input type="checkbox" id="ed-use-system-ffmpeg"/> Use system FFmpeg (from PATH)</label></div>
+          <div class="field">
+            <label class="stack">
+              <span>Preview Mode</span>
+              <select id="ed-preview-mode" class="ai-select">
+                <option value="webcodecs">WebCodecs</option>
+                <option value="video-canvas">Video + Canvas</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <section class="settings-group">
+          <h3>Video</h3>
+          <div class="field"><label><input type="checkbox" id="ed-remove-audio-global"/> Remove audio</label></div>
+          <div class="field row two">
+            <label class="stack"><span>Min Clip Length (s)</span><input type="number" id="ed-min-global" min="1" value="3"/></label>
+            <label class="stack"><span>Max Clip Length (s)</span><input type="number" id="ed-max-global" min="1" value="5"/></label>
+          </div>
+          <label class="stack"><span>Max Output Duration (mm:ss or seconds)</span><input type="text" id="ed-total-global" value="10:00"/></label>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button id="ed-settings-cancel" class="secondary">Cancel</button>
+        <button id="ed-settings-save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+  <!-- Phase 2 modal -->
+  <div id="phase2-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Phase 2 Settings">
+    <div class="modal-content ed-inline-221">
+      <button id="phase2-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      <h2 class="ai-title ed-inline-222">Phase 2 Clip</h2>
+      <div class="ai-row ed-inline-223">
+        <div class="ed-inline-224">
+          <video id="phase2-preview"></video>
+        </div>
+        <div class="ai-col ed-inline-225">
+          <div class="ai-col">
+            <label class="ai-muted">Source file</label>
+            <select id="phase2-source" class="ai-select"></select>
+          </div>
+          <div class="ai-row ed-inline-226">
+            <label class="ai-col ed-inline-227">
+              <span class="ai-muted">Start (s)</span>
+              <input id="phase2-start" type="number" class="ai-input" min="0" step="0.01" />
+            </label>
+            <label class="ai-col ed-inline-228">
+              <span class="ai-muted">End (s)</span>
+              <input id="phase2-end" type="number" class="ai-input" min="0" step="0.01" readonly />
+            </label>
+          </div>
+          <div class="ai-row ed-inline-229">
+            <label class="ai-col ed-inline-230">
+              <span class="ai-muted">Length (s)</span>
+              <input id="phase2-length" type="number" class="ai-input" min="0.01" step="0.01" />
+            </label>
+            <label class="ai-col ed-inline-231">
+              <span class="ai-muted">Display</span>
+              <select id="phase2-display" class="ai-select">
+                <option value="fullscreen">Fullscreen</option>
+                <option value="overlay">Video Overlay</option>
+                <option value="pip">Picture-in-Picture</option>
+              </select>
+            </label>
+          </div>
+          <div class="ai-row" id="phase2-style-row">
+            <label class="ai-col ed-inline-232">
+              <span class="ai-muted">Overlay/Background</span>
+              <select id="phase2-style" class="ai-select">
+                <option value="none">None</option>
+                <option value="vignette">Vignette (overlay)</option>
+                <option value="scanlines">Scanlines (overlay)</option>
+                <option value="blurred">Blurred background (PiP)</option>
+                <option value="gradient">Gradient background (PiP)</option>
+              </select>
+            </label>
+          </div>
+          <div class="ai-row ed-inline-233">
+            <label class="ai-muted"><input id="phase2-keep-audio" type="checkbox" /> Keep original audio for this section</label>
+          </div>
+          <div class="ed-inline-234 editor-inline-064" style="display: flex">
+            <button id="phase2-cancel" class="secondary">Cancel</button>
+            <button id="phase2-save" class="primary">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Find Videos Modal Enhancement Script -->
+  <!-- Note: This script complements ed-youtube.js which handles the core functionality -->
+  <!-- It ensures UI elements are properly shown/hidden to match index.html behavior -->
+  <script src="editor.inline-1.js"></script>
+  <script src="shared/diamond-preset-catalog.data.js"></script>
+  <script src="shared/video-creator-preset-meta.js"></script>
+  <script src="shared/video-creator-editorial-skills.js"></script>
+  <script src="shared/video-creator-avatar-presenter.js"></script>
+  <script src="shared/video-creator-reading-level.js"></script>
+  <script src="shared/video-creator-style-presets.js"></script>
+  <script src="renderer/utils/dropdown-manager.js"></script>
+  <script src="editor/ed-custom-select.js"></script>
+  <script src="nova-autovideo-ui.js"></script>
+  <script src="nova-scene-import.js"></script>
+</body>
+</html>

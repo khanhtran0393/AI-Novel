@@ -1,0 +1,1163 @@
+{
+  "scenes": [
+    {
+      "id": "b0",
+      "durationSec": 6.74,
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armR": "point",
+            "eyes": "normal",
+            "brow": "neutral"
+          },
+          "blink": true,
+          "blinkSeed": 0,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_calendar.svg",
+          "at": 3.109,
+          "box": {
+            "x": 62,
+            "y": 28,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_hourglass.svg",
+          "at": 5.777,
+          "box": {
+            "x": 84,
+            "y": 36,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "For most people, the climb takes 1 to 3 months, in a few documented cases, years.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.9184405644582636
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b1",
+      "durationSec": 5.58,
+      "trans": "cut",
+      "transDur": 0.01,
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armL": "open",
+            "armR": "open",
+            "eyes": "side",
+            "brow": "worried",
+            "mouth": "frown"
+          },
+          "blink": true,
+          "blinkSeed": 1,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_flatline.svg",
+          "at": 3.157,
+          "box": {
+            "x": 62,
+            "y": 28,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_searchNo.svg",
+          "at": 4.705,
+          "box": {
+            "x": 84,
+            "y": 36,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "And the entire time there is nothing to feel and nothing to find.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.9014735625541751
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "durationSec": 2.87,
+      "trans": "whip-pan",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armR": "point",
+            "eyes": "wide",
+            "brow": "raised"
+          },
+          "blink": true,
+          "blinkSeed": 2,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_cameraNo.svg",
+          "at": 0.22000000000000003,
+          "box": {
+            "x": 62,
+            "y": 28,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_tunnel.svg",
+          "at": 1.181,
+          "box": {
+            "x": 84,
+            "y": 36,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "No cameras in the tunnels, remember?",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.8085345311622684
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b3",
+      "durationSec": 7.13,
+      "trans": "dissolve",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armL": "chin",
+            "armR": "hip",
+            "eyes": "squint",
+            "brow": "furrow"
+          },
+          "blink": true,
+          "blinkSeed": 3,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_lock.svg",
+          "at": 5.739,
+          "box": {
+            "x": 68,
+            "y": 44,
+            "w": 30,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "But those quiet months are the most important stretch of this whole video, so lock this in.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.9228681293824926
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b4",
+      "durationSec": 4.81,
+      "trans": "flash-cut",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armR": "point",
+            "eyes": "normal",
+            "brow": "raised",
+            "mouth": "smile"
+          },
+          "blink": true,
+          "blinkSeed": 4,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_virus.svg",
+          "at": 0.728,
+          "box": {
+            "x": 56,
+            "y": 28,
+            "w": 14,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_transit.svg",
+          "at": 1.8969999999999998,
+          "box": {
+            "x": 73,
+            "y": 36,
+            "w": 14,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic2",
+          "type": "image",
+          "src": "assets/ic_shield.svg",
+          "at": 3.65,
+          "box": {
+            "x": 89,
+            "y": 28,
+            "w": 13,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "While the virus is still in transit, it is completely beatable.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.8856088560885609
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b5",
+      "durationSec": 3.65,
+      "trans": "dip-white",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armL": "open",
+            "armR": "open",
+            "eyes": "wide",
+            "brow": "raised"
+          },
+          "blink": true,
+          "blinkSeed": 5,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_window.svg",
+          "at": 1.5379999999999998,
+          "box": {
+            "x": 68,
+            "y": 44,
+            "w": 30,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "Because for exactly this window, a treatment exists.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.8491817779743477
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b6",
+      "durationSec": 6.74,
+      "trans": "cut",
+      "transDur": 0.01,
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armR": "point",
+            "eyes": "normal",
+            "brow": "neutral"
+          },
+          "blink": true,
+          "blinkSeed": 6,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_bite.svg",
+          "at": 2.61,
+          "box": {
+            "x": 56,
+            "y": 28,
+            "w": 14,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_syringe.svg",
+          "at": 3.703,
+          "box": {
+            "x": 73,
+            "y": 36,
+            "w": 14,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic2",
+          "type": "image",
+          "src": "assets/ic_syringe2.svg",
+          "at": 5.434,
+          "box": {
+            "x": 89,
+            "y": 28,
+            "w": 13,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "A round of shots you get after the bite, a rabies vaccine, plus one extra injection.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.9184405644582636
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b7",
+      "durationSec": 6.36,
+      "trans": "push-left",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armL": "wave",
+            "armR": "wave",
+            "eyes": "sparkle",
+            "brow": "raised",
+            "mouth": "smile"
+          },
+          "blink": true,
+          "blinkSeed": 7,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_chartNo.svg",
+          "at": 2.682,
+          "box": {
+            "x": 62,
+            "y": 28,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_badge100.svg",
+          "at": 4.649,
+          "box": {
+            "x": 84,
+            "y": 36,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "And those shots don't improve your chances. They win close to 100% of the time.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.9134737376300431
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b8",
+      "durationSec": 1.8,
+      "trans": "flash-cut",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armL": "chin",
+            "armR": "hip",
+            "eyes": "side",
+            "brow": "furrow"
+          },
+          "blink": true,
+          "blinkSeed": 8,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "Here's how.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.4301075268817204
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b9",
+      "durationSec": 2.87,
+      "trans": "zoom-through",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armR": "point",
+            "eyes": "wide",
+            "brow": "raised",
+            "mouth": "smile"
+          },
+          "blink": true,
+          "blinkSeed": 9,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_poster.svg",
+          "at": 1.847,
+          "box": {
+            "x": 68,
+            "y": 44,
+            "w": 30,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "The vaccine is a wanted poster.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.8085345311622684
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "b10",
+      "durationSec": 5.2,
+      "trans": "dissolve",
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "char",
+          "type": "char",
+          "rig": "ghost",
+          "pose": {
+            "armL": "chin",
+            "armR": "open",
+            "eyes": "normal",
+            "brow": "neutral"
+          },
+          "blink": true,
+          "blinkSeed": 10,
+          "box": {
+            "x": 20,
+            "y": 54,
+            "w": 19.17,
+            "h": 46,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.25
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 10
+        },
+        {
+          "id": "ic0",
+          "type": "image",
+          "src": "assets/ic_antibody.svg",
+          "at": 0.926,
+          "box": {
+            "x": 62,
+            "y": 28,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "ic1",
+          "type": "image",
+          "src": "assets/ic_virusDead.svg",
+          "at": 3.918,
+          "box": {
+            "x": 84,
+            "y": 36,
+            "w": 17,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.34
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "It shows your immune system the virus's face using harmless dead copies.",
+          "box": {
+            "x": 50,
+            "y": 88,
+            "w": 84,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 38,
+            "weight": 700,
+            "lineHeight": 1.3,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.85)",
+            "pad": 12,
+            "radius": 12,
+            "reveal": "type",
+            "revealSpread": 0.8941322570630239
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.28
+          },
+          "z": 90
+        }
+      ]
+    }
+  ],
+  "globals": []
+}

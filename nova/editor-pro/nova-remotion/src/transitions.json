@@ -1,0 +1,387 @@
+[
+  {
+    "id": "cut",
+    "label": "Cắt thẳng",
+    "family": "Cắt & hoà",
+    "description": "Không hiệu ứng. Nên chiếm khoảng 80% mối nối.",
+    "styleTags": [
+      "nen"
+    ],
+    "defaultDurationSec": 0.01,
+    "presentationKind": "builtin",
+    "presentationId": "none",
+    "presentationProps": {},
+    "legacyAliases": [
+      "none"
+    ]
+  },
+  {
+    "id": "dissolve",
+    "label": "Hoà chồng",
+    "family": "Cắt & hoà",
+    "description": "Hai cảnh chồng mờ. Chuyển ý trong cùng mạch, hoặc trôi thời gian ngắn.",
+    "styleTags": [
+      "nen"
+    ],
+    "defaultDurationSec": 0.5,
+    "presentationKind": "builtin",
+    "presentationId": "fade",
+    "presentationProps": {},
+    "legacyAliases": [
+      "fade",
+      "crossfade"
+    ]
+  },
+  {
+    "id": "dip-black",
+    "label": "Chìm qua đen",
+    "family": "Cắt & hoà",
+    "description": "Tối hẳn rồi sáng lại. Ngăn chương, nhảy thời gian, đổi địa điểm.",
+    "styleTags": [
+      "nen"
+    ],
+    "defaultDurationSec": 0.7,
+    "presentationKind": "custom",
+    "presentationId": "dip-color",
+    "presentationProps": {
+      "dipColor": "#000"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "dip-white",
+    "label": "Chớp qua trắng",
+    "family": "Cắt & hoà",
+    "description": "Sáng loá rồi vào cảnh mới. Cú mạnh, cả video vài lần là nhiều.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.55,
+    "presentationKind": "custom",
+    "presentationId": "dip-color",
+    "presentationProps": {
+      "dipColor": "#fff"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "flash-cut",
+    "label": "Chớp nhanh",
+    "family": "Cắt & hoà",
+    "description": "Chớp trắng rất ngắn ngay tại điểm cắt. Nhấn một cú giật mình.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.25,
+    "presentationKind": "custom",
+    "presentationId": "flash-pulse",
+    "presentationProps": {
+      "flashColor": "#ffffff",
+      "pulses": 1,
+      "intensity": 1
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "whip-pan",
+    "label": "Lia vụt",
+    "family": "Quang học",
+    "description": "Nhoè ngang rất nhanh. Đổi chủ đề dứt khoát mà vẫn giữ mạch.",
+    "styleTags": [
+      "nen"
+    ],
+    "defaultDurationSec": 0.32,
+    "presentationKind": "custom",
+    "presentationId": "cross-zoom",
+    "presentationProps": {
+      "zoomAmount": 0.18,
+      "motionDirection": "left",
+      "blurPx": 26
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "defocus",
+    "label": "Mất nét",
+    "family": "Quang học",
+    "description": "Nhoè hẳn rồi nét lại ở cảnh mới. Chuyển sang hồi tưởng, sang giả thuyết.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.7,
+    "presentationKind": "custom",
+    "presentationId": "blur-zoom",
+    "presentationProps": {
+      "blurPx": 24,
+      "zoomAmount": 0.06
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "zoom-through",
+    "label": "Xuyên qua",
+    "family": "Quang học",
+    "description": "Phóng vào rồi ra ở cảnh mới. Đi từ toàn cảnh vào chi tiết.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.6,
+    "presentationKind": "custom",
+    "presentationId": "cross-zoom",
+    "presentationProps": {
+      "zoomAmount": 1.5,
+      "motionDirection": "none",
+      "blurPx": 8
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "match-zoom",
+    "label": "Phóng khớp",
+    "family": "Quang học",
+    "description": "Hai cảnh cùng bố cục, phóng khớp vào nhau. Nối ý mượt nhất, tốn công chọn hình nhất.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.75,
+    "presentationKind": "custom",
+    "presentationId": "cross-zoom",
+    "presentationProps": {
+      "zoomAmount": 0.65,
+      "motionDirection": "none",
+      "blurPx": 0
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "light-leak",
+    "label": "Rò sáng",
+    "family": "Quang học",
+    "description": "Vệt sáng ấm quét qua. Ngăn đoạn kiểu tư liệu cũ.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.8,
+    "presentationKind": "custom",
+    "presentationId": "edge-burn",
+    "presentationProps": {
+      "burnColor": "#ffb25c",
+      "glowColor": "#ffe2b4"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "film-burn",
+    "label": "Cháy phim",
+    "family": "Quang học",
+    "description": "Chớp ấm loang từ mép vào. Chuyển sang tư liệu lưu trữ.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.75,
+    "presentationKind": "custom",
+    "presentationId": "edge-burn",
+    "presentationProps": {
+      "burnColor": "#ff8a2b",
+      "glowColor": "#ffd79a"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "glow-bloom",
+    "label": "Loá sáng",
+    "family": "Quang học",
+    "description": "Đẩy sáng quá tay rồi vào cảnh mới. Dễ ra mùi quảng cáo.",
+    "styleTags": [
+      "tranh"
+    ],
+    "defaultDurationSec": 0.5,
+    "presentationKind": "custom",
+    "presentationId": "flash-pulse",
+    "presentationProps": {
+      "flashColor": "#fff7ed",
+      "pulses": 1,
+      "intensity": 0.72
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "wipe-left",
+    "label": "Quét ngang",
+    "family": "Hình học",
+    "description": "Cảnh mới lộ dần từ phải sang. Hợp bản đồ và biểu đồ.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.55,
+    "presentationKind": "builtin",
+    "presentationId": "wipe",
+    "presentationProps": {
+      "motionDirection": "left"
+    },
+    "legacyAliases": [
+      "wipe"
+    ]
+  },
+  {
+    "id": "wipe-up",
+    "label": "Quét lên",
+    "family": "Hình học",
+    "description": "Lộ dần từ dưới lên. Hợp liệt kê, xếp hạng.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.55,
+    "presentationKind": "builtin",
+    "presentationId": "wipe",
+    "presentationProps": {
+      "motionDirection": "up"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "push-left",
+    "label": "Đẩy ngang",
+    "family": "Hình học",
+    "description": "Cảnh mới đẩy cảnh cũ ra. Cảm giác đi tiếp trên cùng một trục.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.5,
+    "presentationKind": "builtin",
+    "presentationId": "slide",
+    "presentationProps": {
+      "motionDirection": "left"
+    },
+    "legacyAliases": [
+      "slide"
+    ]
+  },
+  {
+    "id": "push-up",
+    "label": "Đẩy lên",
+    "family": "Hình học",
+    "description": "Trượt lên như lật danh sách.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.5,
+    "presentationKind": "builtin",
+    "presentationId": "slide",
+    "presentationProps": {
+      "motionDirection": "up"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "barn-door",
+    "label": "Mở hai cánh",
+    "family": "Hình học",
+    "description": "Tách đôi từ giữa. Nhìn ra ngay là hiệu ứng phần mềm.",
+    "styleTags": [
+      "tranh"
+    ],
+    "defaultDurationSec": 0.55,
+    "presentationKind": "custom",
+    "presentationId": "split-reveal",
+    "presentationProps": {
+      "axis": "vertical"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "shutter",
+    "label": "Sập rèm",
+    "family": "Hình học",
+    "description": "Lộ theo dải ngang. Rất dễ cũ kỹ kiểu trình chiếu.",
+    "styleTags": [
+      "tranh"
+    ],
+    "defaultDurationSec": 0.6,
+    "presentationKind": "custom",
+    "presentationId": "film-gate",
+    "presentationProps": {
+      "bands": 5
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "iris",
+    "label": "Khép vòng tròn",
+    "family": "Hình học",
+    "description": "Khép về một điểm rồi mở ra. Kiểu phim câm, chỉ dùng khi cố ý nhại.",
+    "styleTags": [
+      "tranh"
+    ],
+    "defaultDurationSec": 0.7,
+    "presentationKind": "builtin",
+    "presentationId": "iris",
+    "presentationProps": {},
+    "legacyAliases": [
+      "circle"
+    ]
+  },
+  {
+    "id": "paper-slide",
+    "label": "Trượt như tờ giấy",
+    "family": "Chất liệu giấy & phim",
+    "description": "Cảnh mới trượt vào có bóng đổ, hơi xoay. Ăn nhất với cảnh tư liệu dán trên giấy.",
+    "styleTags": [
+      "nen"
+    ],
+    "defaultDurationSec": 0.6,
+    "presentationKind": "custom",
+    "presentationId": "paper-slide",
+    "presentationProps": {
+      "motionDirection": "left"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "paper-drop",
+    "label": "Thả tờ giấy xuống",
+    "family": "Chất liệu giấy & phim",
+    "description": "Cảnh mới rơi xuống rồi nảy khẽ. Như thêm một ảnh vào chồng ảnh.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.7,
+    "presentationKind": "custom",
+    "presentationId": "paper-drop",
+    "presentationProps": {},
+    "legacyAliases": []
+  },
+  {
+    "id": "grain-dissolve",
+    "label": "Hoà chồng kiểu tư liệu",
+    "family": "Chất liệu giấy & phim",
+    "description": "Hai cảnh cùng hiện rồi hoà vào nhau. Chuyển sang tư liệu cũ.",
+    "styleTags": [
+      "thua"
+    ],
+    "defaultDurationSec": 0.8,
+    "presentationKind": "custom",
+    "presentationId": "double-exposure",
+    "presentationProps": {
+      "blend": "screen"
+    },
+    "legacyAliases": []
+  },
+  {
+    "id": "film-roll",
+    "label": "Cuộn phim chạy",
+    "family": "Chất liệu giấy & phim",
+    "description": "Trôi dọc như phim tuột khỏi cửa máy chiếu. Rất kén chỗ.",
+    "styleTags": [
+      "tranh"
+    ],
+    "defaultDurationSec": 0.7,
+    "presentationKind": "custom",
+    "presentationId": "film-gate",
+    "presentationProps": {
+      "bands": 8,
+      "reverse": true
+    },
+    "legacyAliases": []
+  }
+]

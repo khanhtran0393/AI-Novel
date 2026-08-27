@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nova Studio</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">✨ Nova Studio</div>
+    <div class="status" id="status">
+      <span class="pill" id="pill-conn">○ chưa kết nối</span>
+      <span class="pill" id="pill-tier">Gói: —</span>
+      <span class="pill" id="pill-credits">Credits: —</span>
+      <span class="pill" id="pill-email"></span>
+    </div>
+    <div class="topbtns">
+      <button id="btn-scan" class="ghost">↻ Quét lại</button>
+      <button id="btn-flow" class="ghost">🌐 Mở tab Flow</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Cấu hình -->
+    <aside class="panel config">
+      <h2>Chế độ tạo</h2>
+
+      <label class="lbl">AI Model tạo ảnh</label>
+      <div class="seg" id="seg-model">
+        <button data-val="GEM_PIX_2" class="active">Nano Banana Pro</button>
+        <button data-val="NARWHAL">Nano Banana 2</button>
+      </div>
+
+      <label class="lbl">Tỷ lệ kích thước</label>
+      <div class="seg wrap" id="seg-aspect">
+        <button data-val="IMAGE_ASPECT_RATIO_LANDSCAPE" class="active">16:9</button>
+        <button data-val="IMAGE_ASPECT_RATIO_LANDSCAPE">4:3</button>
+        <button data-val="IMAGE_ASPECT_RATIO_SQUARE">1:1</button>
+        <button data-val="IMAGE_ASPECT_RATIO_PORTRAIT">3:4</button>
+        <button data-val="IMAGE_ASPECT_RATIO_PORTRAIT">9:16</button>
+      </div>
+
+      <label class="lbl">Số lượng / prompt</label>
+      <div class="seg" id="seg-count">
+        <button data-val="1" class="active">x1</button>
+        <button data-val="2">x2</button>
+        <button data-val="3">x3</button>
+        <button data-val="4">x4</button>
+      </div>
+
+      <label class="lbl">Chất lượng tải về</label>
+      <div class="seg" id="seg-quality">
+        <button data-val="orig" class="active">Gốc</button>
+        <button data-val="2048">2K</button>
+        <button data-val="3840">4K</button>
+      </div>
+
+      <label class="lbl">Luồng chạy song song</label>
+      <div class="seg" id="seg-conc">
+        <button data-val="1">1</button>
+        <button data-val="2" class="active">2</button>
+        <button data-val="3">3</button>
+      </div>
+    </aside>
+
+    <!-- Prompt + kết quả -->
+    <section class="panel work">
+      <div class="work-head">
+        <h2>Danh sách Prompt <span class="muted" id="prompt-count">0 prompt</span></h2>
+      </div>
+      <textarea id="prompts" placeholder="Nhập prompt ở đây, mỗi dòng là một prompt riêng biệt..."></textarea>
+
+      <div class="actions">
+        <button id="btn-start" class="primary">▶ Bắt đầu tạo</button>
+        <button id="btn-stop" class="danger" disabled>■ Dừng</button>
+        <button id="btn-clear" class="ghost">🗑 Xóa kết quả</button>
+        <button id="btn-download-all" class="ghost" disabled>⤓ Tải tất cả</button>
+        <div class="counters">
+          <span class="c ok" id="c-done">0 Xong</span>
+          <span class="c wait" id="c-wait">0 Chờ</span>
+          <span class="c err" id="c-err">0 Lỗi</span>
+        </div>
+      </div>
+
+      <div class="results" id="results">
+        <div class="empty" id="results-empty">
+          <div class="clap">🎬</div>
+          <p>Chưa có ảnh nào</p>
+          <small>Nhập prompt ở trên rồi bấm “Bắt đầu tạo”.</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- Nhật ký -->
+    <aside class="panel logs">
+      <h2>Nhật ký</h2>
+      <div class="log" id="log"></div>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

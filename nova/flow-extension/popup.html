@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root {
+      --bg: #0f1424; --card: #171d33; --card2: #1c2340; --border: #262f4f;
+      --text: #e8ebf7; --muted: #8b93b5; --accent: #7c5cff;
+      --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --orange: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body { width: 340px; background: var(--bg); color: var(--text);
+      font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .logo { font-size: 22px; }
+    .title { font-weight: 700; font-size: 15px; }
+    .ver { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--card2);
+      border: 1px solid var(--border); border-radius: 20px; padding: 2px 9px; }
+
+    .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--border); }
+    .stat { text-align: center; padding: 14px 6px; border-right: 1px solid var(--border); }
+    .stat:last-child { border-right: none; }
+    .stat .big { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1; }
+    .stat .lbl { font-size: 10px; letter-spacing: .8px; color: var(--muted); margin-top: 6px; text-transform: uppercase; }
+    .dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: var(--red); }
+    .dot.on { background: var(--green); }
+
+    .rows { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .row { display: flex; align-items: center; gap: 10px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .row .ic { font-size: 15px; }
+    .row .name { font-weight: 600; }
+    .row .val { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .row .val.ok { color: var(--green); }
+    .row .val.bad { color: var(--red); }
+
+    .btns { padding: 0 14px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button { border: none; border-radius: 10px; padding: 10px; cursor: pointer;
+      font-weight: 700; font-size: 12.5px; color: #fff; }
+    .b-scan { background: var(--blue); } .b-flow { background: var(--green); }
+    .b-open { grid-column: 1 / -1; background: linear-gradient(135deg, #9b7bff, var(--accent)); }
+    button:hover { filter: brightness(1.08); }
+    .foot { text-align: center; font-size: 11px; color: var(--muted); padding: 0 0 12px; }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <span class="logo">✨</span>
+    <span class="title">Nova Studio</span>
+    <span class="ver" id="ver">v0.1</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="big" id="st-credits">—</div><div class="lbl">Credits</div></div>
+    <div class="stat"><div class="big"><span class="dot" id="st-dot"></span></div><div class="lbl">Kết nối</div></div>
+    <div class="stat"><div class="big" id="st-age" style="font-size:15px">—</div><div class="lbl">Token</div></div>
+  </div>
+
+  <div class="rows">
+    <div class="row"><span class="ic">🔌</span><span class="name">Trạng thái</span><span class="val" id="r-conn">…</span></div>
+    <div class="row"><span class="ic">💳</span><span class="name">Gói</span><span class="val" id="r-tier">—</span></div>
+    <div class="row"><span class="ic">👤</span><span class="name">Tài khoản</span><span class="val" id="r-email">—</span></div>
+  </div>
+
+  <div class="btns">
+    <button class="b-scan" id="btn-scan">🔍 Quét lại</button>
+    <button class="b-flow" id="btn-flow">🌐 Mở tab Flow</button>
+    <button class="b-open" id="btn-open">✨ Mở bảng tạo ảnh</button>
+  </div>
+
+  <div class="foot">Tạo ảnh AI hàng loạt qua Google Flow</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

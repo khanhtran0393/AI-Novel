@@ -1,0 +1,40 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "origin", "operation": "set", "value": "https://labs.google" },
+        { "header": "referer", "operation": "set", "value": "https://labs.google/" },
+        { "header": "sec-fetch-site", "operation": "set", "value": "cross-site" },
+        { "header": "sec-fetch-mode", "operation": "set", "value": "cors" },
+        { "header": "sec-fetch-dest", "operation": "set", "value": "empty" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "aisandbox-pa.googleapis.com",
+      "excludedInitiatorDomains": ["labs.google"],
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "origin", "operation": "set", "value": "https://labs.google" },
+        { "header": "referer", "operation": "set", "value": "https://labs.google/fx/tools/flow" },
+        { "header": "sec-fetch-site", "operation": "set", "value": "same-origin" },
+        { "header": "sec-fetch-mode", "operation": "set", "value": "cors" },
+        { "header": "sec-fetch-dest", "operation": "set", "value": "empty" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "labs.google/fx/api/trpc/",
+      "excludedInitiatorDomains": ["labs.google"],
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  }
+]

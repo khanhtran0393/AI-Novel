@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nova Studio</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #050505; }
+    body { display: grid; place-items: center; color: #f4f4f5; font-family: "Segoe UI", system-ui, sans-serif; }
+    .splash { position: relative; width: 100%; height: 100%; display: grid; place-items: center; isolation: isolate; }
+    .splash::before {
+      content: ""; position: absolute; width: 360px; height: 360px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(245, 158, 11, .16), rgba(255, 123, 0, .06) 38%, transparent 70%);
+      filter: blur(8px); animation: breathe 2.4s ease-in-out infinite; z-index: -1;
+    }
+    .brand { display: flex; flex-direction: column; align-items: center; gap: 18px; animation: float 2.8s ease-in-out infinite; }
+    .logo-wrap {
+      position: relative; width: 156px; height: 156px; display: grid; place-items: center;
+      border-radius: 50%; background: radial-gradient(circle at 35% 28%, #3f2a12, #1a1208 55%, #0a0806);
+      box-shadow: 0 18px 42px rgba(0,0,0,.7), 0 0 0 1px rgba(245,158,11,.45), 0 0 42px rgba(245,158,11,.5);
+      animation: pulse 1.35s ease-in-out infinite;
+    }
+    .logo-wrap::after {
+      content: ""; position: absolute; inset: -9px; border-radius: 50%;
+      border: 1px solid rgba(245,158,11,.3); border-top-color: #ff7b00;
+      animation: spin 1.8s linear infinite;
+    }
+    .logo { width: 82%; height: 82%; object-fit: contain; border-radius: 50%; user-select: none; -webkit-user-drag: none; }
+    .fallback-logo::before { content: "✦"; color: #f59e0b; font-size: 72px; font-weight: 800; text-shadow: 0 0 24px rgba(245,158,11,.75); }
+    .name { font-size: 20px; font-weight: 800; letter-spacing: .02em; }
+    .tagline { margin-top: -10px; color: #f59e0b; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; }
+    .loading { display: flex; flex-direction: column; align-items: center; gap: 9px; margin-top: 12px; color: #a1a1aa; font-size: 11px; }
+    .track { width: 150px; height: 3px; overflow: hidden; border-radius: 99px; background: #24242a; }
+    .track::before { content: ""; display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #f59e0b, #ff7b00); animation: progress 1.25s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    @keyframes breathe { 0%,100% { opacity: .65; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes progress { 0% { transform: translateX(-160%); } 100% { transform: translateX(390%); } }
+    @media (prefers-reduced-motion: reduce) { .brand, .logo-wrap, .splash::before, .logo-wrap::after, .track::before { animation: none; } }
+  </style>
+</head>
+<body>
+  <main class="splash" aria-label="Nova Studio đang khởi động" aria-busy="true">
+    <div class="brand">
+      <div class="logo-wrap"><img class="logo" src="../web/brand-logo.ico" alt="Nova Studio" onerror="this.style.display='none'; this.parentElement.classList.add('fallback-logo')"></div>
+      <div class="name">Nova Studio</div>
+      <div class="tagline">Create beyond imagination</div>
+      <div class="loading"><span>Đang khởi động studio…</span><span class="track" aria-hidden="true"></span></div>
+    </div>
+  </main>
+</body>
+</html>

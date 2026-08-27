@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova Studio — Ultra-Elite God-Tier VFX & Motion Graphics Masterclass</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=JetBrains+Mono:wght@400;600;700;800&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #05070b;
+      --bg-card: #0c101a;
+      --bg-panel: rgba(14, 18, 30, 0.85);
+      --accent-gold: #f59e0b;
+      --accent-gold-glow: rgba(245, 158, 11, 0.45);
+      --accent-blue: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #c084fc;
+      --accent-emerald: #10b981;
+      --accent-red: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border-glass: rgba(255, 255, 255, 0.12);
+      --glass-blur: blur(20px);
+      --font-ui: 'Outfit', -apple-system, sans-serif;
+      --font-serif: 'Playfair Display', Georgia, serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-cinzel: 'Cinzel', serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      padding: 18px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-glass);
+      background: rgba(5, 7, 11, 0.9);
+      backdrop-filter: var(--glass-blur);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo-badge {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-badge .tag {
+      background: linear-gradient(135deg, #f59e0b, #ef4444, #ec4899);
+      color: #000;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+    }
+
+    .logo-badge h1 {
+      font-size: 20px;
+      font-weight: 800;
+      background: linear-gradient(to right, #fff, #9ca3af, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .btn-audio-toggle {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-audio-toggle:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--accent-gold);
+    }
+
+    /* MAIN CONTAINER */
+    main {
+      flex: 1;
+      max-width: 1560px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 40px;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 32px;
+    }
+
+    /* SIDEBAR NAVIGATION */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--accent-gold);
+      margin: 6px 0 2px 4px;
+    }
+
+    .style-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .style-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: transparent;
+      transition: background 0.25s ease;
+    }
+
+    .style-card:hover {
+      background: rgba(20, 28, 44, 0.9);
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateX(4px);
+    }
+
+    .style-card.active {
+      background: linear-gradient(135deg, rgba(28, 38, 58, 0.95), rgba(12, 18, 32, 0.95));
+      border-color: var(--accent-gold);
+      box-shadow: 0 0 24px rgba(245, 158, 11, 0.2);
+    }
+
+    .style-card.active::before {
+      background: var(--accent-gold);
+    }
+
+    .style-card .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .style-card .badge {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--accent-blue);
+      text-transform: uppercase;
+    }
+
+    .style-card.active .badge {
+      background: var(--accent-gold-glow);
+      color: #fbbf24;
+    }
+
+    .style-card h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .style-card p {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-top: 3px;
+    }
+
+    /* PREVIEW STAGE */
+    .preview-stage-container {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .stage-frame {
+      width: 100%;
+      height: 560px;
+      background: #000;
+      border-radius: 16px;
+      border: 1px solid var(--border-glass);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.85);
+    }
+
+    /* CONTROLS BAR */
+    .controls-bar {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-action {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s ease, filter 0.15s ease;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+    }
+
+    .btn-action:hover {
+      transform: scale(1.03);
+      filter: brightness(1.15);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border: 1px solid var(--border-glass);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* DESCRIPTION PANEL */
+    .info-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 14px;
+      padding: 18px 24px;
+    }
+
+    .info-panel h4 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-panel p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .tech-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .tech-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 3px 10px;
+      border-radius: 6px;
+      color: var(--accent-cyan);
+    }
+
+    /* ======================================================== */
+    /* ULTRA STYLE 1: 3D ISOMETRIC DIORAMA (Polymatter / Apple) */
+    /* ======================================================== */
+    .stage-style-6 {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 30%, #151d2f 0%, #06080e 100%);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1400px;
+    }
+
+    .iso-world {
+      width: 480px;
+      height: 480px;
+      position: relative;
+      transform-style: preserve-3d;
+      transform: rotateX(60deg) rotateZ(-38deg);
+      transition: transform 0.2s cubic-bezier(0.1, 0, 0.2, 1);
+    }
+
+    .iso-base-grid {
+      position: absolute;
+      inset: 0;
+      background: 
+        linear-gradient(rgba(56, 189, 248, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56, 189, 248, 0.15) 1px, transparent 1px);
+      background-size: 40px 40px;
+      border: 2px solid rgba(56, 189, 248, 0.4);
+      box-shadow: 0 0 60px rgba(56, 189, 248, 0.2), inset 0 0 40px rgba(0,0,0,0.8);
+      border-radius: 12px;
+    }
+
+    .iso-pillar {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      transform-style: preserve-3d;
+      transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .iso-pillar .face {
+      position: absolute;
+      inset: 0;
+    }
+
+    .iso-pillar .top {
+      background: #38bdf8;
+      transform: translateZ(120px);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .iso-pillar .front {
+      background: linear-gradient(to bottom, #0284c7, #0369a1);
+      height: 120px;
+      transform: rotateX(-90deg) translateZ(-60px);
+      transform-origin: bottom;
+    }
+
+    .iso-pillar .right {
+      background: linear-gradient(to bottom, #075985, #0c4a6e);
+      width: 120px;
+      transform: rotateY(90deg) translateZ(0px);
+      transform-origin: right;
+    }
+
+    .iso-floating-card {
+      position: absolute;
+      width: 220px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(245, 158, 11, 0.6);
+      border-radius: 12px;
+      padding: 14px;
+      backdrop-filter: blur(12px);
+      transform: translateZ(200px) rotateZ(38deg) rotateX(-60deg);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(245, 158, 11, 0.3);
+      color: #fff;
+    }
+
+    /* ======================================================== */
+    /* ULTRA STYLE 2: FORENSIC X-RAY / BLUEPRINT SCANNER (Lemmino) */
+    /* ======================================================== */
+    .stage-style-7 {
+      position: absolute;
+      inset: 0;
+      background: #060a12;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .blueprint-grid {
+      position: absolute;
+      inset: 0;
+      background: 
+        radial-gradient(circle at center, rgba(6, 182, 212, 0.08) 0%, transparent 70%),
+        linear-gradient(rgba(6, 182, 212, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px);
+      background-size: 100% 100%, 30px 30px, 30px 30px;
+    }
+
+    .scanner-subject-wrap {
+      position: relative;
+      width: 640px;
+      height: 400px;
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      background: rgba(8, 14, 26, 0.7);
+      box-shadow: 0 0 40px rgba(6, 182, 212, 0.15);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .subject-real {
+      position: absolute;
+      inset: 0;
+      background: url('https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=80') center/cover;
+    }
+
+    .subject-blueprint {
+      position: absolute;
+      inset: 0;
+      background: url('https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=80') center/cover;
+      filter: invert(1) hue-rotate(180deg) contrast(2) brightness(0.8);
+      clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+      transition: clip-path 0.1s linear;
+    }
+
+    .scanner-laser-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 3px;
+      background: #06b6d4;
+      box-shadow: 0 0 18px #06b6d4, 0 0 35px #06b6d4;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .target-bracket {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--accent-red);
+      pointer-events: none;
+    }
+    .bracket-tl { top: 20%; left: 25%; border-right: none; border-bottom: none; }
+    .bracket-tr { top: 20%; left: 45%; border-left: none; border-bottom: none; }
+    .bracket-bl { top: 60%; left: 25%; border-right: none; border-top: none; }
+    .bracket-br { top: 60%; left: 45%; border-left: none; border-top: none; }
+
+    .scanner-hud-text {
+      position: absolute;
+      bottom: 20px;
+      left: 24px;
+      font-family: var(--font-mono);
+      color: #06b6d4;
+      font-size: 11px;
+      line-height: 1.6;
+      text-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+    }
+
+    /* ======================================================== */
+    /* ULTRA STYLE 3: 3D GLASS UI SMARTPHONE MOCKUP (Johnny Harris) */
+    /* ======================================================== */
+    .stage-style-8 {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1200px;
+      overflow: hidden;
+    }
+
+    .device-3d-wrap {
+      width: 320px;
+      height: 500px;
+      position: relative;
+      transform-style: preserve-3d;
+      transform: rotateY(-22deg) rotateX(14deg);
+      transition: transform 0.15s ease-out;
+    }
+
+    .device-phone {
+      width: 100%;
+      height: 100%;
+      background: #0f172a;
+      border: 4px solid #334155;
+      border-radius: 36px;
+      box-shadow: 25px 35px 70px rgba(0, 0, 0, 0.9), 0 0 30px rgba(56, 189, 248, 0.2);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .phone-glass-glare {
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 40%);
+      pointer-events: none;
+    }
+
+    .phone-chat-bubble {
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      transform: translateZ(40px);
+    }
+
+    .phone-chat-bubble.highlight-alert {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.3));
+      border-color: rgba(239, 68, 68, 0.6);
+      box-shadow: 0 0 25px rgba(239, 68, 68, 0.3);
+    }
+
+    .chat-sender {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--accent-gold);
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .chat-msg {
+      font-size: 12px;
+      color: #fff;
+      line-height: 1.4;
+    }
+
+    /* EXISTING STYLES PRESERVED */
+    .stage-style-1, .stage-style-2, .stage-style-3, .stage-style-4, .stage-style-5 {
+      position: absolute;
+      inset: 0;
+    }
+    .parallax-viewport { position: absolute; inset: -50px; transform-style: preserve-3d; transition: transform 0.1s cubic-bezier(0.2, 0, 0.2, 1); }
+    .layer-bg { position: absolute; inset: -40px; background: url('https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1920&q=80') center/cover no-repeat; filter: brightness(0.4) saturate(1.2) blur(2px); transform: translateZ(-150px) scale(1.3); }
+    .layer-light-beam { position: absolute; top: -50%; right: -20%; width: 140%; height: 200%; background: conic-gradient(from 180deg at 70% 20%, rgba(245, 158, 11, 0.18) 0deg, transparent 45deg, transparent 360deg); pointer-events: none; transform: translateZ(-50px); mix-blend-mode: screen; }
+    .layer-dust-canvas { position: absolute; inset: 0; pointer-events: none; transform: translateZ(50px); }
+    .layer-subject-cutout { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%) translateZ(80px); width: 480px; height: 520px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+    .subject-img-wrap { width: 380px; height: 480px; position: relative; filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.9)); }
+    .subject-img-wrap img { width: 100%; height: 100%; object-fit: contain; mask-image: linear-gradient(to bottom, black 80%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%); }
+    .layer-floating-ui { position: absolute; top: 25%; left: 10%; transform: translateZ(140px); background: rgba(14, 20, 34, 0.85); border: 1px solid rgba(245, 158, 11, 0.5); padding: 16px 20px; border-radius: 12px; backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(245, 158, 11, 0.2); }
+    .floating-ui-title { font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 1px; }
+    .floating-ui-value { font-size: 26px; font-weight: 900; color: #fff; margin-top: 2px; }
+    .layer-floating-ui-2 { position: absolute; bottom: 22%; right: 12%; transform: translateZ(160px); background: rgba(14, 20, 34, 0.85); border: 1px solid rgba(56, 189, 248, 0.5); padding: 14px 18px; border-radius: 12px; backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(56, 189, 248, 0.2); }
+
+    /* CRIME BOARD */
+    .crime-board { width: 100%; height: 100%; position: relative; background: #181512 url('https://www.transparenttextures.com/patterns/wood-pattern.png'); }
+    .red-string-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+    .pin { width: 14px; height: 14px; background: radial-gradient(circle at 35% 35%, #ff4d4d, #990000); border-radius: 50%; position: absolute; top: -6px; left: 50%; transform: translateX(-50%); box-shadow: 2px 4px 6px rgba(0, 0, 0, 0.6); z-index: 20; }
+    .tape { width: 60px; height: 20px; background: rgba(255, 255, 230, 0.45); border: 1px dashed rgba(255, 255, 255, 0.3); position: absolute; top: -8px; left: 50%; transform: translateX(-50%) rotate(-4deg); box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 15; }
+    .polaroid-card { position: absolute; background: #fdfbf7; padding: 12px 12px 28px 12px; box-shadow: 4px 12px 30px rgba(0, 0, 0, 0.6); color: #111; font-family: var(--font-mono); font-weight: 700; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); cursor: pointer; }
+    .polaroid-card:hover { transform: scale(1.08) rotate(0deg) !important; z-index: 30 !important; }
+    .polaroid-img { width: 180px; height: 140px; background-size: cover; background-position: center; filter: sepia(0.2) contrast(1.1); }
+    .polaroid-caption { margin-top: 10px; font-size: 11px; text-align: center; color: #333; letter-spacing: -0.5px; }
+    .newspaper-clip { position: absolute; background: #f4ede2; color: #111; padding: 16px 20px; width: 320px; box-shadow: 6px 14px 35px rgba(0, 0, 0, 0.7); transform: rotate(-3deg); clip-path: polygon(0% 2%, 4% 0%, 8% 2%, 12% 0%, 16% 3%, 22% 0%, 28% 2%, 35% 0%, 42% 3%, 50% 0%, 58% 2%, 66% 0%, 74% 3%, 82% 0%, 90% 2%, 96% 0%, 100% 3%, 100% 98%, 95% 100%, 89% 97%, 81% 100%, 75% 98%, 68% 100%, 60% 97%, 52% 100%, 45% 98%, 38% 100%, 30% 97%, 22% 100%, 15% 98%, 8% 100%, 0% 97%); }
+    .newspaper-header { font-family: var(--font-serif); font-size: 18px; font-weight: 900; border-bottom: 2px solid #222; padding-bottom: 4px; margin-bottom: 8px; text-transform: uppercase; line-height: 1.1; }
+    .newspaper-highlight { background: linear-gradient(104deg, rgba(255, 235, 59, 0) 0.9%, rgba(255, 235, 59, 0.85) 2.4%, rgba(255, 235, 59, 0.75) 98%); padding: 2px 4px; border-radius: 2px; font-weight: 700; }
+
+    /* HOLOGRAPHIC CARD */
+    .stage-style-3 { position: absolute; inset: 0; background: radial-gradient(circle at center, #151a28 0%, #05070c 100%); display: flex; align-items: center; justify-content: center; perspective: 1200px; }
+    .holo-card-wrap { width: 320px; height: 460px; position: relative; transform-style: preserve-3d; transition: transform 0.15s ease-out; cursor: grab; }
+    .holo-card { width: 100%; height: 100%; background: linear-gradient(135deg, #1e293b, #0f172a); border-radius: 20px; border: 2px solid rgba(245, 158, 11, 0.6); padding: 16px; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(245, 158, 11, 0.25); position: relative; overflow: hidden; }
+    .holo-shine { position: absolute; inset: 0; background: linear-gradient(115deg, transparent 0%, rgba(255, 0, 150, 0.2) 25%, rgba(0, 255, 255, 0.3) 50%, rgba(255, 255, 0, 0.2) 75%, transparent 100%); mix-blend-mode: color-dodge; pointer-events: none; opacity: 0.6; transition: opacity 0.3s; }
+    .card-top-badge { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .card-rarity { font-size: 11px; font-weight: 900; color: #fbbf24; letter-spacing: 1.5px; text-transform: uppercase; }
+    .card-power-score { background: #ef4444; color: #fff; font-size: 12px; font-weight: 900; padding: 2px 8px; border-radius: 6px; }
+    .card-portrait { width: 100%; height: 200px; border-radius: 12px; background: url('https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=600&q=80') center/cover; border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(0,0,0,0.6); margin-bottom: 12px; }
+    .card-name { font-size: 20px; font-weight: 900; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-role { font-size: 11px; color: var(--accent-gold); font-weight: 700; margin-bottom: 12px; }
+    .card-stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; }
+    .stat-label { color: var(--text-muted); font-weight: 600; }
+    .stat-bar-wrap { flex: 1; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; margin: 0 10px; overflow: hidden; }
+    .stat-bar-fill { height: 100%; background: linear-gradient(90deg, #f59e0b, #ef4444); border-radius: 4px; }
+    .stat-val { font-family: var(--font-mono); font-weight: 700; color: #fff; font-size: 11px; }
+
+    /* MAP & CRT */
+    .stage-style-4 { position: absolute; inset: 0; background: #090e17; overflow: hidden; perspective: 800px; }
+    .map-terrain { position: absolute; width: 140%; height: 140%; left: -20%; top: -20%; background: url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1920&q=80') center/cover no-repeat; transform: rotateX(42deg) rotateZ(-12deg) scale(1.1); filter: contrast(1.3) brightness(0.6) saturate(1.1); box-shadow: inset 0 0 100px #000; }
+    .map-svg-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transform: rotateX(42deg) rotateZ(-12deg) scale(1.1); }
+    .gps-pulse-pin { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
+    .pin-beacon { width: 18px; height: 18px; background: #38bdf8; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 20px #38bdf8; position: relative; }
+    .pin-beacon::after { content: ''; position: absolute; inset: -12px; border: 2px solid #38bdf8; border-radius: 50%; animation: pulseRadar 2s infinite ease-out; }
+    @keyframes pulseRadar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+    .pin-tag { background: rgba(14, 20, 34, 0.95); border: 1px solid #38bdf8; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; margin-top: 8px; white-space: nowrap; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6); }
+
+    .stage-style-5 { position: absolute; inset: 0; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .vhs-video-bg { position: absolute; inset: 0; background: url('https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1920&q=80') center/cover; filter: contrast(1.4) saturate(1.3); }
+    .crt-scanlines { position: absolute; inset: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.4) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 6px 100%; pointer-events: none; z-index: 10; }
+    .crt-vignette { position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.85) 100%); pointer-events: none; z-index: 11; }
+    .vhs-overlay-text { position: absolute; top: 30px; left: 30px; font-family: var(--font-mono); color: #22c55e; font-size: 18px; font-weight: 700; text-shadow: 0 0 10px rgba(34, 197, 94, 0.8); z-index: 20; }
+    .vhs-center-headline { position: relative; z-index: 15; font-size: 48px; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; color: #fff; text-align: center; text-shadow: 3px 0 0 #ef4444, -3px 0 0 #38bdf8; animation: rgbGlitch 2.5s infinite; }
+    @keyframes rgbGlitch { 0%, 90% { transform: translate(0); text-shadow: 3px 0 0 #ef4444, -3px 0 0 #38bdf8; } 92% { transform: translate(-4px, 2px); text-shadow: 5px 0 0 #ef4444, -5px 0 0 #38bdf8; } 94% { transform: translate(4px, -2px); text-shadow: -4px 0 0 #ef4444, 4px 0 0 #38bdf8; } 96% { transform: translate(-2px, 1px); } 100% { transform: translate(0); } }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-badge">
+      <span class="tag">Studio God-Tier</span>
+      <h1>Ultra-Elite Motion Design & Cinematic VFX Showcase</h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn-audio-toggle" id="btnSoundFx" onclick="toggleAudioSFX()">
+        <span>🔊</span> Âm thanh SFX: <strong id="soundFxStatus">Bật</strong>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- SIDEBAR: LIST OF 8 STYLES -->
+    <aside class="sidebar">
+      <div class="section-title">🔥 8 ĐỈNH CAO MOTION VFX</div>
+
+      <!-- ULTRA TIER -->
+      <div class="style-card active" onclick="switchStyle(6)" id="card-style-6">
+        <div class="card-header">
+          <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">Polymatter / 3D</span>
+          <span style="font-size: 14px;">🏛️</span>
+        </div>
+        <h3>1. 3D Isometric Diorama City</h3>
+        <p>Thành phố thu nhỏ 3D, cột tài chính mọc từ sàn nhà và camera xoay 360°.</p>
+      </div>
+
+      <div class="style-card" onclick="switchStyle(7)" id="card-style-7">
+        <div class="card-header">
+          <span class="badge" style="background: rgba(6, 182, 212, 0.2); color: #22d3ee;">Lemmino / X-Ray</span>
+          <span style="font-size: 14px;">🔬</span>
+        </div>
+        <h3>2. Forensic Blueprint & Laser Scanner</h3>
+        <p>Tia Laser quét X-Ray, phân tích cấu trúc ngầm và giải mã tài liệu mật.</p>
+      </div>
+
+      <div class="style-card" onclick="switchStyle(8)" id="card-style-8">
+        <div class="card-header">
+          <span class="badge" style="background: rgba(192, 132, 252, 0.2); color: #d8b4fe;">Johnny Harris 3D</span>
+          <span style="font-size: 14px;">📱</span>
+        </div>
+        <h3>3. 3D Glass Device & Leaked Chat</h3>
+        <p>Smartphone 3D nổi khối, tin nhắn mật nảy ra khỏi màn hình kèm rung chuông.</p>
+      </div>
+
+      <!-- HOLLYWOOD & VOX TIER -->
+      <div class="style-card" onclick="switchStyle(1)" id="card-style-1">
+        <div class="card-header">
+          <span class="badge">Hollywood 3D</span>
+          <span style="font-size: 14px;">🌌</span>
+        </div>
+        <h3>4. 3D Multi-Plane Parallax</h3>
+        <p>Tách 3 lớp chiều sâu, camera lao vào kết hợp bụi ánh sáng vàng.</p>
+      </div>
+
+      <div class="style-card" onclick="switchStyle(2)" id="card-style-2">
+        <div class="card-header">
+          <span class="badge">Vox Journalism</span>
+          <span style="font-size: 14px;">✂️</span>
+        </div>
+        <h3>5. Crime Board & Paper Cutout</h3>
+        <p>Bảng điều tra gỗ, ảnh xé rách ghim đinh, chỉ đỏ và dạ quang bài báo.</p>
+      </div>
+
+      <div class="style-card" onclick="switchStyle(3)" id="card-style-3">
+        <div class="card-header">
+          <span class="badge">Magnates Media</span>
+          <span style="font-size: 14px;">🃏</span>
+        </div>
+        <h3>6. 3D Holographic Trading Card</h3>
+        <p>Thẻ bài nhân vật 3D phản quang 7 màu, xoay đa hướng và thanh chỉ số.</p>
+      </div>
+
+      <div class="style-card" onclick="switchStyle(4)" id="card-style-4">
+        <div class="card-header">
+          <span class="badge">GeoLayers 3D</span>
+          <span style="font-size: 14px;">🗺️</span>
+        </div>
+        <h3>7. 3D Satellite Map & Neon GPS</h3>
+        <p>Bản đồ vệ tinh góc nghiêng 42°, lộ trình phát quang và mốc cắm 3D.</p>
+      </div>
+
+      <div class="style-card" onclick="switchStyle(5)" id="card-style-5">
+        <div class="card-header">
+          <span class="badge">Retro Cyber</span>
+          <span style="font-size: 14px;">📺</span>
+        </div>
+        <h3>8. Retro CRT VHS & RGB Glitch</h3>
+        <p>Màn hình tivi quét sọc, tách sắc sai RGB và xước phim tài liệu.</p>
+      </div>
+    </aside>
+
+    <!-- PREVIEW STAGE -->
+    <section class="preview-stage-container">
+      <div class="stage-frame" id="stageFrame">
+        <!-- STYLES WILL BE RENDERED HERE DYNAMICALLY -->
+      </div>
+
+      <div class="controls-bar">
+        <div class="control-group">
+          <button class="btn-action" onclick="triggerPresetAction()">
+            <span>⚡</span> Kích hoạt Hiệu Ứng
+          </button>
+          <button class="btn-secondary" onclick="resetStage()">
+            <span>🔄</span> Đặt lại
+          </button>
+        </div>
+        <div class="control-group">
+          <span style="font-size: 12px; color: var(--text-muted);">Di chuột lên sân khấu để tương tác góc quay 3D</span>
+        </div>
+      </div>
+
+      <div class="info-panel" id="infoPanel">
+        <!-- DYNAMIC INFO -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentStyle = 6;
+    let sfxEnabled = true;
+    let audioCtx = null;
+
+    // WEB AUDIO API SFX GENERATOR
+    function playSfx(type) {
+      if (!sfxEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const now = audioCtx.currentTime;
+        if (type === 'whoosh') {
+          const bufferSize = audioCtx.sampleRate * 0.4;
+          const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+          const noise = audioCtx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(300, now);
+          filter.frequency.exponentialRampToValueAtTime(3000, now + 0.2);
+          filter.frequency.exponentialRampToValueAtTime(400, now + 0.4);
+          const gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.35, now + 0.15);
+          gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(audioCtx.destination);
+          noise.start(now);
+        } else if (type === 'boom') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(160, now);
+          osc.frequency.exponentialRampToValueAtTime(28, now + 0.6);
+          gain.gain.setValueAtTime(0.6, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.7);
+        } else if (type === 'laser') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(2200, now);
+          osc.frequency.exponentialRampToValueAtTime(200, now + 0.25);
+          gain.gain.setValueAtTime(0.25, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.25);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.25);
+        } else if (type === 'paper') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(800, now);
+          osc.frequency.exponentialRampToValueAtTime(120, now + 0.08);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.08);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.08);
+        }
+      } catch (e) {}
+    }
+
+    function toggleAudioSFX() {
+      sfxEnabled = !sfxEnabled;
+      document.getElementById('soundFxStatus').textContent = sfxEnabled ? 'Bật' : 'Tắt';
+      if (sfxEnabled) playSfx('whoosh');
+    }
+
+    // STYLE SWITCHER
+    function switchStyle(id) {
+      currentStyle = id;
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+      const activeCard = document.getElementById(`card-style-${id}`);
+      if (activeCard) activeCard.classList.add('active');
+
+      playSfx('whoosh');
+      renderStageContent(id);
+    }
+
+    // RENDER CONTENT
+    function renderStageContent(id) {
+      const stage = document.getElementById('stageFrame');
+      const info = document.getElementById('infoPanel');
+
+      if (id === 6) {
+        // 3D ISOMETRIC DIORAMA
+        stage.innerHTML = `
+          <div class="stage-style-6" id="stage6">
+            <div class="iso-world" id="isoWorld">
+              <div class="iso-base-grid"></div>
+
+              <!-- PILLAR 1 -->
+              <div class="iso-pillar" id="pillar1" style="top: 80px; left: 80px;">
+                <div class="face top">🏢</div>
+                <div class="face front"></div>
+                <div class="face right"></div>
+              </div>
+
+              <!-- PILLAR 2 -->
+              <div class="iso-pillar" id="pillar2" style="top: 80px; left: 220px;">
+                <div class="face top" style="background: #f59e0b; box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);">💰</div>
+                <div class="face front" style="background: linear-gradient(to bottom, #d97706, #b45309);"></div>
+                <div class="face right" style="background: linear-gradient(to bottom, #92400e, #78350f);"></div>
+              </div>
+
+              <!-- PILLAR 3 -->
+              <div class="iso-pillar" id="pillar3" style="top: 240px; left: 160px;">
+                <div class="face top" style="background: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);">📈</div>
+                <div class="face front" style="background: linear-gradient(to bottom, #059669, #047857);"></div>
+                <div class="face right" style="background: linear-gradient(to bottom, #065f46, #064e3b);"></div>
+              </div>
+
+              <!-- FLOATING CARD -->
+              <div class="iso-floating-card">
+                <div style="font-size: 11px; font-weight: 800; color: var(--accent-gold); letter-spacing: 1px;">HỆ SINH THÁI TÀI TỬ</div>
+                <div style="font-size: 20px; font-weight: 900; color: #fff; margin: 4px 0;">+14.8 TỶ USD</div>
+                <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">Dòng tiền xoay vòng qua 3 trụ cột tài chính độc quyền.</div>
+              </div>
+            </div>
+          </div>
+        `;
+        initIsoMouse(stage);
+
+        info.innerHTML = `
+          <h4>🏛️ 1. Thế Giới Thu Nhỏ 3D Isometric (Phong cách Polymatter & Apple Keynote)</h4>
+          <p>Mô phỏng cả một đế chế kinh doanh hoặc hệ thống dòng tiền trong không gian 3D Isometric. Các tòa nhà và cột tài chính mọc trồi lên từ sàn nhà kèm bóng đổ 3D sâu và thẻ số liệu bay lơ lửng.</p>
+          <div class="tech-tags">
+            <span class="tech-pill">CSS 3D Preserve-3d Space</span>
+            <span class="tech-pill">Isometric Matrix 60°/38°</span>
+            <span class="tech-pill">Procedural Pillar Elevation</span>
+            <span class="tech-pill">Specular Top Face Lighting</span>
+          </div>
+        `;
+      } else if (id === 7) {
+        // LEMMINO FORENSIC X-RAY / BLUEPRINT SCANNER
+        stage.innerHTML = `
+          <div class="stage-style-7" id="stage7">
+            <div class="blueprint-grid"></div>
+            <div class="scanner-subject-wrap" id="scannerWrap">
+              <div class="subject-real"></div>
+              <div class="subject-blueprint" id="subjectBlueprint"></div>
+              <div class="scanner-laser-line" id="scannerLaser"></div>
+              
+              <div class="target-bracket bracket-tl"></div>
+              <div class="target-bracket bracket-tr"></div>
+              <div class="target-bracket bracket-bl"></div>
+              <div class="target-bracket bracket-br"></div>
+
+              <div class="scanner-hud-text">
+                <div>[SYSTEM] FORENSIC DEEP SCAN: <span style="color: #fff; font-weight: 700;">ACTIVE</span></div>
+                <div>[MATCH] TARGET IDENTIFIED: <span style="color: var(--accent-red); font-weight: 700;">CONFIRMED</span></div>
+                <div>[COORDS] 46°12'09.4"N 6°08'44.2"E</div>
+              </div>
+            </div>
+          </div>
+        `;
+        initScannerMouse();
+
+        info.innerHTML = `
+          <h4>🔬 2. Máy Quét Tia X & Bản Vẽ Kỹ Thuật (Phong cách Lemmino & Crime Docs)</h4>
+          <p>Tia Laser xanh quét qua hiện trường vụ án / tòa nhà / bức ảnh làm lộ ra bản vẽ kỹ thuật X-Ray ẩn giấu bên trong, kèm khung định vị mục tiêu đỏ và các thông số tọa độ điều tra.</p>
+          <div class="tech-tags">
+            <span class="tech-pill">Dynamic Clip-Path X-Ray Window</span>
+            <span class="tech-pill">Laser Glow Filter Shader</span>
+            <span class="tech-pill">Blueprint Negative Invert Matrix</span>
+            <span class="tech-pill">Tactical HUD Overlays</span>
+          </div>
+        `;
+      } else if (id === 8) {
+        // 3D GLASS SMARTPHONE MOCKUP
+        stage.innerHTML = `
+          <div class="stage-style-8" id="stage8">
+            <div class="device-3d-wrap" id="deviceWrap">
+              <div class="device-phone">
+                <div class="phone-glass-glare"></div>
+                
+                <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-bottom: 16px; font-weight: 700;">
+                  🔒 TELEGRAM ENCRYPTED CHAT
+                </div>
+
+                <div class="phone-chat-bubble">
+                  <div class="chat-sender"><span>CEO (ẨN DANH)</span> <span>14:02</span></div>
+                  <div class="chat-msg">Tất cả tài liệu mật đã chuyển vào ví lạnh chưa? Cảnh sát sắp tới rồi.</div>
+                </div>
+
+                <div class="phone-chat-bubble highlight-alert">
+                  <div class="chat-sender" style="color: #fca5a5;"><span>KẾ TOÁN TRƯỞNG</span> <span>14:03</span></div>
+                  <div class="chat-msg">Đã tẩu tán xong 450 triệu USD. Nhưng tài khoản ngân hàng đã bị phong tỏa!</div>
+                </div>
+
+                <div class="phone-chat-bubble" style="margin-top: 20px; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4);">
+                  <div class="chat-sender" style="color: #38bdf8;"><span>THÔNG BÁO KHẨN</span> <span>14:05</span></div>
+                  <div class="chat-msg">FBI VỪA BAN HÀNH LỆNH TRUY NÃ QUỐC TẾ.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        initPhoneTilt();
+
+        info.innerHTML = `
+          <h4>📱 3. Smartphone Kính 3D & Tin Nhắn Rò Rỉ (Johnny Harris & Vox)</h4>
+          <p>Thiết bị điện thoại thông minh 3D nổi khối trong không gian tối. Khi nhắc đến bằng chứng tin nhắn rò rỉ, các bong bóng chat Telegram/iMessage phát sáng nảy ra kèm hiệu ứng cảnh báo đỏ.</p>
+          <div class="tech-tags">
+            <span class="tech-pill">3D Device Gyroscope Tilt</span>
+            <span class="tech-pill">Specular Glare Simulation</span>
+            <span class="tech-pill">Z-Index Pop-Out Bubbles</span>
+            <span class="tech-pill">Dynamic Alert Lighting</span>
+          </div>
+        `;
+      } else if (id === 1) {
+        // PARALLAX
+        stage.innerHTML = `
+          <div class="stage-style-1" id="stage1">
+            <div class="parallax-viewport" id="parallaxViewport">
+              <div class="layer-bg"></div>
+              <div class="layer-light-beam"></div>
+              <canvas class="layer-dust-canvas" id="dustCanvas"></canvas>
+              <div class="layer-floating-ui">
+                <div class="floating-ui-title">Quỹ Tăng Trưởng</div>
+                <div class="floating-ui-value">+842.5%</div>
+              </div>
+              <div class="layer-floating-ui-2">
+                <div class="floating-ui-title" style="color: var(--accent-blue);">Thị Phần Thâu Tóm</div>
+                <div class="floating-ui-value" style="font-size: 22px;">68.4 Triệu $</div>
+              </div>
+              <div class="layer-subject-cutout">
+                <div class="subject-img-wrap">
+                  <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80" alt="Subject">
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        initDustParticles();
+        initParallaxMouse(stage);
+        info.innerHTML = `<h4>🌌 4. 3D Multi-Plane Parallax & Bụi Ánh Sáng</h4><p>Tách 3 lớp chiều sâu kèm hạt bụi vàng và tia sáng quét điện ảnh.</p>`;
+      } else if (id === 2) {
+        // CRIME BOARD
+        stage.innerHTML = `
+          <div class="stage-style-2" id="stage2">
+            <div class="crime-board">
+              <svg class="red-string-canvas" width="100%" height="100%">
+                <line x1="220" y1="180" x2="480" y2="280" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4,2" />
+                <line x1="480" y1="280" x2="720" y2="170" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4,2" />
+              </svg>
+              <div class="polaroid-card" style="top: 80px; left: 130px; transform: rotate(-5deg);"><div class="pin"></div><div class="polaroid-img" style="background-image: url('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80');"></div><div class="polaroid-caption">NGHI PHẠM CHÍNH #01</div></div>
+              <div class="newspaper-clip" style="top: 180px; left: 320px;"><div class="tape"></div><div class="newspaper-header">THE WALL STREET POST</div><div style="font-size: 11px; line-height: 1.5; color: #222;">Cuộc điều tra bí mật hé lộ <span class="newspaper-highlight">khoản thất thoát 4.2 tỷ USD</span> đã được chuyển qua 12 công ty bình phong...</div></div>
+              <div class="polaroid-card" style="top: 70px; right: 130px; transform: rotate(6deg);"><div class="pin"></div><div class="polaroid-img" style="background-image: url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=400&q=80');"></div><div class="polaroid-caption">TRỤ SỞ BÍ MẬT (CAYMAN)</div></div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `<h4>✂️ 5. Bảng Điều Tra Gỗ & Xé Rách Báo Chí (Vox)</h4><p>Dây chỉ đỏ nối mắt xích vụ án kèm bút dạ quang quét sáng bằng chứng.</p>`;
+      } else if (id === 3) {
+        // TRADING CARD
+        stage.innerHTML = `
+          <div class="stage-style-3" id="stage3">
+            <div class="holo-card-wrap" id="holoCardWrap">
+              <div class="holo-card" id="holoCard">
+                <div class="holo-shine" id="holoShine"></div>
+                <div class="card-top-badge"><span class="card-rarity">⭐ LEGENDARY TITAN</span><span class="card-power-score">LVL 99</span></div>
+                <div class="card-portrait"></div>
+                <div class="card-name">ALEXANDER VANCE</div>
+                <div class="card-role">VUA ĐẦU CƠ TÀI CHÍNH</div>
+                <div class="card-stat-row"><span class="stat-label">Tài Sản Ngầm</span><div class="stat-bar-wrap"><div class="stat-bar-fill" style="width: 95%;"></div></div><span class="stat-val">$18.5B</span></div>
+                <div class="card-stat-row"><span class="stat-label">Quyền Lực</span><div class="stat-bar-wrap"><div class="stat-bar-fill" style="width: 88%;"></div></div><span class="stat-val">94/100</span></div>
+              </div>
+            </div>
+          </div>
+        `;
+        initHoloCardTilt();
+        info.innerHTML = `<h4>🃏 6. Thẻ Bài 3D Phản Quang (Magnates Media)</h4><p>Phản chiếu ánh sáng cầu vồng 7 sắc và thanh đo chỉ số.</p>`;
+      } else if (id === 4) {
+        // MAP
+        stage.innerHTML = `
+          <div class="stage-style-4" id="stage4">
+            <div class="map-terrain"></div>
+            <svg class="map-svg-overlay" viewBox="0 0 1000 600"><defs><filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs><path d="M 200 420 Q 420 200 750 240" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" stroke-dasharray="1000" stroke-dashoffset="1000" id="routePath" filter="url(#neonGlow)" /></svg>
+            <div class="gps-pulse-pin" style="top: 60%; left: 24%;"><div class="pin-beacon"></div><div class="pin-tag">XUẤT PHÁT: NEW YORK</div></div>
+            <div class="gps-pulse-pin" style="top: 36%; left: 74%;"><div class="pin-beacon" style="background: #f59e0b; box-shadow: 0 0 20px #f59e0b;"></div><div class="pin-tag" style="border-color: #f59e0b;">ĐÍCH ĐẾN: GENEVA</div></div>
+          </div>
+        `;
+        animateMapRoute();
+        info.innerHTML = `<h4>🗺️ 7. Bản Đồ Vệ Tinh 3D & Lộ Trình Neon (GeoLayers 3D)</h4><p>Lướt trên địa hình 3D và đường bay GPS phát sáng.</p>`;
+      } else if (id === 5) {
+        // CRT
+        stage.innerHTML = `
+          <div class="stage-style-5" id="stage5">
+            <div class="vhs-video-bg"></div><div class="crt-scanlines"></div><div class="crt-vignette"></div>
+            <div class="vhs-overlay-text"><div class="vhs-play-badge">▶ PLAY  SP [00:14:28]</div><div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.7);">REC ● 14/08/1998</div></div>
+            <div class="vhs-center-headline">TÀI LIỆU TUYỆT MẬT</div>
+          </div>
+        `;
+        info.innerHTML = `<h4>📺 8. Giả Lập Màn Hình CRT & Băng VHS</h4><p>Sọc quét màn hình tivi cổ điển và tách màu RGB Glitch.</p>`;
+      }
+    }
+
+    // ISOMETRIC MOUSE TILT
+    function initIsoMouse(frame) {
+      frame.addEventListener('mousemove', (e) => {
+        if (currentStyle !== 6) return;
+        const rect = frame.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+        const world = document.getElementById('isoWorld');
+        if (world) {
+          world.style.transform = `rotateX(${60 + y * 20}deg) rotateZ(${-38 + x * 25}deg) scale(1.05)`;
+        }
+      });
+
+      frame.addEventListener('mouseleave', () => {
+        const world = document.getElementById('isoWorld');
+        if (world) world.style.transform = `rotateX(60deg) rotateZ(-38deg) scale(1)`;
+      });
+    }
+
+    // SCANNER LASER MOUSE TRACKER
+    function initScannerMouse() {
+      const wrap = document.getElementById('scannerWrap');
+      if (!wrap) return;
+
+      wrap.addEventListener('mousemove', (e) => {
+        if (currentStyle !== 7) return;
+        const rect = wrap.getBoundingClientRect();
+        const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
+        
+        const bp = document.getElementById('subjectBlueprint');
+        const laser = document.getElementById('scannerLaser');
+        if (bp && laser) {
+          bp.style.clipPath = `polygon(0 0, ${xPercent}% 0, ${xPercent}% 100%, 0 100%)`;
+          laser.style.left = `${xPercent}%`;
+        }
+      });
+    }
+
+    // PHONE TILT
+    function initPhoneTilt() {
+      const wrap = document.getElementById('deviceWrap');
+      if (!wrap) return;
+
+      wrap.addEventListener('mousemove', (e) => {
+        if (currentStyle !== 8) return;
+        const rect = wrap.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+        wrap.style.transform = `rotateY(${-22 + x * 35}deg) rotateX(${14 - y * 30}deg) scale(1.08)`;
+      });
+
+      wrap.addEventListener('mouseleave', () => {
+        wrap.style.transform = `rotateY(-22deg) rotateX(14deg) scale(1)`;
+      });
+    }
+
+    // DUST & OTHER ENGINES
+    function initDustParticles() {
+      const canvas = document.getElementById('dustCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width || 800;
+      canvas.height = rect.height || 560;
+
+      const particles = [];
+      for (let i = 0; i < 65; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          size: Math.random() * 2.5 + 0.5,
+          speedX: Math.random() * 0.4 - 0.2,
+          speedY: Math.random() * -0.5 - 0.1,
+          opacity: Math.random() * 0.7 + 0.2,
+        });
+      }
+
+      function draw() {
+        if (currentStyle !== 1) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (const p of particles) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(245, 158, 11, ${p.opacity})`;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = '#f59e0b';
+          ctx.fill();
+          p.x += p.speedX; p.y += p.speedY;
+          if (p.y < 0) p.y = canvas.height;
+          if (p.x < 0) p.x = canvas.width;
+          if (p.x > canvas.width) p.x = 0;
+        }
+        requestAnimationFrame(draw);
+      }
+      draw();
+    }
+
+    function initParallaxMouse(frame) {
+      frame.addEventListener('mousemove', (e) => {
+        if (currentStyle !== 1) return;
+        const rect = frame.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        const vp = document.getElementById('parallaxViewport');
+        if (vp) vp.style.transform = `rotateY(${x * 16}deg) rotateX(${-y * 14}deg) translateZ(10px)`;
+      });
+      frame.addEventListener('mouseleave', () => {
+        const vp = document.getElementById('parallaxViewport');
+        if (vp) vp.style.transform = `rotateY(0deg) rotateX(0deg)`;
+      });
+    }
+
+    function initHoloCardTilt() {
+      const wrap = document.getElementById('holoCardWrap');
+      if (!wrap) return;
+      wrap.addEventListener('mousemove', (e) => {
+        const rect = wrap.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        const rotX = ((y - cy) / cy) * -22;
+        const rotY = ((x - cx) / cx) * 22;
+        wrap.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(1.05)`;
+        const shine = document.getElementById('holoShine');
+        if (shine) {
+          shine.style.backgroundPosition = `${(x / rect.width) * 100}% ${(y / rect.height) * 100}%`;
+          shine.style.opacity = '0.9';
+        }
+      });
+      wrap.addEventListener('mouseleave', () => {
+        wrap.style.transform = 'rotateX(0deg) rotateY(0deg) scale(1)';
+        const shine = document.getElementById('holoShine');
+        if (shine) shine.style.opacity = '0.5';
+      });
+    }
+
+    function animateMapRoute() {
+      const path = document.getElementById('routePath');
+      if (!path) return;
+      path.style.transition = 'none';
+      path.style.strokeDashoffset = '1000';
+      setTimeout(() => {
+        path.style.transition = 'stroke-dashoffset 2.5s cubic-bezier(0.4, 0, 0.2, 1)';
+        path.style.strokeDashoffset = '0';
+      }, 100);
+    }
+
+    // PRESET ACTIONS
+    function triggerPresetAction() {
+      if (currentStyle === 6) {
+        playSfx('boom');
+        const p1 = document.getElementById('pillar1');
+        const p2 = document.getElementById('pillar2');
+        const p3 = document.getElementById('pillar3');
+        if (p1 && p2 && p3) {
+          p1.style.transform = 'translateZ(180px)';
+          setTimeout(() => p2.style.transform = 'translateZ(240px)', 150);
+          setTimeout(() => p3.style.transform = 'translateZ(300px)', 300);
+          setTimeout(() => {
+            p1.style.transform = 'translateZ(0px)';
+            p2.style.transform = 'translateZ(0px)';
+            p3.style.transform = 'translateZ(0px)';
+          }, 1200);
+        }
+      } else if (currentStyle === 7) {
+        playSfx('laser');
+        const bp = document.getElementById('subjectBlueprint');
+        const laser = document.getElementById('scannerLaser');
+        if (bp && laser) {
+          laser.style.transition = 'left 1.2s ease-in-out';
+          bp.style.transition = 'clip-path 1.2s ease-in-out';
+          laser.style.left = '95%';
+          bp.style.clipPath = 'polygon(0 0, 95% 0, 95% 100%, 0 100%)';
+          setTimeout(() => {
+            laser.style.left = '5%';
+            bp.style.clipPath = 'polygon(0 0, 5% 0, 5% 100%, 0 100%)';
+          }, 1400);
+        }
+      } else if (currentStyle === 8) {
+        playSfx('boom');
+        const wrap = document.getElementById('deviceWrap');
+        if (wrap) {
+          wrap.style.transition = 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)';
+          wrap.style.transform = 'scale(1.2) rotateY(0deg) rotateX(0deg)';
+          setTimeout(() => {
+            wrap.style.transition = 'transform 0.6s ease';
+            wrap.style.transform = 'scale(1) rotateY(-22deg) rotateX(14deg)';
+          }, 600);
+        }
+      } else {
+        playSfx('boom');
+      }
+    }
+
+    function resetStage() {
+      renderStageContent(currentStyle);
+      playSfx('paper');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderStageContent(6);
+    });
+  </script>
+</body>
+</html>

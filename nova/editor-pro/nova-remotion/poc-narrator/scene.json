@@ -1,0 +1,688 @@
+{
+  "scenes": [
+    {
+      "id": "s1",
+      "durationSec": 5.2,
+      "theme": {
+        "bg": "#0d1412",
+        "text": "#f4f1ea",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "bg",
+          "type": "backdrop",
+          "src": "assets/poc_bedroom.svg",
+          "in": {
+            "preset": "fade",
+            "dur": 0.7
+          },
+          "hold": {
+            "preset": "kenIn",
+            "amp": 1
+          },
+          "z": 0
+        },
+        {
+          "id": "ghost",
+          "type": "svg",
+          "at": 0.7,
+          "viewBox": "0 0 200 260",
+          "preserveAspectRatio": "xMidYMid meet",
+          "paths": [
+            {
+              "d": "M42 236 L42 112 C42 76 68 46 101 46 C134 46 160 76 160 112 L160 236 L143 219 L126 236 L109 219 L92 236 L75 219 L58 236 Z",
+              "fill": "#ffffff",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0,
+              "dur": 0.7
+            },
+            {
+              "d": "M42 152 C22 158 12 174 15 190",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.45,
+              "dur": 0.3
+            },
+            {
+              "d": "M160 152 C180 158 190 174 187 190",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.5,
+              "dur": 0.3
+            },
+            {
+              "d": "M84 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0",
+              "fill": "#1f2328",
+              "stroke": "#1f2328",
+              "width": 2,
+              "at": 0.75,
+              "dur": 0.15
+            },
+            {
+              "d": "M124 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0",
+              "fill": "#1f2328",
+              "stroke": "#1f2328",
+              "width": 2,
+              "at": 0.8,
+              "dur": 0.15
+            },
+            {
+              "d": "M88 154 Q104 168 120 154",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.9,
+              "dur": 0.25
+            }
+          ],
+          "box": {
+            "x": 50,
+            "y": 56,
+            "w": 14.71,
+            "h": 34,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.35
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.4
+          },
+          "z": 20
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "3 giờ 17 sáng. Bạn tỉnh giấc vì một tiếng động lạ ngoài cửa sổ.",
+          "box": {
+            "x": 50,
+            "y": 87,
+            "w": 78,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 42,
+            "weight": 700,
+            "lineHeight": 1.35,
+            "color": "#f4f1ea",
+            "bg": "rgba(0,0,0,.5)",
+            "pad": 16,
+            "radius": 14,
+            "reveal": "type",
+            "revealSpread": 0.35
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.4
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "durationSec": 5.4,
+      "trans": "dissolve",
+      "transDur": 0.5,
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "ghost",
+          "type": "svg",
+          "at": 0.1,
+          "viewBox": "0 0 200 260",
+          "preserveAspectRatio": "xMidYMid meet",
+          "paths": [
+            {
+              "d": "M42 236 L42 112 C42 76 68 46 101 46 C134 46 160 76 160 112 L160 236 L143 219 L126 236 L109 219 L92 236 L75 219 L58 236 Z",
+              "fill": "#ffffff",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0,
+              "dur": 0.7
+            },
+            {
+              "d": "M42 152 C22 158 12 174 15 190",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.45,
+              "dur": 0.3
+            },
+            {
+              "d": "M160 152 C180 158 190 174 187 190",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.5,
+              "dur": 0.3
+            },
+            {
+              "d": "M84 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0",
+              "fill": "#1f2328",
+              "stroke": "#1f2328",
+              "width": 2,
+              "at": 0.75,
+              "dur": 0.15
+            },
+            {
+              "d": "M124 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0",
+              "fill": "#1f2328",
+              "stroke": "#1f2328",
+              "width": 2,
+              "at": 0.8,
+              "dur": 0.15
+            },
+            {
+              "d": "M88 154 Q104 168 120 154",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.9,
+              "dur": 0.25
+            }
+          ],
+          "box": {
+            "x": 14,
+            "y": 54,
+            "w": 14.71,
+            "h": 34,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.35
+          },
+          "hold": {
+            "preset": "breathe",
+            "amp": 1.2
+          },
+          "z": 20
+        },
+        {
+          "id": "m1",
+          "type": "image",
+          "src": "assets/poc_dog.svg",
+          "at": 0.35,
+          "rotate": -2,
+          "box": {
+            "x": 33,
+            "y": 14,
+            "w": 26
+          },
+          "style": {
+            "radius": 8,
+            "stroke": "#ffffff",
+            "strokeWidth": 12,
+            "shadow": 1.1
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.5
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 30
+        },
+        {
+          "id": "m2",
+          "type": "image",
+          "src": "assets/poc_map.svg",
+          "at": 0.8,
+          "rotate": 0,
+          "box": {
+            "x": 68,
+            "y": 12,
+            "w": 22
+          },
+          "style": {},
+          "in": {
+            "preset": "pop",
+            "dur": 0.5
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 30
+        },
+        {
+          "id": "m3",
+          "type": "image",
+          "src": "assets/poc_bat.svg",
+          "at": 1.25,
+          "rotate": 0,
+          "box": {
+            "x": 34,
+            "y": 52,
+            "w": 24
+          },
+          "style": {},
+          "in": {
+            "preset": "pop",
+            "dur": 0.5
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 30
+        },
+        {
+          "id": "m4",
+          "type": "image",
+          "src": "assets/poc_syringe.svg",
+          "at": 1.7,
+          "rotate": 0,
+          "box": {
+            "x": 69,
+            "y": 50,
+            "w": 20
+          },
+          "style": {},
+          "in": {
+            "preset": "pop",
+            "dur": 0.5
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.1
+          },
+          "z": 30
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "Chó, dơi, cáo — virus dại lây qua nước bọt của động vật có vú.",
+          "box": {
+            "x": 50,
+            "y": 87,
+            "w": 78,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 42,
+            "weight": 700,
+            "lineHeight": 1.35,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.82)",
+            "pad": 16,
+            "radius": 14,
+            "reveal": "type",
+            "revealSpread": 0.35
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.4
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "durationSec": 4.6,
+      "trans": "dip-white",
+      "transDur": 0.45,
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "hero",
+          "type": "image",
+          "src": "assets/poc_virus.svg",
+          "box": {
+            "x": 50,
+            "y": 43,
+            "w": 44,
+            "anchor": "center"
+          },
+          "style": {
+            "radius": 10,
+            "stroke": "#ffffff",
+            "strokeWidth": 14,
+            "shadow": 1.3
+          },
+          "in": {
+            "preset": "zoom",
+            "dur": 0.6
+          },
+          "hold": {
+            "preset": "kenIn",
+            "amp": 0.6
+          },
+          "z": 10
+        },
+        {
+          "id": "kw",
+          "type": "text",
+          "text": "DỌC DÂY THẦN KINH",
+          "at": 1.2,
+          "box": {
+            "x": 50,
+            "y": 78,
+            "w": 60,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 34,
+            "weight": 800,
+            "upper": true,
+            "tracking": 0.08,
+            "color": "#e8763a",
+            "reveal": "kinetic",
+            "revealSpread": 0.14
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.4
+          },
+          "z": 40
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "Nó không đi theo đường máu — nó bò dọc dây thần kinh, hướng lên não.",
+          "box": {
+            "x": 50,
+            "y": 87,
+            "w": 78,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 42,
+            "weight": 700,
+            "lineHeight": 1.35,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.82)",
+            "pad": 16,
+            "radius": 14,
+            "reveal": "type",
+            "revealSpread": 0.35
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.4
+          },
+          "z": 90
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "durationSec": 5.8,
+      "trans": "dissolve",
+      "transDur": 0.5,
+      "theme": {
+        "bg": "#f5f5f3",
+        "text": "#1f2328",
+        "accent": "#e8763a"
+      },
+      "layers": [
+        {
+          "id": "ghost",
+          "type": "svg",
+          "at": 0.1,
+          "viewBox": "0 0 200 260",
+          "preserveAspectRatio": "xMidYMid meet",
+          "paths": [
+            {
+              "d": "M42 236 L42 112 C42 76 68 46 101 46 C134 46 160 76 160 112 L160 236 L143 219 L126 236 L109 219 L92 236 L75 219 L58 236 Z",
+              "fill": "#ffffff",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0,
+              "dur": 0.7
+            },
+            {
+              "d": "M42 152 C22 158 12 174 15 190",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.45,
+              "dur": 0.3
+            },
+            {
+              "d": "M160 152 C180 158 190 174 187 190",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.5,
+              "dur": 0.3
+            },
+            {
+              "d": "M84 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0",
+              "fill": "#1f2328",
+              "stroke": "#1f2328",
+              "width": 2,
+              "at": 0.75,
+              "dur": 0.15
+            },
+            {
+              "d": "M124 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0",
+              "fill": "#1f2328",
+              "stroke": "#1f2328",
+              "width": 2,
+              "at": 0.8,
+              "dur": 0.15
+            },
+            {
+              "d": "M88 154 Q104 168 120 154",
+              "stroke": "#1f2328",
+              "width": 5,
+              "at": 0.9,
+              "dur": 0.25
+            }
+          ],
+          "box": {
+            "x": 15,
+            "y": 56,
+            "w": 14.71,
+            "h": 34,
+            "anchor": "center"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.35
+          },
+          "hold": {
+            "preset": "drift",
+            "amp": 1.2
+          },
+          "z": 20
+        },
+        {
+          "id": "card-shadow",
+          "type": "shape",
+          "shape": "rect",
+          "at": 0.4,
+          "box": {
+            "x": 37.35,
+            "y": 24.7,
+            "w": 54,
+            "h": 42
+          },
+          "style": {
+            "fill": "rgba(20,24,35,.16)",
+            "radius": 20
+          },
+          "in": {
+            "preset": "slideR",
+            "dur": 0.55
+          },
+          "z": 8
+        },
+        {
+          "id": "card",
+          "type": "shape",
+          "shape": "rect",
+          "at": 0.4,
+          "box": {
+            "x": 37,
+            "y": 24,
+            "w": 54,
+            "h": 42
+          },
+          "style": {
+            "fill": "#ffffff",
+            "stroke": "#e4e7ef",
+            "strokeWidth": 2,
+            "radius": 20
+          },
+          "in": {
+            "preset": "slideR",
+            "dur": 0.55
+          },
+          "z": 10
+        },
+        {
+          "id": "card-title",
+          "type": "text",
+          "text": "Ca bệnh năm 2004",
+          "at": 0.85,
+          "box": {
+            "x": 40,
+            "y": 28.5,
+            "w": 32
+          },
+          "style": {
+            "size": 40,
+            "weight": 800,
+            "color": "#1e3a8a",
+            "reveal": "stagger",
+            "revealSpread": 0.5
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.3
+          },
+          "z": 20
+        },
+        {
+          "id": "card-body",
+          "type": "text",
+          "at": 1.1,
+          "text": "Một thiếu nữ ở Wisconsin sống sót sau khi đã phát bệnh dại,\ndù chưa từng tiêm vắc-xin trước đó. Phác đồ dùng cho ca này\nvề sau trở thành một trong những tranh luận lớn của ngành\nbệnh truyền nhiễm.",
+          "box": {
+            "x": 40,
+            "y": 35.5,
+            "w": 34
+          },
+          "style": {
+            "size": 22,
+            "weight": 400,
+            "lineHeight": 1.55,
+            "color": "#3b4557"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.45
+          },
+          "z": 20
+        },
+        {
+          "id": "card-thumb",
+          "type": "image",
+          "src": "assets/poc_thumb.svg",
+          "at": 1,
+          "box": {
+            "x": 79.5,
+            "y": 28,
+            "w": 8
+          },
+          "style": {
+            "radius": 10,
+            "shadow": 0.6
+          },
+          "in": {
+            "preset": "pop",
+            "dur": 0.45
+          },
+          "z": 20
+        },
+        {
+          "id": "src-bar",
+          "type": "shape",
+          "shape": "rect",
+          "at": 1.6,
+          "box": {
+            "x": 39,
+            "y": 54,
+            "w": 50,
+            "h": 9
+          },
+          "style": {
+            "fill": "#fdf6ec",
+            "radius": 10
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.35
+          },
+          "z": 15
+        },
+        {
+          "id": "src-txt",
+          "type": "text",
+          "text": "Nguồn tham khảo · hồ sơ y văn",
+          "at": 1.75,
+          "box": {
+            "x": 41,
+            "y": 57,
+            "w": 44
+          },
+          "style": {
+            "size": 21,
+            "weight": 700,
+            "color": "#1e3a8a"
+          },
+          "in": {
+            "preset": "fade",
+            "dur": 0.3
+          },
+          "z": 20
+        },
+        {
+          "id": "cap",
+          "type": "text",
+          "text": "Năm 2004, một ca bệnh hiếm đã làm thay đổi cách y học nhìn về bệnh dại.",
+          "box": {
+            "x": 50,
+            "y": 87,
+            "w": 78,
+            "align": "center",
+            "anchor": "center"
+          },
+          "style": {
+            "size": 42,
+            "weight": 700,
+            "lineHeight": 1.35,
+            "color": "#1f2328",
+            "bg": "rgba(255,255,255,.82)",
+            "pad": 16,
+            "radius": 14,
+            "reveal": "type",
+            "revealSpread": 0.35
+          },
+          "in": {
+            "preset": "rise",
+            "dur": 0.4
+          },
+          "z": 90
+        }
+      ]
+    }
+  ],
+  "globals": []
+}

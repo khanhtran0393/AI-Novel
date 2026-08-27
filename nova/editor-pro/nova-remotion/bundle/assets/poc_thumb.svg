@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <rect width="240" height="240" fill="#20344d"/>
+  <circle cx="120" cy="96" r="46" fill="#e8c9a8"/>
+  <path d="M28 240c0-56 42-92 92-92s92 36 92 92z" fill="#4a6fa5"/>
+  <rect y="196" width="240" height="44" fill="#0f1c2e" opacity=".75"/>
+  <text x="120" y="226" font-family="Helvetica, Arial" font-size="22" fill="#cfe0f2" text-anchor="middle">2004</text>
+</svg>

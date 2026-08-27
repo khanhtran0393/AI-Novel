@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0%" stop-color="#1d5f7a"/><stop offset="100%" stop-color="#122447"/></radialGradient>
+    <radialGradient id="cell" cx="0.4" cy="0.35" r="0.7">
+      <stop offset="0%" stop-color="#eafaff"/><stop offset="100%" stop-color="#7fd8e8"/></radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <g opacity=".55" fill="#3fe0c8">
+    <circle cx="90" cy="90" r="70"/><circle cx="580" cy="120" r="90"/><circle cx="140" cy="340" r="80"/>
+  </g>
+  <g fill="url(#cell)">
+    <circle cx="200" cy="150" r="52"/><circle cx="400" cy="120" r="44"/><circle cx="330" cy="270" r="58"/>
+  </g>
+  <g stroke="#f0a63c" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M120 250l90-40M260 320l80-46M430 210l86-34M300 90l70 30"/>
+  </g>
+  <g fill="#ffd9a0">
+    <circle cx="120" cy="250" r="11"/><circle cx="210" cy="210" r="11"/>
+    <circle cx="260" cy="320" r="11"/><circle cx="340" cy="274" r="11"/>
+    <circle cx="430" cy="210" r="11"/><circle cx="516" cy="176" r="11"/>
+  </g>
+  <g fill="#cdeffc" opacity=".8">
+    <circle cx="250" cy="200" r="6"/><circle cx="290" cy="180" r="5"/><circle cx="270" cy="230" r="4"/>
+    <circle cx="460" cy="300" r="6"/><circle cx="500" cy="330" r="5"/>
+  </g>
+</svg>

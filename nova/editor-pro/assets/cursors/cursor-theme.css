@@ -1,0 +1,153 @@
+:root {
+  --vs-cursor-default: url("./default.svg") 5 5, auto;
+  --vs-cursor-pointer: url("./pointer.svg") 14 7, pointer;
+  --vs-cursor-grab: url("./grab.svg") 10 4, grab;
+  --vs-cursor-grabbing: url("./grabbing.svg") 10 4, grabbing;
+}
+
+@media (pointer: fine) {
+  html,
+  body {
+    cursor: var(--vs-cursor-default) !important;
+  }
+
+  html[data-vs-cursor-active="pointer"],
+  html[data-vs-cursor-active="pointer"] body,
+  html[data-vs-cursor-active="pointer"] *,
+  html[data-vs-cursor-active="pointer"] *::before,
+  html[data-vs-cursor-active="pointer"] *::after {
+    cursor: var(--vs-cursor-pointer) !important;
+  }
+
+  html[data-vs-cursor-active="grab"],
+  html[data-vs-cursor-active="grab"] body,
+  html[data-vs-cursor-active="grab"] *,
+  html[data-vs-cursor-active="grab"] *::before,
+  html[data-vs-cursor-active="grab"] *::after {
+    cursor: var(--vs-cursor-grab) !important;
+  }
+
+  html[data-vs-cursor-active="grabbing"],
+  html[data-vs-cursor-active="grabbing"] body,
+  html[data-vs-cursor-active="grabbing"] *,
+  html[data-vs-cursor-active="grabbing"] *::before,
+  html[data-vs-cursor-active="grabbing"] *::after {
+    cursor: var(--vs-cursor-grabbing) !important;
+  }
+
+  .cursor-default,
+  .ed-cursor-default,
+  [style*="cursor:auto"],
+  [style*="cursor: auto"],
+  [style*="cursor:default"],
+  [style*="cursor: default"],
+  [style*="cursor:text"],
+  [style*="cursor: text"],
+  [style*="cursor:vertical-text"],
+  [style*="cursor: vertical-text"] {
+    cursor: var(--vs-cursor-default) !important;
+  }
+
+  button,
+  button *,
+  button *::before,
+  button *::after,
+  a[href],
+  a[href] *,
+  a[href] *::before,
+  a[href] *::after,
+  area[href],
+  label,
+  label *,
+  label *::before,
+  label *::after,
+  summary,
+  summary *,
+  summary *::before,
+  summary *::after,
+  option,
+  select,
+  select *,
+  select *::before,
+  select *::after,
+  input[type="file"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"],
+  input[type="color"],
+  [onclick],
+  [onclick] *,
+  [onclick] *::before,
+  [onclick] *::after,
+  [role="button"],
+  [role="button"] *,
+  [role="button"] *::before,
+  [role="button"] *::after,
+  [role="link"],
+  [role="link"] *,
+  [role="link"] *::before,
+  [role="link"] *::after,
+  [tabindex]:not([tabindex="-1"]),
+  [tabindex]:not([tabindex="-1"]) *,
+  [tabindex]:not([tabindex="-1"]) *::before,
+  [tabindex]:not([tabindex="-1"]) *::after,
+  [data-action],
+  [data-action] *,
+  [data-action] *::before,
+  [data-action] *::after,
+  .btn,
+  .btn *,
+  .btn *::before,
+  .btn *::after,
+  .cursor-pointer,
+  .cursor-pointer *,
+  .cursor-pointer *::before,
+  .cursor-pointer *::after,
+  .ed-cursor-pointer,
+  .ed-cursor-pointer *,
+  .ed-cursor-pointer *::before,
+  .ed-cursor-pointer *::after,
+  [style*="cursor:pointer"],
+  [style*="cursor: pointer"],
+  [style*="cursor:help"],
+  [style*="cursor: help"],
+  [style*="cursor:context-menu"],
+  [style*="cursor: context-menu"],
+  [style*="cursor:copy"],
+  [style*="cursor: copy"],
+  [style*="cursor:alias"],
+  [style*="cursor: alias"],
+  [style*="cursor:not-allowed"],
+  [style*="cursor: not-allowed"],
+  [style*="cursor:no-drop"],
+  [style*="cursor: no-drop"],
+  [style*="cursor:wait"],
+  [style*="cursor: wait"],
+  [style*="cursor:progress"],
+  [style*="cursor: progress"],
+  [style*="cursor:zoom-in"],
+  [style*="cursor: zoom-in"],
+  [style*="cursor:zoom-out"],
+  [style*="cursor: zoom-out"] {
+    cursor: var(--vs-cursor-pointer) !important;
+  }
+
+  .ed-cursor-grab,
+  [draggable="true"],
+  [style*="cursor:move"],
+  [style*="cursor: move"],
+  [style*="cursor:all-scroll"],
+  [style*="cursor: all-scroll"],
+  [style*="cursor:grab"],
+  [style*="cursor: grab"] {
+    cursor: var(--vs-cursor-grab) !important;
+  }
+
+  .ed-cursor-grabbing,
+  [style*="cursor:grabbing"],
+  [style*="cursor: grabbing"] {
+    cursor: var(--vs-cursor-grabbing) !important;
+  }
+}

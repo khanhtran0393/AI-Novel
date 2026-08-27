@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentary & Explainer VFX Masterclass — Nova Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #05070c;
+      --bg-card: #0b0f19;
+      --bg-panel: rgba(12, 17, 28, 0.9);
+      --accent-gold: #f59e0b;
+      --accent-gold-glow: rgba(245, 158, 11, 0.45);
+      --accent-blue: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #c084fc;
+      --accent-emerald: #10b981;
+      --accent-red: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border-glass: rgba(255, 255, 255, 0.12);
+      --glass-blur: blur(20px);
+      --font-ui: 'Outfit', -apple-system, sans-serif;
+      --font-serif: 'Playfair Display', Georgia, serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background-color: var(--bg-dark); color: var(--text-main); font-family: var(--font-ui); min-height: 100vh; overflow-x: hidden; display: flex; flex-direction: column; }
+
+    /* HEADER */
+    header {
+      padding: 16px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-glass);
+      background: rgba(5, 7, 12, 0.92);
+      backdrop-filter: var(--glass-blur);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo-badge { display: flex; align-items: center; gap: 14px; }
+    .logo-badge .tag {
+      background: linear-gradient(135deg, #f59e0b, #ef4444, #8b5cf6);
+      color: #000;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+    }
+    .logo-badge h1 { font-size: 19px; font-weight: 800; background: linear-gradient(to right, #fff, #9ca3af, #f59e0b, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    .btn-audio-toggle {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-audio-toggle:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent-gold); }
+
+    /* MAIN LAYOUT */
+    main {
+      flex: 1;
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 40px;
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 32px;
+    }
+
+    /* SIDEBAR */
+    .sidebar { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 6px; }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+    .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent-gold); margin: 6px 0 2px 4px; }
+
+    .style-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 13px 15px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .style-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: transparent; transition: background 0.25s ease; }
+    .style-card:hover { background: rgba(18, 25, 42, 0.9); border-color: rgba(255, 255, 255, 0.25); transform: translateX(4px); }
+    .style-card.active { background: linear-gradient(135deg, rgba(26, 36, 58, 0.95), rgba(10, 15, 28, 0.95)); border-color: var(--accent-gold); box-shadow: 0 0 24px rgba(245, 158, 11, 0.2); }
+    .style-card.active::before { background: var(--accent-gold); }
+
+    .style-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+    .style-card .badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); color: var(--accent-blue); text-transform: uppercase; }
+    .style-card.active .badge { background: var(--accent-gold-glow); color: #fbbf24; }
+    .style-card h3 { font-size: 13.5px; font-weight: 700; color: #fff; }
+    .style-card p { font-size: 11px; color: var(--text-muted); line-height: 1.35; margin-top: 2px; }
+
+    /* PREVIEW STAGE */
+    .preview-stage-container { display: flex; flex-direction: column; gap: 16px; }
+    .stage-frame {
+      width: 100%;
+      height: 560px;
+      background: #000;
+      border-radius: 16px;
+      border: 1px solid var(--border-glass);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.85);
+    }
+
+    /* CONTROLS */
+    .controls-bar {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      backdrop-filter: var(--glass-blur);
+    }
+    .control-group { display: flex; align-items: center; gap: 12px; }
+    .btn-action {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s ease, filter 0.15s ease;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+    }
+    .btn-action:hover { transform: scale(1.03); filter: brightness(1.15); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid var(--border-glass); font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+
+    /* INFO PANEL */
+    .info-panel { background: var(--bg-card); border: 1px solid var(--border-glass); border-radius: 14px; padding: 18px 24px; }
+    .info-panel h4 { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .info-panel p { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .tech-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tech-pill { font-family: var(--font-mono); font-size: 11px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); padding: 3px 10px; border-radius: 6px; color: var(--accent-cyan); }
+
+    /* ======================================================== */
+    /* ALL STYLES DEFINITION */
+    /* ======================================================== */
+    .stage-doc-1, .stage-doc-2, .stage-doc-3, .stage-doc-4, .stage-doc-5, .stage-doc-6, .stage-doc-7, .stage-doc-8 {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* STYLE 1: TIMELINE */
+    .stage-doc-1 { background: radial-gradient(circle at center, #131b2e 0%, #050811 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; perspective: 1000px; }
+    .timeline-track { width: 100%; height: 6px; background: rgba(255, 255, 255, 0.15); position: relative; display: flex; align-items: center; justify-content: space-between; padding: 0 100px; transform: rotateX(20deg); }
+    .timeline-node { width: 22px; height: 22px; background: #0f172a; border: 3px solid var(--accent-gold); border-radius: 50%; position: relative; cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 0 15px var(--accent-gold); }
+    .timeline-node.active { transform: scale(1.6); background: var(--accent-gold); box-shadow: 0 0 30px #f59e0b; }
+    .timeline-year-label { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-family: var(--font-mono); font-weight: 900; font-size: 14px; color: #fff; }
+    .timeline-event-card { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%) translateZ(80px); width: 380px; background: rgba(15, 23, 42, 0.92); border: 1px solid var(--accent-gold); border-radius: 14px; padding: 18px 20px; backdrop-filter: blur(14px); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(245, 158, 11, 0.25); transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    /* STYLE 2: MAGNIFIER */
+    .stage-doc-2 { background: #0b0f19; display: flex; align-items: center; justify-content: center; }
+    .audit-sheet { width: 580px; background: #fdfbf7; color: #111; padding: 24px; border-radius: 8px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); font-family: var(--font-mono); font-size: 12px; line-height: 1.8; position: relative; }
+    .audit-header { font-family: var(--font-serif); font-size: 18px; font-weight: 900; border-bottom: 2px solid #222; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+    .audit-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; padding: 4px 0; }
+    .magnifier-lens { position: absolute; width: 170px; height: 170px; border: 4px solid #f59e0b; border-radius: 50%; box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.65), 0 0 30px rgba(245, 158, 11, 0.6); pointer-events: none; transform: translate(-50%, -50%); top: 55%; left: 55%; display: flex; align-items: center; justify-content: center; background: rgba(254, 240, 138, 0.15); transition: top 0.15s ease-out, left 0.15s ease-out; }
+    .magnifier-inner-badge { background: #ef4444; color: #fff; font-weight: 900; font-size: 12px; padding: 4px 10px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); animation: alertPulse 1.5s infinite; }
+    @keyframes alertPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+
+    /* STYLE 3: FLOWCHART */
+    .stage-doc-3 { background: radial-gradient(circle at center, #101626 0%, #06080f 100%); display: flex; align-items: center; justify-content: center; }
+    .flow-network { width: 800px; height: 420px; position: relative; }
+    .flow-node { position: absolute; width: 210px; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 14px 16px; color: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.15); backdrop-filter: blur(10px); }
+    .flow-node.alert-trigger { border-color: #ef4444; box-shadow: 0 0 25px rgba(239, 68, 68, 0.35); }
+    .flow-node-title { font-size: 11px; font-weight: 800; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .flow-node-desc { font-size: 12px; color: #e2e8f0; line-height: 1.4; }
+
+    /* STYLE 4: DOSSIER */
+    .stage-doc-4 { background: #080c14; display: flex; align-items: center; justify-content: center; }
+    .dossier-sheet { width: 540px; background: #f4ece1; color: #1a1a1a; padding: 32px; box-shadow: 0 25px 70px rgba(0, 0, 0, 0.9); position: relative; font-family: var(--font-mono); font-size: 13px; line-height: 1.9; transform: rotate(-1.5deg); }
+    .dossier-stamp { position: absolute; top: 24px; right: 28px; border: 3px solid #dc2626; color: #dc2626; font-weight: 900; font-size: 16px; padding: 4px 12px; text-transform: uppercase; letter-spacing: 2px; transform: rotate(12deg); border-radius: 4px; }
+    .redacted-bar { background: #111; color: #111; padding: 1px 6px; border-radius: 2px; transition: all 0.4s ease; }
+    .redacted-bar.revealed { background: rgba(254, 240, 138, 0.9); color: #991b1b; font-weight: 800; text-decoration: underline; }
+
+    /* STYLE 5: WAR MAP */
+    .stage-doc-5 { background: #070c16; perspective: 900px; }
+    .war-map-terrain { position: absolute; width: 140%; height: 140%; left: -20%; top: -20%; background: url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1920&q=80') center/cover; transform: rotateX(46deg) rotateZ(-18deg) scale(1.15); filter: contrast(1.4) brightness(0.55); box-shadow: inset 0 0 120px #000; }
+    .war-zone-overlay { position: absolute; top: 35%; left: 30%; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(239, 68, 68, 0.4) 0%, transparent 70%); border: 2px dashed #ef4444; animation: rotateRadar 15s linear infinite; }
+    @keyframes rotateRadar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* STYLE 6: 3D SCALE COMPARISON (Kurzgesagt) */
+    .stage-doc-6 {
+      background: radial-gradient(circle at 50% 100%, #172554 0%, #030712 100%);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 60px;
+      gap: 50px;
+      perspective: 1000px;
+    }
+    .scale-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform-style: preserve-3d;
+      transition: transform 0.3s ease;
+    }
+    .scale-bar {
+      width: 90px;
+      border-radius: 8px 8px 0 0;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      padding-top: 12px;
+      font-family: var(--font-mono);
+      font-weight: 900;
+      font-size: 13px;
+    }
+    .scale-bar.human { height: 70px; background: linear-gradient(to top, #3b82f6, #60a5fa); color: #fff; }
+    .scale-bar.billion { height: 240px; background: linear-gradient(to top, #f59e0b, #fbbf24); color: #000; }
+    .scale-bar.trillion { height: 420px; background: linear-gradient(to top, #dc2626, #ef4444); color: #fff; box-shadow: 0 0 40px rgba(239, 68, 68, 0.5); }
+    .scale-label { margin-top: 14px; font-weight: 800; font-size: 13px; color: #fff; text-align: center; }
+
+    /* STYLE 7: FINANCIAL HEARTBEAT / CRASH ECG (ColdFusion) */
+    .stage-doc-7 {
+      background: #040810;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .ecg-screen {
+      width: 720px;
+      height: 320px;
+      background: rgba(8, 14, 26, 0.9);
+      border: 2px solid rgba(16, 185, 129, 0.4);
+      border-radius: 14px;
+      box-shadow: 0 0 50px rgba(16, 185, 129, 0.2), inset 0 0 40px rgba(0,0,0,0.8);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+    }
+    .ecg-grid {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.1) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* STYLE 8: 911 WIRETAP TAPE REEL (Lemmino True Crime) */
+    .stage-doc-8 {
+      background: radial-gradient(circle at center, #1a1612 0%, #060504 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .tape-player-case {
+      width: 580px;
+      background: #26211c;
+      border: 3px solid #443a30;
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
+      position: relative;
+    }
+    .tape-reels-wrap {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .tape-wheel {
+      width: 100px;
+      height: 100px;
+      background: #111;
+      border: 6px solid #d4c5b5;
+      border-radius: 50%;
+      position: relative;
+      animation: spinTape 4s linear infinite;
+    }
+    @keyframes spinTape { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .tape-wheel::after {
+      content: ''; position: absolute; inset: 26px; border: 3px dashed #fff; border-radius: 50%;
+    }
+    .waveform-visualizer {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .wave-bar {
+      width: 5px;
+      height: 20px;
+      background: #f59e0b;
+      border-radius: 3px;
+      animation: waveDance 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes waveDance { 0% { height: 8px; } 100% { height: 55px; background: #ef4444; } }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-badge">
+      <span class="tag">Docu-Series Pro</span>
+      <h1>Documentary & Explainer Video VFX Masterclass</h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn-audio-toggle" onclick="toggleAudioSFX()">
+        <span>🔊</span> Âm thanh SFX: <strong id="soundFxStatus">Bật</strong>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- SIDEBAR: DOCUMENTARY STYLES -->
+    <aside class="sidebar">
+      <div class="section-title">📂 8 KỸ XẢO PHIM TÀI LIỆU & VIDEO GIẢI THÍCH</div>
+
+      <div class="style-card active" onclick="switchDocStyle(1)" id="card-doc-1">
+        <div class="card-header"><span class="badge">Dòng Thời Gian</span> <span>⏳</span></div>
+        <h3>1. 3D Timeline Scrubber</h3>
+        <p>Trục thời gian 3D, sự kiện nhảy ra từng mốc năm kèm ảnh và số liệu.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(2)" id="card-doc-2">
+        <div class="card-header"><span class="badge" style="color: #fbbf24;">Điều Tra Án</span> <span>🔍</span></div>
+        <h3>2. Forensic Magnifying Glass</h3>
+        <p>Kính lúp quét báo cáo tài chính, soi số tiền thất thoát và rửa tiền.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(3)" id="card-doc-3">
+        <div class="card-header"><span class="badge" style="color: #34d399;">Logic Khủng Hoảng</span> <span>⚡</span></div>
+        <h3>3. Sơ Đồ Nguyên Nhân - Kết Quả</h3>
+        <p>Cây tư duy logic (Fern / Polymatter) giải thích phản ứng dây chuyền.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(4)" id="card-doc-4">
+        <div class="card-header"><span class="badge" style="color: #f87171;">Hồ Sơ Mật</span> <span>📁</span></div>
+        <h3>4. Bôi Xóa Hồ Sơ Mật (Declassified)</h3>
+        <p>Vệt đen gạch xóa bảo mật tự động mở khóa hé lộ sự thật lịch sử.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(5)" id="card-doc-5">
+        <div class="card-header"><span class="badge" style="color: #60a5fa;">Địa Chính Trị</span> <span>🗺️</span></div>
+        <h3>5. Bản Đồ Xung Đột & Tuyến Vận Tải</h3>
+        <p>Bản đồ chiến lược (Vox Borders / RealLifeLore) quét vùng cấm vận.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(6)" id="card-doc-6">
+        <div class="card-header"><span class="badge" style="color: #f43f5e;">So Sánh Tỷ Lệ</span> <span>📊</span></div>
+        <h3>6. 3D Visual Scale Comparison</h3>
+        <p>So sánh độ chênh lệch quy mô (Kurzgesagt): 1 Triệu vs 1 Tỷ vs 1 Nghìn Tỷ.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(7)" id="card-doc-7">
+        <div class="card-header"><span class="badge" style="color: #10b981;">Nhịp Tim Thị Trường</span> <span>📈</span></div>
+        <h3>7. Market ECG & Panic Crash</h3>
+        <p>Máy đo điện tâm đồ tài chính (ColdFusion), đường nhịp tim rớt đáy Flatline.</p>
+      </div>
+
+      <div class="style-card" onclick="switchDocStyle(8)" id="card-doc-8">
+        <div class="card-header"><span class="badge" style="color: #f59e0b;">Băng Ghi Âm 911</span> <span>🎙️</span></div>
+        <h3>8. 911 Wiretap Tape Reel</h3>
+        <p>Cuộn băng cassette quay vòng và dải sóng âm nhịp điệu (Lemmino True Crime).</p>
+      </div>
+    </aside>
+
+    <!-- PREVIEW STAGE -->
+    <section class="preview-stage-container">
+      <div class="stage-frame" id="stageFrame">
+        <!-- DYNAMIC CONTENT -->
+      </div>
+
+      <div class="controls-bar">
+        <div class="control-group">
+          <button class="btn-action" onclick="triggerDocAction()">
+            <span>⚡</span> Diễn Hoạt Phân Cảnh
+          </button>
+          <button class="btn-secondary" onclick="resetDocStage()">
+            <span>🔄</span> Làm Mới
+          </button>
+        </div>
+        <div class="control-group">
+          <span style="font-size: 12px; color: var(--text-muted);">Di chuột hoặc bấm nút để kích hoạt chuyển động phân cảnh</span>
+        </div>
+      </div>
+
+      <div class="info-panel" id="infoPanel">
+        <!-- DYNAMIC INFO -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentDocStyle = 1;
+    let sfxEnabled = true;
+    let audioCtx = null;
+
+    function playSfx(type) {
+      if (!sfxEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+
+        if (type === 'whoosh') {
+          const bufferSize = audioCtx.sampleRate * 0.35;
+          const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+          const noise = audioCtx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(300, now);
+          filter.frequency.exponentialRampToValueAtTime(3200, now + 0.15);
+          filter.frequency.exponentialRampToValueAtTime(400, now + 0.35);
+          const gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.35, now + 0.15);
+          gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+          noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+          noise.start(now);
+        } else if (type === 'boom') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(150, now);
+          osc.frequency.exponentialRampToValueAtTime(30, now + 0.6);
+          gain.gain.setValueAtTime(0.6, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.7);
+        } else if (type === 'beep') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(950, now);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.8);
+        } else if (type === 'paper') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(900, now);
+          osc.frequency.exponentialRampToValueAtTime(150, now + 0.09);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.09);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + 0.09);
+        }
+      } catch (e) {}
+    }
+
+    function toggleAudioSFX() {
+      sfxEnabled = !sfxEnabled;
+      document.getElementById('soundFxStatus').textContent = sfxEnabled ? 'Bật' : 'Tắt';
+      if (sfxEnabled) playSfx('whoosh');
+    }
+
+    function switchDocStyle(id) {
+      currentDocStyle = id;
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+      const activeCard = document.getElementById(`card-doc-${id}`);
+      if (activeCard) activeCard.classList.add('active');
+      playSfx('whoosh');
+      renderDocStage(id);
+    }
+
+    function renderDocStage(id) {
+      const stage = document.getElementById('stageFrame');
+      const info = document.getElementById('infoPanel');
+
+      if (id === 1) {
+        // TIMELINE
+        stage.innerHTML = `
+          <div class="stage-doc-1">
+            <div class="timeline-event-card" id="timelineCard">
+              <div style="font-size: 11px; font-weight: 800; color: var(--accent-gold); letter-spacing: 1px;">SỰ KIỆN LỊCH SỬ · 2008</div>
+              <div style="font-size: 20px; font-weight: 900; color: #fff; margin: 4px 0;">LEHMAN BROTHERS SỤP ĐỔ</div>
+              <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">Vụ phá sản lớn nhất lịch sử nước Mỹ với khoản nợ 619 tỷ USD châm ngòi cho khủng hoảng tài chính toàn cầu.</div>
+            </div>
+            <div class="timeline-track">
+              <div class="timeline-node" onclick="selectYear(1995, 'KỶ NGUYÊN DOT-COM', 'Cơn sốt cổ phiếu internet bùng nổ tại Thung lũng Silicon.')"><div class="timeline-year-label">1995</div></div>
+              <div class="timeline-node active" onclick="selectYear(2008, 'LEHMAN BROTHERS SỤP ĐỔ', 'Vụ phá sản lớn nhất lịch sử nước Mỹ châm ngòi cho khủng hoảng.')"><div class="timeline-year-label" style="color: var(--accent-gold);">2008</div></div>
+              <div class="timeline-node" onclick="selectYear(2020, 'ĐẠI DỊCH & IN TIỀN', 'Cục Dự trữ Liên bang Mỹ bơm 5.000 tỷ USD vào thị trường.')"><div class="timeline-year-label">2020</div></div>
+              <div class="timeline-node" onclick="selectYear(2026, 'KỶ NGUYÊN TRÍ TUỆ NHÂN TẠO', 'AI tái cấu trúc toàn bộ nền kinh tế thế giới.')"><div class="timeline-year-label">2026</div></div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `<h4>⏳ 1. Trục Thời Gian 3D (3D Historical Timeline)</h4><p>Trục dòng thời gian điện ảnh kết nối các mốc năm lịch sử.</p>`;
+      } else if (id === 2) {
+        // MAGNIFIER
+        stage.innerHTML = `
+          <div class="stage-doc-2" id="stage2">
+            <div class="audit-sheet">
+              <div class="audit-header"><span>BÁO CÁO KIỂM TOÁN TÀI CHÍNH</span><span style="color: #ef4444;">TÀI LIỆU NỘI BỘ</span></div>
+              <div class="audit-row"><span>Doanh thu quý 3/2024:</span> <span>$14,200,000</span></div>
+              <div class="audit-row"><span>Chi phí hoạt động:</span> <span>$8,500,000</span></div>
+              <div class="audit-row" style="background: rgba(239, 68, 68, 0.15); font-weight: 800; color: #dc2626;"><span>Chuyển khoản uỷ thác bí mật (Offshore):</span> <span>-$4,250,000,000</span></div>
+              <div class="audit-row"><span>Thuế thu nhập doanh nghiệp:</span> <span>$0 (Miễn trừ)</span></div>
+            </div>
+            <div class="magnifier-lens" id="magLens"><div class="magnifier-inner-badge">⚠️ THẤT THOÁT 4.2 TỶ $</div></div>
+          </div>
+        `;
+        initMagnifierMouse();
+        info.innerHTML = `<h4>🔍 2. Kính Lúp Điều Tra & Bóc Tách Con Số</h4><p>Soi vào báo cáo tài chính và phóng đại dòng tiền phi pháp.</p>`;
+      } else if (id === 3) {
+        // FLOWCHART
+        stage.innerHTML = `
+          <div class="stage-doc-3">
+            <div class="flow-network">
+              <svg width="100%" height="100%" style="position: absolute; inset: 0; pointer-events: none;"><path d="M 220 210 L 320 210" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6,4" /><path d="M 530 210 L 610 210" stroke="#ef4444" stroke-width="3" stroke-dasharray="6,4" /></svg>
+              <div class="flow-node" style="top: 150px; left: 10px;"><div class="flow-node-title">NGUYÊN NHÂN GỐC RỄ</div><div style="font-weight: 800; font-size: 14px; margin-bottom: 2px;">LÃI SUẤT 0% KÉO DÀI</div><div class="flow-node-desc">Ngân hàng trung ương nới lỏng tiền tệ kích thích vay nợ ồ ạt.</div></div>
+              <div class="flow-node" style="top: 150px; left: 320px;"><div class="flow-node-title" style="color: var(--accent-gold);">PHẢN ỨNG DÂY CHUYỀN</div><div style="font-weight: 800; font-size: 14px; margin-bottom: 2px;">BONG BÓNG BẤT ĐỘNG SẢN</div><div class="flow-node-desc">Giá nhà đất tăng 300%, nợ xấu dưới chuẩn phình to.</div></div>
+              <div class="flow-node alert-trigger" style="top: 150px; left: 610px;"><div class="flow-node-title" style="color: #ef4444;">KẾT QUẢ KHỦNG HOẢNG</div><div style="font-weight: 800; font-size: 14px; margin-bottom: 2px;">SỤP ĐỔ HỆ THỐNG</div><div class="flow-node-desc">Hàng loạt ngân hàng mất thanh khoản dẫn đến đại suy thoái.</div></div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `<h4>⚡ 3. Sơ Đồ Phản Ứng Dây Chuyền (Polymatter & Fern)</h4><p>Giải thích chuỗi logic sự kiện dẫn đến khủng hoảng.</p>`;
+      } else if (id === 4) {
+        // DOSSIER
+        stage.innerHTML = `
+          <div class="stage-doc-4">
+            <div class="dossier-sheet">
+              <div class="dossier-stamp">TOP SECRET</div>
+              <div style="font-weight: 900; font-size: 15px; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 12px;">HỒ SƠ ĐIỀU TRA ĐẶC BIỆT #7749-X</div>
+              <p>Căn cứ theo tài liệu mật, vào ngày 14 tháng 8, đối tượng <span class="redacted-bar revealed" id="redact1">VICTORIA STERLING</span> đã bí mật gặp gỡ <span class="redacted-bar revealed" id="redact2">GIÁM ĐỐC TÌNH BÁO QUỐC GIA</span> tại một hầm ngầm ở Zurich.</p>
+              <p style="margin-top: 12px;">Mục đích cuộc gặp là nhằm tẩu tán khoản quỹ đen trị giá <span class="redacted-bar revealed" id="redact3">14.8 TỶ USD</span> trước khi phiên điều trần diễn ra.</p>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `<h4>📁 4. Bôi Xóa Hồ Sơ Mật (Declassified Document)</h4><p>Hé lộ tài liệu mật của cơ quan điều tra.</p>`;
+      } else if (id === 5) {
+        // WAR MAP
+        stage.innerHTML = `
+          <div class="stage-doc-5">
+            <div class="war-map-terrain"></div><div class="war-zone-overlay"></div>
+            <svg viewBox="0 0 1000 600" style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;"><defs><filter id="redGlow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M 280 320 Q 480 180 720 380" fill="none" stroke="#ef4444" stroke-width="4" stroke-dasharray="8,4" filter="url(#redGlow)" /></svg>
+            <div style="position: absolute; top: 22%; left: 24%; background: rgba(239, 68, 68, 0.9); color: #fff; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 6px; box-shadow: 0 0 20px #ef4444;">⚠️ VÙNG CẤM VẬN HÀNG HẢI</div>
+          </div>
+        `;
+        info.innerHTML = `<h4>🗺️ 5. Bản Đồ Địa Chính Trị & Vùng Xung Đột (Vox Borders)</h4><p>Bản đồ chiến lược 3D với vùng quét radar và tuyến vận tải cấm vận.</p>`;
+      } else if (id === 6) {
+        // 3D SCALE COMPARISON
+        stage.innerHTML = `
+          <div class="stage-doc-6">
+            <div class="scale-item">
+              <div class="scale-bar human">1 NGƯỜI</div>
+              <div class="scale-label">Thu Nhập TB<br><span style="color: #60a5fa;">$50,000</span></div>
+            </div>
+            <div class="scale-item">
+              <div class="scale-bar billion">1 TRIỆU $</div>
+              <div class="scale-label">Tỷ Phú Cấp Thấp<br><span style="color: #fbbf24;">x200 Lần</span></div>
+            </div>
+            <div class="scale-item">
+              <div class="scale-bar trillion">1 NGHÌN TỶ $</div>
+              <div class="scale-label">Đế Chế BlackRock<br><span style="color: #ef4444;">$10,000,000,000,000</span></div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>📊 6. So Sánh Quy Mô Trực Quan 3D (Kurzgesagt Scale Comparison)</h4>
+          <p>Não người không thể hình dung 1 Tỷ vs 1 Nghìn Tỷ là bao nhiêu. Hiệu ứng cột chiều cao 3D vươn cao chọc trời giúp người xem "sốc" trước khoảng cách giàu nghèo hoặc quy mô khổng lồ của một tập đoàn.</p>
+          <div class="tech-tags"><span class="tech-pill">Scale Ratio Visualization</span><span class="tech-pill">Perspective Bar Heights</span><span class="tech-pill">Cognitive Load Relief</span></div>
+        `;
+      } else if (id === 7) {
+        // MARKET HEARTBEAT ECG
+        stage.innerHTML = `
+          <div class="stage-doc-7">
+            <div class="ecg-screen">
+              <div class="ecg-grid"></div>
+              <svg viewBox="0 0 700 200" style="position: absolute; inset: 0; width: 100%; height: 100%;">
+                <path d="M 10 100 L 150 100 L 170 30 L 190 170 L 210 80 L 230 110 L 350 100 L 370 20 L 390 180 L 410 100 L 700 100" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" id="ecgPath" style="filter: drop-shadow(0 0 10px #ef4444);" />
+              </svg>
+              <div style="position: absolute; top: 20px; right: 24px; font-family: var(--font-mono); color: #ef4444; font-size: 13px; font-weight: 800;">
+                <div>WALL STREET PANIC INDEX: 98/100</div>
+                <div style="font-size: 22px; margin-top: 4px;">S&P 500: <span style="color: #ef4444;">-84.5% CRASH</span></div>
+              </div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>📈 7. Nhịp Tim Thị Trường & Cú Sập Đột Ngột (ColdFusion ECG)</h4>
+          <p>Mô phỏng máy đo điện tâm đồ y tế kết hợp chỉ số chứng khoán. Khi thị trường hoảng loạn $\to$ nhịp tim giật đứt quãng rồi rơi vào đường kẻ ngang Flatline báo hiệu sự sụp đổ tài chính.</p>
+          <div class="tech-tags"><span class="tech-pill">Audio-Visual Heartbeat Sync</span><span class="tech-pill">Flatline Crash Metaphor</span><span class="tech-pill">Glow Oscilloscope</span></div>
+        `;
+      } else if (id === 8) {
+        // 911 WIRETAP TAPE REEL
+        stage.innerHTML = `
+          <div class="stage-doc-8">
+            <div class="tape-player-case">
+              <div style="font-family: var(--font-mono); font-size: 11px; color: #f59e0b; margin-bottom: 14px; font-weight: 800; display: flex; justify-content: space-between;">
+                <span>🔴 EVIDENCE TAPE #094 — 911 EMERGENCY CALL</span>
+                <span>02:14 AM · 11/09/2001</span>
+              </div>
+              <div class="tape-reels-wrap">
+                <div class="tape-wheel"></div>
+                <div style="font-family: var(--font-serif); font-size: 16px; color: #d4c5b5; font-weight: 900;">NAGRA IV-S</div>
+                <div class="tape-wheel"></div>
+              </div>
+              <div class="waveform-visualizer">
+                <div class="wave-bar" style="animation-delay: 0.1s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.3s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.2s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.5s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.4s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.6s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.2s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.4s;"></div>
+                <div class="wave-bar" style="animation-delay: 0.7s;"></div>
+              </div>
+              <div style="margin-top: 14px; font-family: var(--font-mono); font-size: 12px; color: #e5e7eb; text-align: center; font-style: italic;">
+                "Tổng đài 911 nghe đây... Có ai đó đang cố phá cửa sổ tầng 104..."
+              </div>
+            </div>
+          </div>
+        `;
+        info.innerHTML = `
+          <h4>🎙️ 8. Băng Ghi Âm Khẩn Cấp & Cuộc Gọi Nghe Lén (Lemmino True Crime)</h4>
+          <p>Mô phỏng máy quay băng cối cổ điển Nagra. Cuộn băng quay vòng kết hợp dải sóng âm nhịp điệu (Audio Waveform) nảy theo từng lời khai nghẹn ngào của nhân chứng trong các vụ án ly kỳ.</p>
+          <div class="tech-tags"><span class="tech-pill">Reel-to-Reel Tape Animation</span><span class="tech-pill">Voice Waveform Reactive</span><span class="tech-pill">Subtle Cassette Hiss</span></div>
+        `;
+      }
+    }
+
+    function initMagnifierMouse() {
+      const stage = document.getElementById('stage2');
+      const lens = document.getElementById('magLens');
+      if (!stage || !lens) return;
+
+      stage.addEventListener('mousemove', (e) => {
+        const rect = stage.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        lens.style.left = `${x}px`;
+        lens.style.top = `${y}px`;
+      });
+    }
+
+    function selectYear(year, title, desc) {
+      playSfx('paper');
+      const card = document.getElementById('timelineCard');
+      if (card) {
+        card.style.transform = 'translateX(-50%) translateZ(80px) scale(0.95)';
+        setTimeout(() => {
+          card.innerHTML = `
+            <div style="font-size: 11px; font-weight: 800; color: var(--accent-gold); letter-spacing: 1px;">SỰ KIỆN LỊCH SỬ · ${year}</div>
+            <div style="font-size: 20px; font-weight: 900; color: #fff; margin: 4px 0;">${title}</div>
+            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">${desc}</div>
+          `;
+          card.style.transform = 'translateX(-50%) translateZ(80px) scale(1)';
+        }, 150);
+      }
+    }
+
+    function triggerDocAction() {
+      if (currentDocStyle === 7) {
+        playSfx('beep');
+      } else {
+        playSfx('boom');
+      }
+      if (currentDocStyle === 4) {
+        const r1 = document.getElementById('redact1');
+        const r2 = document.getElementById('redact2');
+        const r3 = document.getElementById('redact3');
+        if (r1 && r2 && r3) {
+          r1.classList.toggle('revealed');
+          r2.classList.toggle('revealed');
+          r3.classList.toggle('revealed');
+        }
+      }
+    }
+
+    function resetDocStage() {
+      renderDocStage(currentDocStyle);
+      playSfx('paper');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderDocStage(1);
+    });
+  </script>
+</body>
+</html>

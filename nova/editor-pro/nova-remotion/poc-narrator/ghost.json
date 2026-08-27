@@ -1,0 +1,13 @@
+{
+  "note": "Nhân vật dẫn chuyện line-art. Dùng lớp type:'svg' nên nét TỰ BÒ ra (evolvePath) — giống cảm giác vẽ tay của video mẫu.",
+  "viewBox": "0 0 200 260",
+  "preserveAspectRatio": "xMidYMid meet",
+  "paths": [
+    { "d": "M42 236 L42 112 C42 76 68 46 101 46 C134 46 160 76 160 112 L160 236 L143 219 L126 236 L109 219 L92 236 L75 219 L58 236 Z", "fill": "#ffffff", "stroke": "#1f2328", "width": 5, "at": 0, "dur": 0.7 },
+    { "d": "M42 152 C22 158 12 174 15 190", "stroke": "#1f2328", "width": 5, "at": 0.45, "dur": 0.3 },
+    { "d": "M160 152 C180 158 190 174 187 190", "stroke": "#1f2328", "width": 5, "at": 0.5, "dur": 0.3 },
+    { "d": "M84 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0", "fill": "#1f2328", "stroke": "#1f2328", "width": 2, "at": 0.75, "dur": 0.15 },
+    { "d": "M124 126 m-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0", "fill": "#1f2328", "stroke": "#1f2328", "width": 2, "at": 0.8, "dur": 0.15 },
+    { "d": "M88 154 Q104 168 120 154", "stroke": "#1f2328", "width": 5, "at": 0.9, "dur": 0.25 }
+  ]
+}
