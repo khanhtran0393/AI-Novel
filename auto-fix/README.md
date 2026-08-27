@@ -29,6 +29,20 @@ Thư mục riêng để quản lý chức năng **Autonomous AI Auto-Fix Platfor
 - `ROADMAP.md`: lộ trình triển khai tuần tự theo specification.
 - `config/policy.json`: policy dạng JSON để dùng làm nguồn cấu hình sau này; hiện chưa được runtime kết nối.
 - `AUTO_FIX_MASTER_SPECIFICATION.md`: hợp đồng triển khai canonical cho Auto-Fix, hiện chỉ ở trạng thái draft/observe-only.
+- `policy.js`: policy loader, validator và deny-by-default authorization guard độc lập với Electron runtime.
+- `scripts/policy-check.js`: CLI kiểm tra policy trước mỗi milestone/CI job.
+- `test/policy.test.js`: test foundation cho policy và authority deny-by-default.
+
+## Kiểm tra foundation
+
+Chạy từ `D:\AI Video Studio`:
+
+```powershell
+node auto-fix/scripts/policy-check.js
+node auto-fix/test/policy.test.js
+```
+
+Các lệnh trên chỉ đọc policy và kiểm tra control plane. Chúng không bật runtime, không sửa source, không chạy shell/native process và không kết nối vào app packaged.
 
 ## Cách sử dụng khi phát triển
 

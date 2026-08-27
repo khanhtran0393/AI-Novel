@@ -49,6 +49,10 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Temporary rebranding inspection artifacts; never commit source snapshots/reports.
+rebrand-backup/
+rebrand-report.txt
+
 # Keep the Auto-Fix control plane and its documentation tracked.
 !auto-fix/
 !auto-fix/**

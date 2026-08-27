@@ -42,7 +42,7 @@
     "cookie-token-session"
   ],
   "notes": [
-    "Planning policy for Milestone 0; not connected to application runtime.",
+    "Planning and foundation policy for Milestone 0; validation exists but runtime is not connected.",
     "Never place secrets, tokens, cookies, private keys or credentials in this file.",
     "Authority changes require a completed milestone and an audit/review record."
   ]
