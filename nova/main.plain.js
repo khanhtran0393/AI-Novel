@@ -605,7 +605,7 @@ ipcMain.handle('save-file', async (_e, payload = {}) => {
   } catch (e) { return { error: _friendlyMainError(e) || e.message || String(e) }; }
 });
 
-// ── CLI bridge native: app tự chạy gói Claude/ChatGPT của user (localhost:8790/8791) ──
+// ── CLI bridge native: app tự chạy gói Claude/ChatGPT của user (localhost:8795/8796) ──
 try { cliBridge.startAll(); } catch (e) { console.warn('[cli-bridge]', e && e.message); }
 
 // ── MCP bridge native: cho AI agent (MCP) điều khiển dựng video/nâng cấp/xoá watermark (localhost:8794) ──

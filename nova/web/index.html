@@ -1341,7 +1341,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         <div style="font-size:10.5px;color:var(--text-muted);margin-top:6px">✓ Không cần API key. Chỉ cần bấm <b>Đăng nhập</b> bằng gói Claude / ChatGPT của bạn.</div>
         <details style="margin-top:8px">
           <summary style="cursor:pointer;font-size:11px;color:var(--text-muted)">Địa chỉ kết nối (chỉ khi cần)</summary>
-          <input type="text" id="cliEndpoint" placeholder="http://localhost:8790" style="font-size:11px;margin-top:6px" oninput="_cliUpdateLoginLabel()">
+          <input type="text" id="cliEndpoint" placeholder="http://localhost:8795" style="font-size:11px;margin-top:6px" oninput="_cliUpdateLoginLabel()">
           <input type="password" id="cliKey" placeholder="Mã bảo vệ (nếu có)" style="font-size:11px;margin-top:6px">
         </details>
       </div>
@@ -4713,7 +4713,7 @@ function _cliUpdateLoginLabel(){
   if (!btn) return;
   const m = document.getElementById('apiModel')?.value;
   const ep = document.getElementById('cliEndpoint')?.value || '';
-  const isGpt = m === 'chatgpt' || /:8791\b/.test(ep);
+  const isGpt = m === 'chatgpt' || /:8796\b/.test(ep);
   btn.textContent = isGpt ? '🔐 Đăng nhập gói ChatGPT' : '🔐 Đăng nhập gói Claude';
 }
 
@@ -4725,8 +4725,8 @@ function onCliModelChange(){
   if (ep) {
     const cur = ep.value.trim();
     // Chỉ tự đổi khi endpoint đang là localhost mặc định (không đè endpoint tùy chỉnh/VPS).
-    if (cur === '' || /^https?:\/\/localhost:879[01]$/i.test(cur)) {
-      ep.value = (m === 'chatgpt') ? 'http://localhost:8791' : 'http://localhost:8790';
+    if (cur === '' || /^https?:\/\/localhost:879[56]$/i.test(cur)) {
+      ep.value = (m === 'chatgpt') ? 'http://localhost:8796' : 'http://localhost:8795';
     }
   }
   _cliUpdateLoginLabel();
@@ -4758,7 +4758,7 @@ async function _cliTestWorks(ep){
 async function cliLogin(){
   const ep = _cliEp();
   const box = document.getElementById('cliLoginBox');
-  if (!ep){ box.innerHTML = '<span style="color:var(--red)">Nhập Endpoint trước (vd http://localhost:8790).</span>'; return; }
+  if (!ep){ box.innerHTML = '<span style="color:var(--red)">Nhập Endpoint trước (vd http://localhost:8795).</span>'; return; }
   box.innerHTML = '⏳ Đang kiểm tra…';
   // 1) Đã đăng nhập sẵn trên máy? → dùng luôn, khỏi làm gì.
   if (await _cliTestWorks(ep)){ box.innerHTML = '<span style="color:var(--green)">✅ Đã đăng nhập sẵn trên máy này — dùng được luôn.</span>'; return; }
@@ -4795,7 +4795,7 @@ async function cliLogin(){
 function _cliIsGpt(){
   const m = document.getElementById('apiModel')?.value;
   const ep = document.getElementById('cliEndpoint')?.value || '';
-  return m === 'chatgpt' || /:8791\b/.test(ep);
+  return m === 'chatgpt' || /:8796\b/.test(ep);
 }
 function _cliGuideBtn(){ const nm = _cliIsGpt() ? 'ChatGPT (Codex)' : 'Claude'; return '<div style="margin-top:10px"><button class="btn ghost sm" onclick="showCliGuide()">📖 Hướng dẫn cài ' + nm + ' CLI</button> <button class="btn ghost sm" onclick="cliLogin()">🔄 Thử lại</button></div>'; }
 function showCliGuide(){
@@ -6520,22 +6520,22 @@ async function callLLM(prompt, opts = {}){
 
   // CLI tự host: dùng endpoint bridge của user (gói Claude/ChatGPT của họ), KHÔNG cần API key.
   if (provider === 'cli') {
-    // App tự chạy bridge ở localhost:8790 → mặc định endpoint đó nếu chưa lưu (đọc cả ô input).
+    // App tự chạy bridge ở localhost:8795 → mặc định endpoint đó nếu chưa lưu (đọc cả ô input).
     const ep = (opts._override?.cliEndpoint
       || localStorage.getItem('api_cli_endpoint')
       || (typeof document !== 'undefined' && document.getElementById('cliEndpoint')?.value)
-      || 'http://localhost:8790').trim().replace(/\/+$/, '');
+      || 'http://localhost:8795').trim().replace(/\/+$/, '');
     const cliKey = localStorage.getItem('api_cli_key') || '';
     const url = /\/v1\/chat\/completions$/.test(ep) ? ep : ep + '/v1/chat/completions';
     return _withRetry(() => callOpenAICompat(messages, model || 'default', cliKey, maxTokens, url, { json: false, timeoutMs: 600000 }));   // CLI: bỏ json_object (treo với ARRAY); timeout 10 phút vì CLI KHÔNG cap output → sinh dài + chậm, 240s giết oan call sắp xong
   }
 
-  // Không có API key → tự dùng gói Claude/ChatGPT qua bridge nội bộ app luôn chạy (localhost:8790),
+  // Không có API key → tự dùng gói Claude/ChatGPT qua bridge nội bộ app luôn chạy (localhost:8795/8796),
   // đúng tinh thần "không cần API key". Nhờ vậy các tính năng (phân tích kịch bản…) chạy ngay.
   if (!key) {
     const ep = (localStorage.getItem('api_cli_endpoint')
       || (typeof document !== 'undefined' && document.getElementById('cliEndpoint')?.value)
-      || 'http://localhost:8790').trim().replace(/\/+$/, '');
+      || 'http://localhost:8795').trim().replace(/\/+$/, '');
     const url = /\/v1\/chat\/completions$/.test(ep) ? ep : ep + '/v1/chat/completions';
     const cliModel = /opus/i.test(model) ? 'opus' : /sonnet/i.test(model) ? 'sonnet'
       : (['opus', 'sonnet', 'chatgpt', 'default'].includes(model) ? model : 'default');

@@ -1,9 +1,9 @@
 /**
  * CLI Bridge Native — chạy THẲNG trong app (không cần tải/chạy bridge riêng, không terminal).
  * Bọc CLI gói subscription của user (Claude Code / Codex) thành API kiểu OpenAI trên localhost:
- *   - Claude  → 127.0.0.1:8790
- *   - Codex   → 127.0.0.1:8791
- * Renderer gọi y như cũ (provider "CLI tự host" + endpoint localhost:8790, nút Đăng nhập).
+ *   - Claude  → 127.0.0.1:8795
+ *   - Codex   → 127.0.0.1:8796
+ * Renderer gọi y như cũ (provider "CLI tự host" + endpoint localhost:8795, nút Đăng nhập).
  * Yêu cầu: user đã cài Claude Code / Codex CLI (đăng nhập qua nút trong app, khỏi terminal).
  */
 
@@ -189,8 +189,8 @@ let started = false;
 function startAll() {
   if (started) return;
   started = true;
-  try { createBridge('claude', 8790); } catch (e) { console.warn('[cli-bridge claude]', e.message); }
-  try { createBridge('codex', 8791); } catch (e) { console.warn('[cli-bridge codex]', e.message); }
+  try { createBridge('claude', 8795); } catch (e) { console.warn('[cli-bridge claude]', e.message); }
+  try { createBridge('codex', 8796); } catch (e) { console.warn('[cli-bridge codex]', e.message); }
 }
 
 module.exports = { startAll };
