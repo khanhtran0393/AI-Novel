@@ -1,0 +1,9 @@
+# Security-sensitive control-plane and CI changes require repository-owner review.
+/.github/ @khanhtran0393
+/auto-fix/ @khanhtran0393
+/package.json @khanhtran0393
+/package-lock.json @khanhtran0393
+/electron-builder.json @khanhtran0393
+/nova/main.js @khanhtran0393
+/nova/main.plain.js @khanhtran0393
+/nova/preload.js @khanhtran0393

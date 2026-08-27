@@ -1,0 +1,72 @@
+name: M1 Validation
+
+on:
+  pull_request:
+    branches: [nova-logic]
+  push:
+    branches: [nova-logic]
+  workflow_dispatch:
+
+concurrency:
+  group: m1-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: m1-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout full source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Clean dependency install
+        run: npm ci
+
+      - name: Validate deny-by-default policy
+        run: npm --prefix auto-fix run check:policy
+
+      - name: Run Auto-Fix control-plane tests
+        run: npm --prefix auto-fix test
+
+      - name: Run application checks
+        run: |
+          npm run check:syntax
+          npm run check:ipc
+          npm run check:parity
+          npm run test:foundation
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Verify readiness remains fail-closed without governance evidence
+        shell: bash
+        run: |
+          set +e
+          node auto-fix/scripts/readiness.js . > "$RUNNER_TEMP/m1-readiness.json"
+          readiness_exit=$?
+          set -e
+          cat "$RUNNER_TEMP/m1-readiness.json"
+          test "$readiness_exit" -eq 2
+          node -e "const r=require(process.env.RUNNER_TEMP + '/m1-readiness.json'); if (r.status !== 'BLOCKED') throw new Error('clean CI checkout must remain BLOCKED until governance evidence is supplied')"
+
+      - name: Upload machine-readable readiness evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: m1-readiness-${{ github.sha }}
+          path: ${{ runner.temp }}/m1-readiness.json
+          if-no-files-found: error
+          retention-days: 30

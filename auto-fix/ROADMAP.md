@@ -10,11 +10,13 @@ Lộ trình này bám theo Master Specification và được điều chỉnh the
 
 ## M1 - Git + CI — BLOCKED
 
-Điều kiện: source repository đầy đủ và Git remote/CI host.
+Canonical repository/branch/baseline đã được đăng ký và local clean-clone validation đã thành công. M1 vẫn cần:
 
-- protected main/release branch;
-- CI lint/static/unit/integration/build;
-- artifact generation;
+- workflow definitions đã có; vẫn cần successful controlled-runner logs/artifacts và required-check enforcement;
+- protected canonical/release branch;
+- CI lint/static/unit/integration/build evidence;
+- successful artifact hashes/provenance/attestation evidence;
+- controlled signing, release governance và completed security review;
 - không cấp AI write/release authority.
 
 ## M2 - Client Error Reporter

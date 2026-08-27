@@ -11,8 +11,8 @@ Tài liệu này là điểm kiểm soát trung tâm cho chức năng Auto-Fix. 
 | AI diagnosis | OFF | Chưa có Agent Orchestrator |
 | AI file write | OFF | Không cho sửa source/production |
 | AI command execution | OFF | Không có arbitrary shell |
-| AI commit | OFF | Chưa có Git workspace hợp lệ |
-| Build authority | OFF | Chưa có execution plane riêng |
+| AI commit | OFF | Có canonical Git source nhưng chưa cấp authority |
+| Build authority | OFF | Local validation không phải execution-plane authority |
 | Signing authority | OFF | Signing key không được đưa cho AI |
 | Release authority | OFF | Bắt buộc human/policy gate sau này |
 | Auto-update authority | EXISTING APP ONLY | App hiện có `electron-updater`; chưa đạt spec |
@@ -75,7 +75,7 @@ Không sửa các giá trị này để bật production một cách thủ công
 
 Các module an toàn hiện có trong `auto-fix/` chỉ quan sát và đánh giá:
 
-- `repository-adapter.js`: Git metadata read-only;
+- `repository-adapter.js`: Git metadata read-only; đối chiếu canonical manifest với `origin`, remote-tracking branch, baseline ancestry và tracked paths;
 - `path-boundary.js`: allowlist/denylist và symlink boundary;
 - `redaction.js`: loại bỏ secret/local path khỏi evidence;
 - `audit.js`: audit record bounded, append-only;
@@ -83,4 +83,4 @@ Các module an toàn hiện có trong `auto-fix/` chỉ quan sát và đánh gi�
 - `tool-registry.js`: closed registry, không có shell/delete/network passthrough;
 - `scripts/readiness.js`: JSON readiness report.
 
-Mọi gate thiếu evidence đều trả `BLOCKED`; worktree dirty hoặc policy sai trả `FAIL`. Không được xem report `PASS` của policy là bằng chứng canonical source, CI hoặc build readiness.
+Mọi gate thiếu evidence đều trả `BLOCKED`; worktree dirty hoặc policy sai trả `FAIL`. Canonical-source gate hiện có thể `PASS`, nhưng không phải bằng chứng CI, security, provenance, build authority hay M1 readiness. `config/policy.json` vẫn để toàn bộ authority `false`.

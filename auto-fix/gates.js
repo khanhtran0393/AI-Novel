@@ -4,6 +4,22 @@ const { validatePolicy } = require('./policy');
 
 const STATUS = Object.freeze({ PASS: 'PASS', FAIL: 'FAIL', BLOCKED: 'BLOCKED' });
 
+const REQUIRED_READINESS_CHECKS = Object.freeze([
+  'ciHost',
+  'ciEvidenceRetention',
+  'dependencyInstall',
+  'staticChecks',
+  'tests',
+  'buildVerification',
+  'artifactVerification',
+  'securityScan',
+  'branchProtection',
+  'sourceProvenance',
+  'signingSetup',
+  'releaseGovernance',
+  'securityReview',
+]);
+
 function gate(name, status, reason, evidence = {}) {
   return { name, status, reason, evidence };
 }
@@ -30,8 +46,7 @@ function evaluateReadiness({ policy, repository, checks = {} }) {
     ? gate('canonical-source', STATUS.PASS, 'canonical source confirmed')
     : gate('canonical-source', STATUS.BLOCKED, 'canonical source is not confirmed', { sourceStatus: repository?.sourceStatus }));
 
-  const requiredChecks = ['ciHost', 'dependencyInstall', 'staticChecks', 'tests', 'buildVerification', 'artifactVerification', 'securityScan'];
-  for (const name of requiredChecks) {
+  for (const name of REQUIRED_READINESS_CHECKS) {
     const value = checks[name];
     results.push(value === true
       ? gate(name, STATUS.PASS, 'check reported pass')
@@ -48,4 +63,4 @@ function evaluateReadiness({ policy, repository, checks = {} }) {
   return { schemaVersion: 1, status: overall, generatedAt: new Date().toISOString(), gates: results };
 }
 
-module.exports = { STATUS, evaluateReadiness };
+module.exports = { REQUIRED_READINESS_CHECKS, STATUS, evaluateReadiness };

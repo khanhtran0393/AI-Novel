@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "approved",
+  "repositoryUrl": "https://github.com/khanhtran0393/AI-Novel.git",
+  "canonicalBranch": "nova-logic",
+  "baselineCommit": "d936dc4054bfc1e38d0e01e345010d02b8f4ebf0",
+  "applicationRoot": ".",
+  "requiredTrackedPaths": [
+    "package.json",
+    "package-lock.json",
+    "electron-builder.json",
+    "nova/main.plain.js",
+    "nova/preload.js",
+    "nova/scripts/syntax-check.js",
+    "nova/scripts/foundation-test.js"
+  ],
+  "approvalEvidence": {
+    "providedBy": "repository-owner",
+    "providedAt": "2026-08-27",
+    "source": "explicit Git remote/repository URL supplied for Auto-Fix"
+  }
+}

@@ -1,0 +1,86 @@
+name: Windows Package
+
+on:
+  pull_request:
+    branches: [nova-logic]
+  push:
+    branches: [nova-logic]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: windows-package
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout full source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Clean dependency install
+        run: npm ci
+
+      - name: Build unpacked Windows artifact with publishing and signing discovery disabled
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          NOVA_BUILD_PUBLISHING: never
+        run: |
+          npx --no-install electron-builder --config electron-builder.json --win --dir --publish never
+          New-Item -ItemType Directory -Force dist/provenance-input/resources | Out-Null
+          Copy-Item 'dist/win-unpacked/Nova Studio.exe' 'dist/provenance-input/Nova Studio.exe'
+          Copy-Item 'dist/win-unpacked/resources/app.asar' 'dist/provenance-input/resources/app.asar'
+          node auto-fix/scripts/artifact-provenance.js dist/provenance-input dist/provenance.json .
+
+      - name: Upload bounded package evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nova-windows-unpacked-${{ github.sha }}
+          path: |
+            dist/win-unpacked/Nova Studio.exe
+            dist/win-unpacked/resources/app.asar
+            dist/provenance.json
+          if-no-files-found: error
+          retention-days: 14
+
+  attest:
+    name: windows-attestation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/nova-logic'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download package evidence
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: nova-windows-unpacked-${{ github.sha }}
+          path: attestation-input
+
+      - name: Generate signed build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            attestation-input/win-unpacked/Nova Studio.exe
+            attestation-input/win-unpacked/resources/app.asar
+            attestation-input/provenance.json

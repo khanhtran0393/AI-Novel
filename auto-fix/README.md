@@ -4,11 +4,13 @@ Thư mục riêng để quản lý chức năng **Autonomous AI Auto-Fix Platfor
 
 ## Trạng thái hiện tại
 
-- Milestone hiện tại: **M0 - Discovery / Architecture**
+- Milestone hiện tại: **M1 - Git + CI (BLOCKED)**
+- CI definition: **đã thêm, chưa có run/protection evidence**
+- Canonical Electron source: **đã đăng ký** — `origin/nova-logic` tại baseline `d936dc4054bfc1e38d0e01e345010d02b8f4ebf0`
 - Chế độ: **observe-only**
 - Tác động vào app: **không có**
-- AI write authority: **tắt**
-- Release authority: **tắt**
+- AI read/write/command/build authority: **tắt**
+- Signing/release/rollout/rollback authority: **tắt**
 - Auto-update/rollback runtime mới: **chưa kết nối**
 
 Đây là lớp quản lý độc lập. Ở trạng thái hiện tại, app không tự đọc hoặc thực thi các file trong thư mục này.
@@ -27,7 +29,8 @@ Thư mục riêng để quản lý chức năng **Autonomous AI Auto-Fix Platfor
 - `CONTROL.md`: bảng điều khiển policy và các quyền đang khóa.
 - `MILESTONE-0-DISCOVERY.md`: kết quả khảo sát repository/app thực tế.
 - `ROADMAP.md`: lộ trình triển khai tuần tự theo specification.
-- `config/policy.json`: policy dạng JSON để dùng làm nguồn cấu hình sau này; hiện chưa được runtime kết nối.
+- `config/policy.json`: policy dạng JSON deny-by-default; hiện chưa được runtime kết nối.
+- `config/canonical-source.json`: identity, canonical branch, immutable baseline, required tracked paths và approval evidence.
 - `AUTO_FIX_MASTER_SPECIFICATION.md`: hợp đồng triển khai canonical cho Auto-Fix, hiện chỉ ở trạng thái draft/observe-only.
 - `policy.js`: policy loader, validator và deny-by-default authorization guard độc lập với Electron runtime.
 - `scripts/policy-check.js`: CLI kiểm tra policy trước mỗi milestone/CI job.
@@ -43,6 +46,11 @@ Thư mục riêng để quản lý chức năng **Autonomous AI Auto-Fix Platfor
 - `package.json`: các lệnh kiểm tra độc lập của control plane.
 - `CANONICAL-SOURCE-ACCEPTANCE.md`: checklist bắt buộc trước khi xác nhận source canonical/M1.
 - `M1-READINESS-REPORT.md`: báo cáo readiness hiện tại và các blocker đã biết.
+- `artifact-provenance.js`: tạo machine-readable artifact hashes/build metadata bounded; không ký hoặc publish.
+- `SECURITY-REVIEW.md`: phạm vi và evidence register cho security review bắt buộc.
+- `RELEASE-GOVERNANCE.md`: kiểm soát signing/release/rollout/rollback, không cấp authority.
+- `.github/workflows/`: clean validation, unsigned Windows packaging và post-merge artifact attestation.
+- `.github/BRANCH-PROTECTION.md`: runbook cấu hình ruleset; file này không tự bảo vệ branch.
 
 Chạy toàn bộ kiểm tra:
 
@@ -52,7 +60,7 @@ npm --prefix auto-fix run check:policy
 npm --prefix auto-fix run check:readiness
 ```
 
-`check:readiness` có thể kết thúc với mã `2` vì trạng thái hiện tại đúng là `BLOCKED`/`FAIL`; đó là kết quả an toàn, không phải lỗi được bỏ qua.
+`check:readiness` kết thúc với mã `2` khi trạng thái là `BLOCKED`/`FAIL`; đó là hành vi fail-closed. Canonical-source gate có thể `PASS` riêng trong khi toàn bộ M1 vẫn `BLOCKED` hoặc `FAIL` do worktree, CI, security và governance gates.
 
 ## Kiểm tra foundation
 
@@ -74,6 +82,6 @@ Các lệnh trên chỉ đọc policy và kiểm tra control plane. Chúng khôn
 5. Ghi rõ file thay đổi, kết quả test/build/security và limitation.
 6. Chỉ chuyển milestone khi trạng thái là PASS hoặc có quyết định BLOCKED rõ ràng.
 
-## Giới hạn phát hiện được
+## Giới hạn hiện tại
 
-Thư mục gốc hiện là bản Windows đã đóng gói, không có `.git` và không chứa source repository đầy đủ. Source JavaScript nằm trong `resources/app`; vì vậy M0 chỉ lập kế hoạch và không thay đổi production behavior. Cần source repository có Git để triển khai CI, branch/worktree và các milestone viết code một cách kiểm soát.
+Canonical source đã được xác nhận bằng manifest và Git evidence; `resources/app` packaged payload vẫn không phải canonical source. CI workflow và governance runbook đã được thêm nhưng chưa có workflow-run/retention/required-check evidence; branch protection, approved source provenance, signing infrastructure và security review vẫn chưa hoàn tất. Việc xác nhận identity hoặc thêm CI definition không tự cấp bất kỳ authority nào.

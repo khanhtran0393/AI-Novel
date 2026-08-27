@@ -93,7 +93,7 @@ Các module trên mặc định là **HIGH risk**; AI không được tự sửa
 
 ## 8. Unknowns / blockers
 
-1. Thiếu source repository và Git history; chưa thể tạo protected branch/worktree/CI đúng spec.
+1. Historical finding: source repository/Git history had not yet been identified; superseded by the canonical-source update in section 10.
 2. Chưa biết backend/server, database, auth provider và nơi phát hành release thực tế.
 3. Chưa có crash API endpoint, retention policy, consent/privacy policy hoặc incident notification.
 4. Chưa có test VM/clean machine/golden profiles.
@@ -106,6 +106,13 @@ Các module trên mặc định là **HIGH risk**; AI không được tự sửa
 
 Không đưa Auto-Fix code vào `resources\app` ở M0. Quản lý chức năng ở thư mục độc lập `D:\AI Video Studio\auto-fix`; các milestone sau chỉ kết nối qua interface rõ ràng sau khi source/Git và security design đã được bổ sung.
 
-## 10. Next implementation prerequisite
+## 10. 2026-08-27 canonical-source update
 
-Trước M1 cần cung cấp hoặc khôi phục source repository có Git, xác định canonical build command và CI host. M1 chỉ làm Git + CI/test/build artifact; chưa bật crash upload hay AI write/release authority.
+Khảo sát ban đầu ở trên phản ánh packaged workspace trước khi source được đưa vào Git và được giữ lại làm historical record. Canonical Electron source hiện đã được đăng ký bằng `config/canonical-source.json`:
+
+- remote `https://github.com/khanhtran0393/AI-Novel.git`;
+- branch `nova-logic`;
+- baseline `d936dc4054bfc1e38d0e01e345010d02b8f4ebf0`;
+- build config `electron-builder.json` và lockfile v3.
+
+Independent clone đã qua `npm ci`, syntax/IPC/parity/foundation checks và unpacked Windows build với publishing disabled. CI definitions và governance runbooks đã được thêm sau discovery, nhưng M1 vẫn `BLOCKED` do chưa có workflow-run/required-check evidence, branch protection, approved provenance, controlled signing/release infrastructure và completed security review. Không bật crash upload hay bất kỳ AI write/build/release authority nào.

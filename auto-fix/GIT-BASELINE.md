@@ -31,9 +31,16 @@ The repository does not treat the current packaged application as canonical sour
 - Future repair branches: `ai-fix/<bug-id>`.
 - Production/release branches must not be changed by Auto-Fix.
 
-## Current limitation
+## Canonical source registration
 
-This Git repository is a control-plane/specification baseline, not confirmation that the packaged Electron application has become a reproducible canonical source checkout. The external `nova-logic` source branch remains under review because its declared `electron-builder.json` is missing and it has no CI workflow.
+The same Git repository now contains the canonical Electron source under `nova/`. The approved remote, branch, immutable baseline, and required tracked files are registered in `config/canonical-source.json`:
+
+- remote: `https://github.com/khanhtran0393/AI-Novel.git`;
+- canonical branch: `nova-logic`;
+- baseline: `d936dc4054bfc1e38d0e01e345010d02b8f4ebf0`;
+- Electron entry point: `nova/main.plain.js`.
+
+This supersedes the earlier packaged-output-only assessment. It does not make `resources/app/` canonical and does not complete M1: CI definitions exist, but successful run/required-check evidence, protected branches, approved provenance, security review, and controlled signing/release infrastructure remain blocked.
 
 ## Authority state
 

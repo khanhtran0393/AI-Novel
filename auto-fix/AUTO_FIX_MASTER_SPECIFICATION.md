@@ -53,7 +53,7 @@ All authorities are denied unless an explicit, reviewed milestone changes policy
 
 ## 5. Milestone 1 acceptance criteria: Git + CI readiness
 
-M1 is **BLOCKED** until the canonical source repository and CI host are confirmed. Once a real source repository is available, M1 MUST provide:
+M1 is **BLOCKED** until all Git, CI, security, provenance, and governance evidence is confirmed. Canonical source identity was registered on 2026-08-27, but identity acceptance alone is not M1 acceptance. M1 MUST provide:
 
 - a Git repository with full source history or documented source baseline;
 - protected `main` and release branch policy;
@@ -65,7 +65,7 @@ M1 is **BLOCKED** until the canonical source repository and CI host are confirme
 - no Auto-Fix write, commit, signing, release, or rollout authority;
 - a documented `BLOCKED`/`FAIL` result when a required gate cannot run.
 
-For the inspected `nova-logic` source, known blockers are recorded in `MILESTONE-0-DISCOVERY.md`: the branch is a source candidate, but its declared `electron-builder.json` is missing and no CI workflow is present.
+The registered `nova-logic` baseline installs, passes local checks/tests, and produces an unpacked Windows build with publishing disabled. CI workflows and governance runbooks are now defined, but definitions are not operational evidence. Remaining blockers are recorded in `M1-READINESS-REPORT.md`: workflow-run/required-check and branch-protection evidence, approved source provenance, controlled signing/release infrastructure, and completed security review.
 
 ## 6. Change workflow
 
@@ -124,4 +124,4 @@ The execution plane and runtime/application integration remain intentionally uni
 
 ## 10. Current decision
 
-`AUTO_FIX_MASTER_SPECIFICATION` is established as the implementation baseline, but it does not enable Auto-Fix. The packaged directory is not promoted to canonical application source. The `nova-logic` Git branch remains an external source candidate pending resolution of its build configuration, dependency layout, CI, release governance, and security review. M1 readiness therefore remains `BLOCKED` until the acceptance checklist and required evidence are completed.
+`AUTO_FIX_MASTER_SPECIFICATION` remains the implementation baseline and does not enable Auto-Fix. The Git remote/branch/baseline registered in `config/canonical-source.json` is accepted as canonical Electron source; the packaged `resources/app` directory is not. M1 readiness remains `BLOCKED` pending CI, protected branches, provenance, security, signing, and release-governance evidence. All runtime and change authorities remain disabled.

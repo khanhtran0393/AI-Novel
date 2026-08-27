@@ -7,6 +7,6 @@
   "scripts": {
     "check:policy": "node scripts/policy-check.js",
     "check:readiness": "node scripts/readiness.js ..",
-    "test": "node test/policy.test.js && node test/control-plane.test.js"
+    "test": "node test/policy.test.js && node test/control-plane.test.js && node test/artifact-provenance.test.js"
   }
 }
