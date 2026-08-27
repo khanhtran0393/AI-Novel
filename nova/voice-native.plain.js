@@ -66,7 +66,7 @@ function health() {
 async function start() {
   if (await health()) return { ok: true, url: URL };
   const root = voiceRoot();
-  if (!root) return { error: 'Không tìm thấy thư mục voice-studio. Hãy chọn thư mục backend trong Nova Studio.' };
+  if (!root) return { error: 'Không tìm thấy thư mục voice-studio. Hãy chọn thư mục backend trong AI Video Studio.' };
   const py = venvPython(root);
   if (!py) return { error: 'Thiếu môi trường Python (.venv-omni) trong voice-studio. Chạy setup trong voice-studio trước.' };
 

@@ -404,12 +404,12 @@ async function _setOverlay(active, label, count) {
         el.style.display = 'block';
         const status = on
           ? '<div style="font-size:14px;color:#4ade80;margin-bottom:8px">● Đang xử lý…</div><div style="font-size:24px;font-weight:800;color:#60a5fa;margin-bottom:14px">' + (lbl || 'Đang chạy') + (n != null ? ' #' + n : '') + '</div><div style="font-size:12.5px;color:#8b95a5">🤖 App đang tự động tạo qua tab này</div>'
-          : '<div style="font-size:14px;color:#4ade80;margin-bottom:8px">● Sẵn sàng</div><div style="font-size:20px;font-weight:800;color:#60a5fa;margin-bottom:14px">Nova Studio đang giữ tab</div><div style="font-size:12.5px;color:#8b95a5">🤖 Tab này để app tạo ảnh/video tự động</div>';
+          : '<div style="font-size:14px;color:#4ade80;margin-bottom:8px">● Sẵn sàng</div><div style="font-size:20px;font-weight:800;color:#60a5fa;margin-bottom:14px">AI Video Studio đang giữ tab</div><div style="font-size:12.5px;color:#8b95a5">🤖 Tab này để app tạo ảnh/video tự động</div>';
         el.innerHTML = '<div style="width:66px;height:66px;margin:0 auto 13px;border-radius:18px;background:linear-gradient(135deg,#7c3aed,#c2410c);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;color:#fff">N</div>'
-          + '<div style="font-weight:800;font-size:19px">Nova Studio</div>'
+          + '<div style="font-weight:800;font-size:19px">AI Video Studio</div>'
           + '<div style="font-size:11px;letter-spacing:1.8px;color:#94a3b8;margin-bottom:15px">TỰ ĐỘNG XÁC THỰC</div>'
           + status
-          + '<div style="font-size:12px;color:#8b95a5;margin-top:5px">Tab do Nova Studio quản lý — <b style="color:#fca5a5">ĐỪNG TẮT</b></div>';
+          + '<div style="font-size:12px;color:#8b95a5;margin-top:5px">Tab do AI Video Studio quản lý — <b style="color:#fca5a5">ĐỪNG TẮT</b></div>';
       },
       args: [active, label || 'Đang chạy', (typeof count === 'number' ? count : null)],
     });
@@ -995,7 +995,7 @@ function _resolveVideoQueued(projectId, mediaId, wantData) {
 // Tạo 1 video từ ảnh trên 1 token (đã có projectId). Trả {ok,...} | {error} | {quota}.
 async function runVideoOnToken(token, params) {
   let projectId = params.projectId;
-  if (!projectId) { const pr = await createProject('Nova Studio video', token); if (pr.error || !pr.project_id) return { error: pr.error || 'NO_PROJECT' }; projectId = pr.project_id; }
+  if (!projectId) { const pr = await createProject('AI Video Studio video', token); if (pr.error || !pr.project_id) return { error: pr.error || 'NO_PROJECT' }; projectId = pr.project_id; }
   let imageMediaId = null;
   if (params.image && params.image.base64) {
     const up = await uploadImage({ projectId, base64: params.image.base64, mime: params.image.mime || 'image/png', fileName: (params.sceneId || 'frame') + '.png', token });
@@ -1120,7 +1120,7 @@ function poolEnsureProject(email) {
   if (accounts[email] && accounts[email].projectId) { pool.projects[email] = accounts[email].projectId; return Promise.resolve(accounts[email].projectId); }
   if (!pool._proj[email]) {
     pool._proj[email] = (async () => {
-      const r = await createProject('Nova Studio pool', accounts[email].token);
+      const r = await createProject('AI Video Studio pool', accounts[email].token);
       if (r.error || !r.project_id) throw new Error(r.error || 'NO_PROJECT');
       pool.projects[email] = r.project_id;
       return r.project_id;
@@ -1250,7 +1250,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 });
 
 // ─── App-bridge: nối vào app Electron (chế độ Chrome Extension) ──────────
-// Nova Studio chạy server riêng 127.0.0.1:8793; extension long-poll lấy lệnh → chạy → trả kết quả.
+// AI Video Studio chạy server riêng 127.0.0.1:8793; extension long-poll lấy lệnh → chạy → trả kết quả.
 
 const APP_BRIDGE = 'http://127.0.0.1:8793';
 let _bridgeRunning = false;

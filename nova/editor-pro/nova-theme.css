@@ -1,4 +1,4 @@
-/* Nova theme override — nhuộm Editor Pro về tông dark+cam của Nova Studio.
+/* Nova theme override — nhuộm Editor Pro về tông dark+cam của AI Video Studio.
    Nạp SAU cùng để thắng style.css. Gỡ: xoá <link> nova-theme.css trong editor.html. */
 :root, :root[data-theme="dark"] {
   --bg-deep: #0f0f12 !important;

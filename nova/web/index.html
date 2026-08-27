@@ -6547,7 +6547,11 @@ function setApiStatus(msg, type){
 
 async function testApi(){
   const provider = document.getElementById('apiProvider').value;
-  const model = document.getElementById('apiModel').value;
+  const sel = document.getElementById('apiModel');
+  const customInput = document.getElementById('apiModelCustom');
+  let model = sel.value;
+  // Nếu chọn custom, lấy model thật từ ô tuỳ chỉnh (tránh gửi nhầm "custom")
+  if (model === 'custom') model = customInput ? customInput.value.trim() : '';
   // CLI tự host: không cần API key, test qua endpoint bridge.
   if (provider === 'cli') {
     const ep = _cliEp();

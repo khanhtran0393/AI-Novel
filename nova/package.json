@@ -1,9 +1,9 @@
 {
   "name": "novastudio",
   "version": "0.1.34",
-  "description": "Nova Studio — Faceless Video Pipeline (Desktop)",
+  "description": "AI Video Studio — Faceless Video Pipeline (Desktop)",
   "main": "main.plain.js",
-  "author": "Nova Studio",
+  "author": "AI Video Studio",
   "scripts": {
     "check:ipc": "node scripts/ipc-inventory.js",
     "check:parity": "node scripts/parity-check.js",

@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-const NOVA_DATA_FOLDER = 'Nova Studio Independent';
+const NOVA_DATA_FOLDER = 'AI Video Studio Independent';
 
 function appRoot(dirname) { return path.resolve(dirname || __dirname, '..'); }
 function userDataPath(electronApp, fallback) {

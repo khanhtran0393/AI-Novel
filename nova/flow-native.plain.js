@@ -542,7 +542,7 @@ function poolEnsureProject(a) {
   if (pool.projects[email]) return Promise.resolve(pool.projects[email]);
   if (!pool._proj[email]) {
     pool._proj[email] = (async () => {
-      const r = await createProject(a, 'Nova Studio pool');
+      const r = await createProject(a, 'AI Video Studio pool');
       if (r.error || !r.project_id) throw new Error(r.error || 'NO_PROJECT');
       pool.projects[email] = r.project_id;
       return r.project_id;

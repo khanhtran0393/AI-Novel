@@ -169,7 +169,7 @@ async function main() {
     report.checks.apiConfiguration = { ok: true, ...settingsState };
     await cdp.click('[data-tool="toolscript"]');
     await cdp.waitFor(`document.querySelector('#tool-toolscript')?.classList.contains('active')`, 'script tool activation', 10000);
-    await cdp.setValue('#tsTopic', 'Packaged Nova Studio clean-room smoke test');
+    await cdp.setValue('#tsTopic', 'Packaged AI Video Studio clean-room smoke test');
     await cdp.setValue('#tsWords', '300');
     await cdp.click('#tsGenBtn');
     const uiResult = await cdp.waitFor(`(() => {

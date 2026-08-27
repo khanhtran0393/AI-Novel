@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Nova Studio — MCP Server (stdio)
+ * AI Video Studio — MCP Server (stdio)
  *
  * Cho AI agent (Claude Desktop / Codex / bất kỳ MCP client nào) điều khiển các năng lực
- * dựng video native của Nova Studio. Server này là tiến trình node RIÊNG, nói chuyện với client
+ * dựng video native của AI Video Studio. Server này là tiến trình node RIÊNG, nói chuyện với client
  * qua stdio (JSON-RPC 2.0, mỗi message 1 dòng), rồi chuyển tiếp sang cầu HTTP cục bộ mà app
- * Nova Studio mở sẵn (mcp-bridge-native.js @ 127.0.0.1:8794).
+ * AI Video Studio mở sẵn (mcp-bridge-native.js @ 127.0.0.1:8794).
  *
- *   MCP client  ⇄ (stdio)  index.js  ⇄ (HTTP 8794)  Nova Studio app  →  FFmpeg / Real-ESRGAN / ...
+ *   MCP client  ⇄ (stdio)  index.js  ⇄ (HTTP 8794)  AI Video Studio app  →  FFmpeg / Real-ESRGAN / ...
  *
  * KHÔNG phụ thuộc package ngoài (tự cài đặt JSON-RPC + framing) → chỉ cần `node index.js`.
- * Yêu cầu: app Nova Studio ĐANG CHẠY (để cầu 8794 sống). Với các tool "nặng" (render/upscale)
+ * Yêu cầu: app AI Video Studio ĐANG CHẠY (để cầu 8794 sống). Với các tool "nặng" (render/upscale)
  * app còn phải mở cửa sổ chính. Riêng tools/list không cần app chạy.
  */
 
@@ -44,7 +44,7 @@ function bridgePost(route, payload, timeoutMs = 1000 * 60 * 30) {
     });
     req.on('error', (e) => reject(new Error(
       e.code === 'ECONNREFUSED'
-        ? 'Không kết nối được Nova Studio (cầu ' + BRIDGE + '). Hãy MỞ app Nova Studio rồi thử lại.'
+        ? 'Không kết nối được AI Video Studio (cầu ' + BRIDGE + '). Hãy MỞ app AI Video Studio rồi thử lại.'
         : e.message)));
     req.setTimeout(timeoutMs, () => { req.destroy(new Error('Quá thời gian chờ (' + Math.round(timeoutMs / 1000) + 's).')); });
     req.end(data);
@@ -69,7 +69,7 @@ function bridgeGet(route, timeoutMs = 5000) {
 const TOOLS = [
   {
     name: 'ffmpeg_info',
-    description: 'Kiểm tra FFmpeg/ffprobe trong Nova Studio đã sẵn sàng chưa. Gọi đầu tiên để chắc chắn dựng video được.',
+    description: 'Kiểm tra FFmpeg/ffprobe trong AI Video Studio đã sẵn sàng chưa. Gọi đầu tiên để chắc chắn dựng video được.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     route: '/ffmpeg-info', method: 'POST',
   },
@@ -86,7 +86,7 @@ const TOOLS = [
   {
     name: 'render_video',
     description:
-      'Dựng 1 video MP4 từ danh sách CẢNH (ảnh hoặc video clip) + giọng đọc/nhạc nền/phụ đề, bằng engine FFmpeg của Nova Studio. ' +
+      'Dựng 1 video MP4 từ danh sách CẢNH (ảnh hoặc video clip) + giọng đọc/nhạc nền/phụ đề, bằng engine FFmpeg của AI Video Studio. ' +
       'Mỗi cảnh có ảnh và thời lượng; có thể thêm hiệu ứng Ken Burns và chuyển cảnh. Trả về đường dẫn file MP4 đã lưu.',
     inputSchema: {
       type: 'object',
@@ -212,6 +212,6 @@ process.stdin.on('data', (chunk) => {
 });
 process.stdin.on('end', () => process.exit(0));
 
-logErr('Nova Studio MCP server sẵn sàng (cầu ' + BRIDGE + ').');
+logErr('AI Video Studio MCP server sẵn sàng (cầu ' + BRIDGE + ').');
 // Kiểm tra cầu ở nền, chỉ để log — không chặn.
-bridgeGet('/health').then((h) => logErr('cầu OK:', JSON.stringify(h))).catch((e) => logErr('cầu chưa sẵn sàng:', e.message, '(mở app Nova Studio).'));
+bridgeGet('/health').then((h) => logErr('cầu OK:', JSON.stringify(h))).catch((e) => logErr('cầu chưa sẵn sàng:', e.message, '(mở app AI Video Studio).'));

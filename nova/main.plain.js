@@ -137,8 +137,8 @@ function createSplashWindow() {
   if (isQuitting) return null;
   ensureBrandAsset();
   splashWindow = new BrowserWindow({
-    width: 520,
-    height: 420,
+    width: 820,
+    height: 360,
     frame: false,
     resizable: false,
     movable: false,
@@ -150,7 +150,9 @@ function createSplashWindow() {
     alwaysOnTop: false,
     skipTaskbar: true,
     show: false,
-    backgroundColor: '#050505',
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
     icon: brandIconPath(),
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
@@ -288,14 +290,7 @@ function createWindow(startUrl) {
     },
   });
   let shown = false;
-  let appPageStarted = false;
   const startedAt = Date.now();
-  const splashPath = path.join(__dirname, 'electron', 'splash.html');
-  const startAppPage = () => {
-    if (appPageStarted || !mainWindow || mainWindow.isDestroyed()) return;
-    appPageStarted = true;
-    mainWindow.loadURL(startUrl).catch(() => reveal());
-  };
   const reveal = () => {
     if (shown || !mainWindow || mainWindow.isDestroyed()) return;
     shown = true;
@@ -306,26 +301,13 @@ function createWindow(startUrl) {
       closeSplashWindow();
     }, wait);
   };
-  // Hiển thị splash branded trong chính mainWindow, không tạo BrowserWindow thứ hai.
-  // Nhờ vậy Windows không thể giữ lại một cửa sổ frameless 520x420 sau khi app crash.
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (!appPageStarted) {
-      if (!mainWindow.isVisible()) mainWindow.show();
-      setTimeout(startAppPage, Math.max(0, SPLASH_MIN_MS - (Date.now() - startedAt)));
-    } else {
-      reveal();
-    }
-  });
+  // Transparent splash window handles the branded loading screen.
+  mainWindow.webContents.on('did-finish-load', reveal);
   mainWindow.webContents.on('did-fail-load', (_event, _code, _description, _validatedURL, isMainFrame) => {
-    if (!isMainFrame) return;
-    if (!appPageStarted) startAppPage();
-    else reveal();
+    if (isMainFrame) reveal();
   });
-  setTimeout(() => {
-    if (!appPageStarted) startAppPage();
-    else reveal();
-  }, SPLASH_MAX_MS);
-  mainWindow.loadFile(splashPath).catch(() => startAppPage());
+  setTimeout(reveal, SPLASH_MAX_MS);
+  mainWindow.loadURL(startUrl).catch(() => reveal());
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       if (AUTH_HOSTS.test(new URL(url).hostname)) {
@@ -753,6 +735,7 @@ app.whenReady().then(async () => {
   try {
     require('./editor-pro/register').registerEditorPro(ipcMain, { userDataDir: app.getPath('userData') });
   } catch (e) { console.warn('[EditorPro] register:', e && e.message); }
+  createSplashWindow();
   try {
     const startUrl = await resolveStartUrl();
     if (!isQuitting) createWindow(startUrl);

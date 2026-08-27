@@ -2,7 +2,7 @@
   "name": "nova-editor-pro",
   "version": "1.0.0",
   "private": true,
-  "description": "Backend Editor Pro + bundle Remotion cho Nova Studio. Manifest này BẮT BUỘC phải có: chạy npm install trong thư mục không có package.json sẽ khiến npm coi mọi gói là thừa và xoá sạch node_modules.",
+  "description": "Backend Editor Pro + bundle Remotion cho AI Video Studio. Manifest này BẮT BUỘC phải có: chạy npm install trong thư mục không có package.json sẽ khiến npm coi mọi gói là thừa và xoá sạch node_modules.",
   "dependencies": {
     "@remotion/bundler": "4.0.409",
     "@remotion/cli": "4.0.409",

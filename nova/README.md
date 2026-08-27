@@ -1,4 +1,4 @@
-# Nova Studio — App Desktop (Electron)
+# AI Video Studio — App Desktop (Electron)
 
 App desktop **Windows + macOS** cho pipeline video faceless hoàn chỉnh: kịch bản AI,
 storyboard, sinh ảnh/video (Google Flow), giọng đọc (OmniVoice), dựng video (Remotion +
@@ -53,5 +53,5 @@ cần — xem `.gitignore` ở gốc repo.
   giữ nguyên, không liên quan tới tài khoản app.
 - Phiên trình duyệt nội bộ dùng `partition: persist:nova-studio-independent`.
 - Toàn bộ cấu hình, cache và tài khoản Flow được lưu riêng tại thư mục Electron
-  `%APPDATA%\\Nova Studio Independent`; app không đọc hoặc di chuyển dữ liệu từ app cũ.
+  `%APPDATA%\\AI Video Studio Independent`; app không đọc hoặc di chuyển dữ liệu từ app cũ.
 

@@ -1,7 +1,7 @@
 {
   "name": "nova-studio-mcp",
   "version": "1.0.0",
-  "description": "MCP server điều khiển năng lực dựng video native của Nova Studio (qua cầu HTTP cục bộ).",
+  "description": "MCP server điều khiển năng lực dựng video native của AI Video Studio (qua cầu HTTP cục bộ).",
   "main": "index.js",
   "type": "commonjs",
   "bin": { "nova-studio-mcp": "index.js" },

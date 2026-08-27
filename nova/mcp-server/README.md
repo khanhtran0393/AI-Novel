@@ -1,16 +1,16 @@
-# Nova Studio — MCP Server
+# AI Video Studio — MCP Server
 
-Cho AI agent (Claude Desktop, Codex, hay bất kỳ MCP client nào) **điều khiển năng lực dựng video native** của Nova Studio: dựng MP4 từ ảnh + giọng đọc/nhạc/phụ đề, nâng cấp ảnh (Real-ESRGAN), xoá watermark, đo độ dài media.
+Cho AI agent (Claude Desktop, Codex, hay bất kỳ MCP client nào) **điều khiển năng lực dựng video native** của AI Video Studio: dựng MP4 từ ảnh + giọng đọc/nhạc/phụ đề, nâng cấp ảnh (Real-ESRGAN), xoá watermark, đo độ dài media.
 
 ## Kiến trúc
 
 ```
-MCP client  ⇄ (stdio, JSON-RPC)  index.js  ⇄ (HTTP 127.0.0.1:8794)  App Nova Studio  →  FFmpeg / Real-ESRGAN / ...
+MCP client  ⇄ (stdio, JSON-RPC)  index.js  ⇄ (HTTP 127.0.0.1:8794)  App AI Video Studio  →  FFmpeg / Real-ESRGAN / ...
 ```
 
 - `index.js` — MCP server chạy bằng `node`, **không cần cài package ngoài**.
-- Nó gọi **cầu HTTP cục bộ** mà app Nova Studio mở sẵn (`mcp-bridge-native.js`, cổng 8794).
-- ⚠️ **App Nova Studio phải đang chạy** thì các tool nặng (render/upscale/watermark) mới hoạt động. `tools/list` thì không cần.
+- Nó gọi **cầu HTTP cục bộ** mà app AI Video Studio mở sẵn (`mcp-bridge-native.js`, cổng 8794).
+- ⚠️ **App AI Video Studio phải đang chạy** thì các tool nặng (render/upscale/watermark) mới hoạt động. `tools/list` thì không cần.
 
 ## Công cụ (tools)
 
@@ -51,7 +51,7 @@ Sửa `claude_desktop_config.json`:
 }
 ```
 
-Đổi đường dẫn cho đúng máy. Khởi động lại Claude Desktop, rồi mở app Nova Studio là dùng được.
+Đổi đường dẫn cho đúng máy. Khởi động lại Claude Desktop, rồi mở app AI Video Studio là dùng được.
 
 ## Đổi cổng cầu
 

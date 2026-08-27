@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Nova Studio",
+  "name": "AI Video Studio",
   "version": "0.4.2",
-  "description": "Nova Studio — tạo ảnh & video AI hàng loạt qua tài khoản Google Labs Flow.",
+  "description": "AI Video Studio — tạo ảnh & video AI hàng loạt qua tài khoản Google Labs Flow.",
   "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
   "permissions": ["storage", "tabs", "scripting", "webRequest", "declarativeNetRequest", "alarms", "cookies", "downloads"],
   "host_permissions": [
@@ -20,7 +20,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Nova Studio",
+    "default_title": "AI Video Studio",
     "default_popup": "popup.html",
     "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
   },
