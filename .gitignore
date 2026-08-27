@@ -158,7 +158,8 @@ test_video*
 /nova/sqlite-bin/
 /nova/onnx-bin/
 /nova/ytdlp-bin/
-/nova/storage/
+/nova/storage/runtime/
+/nova/storage/*.tmp
 /nova/editor-pro/remotion-browser/
 /voice-studio/
 

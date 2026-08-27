@@ -1,6 +1,6 @@
 /**
  * Voice Native — khởi động backend Voice Studio (OmniVoice) rồi cho novastudio nhúng UI.
- * Backend = FastAPI/uvicorn của dự án /tool/voice-studio (engine OmniVoice qua .venv-omni).
+ * Backend = thư mục voice-studio do người dùng chọn (engine OmniVoice qua .venv-omni).
  * App gọi start() khi mở tab "Tạo giọng nói" → spawn uvicorn (nếu chưa chạy) → chờ health → trả URL.
  */
 
@@ -10,7 +10,7 @@ const fs = require('fs');
 const http = require('http');
 let electronApp = null; try { electronApp = require('electron').app; } catch {}
 
-const PORT = 8770;
+const PORT = 8771;
 const URL = 'http://127.0.0.1:' + PORT;
 let proc = null;
 
@@ -66,7 +66,7 @@ function health() {
 async function start() {
   if (await health()) return { ok: true, url: URL };
   const root = voiceRoot();
-  if (!root) return { error: 'Không tìm thấy thư mục voice-studio (cần ở /tool/voice-studio).' };
+  if (!root) return { error: 'Không tìm thấy thư mục voice-studio. Hãy chọn thư mục backend trong Nova Studio.' };
   const py = venvPython(root);
   if (!py) return { error: 'Thiếu môi trường Python (.venv-omni) trong voice-studio. Chạy setup trong voice-studio trước.' };
 

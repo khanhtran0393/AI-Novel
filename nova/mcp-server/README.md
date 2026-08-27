@@ -5,11 +5,11 @@ Cho AI agent (Claude Desktop, Codex, hay bất kỳ MCP client nào) **điều k
 ## Kiến trúc
 
 ```
-MCP client  ⇄ (stdio, JSON-RPC)  index.js  ⇄ (HTTP 127.0.0.1:8792)  App Nova Studio  →  FFmpeg / Real-ESRGAN / ...
+MCP client  ⇄ (stdio, JSON-RPC)  index.js  ⇄ (HTTP 127.0.0.1:8794)  App Nova Studio  →  FFmpeg / Real-ESRGAN / ...
 ```
 
 - `index.js` — MCP server chạy bằng `node`, **không cần cài package ngoài**.
-- Nó gọi **cầu HTTP cục bộ** mà app Nova Studio mở sẵn (`mcp-bridge-native.js`, cổng 8792).
+- Nó gọi **cầu HTTP cục bộ** mà app Nova Studio mở sẵn (`mcp-bridge-native.js`, cổng 8794).
 - ⚠️ **App Nova Studio phải đang chạy** thì các tool nặng (render/upscale/watermark) mới hoạt động. `tools/list` thì không cần.
 
 ## Công cụ (tools)
@@ -55,10 +55,10 @@ Sửa `claude_desktop_config.json`:
 
 ## Đổi cổng cầu
 
-Mặc định `http://127.0.0.1:8792`. Ghi đè bằng biến môi trường:
+Mặc định `http://127.0.0.1:8794`. Ghi đè bằng biến môi trường:
 
 ```json
-"env": { "NOVA_MCP_BRIDGE": "http://127.0.0.1:8792" }
+"env": { "NOVA_MCP_BRIDGE": "http://127.0.0.1:8794" }
 ```
 
 ## Kiểm thử nhanh (không cần app)

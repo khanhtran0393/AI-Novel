@@ -4,7 +4,7 @@
  * xoá watermark, đo độ dài media. Chạy THẲNG trong main process → dùng lại đúng các hàm mà
  * IPC handler đang gọi (không viết lại engine).
  *
- *   MCP server (stdio)  →  HTTP 127.0.0.1:8792  →  bridge này  →  nativeTools / upscaleNative / watermarkNative
+ *   MCP server (stdio)  →  HTTP 127.0.0.1:8794  →  bridge này  →  nativeTools / upscaleNative / watermarkNative
  *
  * Chỉ nghe localhost (127.0.0.1 + ::1). Mỗi tool = 1 endpoint POST JSON. Điểm khác biệt quan trọng:
  * engine renderVideo nhận ẢNH dạng dataURL (base64) — agent lại tiện truyền ĐƯỜNG DẪN FILE, nên
@@ -15,7 +15,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 8792;
+const PORT = 8794;
 const VERSION = '1.0.0';
 
 // Các module native được main.js tiêm vào (đã require sẵn ở đó) để tránh khởi tạo trùng.

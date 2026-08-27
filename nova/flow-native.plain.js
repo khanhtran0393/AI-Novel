@@ -48,7 +48,7 @@ function restore() {
     nextId = d.nextId || 1;
     order = [];
     for (const a of (d.accounts || [])) {
-      accounts.set(a.id, { id: a.id, partition: 'persist:flow-' + a.id, email: a.email || null, token: null, tier: a.tier || null, credits: a.credits ?? null, proxy: a.proxy || null, enabled: a.enabled !== false, capturedAt: null, cookieExpiry: a.cookieExpiry || null, win: null });
+      accounts.set(a.id, { id: a.id, partition: 'persist:nova-flow-' + a.id, email: a.email || null, token: null, tier: a.tier || null, credits: a.credits ?? null, proxy: a.proxy || null, enabled: a.enabled !== false, capturedAt: null, cookieExpiry: a.cookieExpiry || null, win: null });
       order.push(a.id);
     }
     if (order.length) console.log(`[flow] khôi phục ${order.length} tài khoản`);
@@ -693,7 +693,7 @@ function primary() { const el = order.filter((id) => accounts.get(id) && account
 
 async function addAccount() {
   const id = nextId++;
-  const a = { id, partition: 'persist:flow-' + id, email: null, token: null, tier: null, credits: null, proxy: null, enabled: true, capturedAt: null, win: null };
+  const a = { id, partition: 'persist:nova-flow-' + id, email: null, token: null, tier: null, credits: null, proxy: null, enabled: true, capturedAt: null, win: null };
   accounts.set(id, a); order.push(id);
   await ensureWindow(a, { show: true });
   const start = Date.now();
@@ -739,7 +739,7 @@ async function addAccountByCookie(cookieInput) {
   const cookies = parseCookies(cookieInput);
   if (!cookies.length) return { error: 'COOKIE_RỖNG_HOẶC_SAI_ĐỊNH_DẠNG' };
   const id = nextId++;
-  const a = { id, partition: 'persist:flow-' + id, email: null, token: null, tier: null, credits: null, proxy: null, enabled: true, capturedAt: null, win: null };
+  const a = { id, partition: 'persist:nova-flow-' + id, email: null, token: null, tier: null, credits: null, proxy: null, enabled: true, capturedAt: null, win: null };
   accounts.set(id, a); order.push(id);
   const ses = acctSession(a);
   if (a.proxy) { try { await ses.setProxy({ proxyRules: a.proxy }); } catch { /* */ } }

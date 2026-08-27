@@ -1,33 +1,42 @@
 /**
  * Nova Studio Desktop (Electron) — Cách B: đóng gói UI vào app + auto-update.
- * - Production: phục vụ web/index.html qua local server (http://127.0.0.1) → Firebase auth chạy ổn.
- * - Dev: đặt APP_URL=http://localhost:5500 để load bản đang sửa (khỏi copy lại).
- * - Auto-update: electron-updater kiểm GitHub Releases → hộp "có bản mới" + release notes + nút Cập nhật.
+ * - Production: phục vụ web/index.html qua local server chỉ lắng nghe trên 127.0.0.1.
+ * - Dev: đặt NOVA_STUDIO_DEV_URL=http://localhost:5500 để load bản đang sửa.
+ * - Auto-update tùy chọn, chỉ bật khi có máy chủ phát hành riêng của Nova.
  */
 
+const path = require('path');
+const fs = require('fs');
 const { app, BrowserWindow, shell, Menu, dialog, ipcMain } = require('electron');
-// Identity riêng cho bản build Nova Studio.
+
+// Identity và vùng dữ liệu riêng của Nova Studio.
+// Phải cấu hình trước app.whenReady() để Electron không dùng lại profile của app khác.
+const NOVA_APP_ID = 'com.novastudio.independent';
+const NOVA_PARTITION = 'persist:nova-studio-independent';
 try {
   app.setName('Nova Studio');
-  if (process.platform === 'win32' && app.setAppUserModelId) app.setAppUserModelId('com.aivideostudio.desktop');
-} catch (_) { /* */ }
+  if (process.platform === 'win32' && app.setAppUserModelId) app.setAppUserModelId(NOVA_APP_ID);
+  const novaUserData = path.join(app.getPath('appData'), 'Nova Studio Independent');
+  app.setPath('userData', novaUserData);
+  fs.mkdirSync(novaUserData, { recursive: true });
+} catch (error) {
+  console.warn('[startup] không thể chuẩn bị vùng dữ liệu Nova:', error && error.message);
+}
 // Tắt bớt log rác nội bộ của Chromium (vd "ffmpeg_common Unsupported pixel format") cho terminal sạch.
 // KHÔNG ảnh hưởng log console.log của app (Node) — vẫn thấy các dòng [flow].
 try { app.commandLine.appendSwitch('log-level', '3'); } catch (e) { /* */ }
-const path = require('path');
 const http = require('http');
-const fs = require('fs');
 const os = require('os');
 const { autoUpdater } = require('electron-updater');
-const flowNative = require('./flow-native');
-const flowCft = require('./flow-cft');
+const flowNative = require('./flow-native.plain');
+const flowCft = require('./flow-cft.plain');
 const flowChrome = require('./flow-chrome');
-const flowExtBridge = require('./flow-bridge');
-const nativeTools = require('./native-tools');
+const flowExtBridge = require('./flow-bridge.plain');
+const nativeTools = require('./native-tools.plain');
 const upscaleNative = require('./upscale-native');
 const parallaxNative = require('./parallax-native');
-const cliBridge = require('./cli-bridge-native');
-const voiceNative = require('./voice-native');
+const cliBridge = require('./cli-bridge-native.plain');
+const voiceNative = require('./voice-native.plain');
 const watermarkNative = require('./watermark-native');
 const { userDataPath } = require('./core/paths');
 const { registerSettingsIpc } = require('./storage/settings-store');
@@ -86,7 +95,6 @@ function ensureBrandAsset() {
     path.join(__dirname, 'build', 'novastudio.ico'),
     path.join(__dirname, 'build', 'icon.ico'),
     path.join(process.resourcesPath || '', 'novastudio.ico'),
-    'D:\\AI Novel\\build\\icon.ico',
   ];
   for (const source of candidates) {
     try {
@@ -178,7 +186,7 @@ function closeSplashWindow(immediate = false) {
   }
 }
 
-// ── Local static server (để có origin http://127.0.0.1, Firebase auth chạy được) ──
+// ── Local static server riêng của Nova (chỉ bind loopback, không phụ thuộc app cũ) ──
 function startLocalServer() {
   return new Promise((resolve) => {
     const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.wasm': 'application/wasm', '.map': 'application/json', '.mp4': 'video/mp4', '.gif': 'image/gif', '.webp': 'image/webp', '.woff2': 'font/woff2' };
@@ -238,8 +246,8 @@ function startLocalServer() {
       });
     });
     localServer = server;
-    // Port CỐ ĐỊNH → origin không đổi giữa các lần mở → Firebase auth + "ghi nhớ đăng nhập" + localStorage được giữ.
-    // (server.listen(0) trước đây dùng port ngẫu nhiên → mỗi lần origin khác → luôn phải đăng nhập lại.)
+    // Ưu tiên port ổn định để localStorage của Nova giữ nguyên origin giữa các lần mở.
+    // Nếu các port này bận (kể cả do app khác), Nova tự chọn port trống thay vì gây lỗi.
     const PREFERRED = [47280, 47281, 47282, 47283, 0];   // 0 = ngẫu nhiên (fallback cuối cùng)
     let idx = 0;
     const tryListen = () => {
@@ -255,7 +263,7 @@ function startLocalServer() {
 }
 
 async function resolveStartUrl() {
-  if (process.env.APP_URL) return process.env.APP_URL;   // dev: load remote/local đang sửa
+  if (process.env.NOVA_STUDIO_DEV_URL) return process.env.NOVA_STUDIO_DEV_URL;   // dev: load URL Nova được chỉ định
   await startLocalServer();
   // Dùng "localhost" (Firebase mặc định cho phép domain này) → tránh auth/unauthorized-domain.
   return `http://localhost:${serverPort}/index.html`;    // production: bản đóng gói
@@ -270,7 +278,7 @@ function createWindow(startUrl) {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false,
-      partition: 'persist:novastudio',
+      partition: NOVA_PARTITION,
       webviewTag: true,   // cho phép nhúng Editor Pro qua <webview>
     },
   });
@@ -316,7 +324,7 @@ function createWindow(startUrl) {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       if (AUTH_HOSTS.test(new URL(url).hostname)) {
-        return { action: 'allow', overrideBrowserWindowOptions: { width: 500, height: 660, autoHideMenuBar: true, webPreferences: { partition: 'persist:novastudio', contextIsolation: true, nodeIntegration: false } } };
+        return { action: 'allow', overrideBrowserWindowOptions: { width: 500, height: 660, autoHideMenuBar: true, webPreferences: { partition: NOVA_PARTITION, contextIsolation: true, nodeIntegration: false } } };
       }
     } catch {}
     shell.openExternal(url);
@@ -600,7 +608,7 @@ ipcMain.handle('save-file', async (_e, payload = {}) => {
 // ── CLI bridge native: app tự chạy gói Claude/ChatGPT của user (localhost:8790/8791) ──
 try { cliBridge.startAll(); } catch (e) { console.warn('[cli-bridge]', e && e.message); }
 
-// ── MCP bridge native: cho AI agent (MCP) điều khiển dựng video/nâng cấp/xoá watermark (localhost:8792) ──
+// ── MCP bridge native: cho AI agent (MCP) điều khiển dựng video/nâng cấp/xoá watermark (localhost:8794) ──
 try {
   require('./mcp-bridge-native').startAll({
     nativeTools, upscaleNative, watermarkNative,
@@ -722,7 +730,7 @@ app.whenReady().then(async () => {
     try { const ic = path.join(__dirname, 'build', 'icon.png'); if (fs.existsSync(ic)) app.dock.setIcon(ic); } catch (e) { /* */ }
   }
   buildMenu();
-  // Đăng ký IPC của Editor Pro (nhúng qua <webview>) — 464 kênh Fractal, không trùng kênh Nova.
+  // Đăng ký IPC của Editor Pro (nhúng qua <webview>) — dùng chung userData Nova nhưng không dùng session app khác.
   try {
     require('./editor-pro/register').registerEditorPro(ipcMain, { userDataDir: app.getPath('userData') });
   } catch (e) { console.warn('[EditorPro] register:', e && e.message); }

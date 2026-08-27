@@ -1,12 +1,19 @@
 'use strict';
 
+const os = require('os');
 const path = require('path');
+
+const NOVA_DATA_FOLDER = 'Nova Studio Independent';
 
 function appRoot(dirname) { return path.resolve(dirname || __dirname, '..'); }
 function userDataPath(electronApp, fallback) {
-  try { if (electronApp && typeof electronApp.getPath === 'function') return electronApp.getPath('userData'); }
-  catch (_) {}
-  return fallback || path.join(require('os').homedir(), '.nova-studio');
+  try {
+    if (electronApp && typeof electronApp.getPath === 'function') {
+      const value = electronApp.getPath('userData');
+      if (value) return path.resolve(value);
+    }
+  } catch (_) {}
+  return fallback || path.join(os.homedir(), NOVA_DATA_FOLDER);
 }
 function joinRoot(root, ...parts) { return path.join(root, ...parts); }
 function fileUrl(file) {
@@ -14,4 +21,5 @@ function fileUrl(file) {
   return `file://${value}`;
 }
 
-module.exports = { appRoot, userDataPath, joinRoot, fileUrl };
+module.exports = { appRoot, userDataPath, joinRoot, fileUrl, NOVA_DATA_FOLDER };
+

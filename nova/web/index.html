@@ -7475,7 +7475,7 @@ function tsToScenes(){
 }
 
 // ── Tạo giọng nói (OmniVoice) — UI native, gọi thẳng backend Voice Studio ──
-const VOICE_URL = 'http://127.0.0.1:8770';
+const VOICE_URL = 'http://127.0.0.1:8771';
 // ⚠️ ĐỔI link này thành trang tải + hướng dẫn cài backend giọng nói (voice-studio) của bạn
 const VOICE_SETUP_URL = 'https://github.com/khanhtran0393/AI-Novel#giong-noi';
 let _voiceReady = false;
@@ -7555,7 +7555,7 @@ async function voicePickRoot(){
 }
 
 /* ══ TAB GIỌNG NÓI ═══════════════════════════════════════════════════════════
-   Ba engine: OmniVoice (chạy máy, cổng 8770) · ElevenLabs · OpenAI.
+   Ba engine: OmniVoice (chạy máy, cổng 8771) · ElevenLabs · OpenAI.
    Giọng của cả ba gộp thành MỘT danh sách, khoá dạng "engine:id".
    OmniVoice giữ giọng trong backend của nó; giọng đám mây lưu ở localStorage
    khoá 'api_tts_voices' — tiền tố api_ để được ghi ra nova-settings.json,

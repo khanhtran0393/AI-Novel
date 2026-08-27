@@ -51,5 +51,7 @@ cần — xem `.gitignore` ở gốc repo.
 
 - Đăng nhập **Google Flow** (trong Settings) là dịch vụ ngoài để sinh ảnh/video —
   giữ nguyên, không liên quan tới tài khoản app.
-- Phiên trình duyệt nội bộ dùng `partition: persist:novastudio`.
+- Phiên trình duyệt nội bộ dùng `partition: persist:nova-studio-independent`.
+- Toàn bộ cấu hình, cache và tài khoản Flow được lưu riêng tại thư mục Electron
+  `%APPDATA%\\Nova Studio Independent`; app không đọc hoặc di chuyển dữ liệu từ app cũ.
 

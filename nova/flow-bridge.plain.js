@@ -7,12 +7,12 @@
  *   - Extension GET /bridge/poll  → nhận 1 lệnh {id,action,payload} (chờ tối đa 25s).
  *   - Extension chạy xong POST /bridge/reply {id,result}.
  *   - Extension GET /bridge/ping định kỳ để app biết "đã kết nối".
- * Cổng cố định 8792 để extension biết địa chỉ.
+ * Cổng riêng 8793 để extension Nova không đụng app cũ.
  */
 
 const http = require('http');
 
-const PORT = 8792;
+const PORT = 8793;
 let server = null;
 let extLastSeen = 0;
 let extVersion = null;   // version extension đang kết nối (báo qua ?v=… lúc poll/ping) → so với bản mới để nhắc cập nhật

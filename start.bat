@@ -1,7 +1,7 @@
 @echo off
 REM ============================================================
 REM  Khoi dong Nova Studio Independent (Windows)
-REM  TU DONG: kiem tra Node -> cai depend (neu thieu) -> mo app.
+REM  TU DONG: kiem tra Node -> cai depend (neu thieu) -> mo Nova Studio.
 REM ============================================================
 setlocal
 cd /d "%~dp0"

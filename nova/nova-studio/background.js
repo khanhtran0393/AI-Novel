@@ -1274,9 +1274,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 });
 
 // ─── App-bridge: nối vào app Electron (chế độ Chrome Extension) ──────────
-// App chạy server 127.0.0.1:8792; extension long-poll lấy lệnh → chạy → trả kết quả.
+// Nova Studio chạy server riêng 127.0.0.1:8793; extension long-poll lấy lệnh → chạy → trả kết quả.
 
-const APP_BRIDGE = 'http://127.0.0.1:8792';
+const APP_BRIDGE = 'http://127.0.0.1:8793';
 let _bridgeRunning = false;
 const EXT_VER = (() => { try { return chrome.runtime.getManifest().version; } catch { return '0'; } })();   // báo cho app để nhắc cập nhật khi lệch
 

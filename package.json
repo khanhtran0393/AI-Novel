@@ -3,13 +3,25 @@
   "version": "0.1.34",
   "description": "Independent Nova Studio desktop application",
   "private": true,
-  "main": "nova/main.js",
-  "author": "Independent App",
+  "main": "nova/main.plain.js",
+  "author": "Nova Studio",
+  "productName": "Nova Studio",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+    "check:syntax": "node nova/scripts/syntax-check.js",
+    "check:ipc": "node nova/scripts/ipc-inventory.js",
+    "check:parity": "node nova/scripts/parity-check.js",
+    "test:foundation": "node nova/scripts/foundation-test.js",
     "build:win": "electron-builder --config electron-builder.json --win",
     "build": "electron-builder --config electron-builder.json"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "onnxruntime-node": "^1.27.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "electron": "^43.0.0",

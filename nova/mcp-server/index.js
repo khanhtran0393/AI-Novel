@@ -5,12 +5,12 @@
  * Cho AI agent (Claude Desktop / Codex / bất kỳ MCP client nào) điều khiển các năng lực
  * dựng video native của Nova Studio. Server này là tiến trình node RIÊNG, nói chuyện với client
  * qua stdio (JSON-RPC 2.0, mỗi message 1 dòng), rồi chuyển tiếp sang cầu HTTP cục bộ mà app
- * Nova Studio mở sẵn (mcp-bridge-native.js @ 127.0.0.1:8792).
+ * Nova Studio mở sẵn (mcp-bridge-native.js @ 127.0.0.1:8794).
  *
- *   MCP client  ⇄ (stdio)  index.js  ⇄ (HTTP 8792)  Nova Studio app  →  FFmpeg / Real-ESRGAN / ...
+ *   MCP client  ⇄ (stdio)  index.js  ⇄ (HTTP 8794)  Nova Studio app  →  FFmpeg / Real-ESRGAN / ...
  *
  * KHÔNG phụ thuộc package ngoài (tự cài đặt JSON-RPC + framing) → chỉ cần `node index.js`.
- * Yêu cầu: app Nova Studio ĐANG CHẠY (để cầu 8792 sống). Với các tool "nặng" (render/upscale)
+ * Yêu cầu: app Nova Studio ĐANG CHẠY (để cầu 8794 sống). Với các tool "nặng" (render/upscale)
  * app còn phải mở cửa sổ chính. Riêng tools/list không cần app chạy.
  */
 
@@ -18,7 +18,7 @@
 
 const http = require('http');
 
-const BRIDGE = process.env.NOVA_MCP_BRIDGE || 'http://127.0.0.1:8792';
+const BRIDGE = process.env.NOVA_MCP_BRIDGE || 'http://127.0.0.1:8794';
 const PROTOCOL_VERSION = '2024-11-05';
 const SERVER_INFO = { name: 'nova-studio', version: '1.0.0' };
 
