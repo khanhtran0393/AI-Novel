@@ -20,7 +20,7 @@ This report covers Git/CI readiness only. Canonical source acceptance is necessa
 - Clean install: `npm ci` passed.
 - Application checks: syntax 97 files, IPC 86 channels/15 events, parity 7 pairs, and foundation tests all passed.
 - Packaging: unpacked Windows build passed with publishing disabled using `--publish never`.
-- Local artifact evidence: `Nova Studio.exe` SHA-256 `fbdfbd5c44b856cdbca01aa14d9837a41f3b8dfbfaa6ce2cdc40f4d68b28366d`; `app.asar` SHA-256 `7f62d918ece51947b54edbb547d5997f9ec709e956cd9c3414d884eb25c2a132`.
+- Local artifact evidence: `AI Video Studio.exe` SHA-256 `fbdfbd5c44b856cdbca01aa14d9837a41f3b8dfbfaa6ce2cdc40f4d68b28366d` (the executable name is now consistent with build output); `app.asar` SHA-256 `7f62d918ece51947b54edbb547d5997f9ec709e956cd9c3414d884eb25c2a132`. Packaged smoke test passed at 2026-08-27T08:29.
 - Repository adapter: confirms manifest against live Git remote, remote-tracking branch, baseline ancestry, approval evidence, and required tracked files without exposing arbitrary Git execution.
 
 ## Remaining blockers

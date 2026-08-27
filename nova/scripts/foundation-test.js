@@ -24,9 +24,9 @@ async function main() {
   assert.strictEqual(userDataPath({ getPath: () => { throw new Error('x'); } }, 'fallback'), 'fallback');
 
   const mainSource = fs.readFileSync(path.join(__dirname, '..', 'main.plain.js'), 'utf8');
-  assert(mainSource.includes("com.novastudio.independent"), 'main process must use the independent app id');
-  assert(mainSource.includes("persist:nova-studio-independent"), 'main window must use an independent browser partition');
-  assert(!mainSource.includes('com.aivideostudio'), 'legacy Windows app id must not be reused');
+  assert(mainSource.includes("com.aivideostudio.independent"), 'main process must use the independent app id');
+  assert(mainSource.includes("persist:ai-video-studio-independent"), 'main window must use an independent browser partition');
+  assert(!mainSource.includes('com.novastudio.independent'), 'legacy Windows app id must not be reused');
   const flowSource = fs.readFileSync(path.join(__dirname, '..', 'flow-native.plain.js'), 'utf8');
   assert(!flowSource.includes("persist:flow-"), 'Flow account partitions must not reuse the legacy namespace');
   const runtimePorts = [

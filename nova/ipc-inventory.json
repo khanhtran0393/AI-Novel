@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-27T03:33:42.340Z",
+  "generatedAt": "2026-08-27T08:16:32.174Z",
   "sourceFiles": [
     "bundle.js",
     "cli-bridge-native.js",
@@ -85,9 +85,13 @@
     "preload.js",
     "scripts/foundation-test.js",
     "scripts/ipc-inventory.js",
+    "scripts/packaged-smoke.js",
     "scripts/parity-check.js",
     "scripts/protect.js",
     "scripts/release-protected.js",
+    "scripts/smoke-cdp.js",
+    "scripts/smoke-mcp.js",
+    "scripts/smoke-runtime.js",
     "scripts/syntax-check.js",
     "scripts/unprotect.js",
     "storage/json-store.js",

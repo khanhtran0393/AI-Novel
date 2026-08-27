@@ -1,5 +1,5 @@
 /**
- * Nova Studio Desktop (Electron) — Cách B: đóng gói UI vào app + auto-update.
+ * AI Video Studio Desktop (Electron) — Cách B: đóng gói UI vào app + auto-update.
  * - Production: phục vụ web/index.html qua local server chỉ lắng nghe trên 127.0.0.1.
  * - Dev: đặt NOVA_STUDIO_DEV_URL=http://localhost:5500 để load bản đang sửa.
  * - Auto-update tùy chọn, chỉ bật khi có máy chủ phát hành riêng của Nova.
@@ -9,14 +9,14 @@ const path = require('path');
 const fs = require('fs');
 const { app, BrowserWindow, shell, Menu, dialog, ipcMain } = require('electron');
 
-// Identity và vùng dữ liệu riêng của Nova Studio.
+// Identity và vùng dữ liệu riêng của AI Video Studio.
 // Phải cấu hình trước app.whenReady() để Electron không dùng lại profile của app khác.
-const NOVA_APP_ID = 'com.novastudio.independent';
-const NOVA_PARTITION = 'persist:nova-studio-independent';
+const NOVA_APP_ID = 'com.aivideostudio.independent';
+const NOVA_PARTITION = 'persist:ai-video-studio-independent';
 try {
-  app.setName('Nova Studio');
+  app.setName('AI Video Studio');
   if (process.platform === 'win32' && app.setAppUserModelId) app.setAppUserModelId(NOVA_APP_ID);
-  const novaUserData = path.join(app.getPath('appData'), 'Nova Studio Independent');
+  const novaUserData = path.join(app.getPath('appData'), 'AI Video Studio Independent');
   app.setPath('userData', novaUserData);
   fs.mkdirSync(novaUserData, { recursive: true });
 } catch (error) {
@@ -93,6 +93,8 @@ function ensureBrandAsset() {
   const target = path.join(WEB_DIR, 'brand-logo.ico');
   if (fs.existsSync(target)) return target;
   const candidates = [
+    path.join(__dirname, 'build', 'logo.png'),
+    path.join(__dirname, 'build', 'icon.png'),
     path.join(__dirname, 'build', 'novastudio.ico'),
     path.join(__dirname, 'build', 'icon.ico'),
     path.join(process.resourcesPath || '', 'novastudio.ico'),
@@ -100,8 +102,16 @@ function ensureBrandAsset() {
   for (const source of candidates) {
     try {
       if (source && fs.existsSync(source)) {
-        fs.copyFileSync(source, target);
-        return target;
+        // Nếu là PNG, copy sang target (nhưng target là .ico, nên cần chuyển đổi hoặc dùng trực tiếp)
+        // Để đơn giản, nếu source là PNG thì copy sang brand-logo.png và dùng luôn.
+        if (source.endsWith('.png')) {
+          const pngTarget = path.join(WEB_DIR, 'brand-logo.png');
+          fs.copyFileSync(source, pngTarget);
+          return pngTarget;
+        } else {
+          fs.copyFileSync(source, target);
+          return target;
+        }
       }
     } catch (_) { /* try the next packaged/source fallback */ }
   }
@@ -110,7 +120,10 @@ function ensureBrandAsset() {
 
 function brandIconPath() {
   const candidates = [
+    path.join(WEB_DIR, 'brand-logo.png'),
     path.join(WEB_DIR, 'brand-logo.ico'),
+    path.join(__dirname, 'build', 'logo.png'),
+    path.join(__dirname, 'build', 'icon.png'),
     path.join(__dirname, 'build', 'novastudio.ico'),
     path.join(__dirname, 'build', 'icon.ico'),
     path.join(process.resourcesPath || '', 'novastudio.ico'),
@@ -142,16 +155,7 @@ function createSplashWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
   splashWindow.loadFile(path.join(__dirname, 'electron', 'splash.html'));
-  splashWindow.webContents.once('did-finish-load', () => {
-    const iconPath = brandIconPath();
-    if (!iconPath) return;
-    try {
-      const dataUri = `data:image/x-icon;base64,${fs.readFileSync(iconPath).toString('base64')}`;
-      splashWindow.webContents.executeJavaScript(
-        `document.querySelector('.logo').src = ${JSON.stringify(dataUri)};`,
-      ).catch(() => {});
-    } catch (_) { /* fallback mark in splash.html remains visible */ }
-  });
+  // Không ghi đè logo vì splash.html đã có src đúng.
   splashWindow.once('ready-to-show', () => {
     if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
   });
@@ -274,7 +278,7 @@ function createWindow(startUrl) {
   mainWindow = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1024, minHeight: 640,
     autoHideMenuBar: true,   // ẩn thanh menu Tệp/Sửa/Xem (Windows/Linux) — nhấn Alt để hiện tạm; phím tắt copy/paste vẫn chạy
-    title: 'Nova Studio', backgroundColor: '#050505', show: false,
+    title: 'AI Video Studio', backgroundColor: '#050505', show: false,
     icon: brandIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -757,7 +761,7 @@ app.whenReady().then(async () => {
     closeSplashWindow(true);
     app.quit();
   }
-  // Bản private không đọc app-update.yml/repository của Nova Studio.
+  // Bản private không đọc app-update.yml/repository của AI Video Studio.
   // Khi có release server riêng, bật lại bằng AI_VIDEO_STUDIO_ENABLE_UPDATES=1.
   if (app.isPackaged && process.env.AI_VIDEO_STUDIO_ENABLE_UPDATES === '1') setupAutoUpdate();
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(await resolveStartUrl()); });

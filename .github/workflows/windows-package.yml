@@ -44,7 +44,7 @@ jobs:
         run: |
           npx --no-install electron-builder --config electron-builder.json --win --dir --publish never
           New-Item -ItemType Directory -Force dist/provenance-input/resources | Out-Null
-          Copy-Item 'dist/win-unpacked/Nova Studio.exe' 'dist/provenance-input/Nova Studio.exe'
+          Copy-Item 'dist/win-unpacked/AI Video Studio.exe' 'dist/provenance-input/AI Video Studio.exe'
           Copy-Item 'dist/win-unpacked/resources/app.asar' 'dist/provenance-input/resources/app.asar'
           node auto-fix/scripts/artifact-provenance.js dist/provenance-input dist/provenance.json .
 
@@ -53,7 +53,7 @@ jobs:
         with:
           name: nova-windows-unpacked-${{ github.sha }}
           path: |
-            dist/win-unpacked/Nova Studio.exe
+            dist/win-unpacked/AI Video Studio.exe
             dist/win-unpacked/resources/app.asar
             dist/provenance.json
           if-no-files-found: error
@@ -81,6 +81,6 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
-            attestation-input/win-unpacked/Nova Studio.exe
+            attestation-input/win-unpacked/AI Video Studio.exe
             attestation-input/win-unpacked/resources/app.asar
             attestation-input/provenance.json

@@ -87,14 +87,14 @@ function findPackagedExe(root, explicit) {
     if (!fs.existsSync(resolved)) throw new Error(`Packaged executable does not exist: ${resolved}`);
     return resolved;
   }
-  const preferred = path.join(root, 'dist', 'win-unpacked', 'Nova Studio.exe');
+  const preferred = path.join(root, 'dist', 'win-unpacked', 'AI Video Studio.exe');
   if (fs.existsSync(preferred)) return preferred;
   const dist = path.join(root, 'dist');
   if (!fs.existsSync(dist)) throw new Error(`Packaged artifacts are missing: ${dist}. Run npm run build:win first.`);
   const candidates = fs.readdirSync(dist, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /Nova-Studio.*\.exe$/i.test(entry.name))
+    .filter((entry) => entry.isFile() && /AI-Video-Studio.*\.exe$/i.test(entry.name))
     .map((entry) => path.join(dist, entry.name));
-  if (!candidates.length) throw new Error('No runnable packaged Nova Studio executable found in dist.');
+  if (!candidates.length) throw new Error('No runnable packaged AI Video Studio executable found in dist.');
   return candidates.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size)[0];
 }
 

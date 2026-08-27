@@ -1,7 +1,7 @@
 {
-  "appId": "com.novastudio.independent",
-  "productName": "Nova Studio",
-  "artifactName": "Nova-Studio-${version}-${arch}.${ext}",
+  "appId": "com.aivideostudio.independent",
+  "productName": "AI Video Studio",
+  "artifactName": "AI-Video-Studio-${version}-${arch}.${ext}",
   "directories": {
     "output": "dist",
     "buildResources": "build"
@@ -27,7 +27,7 @@
     "node_modules/onnxruntime-node/**/*"
   ],
   "win": {
-    "icon": "build/icon.ico",
+    "icon": "build/icon.png",
     "target": [
       { "target": "nsis", "arch": ["x64"] },
       { "target": "portable", "arch": ["x64"] }
@@ -38,8 +38,8 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Nova Studio",
-    "uninstallDisplayName": "Nova Studio"
+    "shortcutName": "AI Video Studio",
+    "uninstallDisplayName": "AI Video Studio"
   },
   "publish": null
 }

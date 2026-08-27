@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nova Studio</title>
+<title>AI Video Studio</title>
 
-<!-- Nhận diện Nova Studio -->
-<link rel="icon" type="image/x-icon" href="brand-logo.ico">
-<link rel="apple-touch-icon" href="brand-logo.ico">
+<!-- Nhận diện AI Video Studio -->
+<link rel="icon" type="image/png" href="brand-logo.png">
+<link rel="apple-touch-icon" href="brand-logo.png">
 
 <!-- Be Vietnam Pro -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1272,9 +1272,9 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
     <!-- Brand -->
     <div class="brand" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
-        <img src="brand-logo.ico" alt="Nova Studio" style="width:44px;height:44px;border-radius:11px;flex-shrink:0;object-fit:contain">
+        <img src="brand-logo.ico" alt="AI Video Studio" style="width:44px;height:44px;border-radius:11px;flex-shrink:0;object-fit:contain">
         <div style="min-width:0">
-          <div class="brand-logo" style="font-size:16px;line-height:1.15">Nova Studio</div>
+          <div class="brand-logo" style="font-size:16px;line-height:1.15">AI Video Studio</div>
           <div class="brand-sub" style="color:var(--accent);font-weight:600;font-size:11px;text-transform:none;letter-spacing:0;margin-top:2px;line-height:1.2">Sản Xuất Video Tự Động</div>
         </div>
       </div>
@@ -4305,7 +4305,7 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
     <button class="upg-x" onclick="closeUpgradeModal()" title="Đóng">×</button>
 
     <div class="upg-head">
-      <div class="upg-t">Nâng cấp Nova Studio</div>
+      <div class="upg-t">Nâng cấp AI Video Studio</div>
       <div class="upg-s">Dùng thử miễn phí, nâng gói khi cần — thanh toán xong mở khoá ngay.</div>
     </div>
     <div id="upgradeReason" class="upg-reason" style="display:none"></div>
@@ -7744,7 +7744,7 @@ async function voicePickRoot(){
 
 const _TTS_KHOA = { elevenlabs: 'api_tts_elevenlabs', openai: 'api_tts_openai' };
 const _TTS_TEN  = { omni: 'OmniVoice', elevenlabs: 'ElevenLabs', openai: 'OpenAI' };
-const _GIONG_THU = 'Xin chào, đây là giọng đọc thử của Nova Studio.';
+const _GIONG_THU = 'Xin chào, đây là giọng đọc thử của AI Video Studio.';
 // Đoạn đọc dùng làm MẪU khi nhân bản giọng đám mây về máy. Cần 12–18 giây thì
 // OmniVoice mới bắt được chất giọng, nên khoảng 45 từ. Trả tiền đúng một lần.
 const _GIONG_MAU_CLONE = {
@@ -9386,7 +9386,7 @@ const IDB = {
   async open(){
     if (this.db) return this.db;
     return new Promise((res, rej) => {
-      const r = indexedDB.open('Nova Studio', 1);
+      const r = indexedDB.open('AI Video Studio', 1);
       r.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
@@ -10771,7 +10771,7 @@ function clearCancel(){
 }
 
 /* ============================================================
-   TOOL FLOW — Tạo ảnh hàng loạt qua extension "Nova Studio"
+   TOOL FLOW — Tạo ảnh hàng loạt qua extension "AI Video Studio"
    Trang web nói chuyện với extension qua window.postMessage (bridge.js).
    Ảnh cảnh → state.sceneImages (full dataURL, khớp Tool 2/4/7).
    Ảnh nhân vật → state.characterImages (base64 thô, khớp Tool 3).
@@ -11485,7 +11485,7 @@ function tfRenderExtStatus(){
               <button class="btn primary sm" onclick="tfDownloadExt()">⬇ 1 · Tải lại extension (ghi đè)</button>
               <button class="btn ghost sm" onclick="tfCopyExtUrl()">📋 Copy chrome://extensions</button>
             </div>
-            <div style="font-size:12px;color:var(--text)"><b>2.</b> Vào <b>chrome://extensions</b> → bấm nút <b>⟳ (Reload)</b> trên Nova Studio.</div>
+            <div style="font-size:12px;color:var(--text)"><b>2.</b> Vào <b>chrome://extensions</b> → bấm nút <b>⟳ (Reload)</b> trên AI Video Studio.</div>
           </div>`;
         return;
       }
@@ -11507,7 +11507,7 @@ function tfRenderExtStatus(){
           <b>3.</b> Bật <b>Chế độ dành cho nhà phát triển</b> (nút gạt góc trên phải) → bấm <b>Tải tiện ích chưa đóng gói</b> → chọn thư mục vừa tải ở bước 1.<br>
           <b>4.</b> Mở 1 tab vào <b>labs.google/fx/tools/flow</b>, đăng nhập Google → quay lại đây, app <b>tự kết nối</b> (hoặc bấm ↻ Quét lại).
         </div>
-        <div style="margin-top:9px;font-size:11.5px;color:var(--text-muted)">💡 Sau khi cập nhật app: vào <b>chrome://extensions</b> bấm nút <b>⟳ (Reload)</b> trên Nova Studio để dùng bản mới.</div>
+        <div style="margin-top:9px;font-size:11.5px;color:var(--text-muted)">💡 Sau khi cập nhật app: vào <b>chrome://extensions</b> bấm nút <b>⟳ (Reload)</b> trên AI Video Studio để dùng bản mới.</div>
       </div>`;
   };
   tick();
@@ -11576,7 +11576,7 @@ async function tfPool(items, worker, limit, delayMs = 0){
 
 async function tfEnsureProject(){
   if (tfState.projectId) return tfState.projectId;
-  const r = await flowBridge.call('CREATE_PROJECT', { title: 'Nova Studio ' + new Date().toLocaleString('vi-VN') });
+  const r = await flowBridge.call('CREATE_PROJECT', { title: 'AI Video Studio ' + new Date().toLocaleString('vi-VN') });
   if (r?.error || !r?.project_id) throw new Error('Không tạo được project: ' + (r?.error || '?'));
   tfState.projectId = r.project_id;
   return tfState.projectId;
@@ -11712,7 +11712,7 @@ async function tfRegenAsset(kind, name){
   if (tfState.running) { setStatusF('Đang chạy mẻ khác — đợi xong rồi tạo lại.', 'error'); return; }
   const prompt = (kind === 'char' ? state.assetCharPrompts : state.assetBgPrompts)?.[name];
   if (!prompt || !String(prompt).trim()) { setStatusF(name + ' chưa có prompt.', 'error'); return; }
-  if (!(await flowBridge.waitReady(1500))) { setStatusF('Chưa thấy extension Nova Studio.', 'error'); return; }
+  if (!(await flowBridge.waitReady(1500))) { setStatusF('Chưa thấy extension AI Video Studio.', 'error'); return; }
   const st = await flowBridge.call('GET_STATUS');
   if (!_flowStOk(st)) { setStatusF('Chưa kết nối Flow.', 'error'); return; }
 
@@ -11820,7 +11820,7 @@ async function tfGenScenes(onlyMissing, opts){
     if (bP && String(bP).trim() && !(onlyMissing && state.sceneImagesB?.[s.id])) units.push({ id: s.id, variant: 'b', prompt: bP });
   }
   if (!units.length){ setStatusF('Không có ảnh nào để tạo' + (shardN > 1 ? ` (máy ${shardK}/${shardN})` : '') + '.', 'error'); return { skipped: true, reason: 'không có cảnh' }; }
-  if (!(await flowBridge.waitReady(1500))){ setStatusF('Chưa thấy extension Nova Studio.', 'error'); return { skipped: true, reason: 'chưa cài extension' }; }
+  if (!(await flowBridge.waitReady(1500))){ setStatusF('Chưa thấy extension AI Video Studio.', 'error'); return { skipped: true, reason: 'chưa cài extension' }; }
   const st = await flowBridge.call('GET_STATUS');
   if (!_flowStOk(st)){ setStatusF('Chưa kết nối Flow. Mở tab Flow + đăng nhập rồi Quét lại.', 'error'); return { skipped: true, reason: 'chưa đăng nhập Flow' }; }
   const multi = (st.accountCount || 0) > 1;   // luôn dùng nhiều tài khoản khi có >1 account (chia + song song + tự né quota)
@@ -11968,7 +11968,7 @@ async function tfGenAssets(kind, onlyMissing){
   // onlyMissing: chỉ tạo asset CHƯA có ảnh (dùng để retry ảnh tham chiếu lỗi, khỏi đốt lại credit).
   const list = tfAssetList(kind).filter(a => a.prompt && String(a.prompt).trim() && (!onlyMissing || !store0?.[a.name]?.base64));
   if (!list.length){ setStatusF('Không có ' + (kind === 'char' ? 'nhân vật' : 'bối cảnh') + ' có prompt.', 'error'); return { skipped: true, reason: 'không có prompt' }; }
-  if (!(await flowBridge.waitReady(1500))){ setStatusF('Chưa thấy extension Nova Studio.', 'error'); return { skipped: true, reason: 'chưa cài extension' }; }
+  if (!(await flowBridge.waitReady(1500))){ setStatusF('Chưa thấy extension AI Video Studio.', 'error'); return { skipped: true, reason: 'chưa cài extension' }; }
   const st = await flowBridge.call('GET_STATUS');
   if (!_flowStOk(st)){ setStatusF('Chưa kết nối Flow. Mở tab Flow + đăng nhập rồi Quét lại.', 'error'); return { skipped: true, reason: 'chưa đăng nhập Flow' }; }
 
