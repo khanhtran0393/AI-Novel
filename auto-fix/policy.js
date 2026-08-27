@@ -85,6 +85,26 @@ function validatePolicy(policy) {
   if (!policy.limits || policy.limits.maxPatchLines !== 0) errors.push('maxPatchLines must be 0');
   if (!policy.limits || policy.limits.maxJobTokenBudget !== 0) errors.push('maxJobTokenBudget must be 0');
   if (!policy.limits || policy.limits.maxJobDurationSeconds !== 0) errors.push('maxJobDurationSeconds must be 0');
+  if (!policy.limits || !Number.isInteger(policy.limits.maxAuditRecordBytes) || policy.limits.maxAuditRecordBytes < 1024) {
+    errors.push('maxAuditRecordBytes must be an integer >= 1024');
+  }
+  if (!policy.limits || !Number.isInteger(policy.limits.maxEvidenceItems) || policy.limits.maxEvidenceItems < 1) {
+    errors.push('maxEvidenceItems must be a positive integer');
+  }
+  if (!policy.limits || !Number.isInteger(policy.limits.maxEvidenceStringLength) || policy.limits.maxEvidenceStringLength < 64) {
+    errors.push('maxEvidenceStringLength must be an integer >= 64');
+  }
+  if (!policy.boundaries || !Array.isArray(policy.boundaries.approvedRelativeRoots) || policy.boundaries.approvedRelativeRoots.length === 0) {
+    errors.push('approvedRelativeRoots must be a non-empty array');
+  }
+  if (!policy.boundaries || !Array.isArray(policy.boundaries.deniedRelativeRoots)) {
+    errors.push('deniedRelativeRoots must be an array');
+  }
+  if (!policy.boundaries || policy.boundaries.denySensitiveNames !== true) {
+    errors.push('denySensitiveNames must be true');
+  }
+  if (!policy.audit || policy.audit.appendOnly !== true) errors.push('audit.appendOnly must be true');
+  if (!policy.audit || policy.audit.redactSecrets !== true) errors.push('audit.redactSecrets must be true');
 
   return errors;
 }

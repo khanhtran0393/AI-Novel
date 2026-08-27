@@ -69,4 +69,18 @@ Luôn chuyển sang human review khi:
 
 ## Authority transition
 
-Không sửa các giá trị này để bật production một cách thủ công. Việc mở quyền phải đi qua một milestone đã PASS, review policy và audit record tương ứng. `config/policy.json` hiện chỉ là cấu hình kế hoạch, chưa được runtime thực thi.
+Không sửa các giá trị này để bật production một cách thủ công. Việc mở quyền phải đi qua một milestone đã PASS, review policy và audit record tương ứng. `config/policy.json` hiện được control-plane foundation đọc/validate độc lập, nhưng chưa được kết nối vào runtime Electron và không cấp bất kỳ authority nào.
+
+## Control-plane implementation
+
+Các module an toàn hiện có trong `auto-fix/` chỉ quan sát và đánh giá:
+
+- `repository-adapter.js`: Git metadata read-only;
+- `path-boundary.js`: allowlist/denylist và symlink boundary;
+- `redaction.js`: loại bỏ secret/local path khỏi evidence;
+- `audit.js`: audit record bounded, append-only;
+- `gates.js`: `PASS`/`FAIL`/`BLOCKED`;
+- `tool-registry.js`: closed registry, không có shell/delete/network passthrough;
+- `scripts/readiness.js`: JSON readiness report.
+
+Mọi gate thiếu evidence đều trả `BLOCKED`; worktree dirty hoặc policy sai trả `FAIL`. Không được xem report `PASS` của policy là bằng chứng canonical source, CI hoặc build readiness.

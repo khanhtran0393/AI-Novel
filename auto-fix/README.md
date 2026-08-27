@@ -32,6 +32,27 @@ Thư mục riêng để quản lý chức năng **Autonomous AI Auto-Fix Platfor
 - `policy.js`: policy loader, validator và deny-by-default authorization guard độc lập với Electron runtime.
 - `scripts/policy-check.js`: CLI kiểm tra policy trước mỗi milestone/CI job.
 - `test/policy.test.js`: test foundation cho policy và authority deny-by-default.
+- `repository-adapter.js`: đọc path, branch, commit SHA, dirty state và source status; không thay đổi repository.
+- `path-boundary.js`: kiểm tra allowlist, denied roots, sensitive names và symlink boundary.
+- `redaction.js`: redaction bounded cho secret values, credential fields và local paths.
+- `audit.js`: tạo audit record bounded/hash và append-only writer.
+- `gates.js`: evaluator trả về `PASS`, `FAIL` hoặc `BLOCKED` cùng evidence.
+- `tool-registry.js`: registry giới hạn tool read-only; không có arbitrary shell/delete/network tool.
+- `scripts/readiness.js`: xuất readiness report JSON cho CI/điều hành.
+- `test/control-plane.test.js`: test boundary, redaction, audit, repository detection, gates và registry.
+- `package.json`: các lệnh kiểm tra độc lập của control plane.
+- `CANONICAL-SOURCE-ACCEPTANCE.md`: checklist bắt buộc trước khi xác nhận source canonical/M1.
+- `M1-READINESS-REPORT.md`: báo cáo readiness hiện tại và các blocker đã biết.
+
+Chạy toàn bộ kiểm tra:
+
+```powershell
+npm --prefix auto-fix test
+npm --prefix auto-fix run check:policy
+npm --prefix auto-fix run check:readiness
+```
+
+`check:readiness` có thể kết thúc với mã `2` vì trạng thái hiện tại đúng là `BLOCKED`/`FAIL`; đó là kết quả an toàn, không phải lỗi được bỏ qua.
 
 ## Kiểm tra foundation
 

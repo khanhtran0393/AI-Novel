@@ -19,7 +19,19 @@
     "maxPatchFiles": 0,
     "maxPatchLines": 0,
     "maxJobTokenBudget": 0,
-    "maxJobDurationSeconds": 0
+    "maxJobDurationSeconds": 0,
+    "maxAuditRecordBytes": 16384,
+    "maxEvidenceItems": 32,
+    "maxEvidenceStringLength": 1024
+  },
+  "boundaries": {
+    "approvedRelativeRoots": ["auto-fix"],
+    "deniedRelativeRoots": ["resources", "build-output", "node_modules"],
+    "denySensitiveNames": true
+  },
+  "audit": {
+    "appendOnly": true,
+    "redactSecrets": true
   },
   "gates": {
     "requireReproduction": true,

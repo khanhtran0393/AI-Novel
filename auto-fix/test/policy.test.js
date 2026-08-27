@@ -27,4 +27,7 @@ const invalidPolicy = { ...policy, runtimeEnabled: true };
 assert.ok(validatePolicy(invalidPolicy).includes('runtimeEnabled must be false'));
 assert.strictEqual(authorization(invalidPolicy, 'build').reason, 'invalid-policy');
 
+const unsafeBoundaryPolicy = { ...policy, audit: { ...policy.audit, redactSecrets: false } };
+assert.ok(validatePolicy(unsafeBoundaryPolicy).includes('audit.redactSecrets must be true'));
+
 console.log(`POLICY TEST: PASS (${policyPath()})`);

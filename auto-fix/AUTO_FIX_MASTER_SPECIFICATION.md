@@ -107,6 +107,21 @@ Each milestone report MUST include:
 - security notes, limitations, and next milestone;
 - explicit confirmation that disabled authorities remain disabled.
 
-## 9. Current decision
+## 9. Current implementation status
 
-`AUTO_FIX_MASTER_SPECIFICATION` is established as the implementation baseline, but it does not enable Auto-Fix. The packaged directory is not promoted to canonical application source. The `nova-logic` Git branch remains an external source candidate pending resolution of its build configuration, dependency layout, CI, release governance, and security review.
+The following safe control-plane components are implemented under `auto-fix/`:
+
+- policy loader/validator and deny-by-default authorization;
+- read-only repository adapter;
+- path allowlist and denied-root/sensitive-name boundary;
+- bounded secret/local-path redaction;
+- bounded append-only audit record writer with hash metadata;
+- gate evaluator with explicit `PASS`, `FAIL`, and `BLOCKED` states;
+- closed tool registry containing only read-only control-plane tools;
+- machine-readable readiness CLI and tests.
+
+The execution plane and runtime/application integration remain intentionally unimplemented. No implementation may infer authority from the existence of these modules.
+
+## 10. Current decision
+
+`AUTO_FIX_MASTER_SPECIFICATION` is established as the implementation baseline, but it does not enable Auto-Fix. The packaged directory is not promoted to canonical application source. The `nova-logic` Git branch remains an external source candidate pending resolution of its build configuration, dependency layout, CI, release governance, and security review. M1 readiness therefore remains `BLOCKED` until the acceptance checklist and required evidence are completed.
