@@ -186,11 +186,23 @@ function createBridge(engine, port) {
 }
 
 let started = false;
+let servers = [];
 function startAll() {
-  if (started) return;
+  if (started) return servers;
   started = true;
-  try { createBridge('claude', 8795); } catch (e) { console.warn('[cli-bridge claude]', e.message); }
-  try { createBridge('codex', 8796); } catch (e) { console.warn('[cli-bridge codex]', e.message); }
+  try { servers.push(...createBridge('claude', 8795)); } catch (e) { console.warn('[cli-bridge claude]', e.message); }
+  try { servers.push(...createBridge('codex', 8796)); } catch (e) { console.warn('[cli-bridge codex]', e.message); }
+  return servers;
 }
 
-module.exports = { startAll };
+function stopAll() {
+  started = false;
+  const owned = servers;
+  servers = [];
+  for (const server of owned) {
+    try { server.close(); } catch (_) {}
+    try { server.closeAllConnections && server.closeAllConnections(); } catch (_) {}
+  }
+}
+
+module.exports = { startAll, stopAll };

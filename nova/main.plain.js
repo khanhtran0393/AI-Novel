@@ -36,6 +36,7 @@ const nativeTools = require('./native-tools.plain');
 const upscaleNative = require('./upscale-native');
 const parallaxNative = require('./parallax-native');
 const cliBridge = require('./cli-bridge-native.plain');
+const mcpBridge = require('./mcp-bridge-native');
 const voiceNative = require('./voice-native.plain');
 const watermarkNative = require('./watermark-native');
 const { userDataPath } = require('./core/paths');
@@ -429,6 +430,8 @@ ipcMain.handle('flow-push-ext', async () => {
 });
 // TỰ làm mới token + đẩy sang extension (khi mở app + định kỳ) — như đối thủ: mở Chrome lấy token rồi tự đóng.
 let _autoPushBusy = false;
+let _autoPushStartTimer = null;
+let _autoPushInterval = null;
 async function autoPushExt() {
   if (_autoPushBusy) return;
   try {
@@ -448,8 +451,8 @@ async function autoPushExt() {
   } catch (e) { console.warn('[flow] autoPushExt', e && e.message); }
   finally { _autoPushBusy = false; }
 }
-setTimeout(autoPushExt, 15000);                    // mở app 15s → tự làm mới (+ đẩy nếu có extension)
-setInterval(autoPushExt, 40 * 60 * 1000);          // mỗi 40 phút (token ~1h) → làm mới trước khi hết
+_autoPushStartTimer = setTimeout(autoPushExt, 15000);                    // mở app 15s → tự làm mới (+ đẩy nếu có extension)
+_autoPushInterval = setInterval(autoPushExt, 40 * 60 * 1000);            // mỗi 40 phút (token ~1h) → làm mới trước khi hết
 
 // ── Flow qua Extension (Chrome thật): app ↔ bridge HTTP ↔ extension ──
 flowExtBridge.start().catch((e) => console.warn('[flow-bridge]', e && e.message));
@@ -610,7 +613,7 @@ try { cliBridge.startAll(); } catch (e) { console.warn('[cli-bridge]', e && e.me
 
 // ── MCP bridge native: cho AI agent (MCP) điều khiển dựng video/nâng cấp/xoá watermark (localhost:8794) ──
 try {
-  require('./mcp-bridge-native').startAll({
+  mcpBridge.startAll({
     nativeTools, upscaleNative, watermarkNative,
     getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow()),
   });
@@ -701,14 +704,26 @@ ipcMain.handle('wm-test-file', async (e, { opts } = {}) => {
 });
 watermarkNative.onLog((line) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wm-log', line); } catch {} });
 
+let _shutdownDone = false;
+function shutdownOwnedResources() {
+  if (_shutdownDone) return;
+  _shutdownDone = true;
+  if (_autoPushStartTimer) { clearTimeout(_autoPushStartTimer); _autoPushStartTimer = null; }
+  if (_autoPushInterval) { clearInterval(_autoPushInterval); _autoPushInterval = null; }
+  try { flowExtBridge.stop(); } catch (_) {}
+  try { cliBridge.stopAll(); } catch (_) {}
+  try { mcpBridge.stopAll(); } catch (_) {}
+  try { voiceNative.stop(); } catch (_) {}
+  try { watermarkNative.cancel(); } catch (_) {}
+  try { flowChrome.closeGuestCaptcha && flowChrome.closeGuestCaptcha(); } catch (_) {}
+}
+
 app.on('before-quit', () => {
   isQuitting = true;
   try { closeSplashWindow(true); } catch (_) {}
   try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } catch (_) {}
   try { if (localServer) { localServer.close(); localServer = null; } } catch (_) {}
-  try { voiceNative.stop(); } catch (_) {}
-  try { watermarkNative.cancel(); } catch (_) {}
-  try { flowChrome.closeGuestCaptcha && flowChrome.closeGuestCaptcha(); } catch (_) {}
+  shutdownOwnedResources();
 });
 app.on('will-quit', () => {
   isQuitting = true;
@@ -748,4 +763,7 @@ app.whenReady().then(async () => {
   app.on('activate', async () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(await resolveStartUrl()); });
 });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  shutdownOwnedResources();
+  if (process.platform !== 'darwin') app.quit();
+});

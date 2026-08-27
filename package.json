@@ -14,7 +14,9 @@
     "check:parity": "node nova/scripts/parity-check.js",
     "test:foundation": "node nova/scripts/foundation-test.js",
     "build:win": "electron-builder --config electron-builder.json --win",
-    "build": "electron-builder --config electron-builder.json"
+    "build": "electron-builder --config electron-builder.json",
+    "smoke:packaged": "node nova/scripts/packaged-smoke.js",
+    "build:smoke": "npm run build:win && npm run smoke:packaged"
   },
   "dependencies": {
     "electron-updater": "^6.3.9",

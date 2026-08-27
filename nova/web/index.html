@@ -1288,19 +1288,26 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
       <div class="sb-label api-toggle" onclick="toggleApiSection()" title="Bấm để thu gọn / mở phần API">
         <span>⚙️ Cấu hình AI</span><span class="api-chevron">▾</span>
       </div>
+      <!-- Nhà cung cấp -->
       <div class="api-row">
         <label class="label">Nhà cung cấp</label>
         <select id="apiProvider" onchange="onProviderChange()">
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI (GPT)</option>
           <option value="gemini">Google Gemini</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="groq">Groq</option>
+          <option value="mistral">Mistral</option>
+          <option value="cohere">Cohere</option>
+          <option value="perplexity">Perplexity</option>
+          <option value="together">Together AI</option>
+          <option value="fireworks">Fireworks AI</option>
+          <option value="openai-compatible">🌐 OpenAI Compatible (Custom)</option>
           <option value="cli">Gói Claude / ChatGPT của bạn</option>
         </select>
       </div>
-      <div class="api-row">
-        <label class="label">Model</label>
-        <select id="apiModel" onchange="onCliModelChange()"></select>
-      </div>
+      <!-- API Key -->
       <div class="api-row" id="rowKey">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <label class="label" style="margin:0">API Key <span style="font-weight:400;opacity:.6;font-size:10px">— nhiều key = chạy song song</span></label>
@@ -1312,29 +1319,13 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
         <div id="apiKeyList" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
         <button class="btn ghost sm" onclick="addKeyField('')" style="margin-top:6px;width:100%">+ Thêm key</button>
       </div>
-      <details class="api-adv" style="margin-top:4px">
-      <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);padding:4px 0">⚙ Nâng cao</summary>
+      <!-- Model -->
       <div class="api-row">
-        <label class="label" title="Để trống = bằng số key. Đây là TỔNG luồng, không nhân số key.">Số luồng song song</label>
-        <input type="number" id="apiConcurrency" min="1" max="30" placeholder="tự động (= số key)" style="font-size:11px">
+        <label class="label">Model</label>
+        <select id="apiModel" onchange="onModelChange()"></select>
+        <input type="text" id="apiModelCustom" placeholder="Nhập tên model tuỳ chỉnh..." style="font-size:11px;margin-top:6px;display:none">
       </div>
-      <div class="api-row" id="thinkingRow" style="display:none">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
-          <input type="checkbox" id="apiThinking" style="width:auto;margin:0">
-          🧠 Bật chế độ Thinking <span style="opacity:.6;font-size:10px">— suy luận kỹ hơn (chậm & tốn token hơn)</span>
-        </label>
-      </div>
-      <div class="api-row" id="rowJsonFb">
-        <label class="label">🛟 AI dự phòng <span style="font-weight:400;opacity:.6;font-size:10px">— khi bản chính lỗi thì tự thử lại bằng cái này</span></label>
-        <select id="jsonFbProvider" style="font-size:11px">
-          <option value="">— Tắt —</option>
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI (GPT)</option>
-        </select>
-        <input type="text" id="jsonFbModel" placeholder="model (để trống = mặc định provider)" style="font-size:11px;margin-top:6px">
-        <input type="password" id="jsonFbKey" placeholder="API key cho fallback" style="font-size:11px;margin-top:6px">
-      </div>
-      </details>
+      <!-- CLI (ẩn mặc định) -->
       <div class="api-row" id="cliRow" style="display:none">
         <button class="btn ghost sm" id="cliLoginBtn" onclick="cliLogin()" style="width:100%">🔐 Đăng nhập gói Claude</button>
         <div id="cliLoginBox" style="font-size:11.5px;margin-top:8px"></div>
@@ -1345,10 +1336,36 @@ html.dark .skeleton::after{ background:linear-gradient(90deg, transparent, rgba(
           <input type="password" id="cliKey" placeholder="Mã bảo vệ (nếu có)" style="font-size:11px;margin-top:6px">
         </details>
       </div>
+      <!-- Base URL -->
       <div class="api-row" id="rowBaseUrl">
         <label class="label">BASE URL <span style="font-weight:400;opacity:.6;font-size:10px">(tuỳ chọn — dùng API bên thứ 3)</span></label>
         <input type="text" id="apiBaseUrl" placeholder="https://api.anthropic.com (để trống = mặc định)" style="font-size:11px">
       </div>
+      <!-- Nâng cao -->
+      <details class="api-adv" style="margin-top:4px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);padding:4px 0">⚙ Nâng cao</summary>
+        <div class="api-row">
+          <label class="label" title="Để trống = bằng số key. Đây là TỔNG luồng, không nhân số key.">Số luồng song song</label>
+          <input type="number" id="apiConcurrency" min="1" max="30" placeholder="tự động (= số key)" style="font-size:11px">
+        </div>
+        <div class="api-row" id="thinkingRow" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
+            <input type="checkbox" id="apiThinking" style="width:auto;margin:0">
+            🧠 Bật chế độ Thinking <span style="opacity:.6;font-size:10px">— suy luận kỹ hơn (chậm & tốn token hơn)</span>
+          </label>
+        </div>
+        <div class="api-row" id="rowJsonFb">
+          <label class="label">🛟 AI dự phòng <span style="font-weight:400;opacity:.6;font-size:10px">— khi bản chính lỗi thì tự thử lại bằng cái này</span></label>
+          <select id="jsonFbProvider" style="font-size:11px">
+            <option value="">— Tắt —</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+          </select>
+          <input type="text" id="jsonFbModel" placeholder="model (để trống = mặc định provider)" style="font-size:11px;margin-top:6px">
+          <input type="password" id="jsonFbKey" placeholder="API key cho fallback" style="font-size:11px;margin-top:6px">
+        </div>
+      </details>
+      <!-- Nút Lưu & Test -->
       <div style="display:flex;gap:6px;margin-top:10px">
         <button class="btn sm primary" onclick="saveApiSettings()" style="flex:1">💾 Lưu</button>
         <button class="btn sm" onclick="testApi()" style="flex:1">⚡ Test</button>
@@ -4637,6 +4654,9 @@ const MODELS = {
     { id: 'gpt-5.4',             name: 'GPT-5.4' },
     { id: 'gpt-5.3-codex-spark', name: 'GPT-5.3 Codex Spark' }
   ],
+  "openai-compatible": [
+    { id: 'custom-model', name: '🔧 Nhập model tuỳ chỉnh (dùng ô bên dưới)' }
+  ],
   deepseek: [
     { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash (preview, nhanh)' },
     { id: 'deepseek-v4-pro',   name: 'DeepSeek V4 Pro (preview, mạnh nhất)' }
@@ -4646,6 +4666,45 @@ const MODELS = {
     { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro (mạnh)' },
     { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite (rẻ nhất)' }
   ],
+  openrouter: [
+    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
+    { id: 'openai/gpt-5',                name: 'GPT-5' },
+    { id: 'openai/gpt-5-mini',           name: 'GPT-5 mini' },
+    { id: 'google/gemini-2.5-flash',     name: 'Gemini 2.5 Flash' },
+    { id: 'meta-llama/llama-4',          name: 'Llama 4' },
+    { id: 'deepseek/deepseek-v4',        name: 'DeepSeek V4' },
+    { id: 'mistral/mistral-large',       name: 'Mistral Large' }
+  ],
+  groq: [
+    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B' },
+    { id: 'llama-3.1-8b-instant',    name: 'Llama 3.1 8B' },
+    { id: 'mixtral-8x7b-32768',      name: 'Mixtral 8x7B' },
+    { id: 'gemma2-9b-it',            name: 'Gemma 2 9B' }
+  ],
+  mistral: [
+    { id: 'mistral-large-latest', name: 'Mistral Large' },
+    { id: 'mistral-medium-latest', name: 'Mistral Medium' },
+    { id: 'mistral-small-latest',  name: 'Mistral Small' },
+    { id: 'codestral-latest',      name: 'Codestral' }
+  ],
+  cohere: [
+    { id: 'command-r-plus', name: 'Command R+' },
+    { id: 'command-r',      name: 'Command R' }
+  ],
+  perplexity: [
+    { id: 'sonar-pro',      name: 'Sonar Pro' },
+    { id: 'sonar-small',    name: 'Sonar Small' }
+  ],
+  together: [
+    { id: 'meta-llama/Llama-3.3-70B-Instruct', name: 'Llama 3.3 70B' },
+    { id: 'meta-llama/Llama-3.1-8B-Instruct',  name: 'Llama 3.1 8B' },
+    { id: 'mistralai/Mixtral-8x7B-Instruct',   name: 'Mixtral 8x7B' }
+  ],
+  fireworks: [
+    { id: 'accounts/fireworks/models/llama-v3p3-70b-instruct', name: 'Llama 3.3 70B' },
+    { id: 'accounts/fireworks/models/llama-v3p1-8b-instruct',  name: 'Llama 3.1 8B' },
+    { id: 'accounts/fireworks/models/mixtral-8x7b-instruct',  name: 'Mixtral 8x7B' }
+  ],
   cli: [
     { id: 'default', name: 'Claude (mặc định)' },
     { id: 'sonnet',  name: 'Claude Sonnet' },
@@ -4654,8 +4713,10 @@ const MODELS = {
   ]
 };
 
-// DeepSeek KHÔNG hỗ trợ ảnh (vision). Các tác vụ phân tích ảnh sẽ tự fallback.
-const VISION_PROVIDERS = ['anthropic', 'openai'];
+// Provider hỗ tr�� vision (đọc ảnh)
+// Anthropic, OpenAI, Gemini, OpenRouter, Mistral, Cohere, Perplexity hỗ trợ
+// OpenAI Compatible có thể hỗ trợ nếu base URL tương ứng
+const VISION_PROVIDERS = ['anthropic', 'openai', 'gemini', 'openrouter', 'mistral', 'cohere', 'perplexity', 'openai-compatible'];
 
 // 🔑 Key lưu RIÊNG theo từng nhà cung cấp → đổi provider tự nạp đúng key của provider đó
 const _provKeyName = p => 'api_key_' + (p || 'anthropic');
@@ -4676,9 +4737,27 @@ function onProviderChange(){
   if (_keyFieldsProvider && _keyFieldsProvider !== provider) _saveCurrentKeyFields();
   if (_keyFieldsProvider !== provider) _loadKeyFieldsFor(provider);
   const sel = document.getElementById('apiModel');
+  // Thêm option "Tuỳ chỉnh..." ở cuối danh sách
   sel.innerHTML = (MODELS[provider] || []).map(m =>
     `<option value="${m.id}">${m.name}</option>`
-  ).join('');
+  ).join('') + `<option value="custom">✏️ Tuỳ chỉnh...</option>`;
+  // Nếu model hiện tại là custom, chọn option "custom" và hiển thị ô input
+  const customInput = document.getElementById('apiModelCustom');
+  const currentModel = localStorage.getItem('api_model') || '';
+  if (currentModel && !MODELS[provider]?.some(m => m.id === currentModel) && currentModel !== 'custom') {
+    // Model hiện tại không có trong danh sách -> là custom
+    sel.value = 'custom';
+    if (customInput) {
+      customInput.style.display = '';
+      customInput.value = currentModel;
+    }
+  } else {
+    // Model có trong danh sách hoặc chưa có
+    if (customInput) customInput.style.display = 'none';
+    if (sel.value !== 'custom') {
+      sel.value = currentModel || (MODELS[provider]?.[0]?.id || '');
+    }
+  }
   updateGetKeyLink();
   // Toggle Thinking chỉ hiện cho DeepSeek
   const tr = document.getElementById('thinkingRow');
@@ -4696,10 +4775,18 @@ function onProviderChange(){
 
 // Link "Lấy Key" theo provider
 const KEY_URLS = {
-  anthropic: 'https://console.anthropic.com/settings/keys',
-  openai:    'https://platform.openai.com/api-keys',
-  gemini:    'https://aistudio.google.com/apikey',
-  deepseek:  'https://platform.deepseek.com/api_keys'
+  anthropic:  'https://console.anthropic.com/settings/keys',
+  openai:     'https://platform.openai.com/api-keys',
+  gemini:     'https://aistudio.google.com/apikey',
+  deepseek:   'https://platform.deepseek.com/api_keys',
+  openrouter: 'https://openrouter.ai/keys',
+  groq:       'https://console.groq.com/keys',
+  mistral:    'https://console.mistral.ai/api-keys/',
+  cohere:     'https://dashboard.cohere.com/api-keys',
+  perplexity: 'https://docs.perplexity.ai/',
+  together:   'https://api.together.xyz/settings/api-keys',
+  fireworks:  'https://fireworks.ai/api-keys',
+  'openai-compatible': '#'
 };
 function updateGetKeyLink(){
   const provider = document.getElementById('apiProvider').value;
@@ -4730,6 +4817,31 @@ function onCliModelChange(){
     }
   }
   _cliUpdateLoginLabel();
+}
+
+// Xử lý thay đổi model (bao gồm tùy chỉnh)
+function onModelChange(){
+  const sel = document.getElementById('apiModel');
+  const customInput = document.getElementById('apiModelCustom');
+  const provider = document.getElementById('apiProvider').value;
+  if (sel.value === 'custom') {
+    // Hiển thị ô input custom
+    if (customInput) {
+      customInput.style.display = '';
+      customInput.focus();
+    }
+    // Không lưu ngay, chờ người dùng nhập và lưu
+  } else {
+    // Ẩn ô input custom
+    if (customInput) {
+      customInput.style.display = 'none';
+      customInput.value = '';
+    }
+    // Nếu là CLI, gọi onCliModelChange để cập nhật endpoint
+    if (provider === 'cli') {
+      onCliModelChange();
+    }
+  }
 }
 
 /* ---- Tải bộ cài Bridge (client tự dựng zip từ file nhúng) ---- */
@@ -6321,7 +6433,27 @@ function loadApiSettings(){
   _keyFieldsProvider = null;                       // để onProviderChange nạp đúng key provider này
   document.getElementById('apiProvider').value = provider;
   onProviderChange();                              // tự nạp key của provider vào các ô
-  if (model) document.getElementById('apiModel').value = model;
+  // Sau khi onProviderChange đã thiết lập dropdown và custom input, cần đặt giá trị model
+  const sel = document.getElementById('apiModel');
+  const customInput = document.getElementById('apiModelCustom');
+  // Kiểm tra xem model có nằm trong danh sách của provider hiện tại không
+  const modelList = MODELS[provider] || [];
+  const isInList = modelList.some(m => m.id === model);
+  if (model && !isInList) {
+    // Model không có trong danh sách -> là custom
+    sel.value = 'custom';
+    if (customInput) {
+      customInput.style.display = '';
+      customInput.value = model;
+    }
+  } else if (model && isInList) {
+    sel.value = model;
+    if (customInput) customInput.style.display = 'none';
+  } else {
+    // Không có model -> chọn mặc định
+    sel.value = modelList[0]?.id || '';
+    if (customInput) customInput.style.display = 'none';
+  }
   updateGetKeyLink();
   const thinkEl = document.getElementById('apiThinking');
   if (thinkEl) thinkEl.checked = localStorage.getItem('api_thinking') === '1';
@@ -6346,7 +6478,18 @@ function loadApiSettings(){
 
 function saveApiSettings(){
   const provider = document.getElementById('apiProvider').value;
-  const model = document.getElementById('apiModel').value;
+  const sel = document.getElementById('apiModel');
+  const customInput = document.getElementById('apiModelCustom');
+  let model = sel.value;
+  // Nếu chọn custom, lấy giá trị từ ô input
+  if (model === 'custom') {
+    model = customInput ? customInput.value.trim() : '';
+    if (!model) {
+      setApiStatus('Vui lòng nhập tên model tuỳ chỉnh.', 'err');
+      customInput?.focus();
+      return;
+    }
+  }
   const keys = collectKeys();
   const baseUrl = document.getElementById('apiBaseUrl').value.trim().replace(/\/+$/, '');
   localStorage.setItem('api_provider', provider);
@@ -6501,13 +6644,27 @@ async function _withRetry(fn){
     catch (e) {
       const msg = String(e?.message || e);
       const retryable = /failed to fetch|load failed|networkerror|network error|không kết nối được|quá thời gian/i.test(msg)
-        || /\bAPI (429|5\d\d)\b/.test(msg);   // 429 quá tải + 5xx (502/503/504) đều thử lại
+        || /\bAPI (409|429|5\d\d)\b/.test(msg);   // 409 trùng request (gateway dedupe), 429 quá tải + 5xx (502/503/504) đều thử lại
       if (!retryable || attempt >= MAX) throw e;
       try { if (typeof novaLog === 'function') novaLog(`  ↻ AI lỗi tạm (${msg.slice(0, 40)}) — thử lại lần ${attempt + 1}/${MAX}…`, 'warn'); } catch(_){}
-      await new Promise(r => setTimeout(r, Math.min(delay + Math.random() * 400, 10000)));   // trần 10s giữa các lần
+      const isDup = /\bAPI 409\b/.test(msg);   // request trùng đang được server xử lý → đợi LÂU hơn cho request gốc xong
+      const wait = isDup ? Math.max(12000, delay * 4) : Math.min(delay + Math.random() * 400, 10000);
+      await new Promise(r => setTimeout(r, wait));   // 409: đợi ~12s+; còn lại trần 10s giữa các lần
       delay *= 2;
     }
   }
+}
+
+// Xây endpoint chat/completions từ Base URL — chịu được /v1, /v1/, hoặc URL đầy đủ (không nhân đôi /v1).
+function _chatEndpoint(base){
+  let b = String(base || '').trim().replace(/\/+$/, '');
+  if (!b) return '';
+  // Thêm giao thức nếu thiếu (hỗ trợ nhập "xkiro.com" thay vì "https://xkiro.com")
+  if (!/^https?:\/\//i.test(b)) b = 'https://' + b;
+  b = b.replace(/([^:])\/{2,}/g, '$1/');                     // gộp slash kép (https://xkiro.com//v1 → .../v1)
+  if (/\/chat\/completions$/i.test(b)) return b;            // đã đủ path
+  if (/\/v1$/i.test(b)) return b + '/chat/completions';      // base kết thúc /v1 (vd https://xkiro.com/v1)
+  return b + '/v1/chat/completions';                         // base dạng https://host hoặc https://host/api
 }
 
 async function callLLM(prompt, opts = {}){
@@ -6555,10 +6712,29 @@ async function callLLM(prompt, opts = {}){
     if (provider === 'anthropic') return callAnthropic(messages, model, key, maxTokens);   // callAnthropic tự đọc Base URL bên trong
     // Có Base URL → OpenAI/DeepSeek đi QUA gateway (/v1/chat/completions), KHÔNG gọi thẳng api.openai.com/deepseek.
     if (_baseUrl && (provider === 'openai' || provider === 'deepseek'))
-      return callOpenAICompat(messages, model, key, maxTokens, _baseUrl + '/v1/chat/completions', { thinking, json });
+      return callOpenAICompat(messages, model, key, maxTokens, _chatEndpoint(_baseUrl), { thinking, json });
     if (provider === 'openai')    return callOpenAI(messages, model, key, maxTokens, { json });
     if (provider === 'gemini')    return callOpenAICompat(messages, model, key, maxTokens, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', { json });
     if (provider === 'deepseek')  return callOpenAICompat(messages, model, key, maxTokens, 'https://api.deepseek.com/v1/chat/completions', { thinking, json });
+    // Các provider OpenAI-compatible
+    const BASE_URLS = {
+      openrouter:  'https://openrouter.ai/api/v1',
+      groq:        'https://api.groq.com/openai/v1',
+      mistral:     'https://api.mistral.ai/v1',
+      cohere:      'https://api.cohere.ai/v1',
+      perplexity:  'https://api.perplexity.ai',
+      together:    'https://api.together.xyz/v1',
+      fireworks:   'https://api.fireworks.ai/inference/v1'
+    };
+    if (provider in BASE_URLS) {
+      const base = _baseUrl || BASE_URLS[provider];
+      return callOpenAICompat(messages, model, key, maxTokens, _chatEndpoint(base), { thinking, json });
+    }
+    // OpenAI Compatible Custom: bắt buộc phải có Base URL
+    if (provider === 'openai-compatible') {
+      if (!_baseUrl) throw new Error('Vui lòng nhập Base URL cho OpenAI Compatible.');
+      return callOpenAICompat(messages, model, key, maxTokens, _chatEndpoint(_baseUrl), { thinking, json });
+    }
     throw new Error('Provider không hỗ trợ: ' + provider);
   };
   return _withRetry(doCall);
@@ -6623,7 +6799,12 @@ async function callAnthropic(messages, model, key, maxTokens){
 
   // Nếu có Base URL bên thứ 3 → gọi thẳng, bỏ qua proxy Vercel
   if (baseUrl) {
-    const endpoint = baseUrl.replace(/\/+$/, '') + '/v1/messages';
+    // Chuẩn hóa Base URL cho Anthropic /messages — chịu được: không có https://, /v1, /v1/, /messages sẵn, URL đầy đủ.
+    let endpoint = baseUrl.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(endpoint)) endpoint = 'https://' + endpoint;   // "xkiro.com" → "https://xkiro.com"
+    endpoint = endpoint.replace(/([^:])\/{2,}/g, '$1/');                     // gộp slash kép trong path
+    if (!/\/messages$/i.test(endpoint))                                        // đã đủ path thì giữ nguyên
+      endpoint += /\/v1$/i.test(endpoint) ? '/messages' : '/v1/messages';
     const r = await _llmFetch(endpoint, {
       method: 'POST',
       headers: {

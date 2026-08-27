@@ -98,7 +98,27 @@ function call(action, payload) {
 function status() {
   // Ngưỡng 35s: service worker (nhất là trong GPM) hay chợp ngủ giữa 2 lần ping/alarm (~30s)
   // → nới rộng để không báo "rớt" oan khi nó chỉ ngủ ngắn rồi tự thức lại.
-  return { running: !!server, port: PORT, extensionConnected: (Date.now() - extLastSeen) < 35000, extVersion };
+  return { running: !!(server && server.listening), port: PORT, extensionConnected: (Date.now() - extLastSeen) < 35000, extVersion };
 }
 
-module.exports = { start, call, status, PORT };
+function stop() {
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timer);
+    try { waiter.res.destroy(); } catch (_) {}
+  }
+  waiters = [];
+  queue.length = 0;
+  for (const item of pending.values()) {
+    clearTimeout(item.timer);
+    try { item.resolve({ error: 'BRIDGE_STOPPED' }); } catch (_) {}
+  }
+  pending.clear();
+  const owned = server;
+  server = null;
+  if (owned) {
+    try { owned.close(); } catch (_) {}
+    try { owned.closeAllConnections && owned.closeAllConnections(); } catch (_) {}
+  }
+}
+
+module.exports = { start, stop, call, status, PORT };

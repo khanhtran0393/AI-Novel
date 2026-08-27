@@ -26,6 +26,7 @@ resources/*.json
 **/dist/
 **/out/
 **/coverage/
+smoke-results/
 *.asar
 *.blockmap
 

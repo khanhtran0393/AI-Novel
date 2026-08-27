@@ -201,18 +201,31 @@ async function handler(req, res) {
 }
 
 let started = false;
+let servers = [];
 /**
  * @param {object} injected { nativeTools, upscaleNative, watermarkNative, getWindow }
  */
 function startAll(injected) {
-  if (started) return;
+  if (started) return servers;
   started = true;
   deps = Object.assign(deps, injected || {});
   for (const host of ['127.0.0.1', '::1']) {
     const s = http.createServer(handler);
     s.on('error', (e) => console.warn(`[mcp-bridge] ${host}:${PORT}:`, e.message));
     s.listen(PORT, host, () => console.log(`[mcp-bridge] → ${host}:${PORT}`));
+    servers.push(s);
+  }
+  return servers;
+}
+
+function stopAll() {
+  started = false;
+  const owned = servers;
+  servers = [];
+  for (const server of owned) {
+    try { server.close(); } catch (_) {}
+    try { server.closeAllConnections && server.closeAllConnections(); } catch (_) {}
   }
 }
 
-module.exports = { startAll, PORT };
+module.exports = { startAll, stopAll, PORT };
